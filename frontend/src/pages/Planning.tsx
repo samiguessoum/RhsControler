@@ -1,5 +1,6 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import {
   format,
   startOfWeek,
@@ -299,6 +300,7 @@ function DroppableDayCell({
   isToday = false,
   compact = false,
   onDayDoubleClick,
+  onDayClick,
 }: {
   date: Date;
   interventions: Intervention[];
@@ -307,19 +309,41 @@ function DroppableDayCell({
   isToday?: boolean;
   compact?: boolean;
   onDayDoubleClick?: (date: Date) => void;
+  onDayClick?: (date: Date) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: format(date, 'yyyy-MM-dd'),
     data: { date },
   });
+  const clickTimeoutRef = useRef<number | null>(null);
+
+  const handleClick = () => {
+    if (!onDayClick) return;
+    if (clickTimeoutRef.current) {
+      window.clearTimeout(clickTimeoutRef.current);
+    }
+    clickTimeoutRef.current = window.setTimeout(() => {
+      onDayClick(date);
+      clickTimeoutRef.current = null;
+    }, 200);
+  };
+
+  const handleDoubleClick = () => {
+    if (clickTimeoutRef.current) {
+      window.clearTimeout(clickTimeoutRef.current);
+      clickTimeoutRef.current = null;
+    }
+    onDayDoubleClick?.(date);
+  };
 
   if (compact) {
     return (
       <div
         ref={setNodeRef}
-        onDoubleClick={() => onDayDoubleClick?.(date)}
+        onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
         className={cn(
-          'border rounded p-1 min-h-[60px] transition-colors',
+          'border rounded p-1 min-h-[60px] transition-colors hover:border-green-500',
           isOver && 'bg-primary/10 border-primary',
           !isCurrentMonth && 'bg-gray-50 opacity-50',
           isToday && 'ring-2 ring-primary'
@@ -327,7 +351,7 @@ function DroppableDayCell({
       >
         <div className="text-[10px] font-medium mb-1">{format(date, 'd')}</div>
         <div className="space-y-0.5">
-          {interventions.slice(0, 2).map((intervention) => (
+          {interventions.map((intervention) => (
             <DraggableInterventionCard
               key={intervention.id}
               intervention={intervention}
@@ -335,11 +359,6 @@ function DroppableDayCell({
               compact
             />
           ))}
-          {interventions.length > 2 && (
-            <div className="text-[9px] text-muted-foreground text-center">
-              +{interventions.length - 2} autres
-            </div>
-          )}
         </div>
       </div>
     );
@@ -348,9 +367,10 @@ function DroppableDayCell({
   return (
     <Card
       ref={setNodeRef}
-      onDoubleClick={() => onDayDoubleClick?.(date)}
+      onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
       className={cn(
-        'min-h-[150px] transition-colors',
+        'min-h-[150px] transition-colors hover:border-green-500',
         isOver && 'bg-primary/10 border-primary',
         !isCurrentMonth && 'bg-gray-50 opacity-60',
         isToday && 'ring-2 ring-primary'
@@ -579,11 +599,13 @@ function WeekView({
   interventions,
   onInterventionClick,
   onDayDoubleClick,
+  onDayClick,
 }: {
   weekStart: Date;
   interventions: Intervention[];
   onInterventionClick: (intervention: Intervention) => void;
   onDayDoubleClick?: (date: Date) => void;
+  onDayClick?: (date: Date) => void;
 }) {
   const weekDays = eachDayOfInterval({
     start: weekStart,
@@ -603,6 +625,7 @@ function WeekView({
             onInterventionClick={onInterventionClick}
             isToday={isSameDay(day, new Date())}
             onDayDoubleClick={onDayDoubleClick}
+            onDayClick={onDayClick}
           />
         ))}
       </div>
@@ -615,11 +638,13 @@ function BiWeekView({
   interventions,
   onInterventionClick,
   onDayDoubleClick,
+  onDayClick,
 }: {
   startDate: Date;
   interventions: Intervention[];
   onInterventionClick: (intervention: Intervention) => void;
   onDayDoubleClick?: (date: Date) => void;
+  onDayClick?: (date: Date) => void;
 }) {
   const days = eachDayOfInterval({
     start: startDate,
@@ -640,6 +665,7 @@ function BiWeekView({
             onInterventionClick={onInterventionClick}
             isToday={isSameDay(day, new Date())}
             onDayDoubleClick={onDayDoubleClick}
+            onDayClick={onDayClick}
           />
         ))}
       </div>
@@ -652,6 +678,7 @@ function BiWeekView({
             onInterventionClick={onInterventionClick}
             isToday={isSameDay(day, new Date())}
             onDayDoubleClick={onDayDoubleClick}
+            onDayClick={onDayClick}
           />
         ))}
       </div>
@@ -665,16 +692,18 @@ function MonthView({
   interventions,
   onInterventionClick,
   onDayDoubleClick,
+  onDayClick,
 }: {
   month: Date;
   interventions: Intervention[];
   onInterventionClick: (intervention: Intervention) => void;
   onDayDoubleClick?: (date: Date) => void;
+  onDayClick?: (date: Date) => void;
 }) {
   const monthStart = startOfMonth(month);
   const monthEnd = endOfMonth(month);
-  const calendarStart = startOfWeek(monthStart, { weekStartsOn: 1 });
-  const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+  const calendarStart = startOfWeek(monthStart, { weekStartsOn: 0 });
+  const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
 
   const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
   const weeks = [];
@@ -689,7 +718,7 @@ function MonthView({
     <div className="space-y-2">
       {/* Day headers */}
       <div className="grid grid-cols-7 gap-2">
-        {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map((d) => (
+        {['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'].map((d) => (
           <div key={d} className="text-center text-sm font-medium text-muted-foreground py-2">
             {d}
           </div>
@@ -708,6 +737,7 @@ function MonthView({
               isToday={isSameDay(day, new Date())}
               compact
               onDayDoubleClick={onDayDoubleClick}
+              onDayClick={onDayClick}
             />
           ))}
         </div>
@@ -722,11 +752,13 @@ function QuarterView({
   interventions,
   onInterventionClick,
   onDayDoubleClick,
+  onDayClick,
 }: {
   quarter: Date;
   interventions: Intervention[];
   onInterventionClick: (intervention: Intervention) => void;
   onDayDoubleClick?: (date: Date) => void;
+  onDayClick?: (date: Date) => void;
 }) {
   const quarterStart = startOfQuarter(quarter);
   const months = eachMonthOfInterval({
@@ -750,6 +782,7 @@ function QuarterView({
             interventions={getInterventionsForMonth(month)}
             onInterventionClick={onInterventionClick}
             onDayDoubleClick={onDayDoubleClick}
+            onDayClick={onDayClick}
           />
         </CardContent>
       </Card>
@@ -764,16 +797,20 @@ function MiniMonthView({
   interventions,
   onInterventionClick,
   onDayDoubleClick,
+  onDayClick,
 }: {
   month: Date;
   interventions: Intervention[];
   onInterventionClick: (intervention: Intervention) => void;
   onDayDoubleClick?: (date: Date) => void;
+  onDayClick?: (date: Date) => void;
 }) {
+  const clickTimeoutRef = useRef<number | null>(null);
+  const pendingDayRef = useRef<Date | null>(null);
   const monthStart = startOfMonth(month);
   const monthEnd = endOfMonth(month);
-  const calendarStart = startOfWeek(monthStart, { weekStartsOn: 1 });
-  const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
+  const calendarStart = startOfWeek(monthStart, { weekStartsOn: 0 });
+  const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
 
   const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
   const weeks = [];
@@ -787,7 +824,7 @@ function MiniMonthView({
   return (
     <div className="space-y-1">
       <div className="grid grid-cols-7 gap-0.5">
-        {['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, i) => (
+        {['D', 'L', 'M', 'M', 'J', 'V', 'S'].map((d, i) => (
           <div key={i} className="text-center text-[9px] font-medium text-muted-foreground">
             {d}
           </div>
@@ -803,13 +840,32 @@ function MiniMonthView({
               <div
                 key={day.toISOString()}
                 onClick={() => {
+                  if (onDayClick) {
+                    if (clickTimeoutRef.current) {
+                      window.clearTimeout(clickTimeoutRef.current);
+                    }
+                    pendingDayRef.current = day;
+                    clickTimeoutRef.current = window.setTimeout(() => {
+                      if (pendingDayRef.current) onDayClick(pendingDayRef.current);
+                      clickTimeoutRef.current = null;
+                      pendingDayRef.current = null;
+                    }, 200);
+                    return;
+                  }
                   if (dayInterventions.length === 1) {
                     onInterventionClick(dayInterventions[0]);
                   }
                 }}
-                onDoubleClick={() => onDayDoubleClick?.(day)}
+                onDoubleClick={() => {
+                  if (clickTimeoutRef.current) {
+                    window.clearTimeout(clickTimeoutRef.current);
+                    clickTimeoutRef.current = null;
+                    pendingDayRef.current = null;
+                  }
+                  onDayDoubleClick?.(day);
+                }}
                 className={cn(
-                  'text-center text-[10px] p-0.5 rounded cursor-pointer',
+                  'text-center text-[10px] p-0.5 rounded cursor-pointer hover:ring-1 hover:ring-green-500',
                   !isCurrentMonth && 'opacity-30',
                   isToday && 'ring-1 ring-primary',
                   dayInterventions.length > 0 && 'bg-primary/20 font-medium'
@@ -832,11 +888,13 @@ function YearView({
   interventions,
   onInterventionClick,
   onDayDoubleClick,
+  onDayClick,
 }: {
   year: Date;
   interventions: Intervention[];
   onInterventionClick: (intervention: Intervention) => void;
   onDayDoubleClick?: (date: Date) => void;
+  onDayClick?: (date: Date) => void;
 }) {
   const yearStart = startOfYear(year);
   const months = eachMonthOfInterval({
@@ -860,6 +918,7 @@ function YearView({
             interventions={getInterventionsForMonth(month)}
             onInterventionClick={onInterventionClick}
             onDayDoubleClick={onDayDoubleClick}
+            onDayClick={onDayClick}
           />
         </CardContent>
       </Card>
@@ -1925,11 +1984,13 @@ function CreateReclamationDialog({
 function FiltersSheet({
   clients,
   prestations,
+  employes,
   filters,
   onFiltersChange,
 }: {
   clients: Client[];
   prestations: { id: string; nom: string }[];
+  employes: Employe[];
   filters: {
     clientId: string;
     siteId: string;
@@ -1937,6 +1998,7 @@ function FiltersSheet({
     statut: FilterStatut;
     type: string;
     responsable: string;
+    employeId: string;
   };
   onFiltersChange: (filters: any) => void;
 }) {
@@ -1950,6 +2012,7 @@ function FiltersSheet({
     filters.statut !== 'ALL' ? filters.statut : '',
     filters.type !== 'ALL' ? filters.type : '',
     filters.responsable,
+    filters.employeId,
   ].filter(Boolean).length;
 
   return (
@@ -1971,13 +2034,14 @@ function FiltersSheet({
         </SheetHeader>
         <ScrollArea className="h-[calc(100vh-120px)] pr-4">
           <div className="space-y-6 py-4">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Vue</div>
             <div className="space-y-2">
               <Label>Statut</Label>
               <Select
                 value={filters.statut}
                 onValueChange={(v) => onFiltersChange({ ...filters, statut: v })}
               >
-                <SelectTrigger>
+                <SelectTrigger className="focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 ring-0 focus-visible:ring-offset-0 data-[state=open]:ring-0 data-[state=open]:ring-offset-0 hover:border-input">
                   <SelectValue placeholder="Tous statuts" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1997,7 +2061,7 @@ function FiltersSheet({
                 value={filters.type}
                 onValueChange={(v) => onFiltersChange({ ...filters, type: v })}
               >
-                <SelectTrigger>
+                <SelectTrigger className="focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 ring-0 focus-visible:ring-offset-0 data-[state=open]:ring-0 data-[state=open]:ring-offset-0 hover:border-input">
                   <SelectValue placeholder="Tous types" />
                 </SelectTrigger>
                 <SelectContent>
@@ -2011,19 +2075,20 @@ function FiltersSheet({
 
             <Separator />
 
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Entreprise & site</div>
             <div className="space-y-2">
-              <Label>Client</Label>
+              <Label>Entreprise</Label>
               <Select
-                value={filters.clientId}
+                value={filters.clientId || 'ALL'}
                 onValueChange={(v) =>
-                  onFiltersChange({ ...filters, clientId: v, siteId: '' })
+                  onFiltersChange({ ...filters, clientId: v === 'ALL' ? '' : v, siteId: '' })
                 }
               >
-                <SelectTrigger>
-                  <SelectValue placeholder="Tous clients" />
+                <SelectTrigger className="focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 ring-0 focus-visible:ring-offset-0 data-[state=open]:ring-0 data-[state=open]:ring-offset-0 hover:border-input">
+                  <SelectValue placeholder="Toutes entreprises" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Tous clients</SelectItem>
+                  <SelectItem value="ALL">Toutes entreprises</SelectItem>
                   {clients.map((client) => (
                     <SelectItem key={client.id} value={client.id}>
                       {client.nomEntreprise}
@@ -2037,14 +2102,16 @@ function FiltersSheet({
               <div className="space-y-2">
                 <Label>Site</Label>
                 <Select
-                  value={filters.siteId}
-                  onValueChange={(v) => onFiltersChange({ ...filters, siteId: v })}
+                  value={filters.siteId || 'ALL'}
+                  onValueChange={(v) =>
+                    onFiltersChange({ ...filters, siteId: v === 'ALL' ? '' : v })
+                  }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 ring-0 focus-visible:ring-offset-0 data-[state=open]:ring-0 data-[state=open]:ring-offset-0 hover:border-input">
                     <SelectValue placeholder="Tous sites" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Tous sites</SelectItem>
+                    <SelectItem value="ALL">Tous sites</SelectItem>
                     {sites.map((site) => (
                       <SelectItem key={site.id} value={site.id}>
                         {site.nom}
@@ -2057,17 +2124,20 @@ function FiltersSheet({
 
             <Separator />
 
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Prestation</div>
             <div className="space-y-2">
               <Label>Prestation</Label>
               <Select
-                value={filters.prestation}
-                onValueChange={(v) => onFiltersChange({ ...filters, prestation: v })}
+                value={filters.prestation || 'ALL'}
+                onValueChange={(v) =>
+                  onFiltersChange({ ...filters, prestation: v === 'ALL' ? '' : v })
+                }
               >
-                <SelectTrigger>
+                <SelectTrigger className="focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 ring-0 focus-visible:ring-offset-0 data-[state=open]:ring-0 data-[state=open]:ring-offset-0 hover:border-input">
                   <SelectValue placeholder="Toutes prestations" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Toutes prestations</SelectItem>
+                  <SelectItem value="ALL">Toutes prestations</SelectItem>
                   {prestations.map((p) => (
                     <SelectItem key={p.id} value={p.nom}>
                       {p.nom}
@@ -2077,6 +2147,7 @@ function FiltersSheet({
               </Select>
             </div>
 
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">Équipe</div>
             <div className="space-y-2">
               <Label>Responsable</Label>
               <Input
@@ -2085,6 +2156,28 @@ function FiltersSheet({
                 onChange={(e) => onFiltersChange({ ...filters, responsable: e.target.value })}
                 placeholder="Filtrer par responsable"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Employé</Label>
+              <Select
+                value={filters.employeId || 'ALL'}
+                onValueChange={(v) =>
+                  onFiltersChange({ ...filters, employeId: v === 'ALL' ? '' : v })
+                }
+              >
+                <SelectTrigger className="focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 ring-0 focus-visible:ring-offset-0 data-[state=open]:ring-0 data-[state=open]:ring-offset-0 hover:border-input">
+                  <SelectValue placeholder="Tous employés" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Tous employés</SelectItem>
+                  {employes.map((employe) => (
+                    <SelectItem key={employe.id} value={employe.id}>
+                      {employe.prenom} {employe.nom}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <Separator />
@@ -2100,6 +2193,7 @@ function FiltersSheet({
                   statut: 'ALL',
                   type: 'ALL',
                   responsable: '',
+                  employeId: '',
                 })
               }
             >
@@ -2117,10 +2211,15 @@ function FiltersSheet({
 export function PlanningPage() {
   const queryClient = useQueryClient();
   const { canDo } = useAuthStore();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const interventionIdParam = searchParams.get('interventionId');
+  const viewParam = searchParams.get('view');
+  const prestationParam = searchParams.get('prestation');
 
   // View state
-  const [viewMode, setViewMode] = useState<ViewMode>('week');
+  const [viewMode, setViewMode] = useState<ViewMode>('month');
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [dayPreviewDate, setDayPreviewDate] = useState<Date | null>(null);
 
   // Filters state
   const [filters, setFilters] = useState({
@@ -2130,6 +2229,7 @@ export function PlanningPage() {
     statut: 'ALL' as FilterStatut,
     type: 'ALL',
     responsable: '',
+    employeId: '',
   });
 
   // Dialog states
@@ -2180,11 +2280,11 @@ export function PlanningPage() {
         };
       case 'week':
         return {
-          start: startOfWeek(currentDate, { weekStartsOn: 1 }),
-          end: endOfWeek(currentDate, { weekStartsOn: 1 }),
+          start: startOfWeek(currentDate, { weekStartsOn: 0 }),
+          end: endOfWeek(currentDate, { weekStartsOn: 0 }),
         };
       case 'biweek':
-        const biweekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
+        const biweekStart = startOfWeek(currentDate, { weekStartsOn: 0 });
         return {
           start: biweekStart,
           end: addDays(biweekStart, 13),
@@ -2206,8 +2306,8 @@ export function PlanningPage() {
         };
       default:
         return {
-          start: startOfWeek(currentDate, { weekStartsOn: 1 }),
-          end: endOfWeek(currentDate, { weekStartsOn: 1 }),
+          start: startOfWeek(currentDate, { weekStartsOn: 0 }),
+          end: endOfWeek(currentDate, { weekStartsOn: 0 }),
         };
     }
   };
@@ -2299,6 +2399,12 @@ export function PlanningPage() {
     enabled: !!selectedIntervention,
   });
 
+  const { data: interventionFromParam } = useQuery({
+    queryKey: ['intervention', interventionIdParam],
+    queryFn: () => interventionsApi.get(interventionIdParam!),
+    enabled: !!interventionIdParam,
+  });
+
   const { data: employes = [] } = useQuery({
     queryKey: ['employes'],
     queryFn: employesApi.list,
@@ -2331,8 +2437,62 @@ export function PlanningPage() {
       );
     }
 
+    if (filters.employeId) {
+      result = result.filter((i) =>
+        i.interventionEmployes?.some((ie) => ie.employeId === filters.employeId)
+      );
+    }
+
     return result;
-  }, [interventionsData?.interventions, filters.siteId, filters.responsable]);
+  }, [
+    interventionsData?.interventions,
+    filters.siteId,
+    filters.responsable,
+    filters.employeId,
+  ]);
+
+  const dayPreviewInterventions = useMemo(() => {
+    if (!dayPreviewDate) return [];
+    return interventions.filter((i) => isSameDay(parseISO(i.datePrevue), dayPreviewDate));
+  }, [dayPreviewDate, interventions]);
+
+  useEffect(() => {
+    if (!interventionIdParam) return;
+    const fromList = interventions.find((i) => i.id === interventionIdParam);
+    const target = fromList || interventionFromParam;
+    if (target) {
+      setSelectedIntervention(target);
+      setCurrentDate(parseISO(target.datePrevue));
+      setViewMode('day');
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.delete('interventionId');
+      setSearchParams(nextParams, { replace: true });
+    }
+  }, [interventionIdParam, interventions, interventionFromParam, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (!viewParam && !prestationParam) return;
+    if (viewParam === 'week') {
+      setViewMode('week');
+    } else if (viewParam === 'day') {
+      setViewMode('day');
+    } else if (viewParam === 'biweek') {
+      setViewMode('biweek');
+    } else if (viewParam === 'month') {
+      setViewMode('month');
+    } else if (viewParam === 'quarter') {
+      setViewMode('quarter');
+    } else if (viewParam === 'year') {
+      setViewMode('year');
+    }
+    if (prestationParam) {
+      setFilters((prev) => ({ ...prev, prestation: prestationParam }));
+    }
+    const nextParams = new URLSearchParams(searchParams);
+    if (viewParam) nextParams.delete('view');
+    if (prestationParam) nextParams.delete('prestation');
+    setSearchParams(nextParams, { replace: true });
+  }, [viewParam, prestationParam, searchParams, setSearchParams]);
 
   const clients = clientsData?.clients || [];
 
@@ -2552,6 +2712,7 @@ export function PlanningPage() {
                 <FiltersSheet
                   clients={clients}
                   prestations={prestations}
+                  employes={employes as Employe[]}
                   filters={filters}
                   onFiltersChange={setFilters}
                 />
@@ -2598,6 +2759,7 @@ export function PlanningPage() {
                 interventions={interventions}
                 onInterventionClick={setSelectedIntervention}
                 onDayDoubleClick={handleDayDoubleClick}
+                onDayClick={setDayPreviewDate}
               />
             )}
             {viewMode === 'biweek' && (
@@ -2606,6 +2768,7 @@ export function PlanningPage() {
                 interventions={interventions}
                 onInterventionClick={setSelectedIntervention}
                 onDayDoubleClick={handleDayDoubleClick}
+                onDayClick={setDayPreviewDate}
               />
             )}
             {viewMode === 'month' && (
@@ -2614,6 +2777,7 @@ export function PlanningPage() {
                 interventions={interventions}
                 onInterventionClick={setSelectedIntervention}
                 onDayDoubleClick={handleDayDoubleClick}
+                onDayClick={setDayPreviewDate}
               />
             )}
             {viewMode === 'quarter' && (
@@ -2622,6 +2786,7 @@ export function PlanningPage() {
                 interventions={interventions}
                 onInterventionClick={setSelectedIntervention}
                 onDayDoubleClick={handleDayDoubleClick}
+                onDayClick={setDayPreviewDate}
               />
             )}
             {viewMode === 'year' && (
@@ -2630,6 +2795,7 @@ export function PlanningPage() {
                 interventions={interventions}
                 onInterventionClick={setSelectedIntervention}
                 onDayDoubleClick={handleDayDoubleClick}
+                onDayClick={setDayPreviewDate}
               />
             )}
             {viewMode === 'list' && (
@@ -2652,6 +2818,96 @@ export function PlanningPage() {
             </div>
           )}
         </DragOverlay>
+
+        {/* Day Preview Dialog */}
+        <Dialog
+          open={!!dayPreviewDate}
+          onOpenChange={(open) => {
+            if (!open) setDayPreviewDate(null);
+          }}
+        >
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle>
+                {dayPreviewDate
+                  ? `Programme du ${format(dayPreviewDate, 'EEEE d MMMM yyyy', { locale: fr })}`
+                  : 'Programme du jour'}
+              </DialogTitle>
+              <DialogDescription>
+                {dayPreviewInterventions.length} intervention(s)
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-2 max-h-[60vh] overflow-auto pr-1">
+              {dayPreviewInterventions.length === 0 ? (
+                <div className="text-sm text-muted-foreground text-center py-6">
+                  Aucune intervention prévue.
+                </div>
+              ) : (
+                dayPreviewInterventions.map((intervention) => {
+                  const timeRange = getTimeRange(intervention);
+                  const siteName = intervention.site?.nom || intervention.client?.sites?.[0]?.nom;
+                  return (
+                    <button
+                      key={intervention.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedIntervention(intervention);
+                        setDayPreviewDate(null);
+                      }}
+                      className="w-full text-left p-3 rounded-md border hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">{intervention.client?.nomEntreprise}</div>
+                          {siteName && (
+                            <div className="text-xs text-muted-foreground truncate">{siteName}</div>
+                          )}
+                          {intervention.prestation && (
+                            <div className="text-xs text-muted-foreground truncate">
+                              {intervention.prestation}
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          {timeRange && (
+                            <span className="text-xs text-muted-foreground">{timeRange}</span>
+                          )}
+                          <span
+                            className={cn(
+                              'px-2 py-0.5 rounded-full text-[10px] font-semibold',
+                              getInterventionTypeBadgeClass(intervention.type)
+                            )}
+                          >
+                            {getInterventionTypeLabel(intervention.type)}
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                onClick={() => {
+                  if (dayPreviewDate) {
+                    setCurrentDate(dayPreviewDate);
+                    setViewMode('day');
+                  }
+                  setDayPreviewDate(null);
+                }}
+              >
+                Voir la vue Jour
+              </Button>
+              <Button variant="outline" onClick={() => setDayPreviewDate(null)}>
+                Fermer
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Intervention Detail Dialog */}
         <InterventionDetailDialog

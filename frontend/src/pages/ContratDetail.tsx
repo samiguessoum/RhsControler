@@ -1,12 +1,15 @@
 import { useParams, Link } from 'react-router-dom';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CalendarClock, ArrowLeft, Plus, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { contratsApi, interventionsApi } from '@/services/api';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Separator } from '@/components/ui/separator';
+import { contratsApi, interventionsApi, prestationsApi } from '@/services/api';
 import { formatDate, getStatutColor, getStatutLabel } from '@/lib/utils';
-import type { Frequence } from '@/types';
+import type { Frequence, Prestation } from '@/types';
 
 const FREQUENCE_LABELS: Record<Frequence, string> = {
   HEBDOMADAIRE: 'Hebdomadaire',
@@ -19,6 +22,8 @@ const FREQUENCE_LABELS: Record<Frequence, string> = {
 
 export function ContratDetailPage() {
   const { id } = useParams();
+  const [selectedPrestationName, setSelectedPrestationName] = useState<string | null>(null);
+  const [selectedIntervention, setSelectedIntervention] = useState<any | null>(null);
 
   const { data: contrat, isLoading } = useQuery({
     queryKey: ['contrat', id],
@@ -32,12 +37,35 @@ export function ContratDetailPage() {
     enabled: !!id,
   });
 
+  const { data: selectedInterventionDetail } = useQuery({
+    queryKey: ['intervention', selectedIntervention?.id],
+    queryFn: () => interventionsApi.get(selectedIntervention!.id),
+    enabled: !!selectedIntervention?.id,
+  });
+
+  const { data: prestations = [] } = useQuery({
+    queryKey: ['prestations-active'],
+    queryFn: () => prestationsApi.list(true),
+  });
+
+  const interventions = interventionsData?.interventions || [];
+  const isPonctuel = contrat?.type === 'PONCTUEL';
+  const prestationDetail = useMemo(
+    () => prestations.find((p) => p.nom === selectedPrestationName) as Prestation | undefined,
+    [prestations, selectedPrestationName]
+  );
+  const prestationSites = useMemo(() => {
+    if (!selectedPrestationName) return [];
+    return (
+      contrat?.contratSites?.filter((cs) =>
+        (cs.prestations || []).includes(selectedPrestationName)
+      ) || []
+    );
+  }, [contrat?.contratSites, selectedPrestationName]);
+
   if (isLoading || !contrat) {
     return <div className="text-center py-8 text-muted-foreground">Chargement...</div>;
   }
-
-  const interventions = interventionsData?.interventions || [];
-  const isPonctuel = contrat.type === 'PONCTUEL';
 
   return (
     <div className="space-y-6">
@@ -85,9 +113,16 @@ export function ContratDetailPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               {contrat.prestations.map((p) => (
-                <Badge key={p} variant="outline" className="text-xs">
-                  {p}
-                </Badge>
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setSelectedPrestationName(p)}
+                  className="inline-flex"
+                >
+                  <Badge variant="outline" className="text-xs hover:bg-muted">
+                    {p}
+                  </Badge>
+                </button>
               ))}
             </div>
             <div className="flex flex-wrap gap-2">
@@ -179,6 +214,22 @@ export function ContratDetailPage() {
                       </Badge>
                     )}
                   </div>
+                  {cs.prestations?.length ? (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {cs.prestations.map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => setSelectedPrestationName(p)}
+                          className="inline-flex"
+                        >
+                          <Badge variant="outline" className="text-xs hover:bg-muted">
+                            {p}
+                          </Badge>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -198,17 +249,17 @@ export function ContratDetailPage() {
           ) : (
             <div className="space-y-2">
               {interventions.map((i) => (
-                <Link
+                <button
                   key={i.id}
-                  to={`/planning?interventionId=${i.id}`}
-                  className="flex items-center justify-between p-3 rounded-lg border hover:bg-gray-50 transition-colors"
+                  className="w-full flex items-center justify-between p-4 rounded-lg border hover:bg-gray-50 transition-colors text-left"
+                  onClick={() => setSelectedIntervention(i)}
                 >
-                  <div>
-                    <p className="font-medium">
+                  <div className="min-w-0">
+                    <p className="font-medium text-base">
                       {formatDate(i.datePrevue)}
                       {i.heurePrevue && ` • ${i.heurePrevue}`}
                     </p>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-muted-foreground truncate">
                       {i.prestation || getStatutLabel(i.type)}
                       {i.site && <span className="ml-2">• {i.site.nom}</span>}
                     </p>
@@ -216,12 +267,146 @@ export function ContratDetailPage() {
                   <Badge className={getStatutColor(i.statut)} variant="secondary">
                     {getStatutLabel(i.statut)}
                   </Badge>
-                </Link>
+                </button>
               ))}
             </div>
           )}
         </CardContent>
       </Card>
+
+      <Dialog
+        open={!!selectedPrestationName}
+        onOpenChange={(open) => !open && setSelectedPrestationName(null)}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Prestation — {selectedPrestationName}</DialogTitle>
+            <DialogDescription>Détails de la prestation liée au contrat</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 text-sm">
+            <div>
+              <div className="text-muted-foreground">Description</div>
+              <div className="mt-1 whitespace-pre-wrap">
+                {prestationDetail?.description?.trim() || 'Aucune description'}
+              </div>
+            </div>
+
+            <Separator />
+
+            <div>
+              <div className="text-muted-foreground">Sites concernés</div>
+              {prestationSites.length === 0 ? (
+                <div className="mt-1">—</div>
+              ) : (
+                <ul className="mt-2 space-y-1">
+                  {prestationSites.map((cs) => (
+                    <li key={cs.id} className="flex items-center justify-between">
+                      <span>{cs.site?.nom}</span>
+                      {cs.site?.adresse && (
+                        <span className="text-xs text-muted-foreground">{cs.site.adresse}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSelectedPrestationName(null)}>
+              Fermer
+            </Button>
+            {selectedPrestationName && (
+              <Button asChild>
+                <Link
+                  to={`/planning?view=week&prestation=${encodeURIComponent(
+                    selectedPrestationName
+                  )}`}
+                >
+                  Voir sur planning (semaine)
+                </Link>
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!selectedIntervention}
+        onOpenChange={(open) => !open && setSelectedIntervention(null)}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Détail de l'intervention</DialogTitle>
+            <DialogDescription>
+              {selectedInterventionDetail?.client?.nomEntreprise || selectedIntervention?.client?.nomEntreprise}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 text-sm">
+            <div>
+              <span className="text-muted-foreground">Date prévue:</span>{' '}
+              <span className="font-medium">
+                {formatDate(
+                  selectedInterventionDetail?.datePrevue || selectedIntervention?.datePrevue
+                )}
+              </span>
+            </div>
+            {(selectedInterventionDetail?.heurePrevue || selectedIntervention?.heurePrevue) && (
+              <div>
+                <span className="text-muted-foreground">Heure:</span>{' '}
+                <span className="font-medium">
+                  {selectedInterventionDetail?.heurePrevue || selectedIntervention?.heurePrevue}
+                </span>
+              </div>
+            )}
+            <div>
+              <span className="text-muted-foreground">Type:</span>{' '}
+              <span className="font-medium">
+                {getStatutLabel(selectedInterventionDetail?.type || selectedIntervention?.type)}
+              </span>
+            </div>
+            {(selectedInterventionDetail?.prestation || selectedIntervention?.prestation) && (
+              <div>
+                <span className="text-muted-foreground">Prestation:</span>{' '}
+                <span className="font-medium">
+                  {selectedInterventionDetail?.prestation || selectedIntervention?.prestation}
+                </span>
+              </div>
+            )}
+            {(selectedInterventionDetail?.site || selectedIntervention?.site) && (
+              <div>
+                <span className="text-muted-foreground">Site:</span>{' '}
+                <span className="font-medium">
+                  {(selectedInterventionDetail?.site || selectedIntervention?.site)?.nom}
+                </span>
+              </div>
+            )}
+            {(selectedInterventionDetail?.notesTerrain || selectedIntervention?.notesTerrain) && (
+              <div>
+                <span className="text-muted-foreground">Notes terrain:</span>
+                <div className="mt-1 whitespace-pre-wrap">
+                  {selectedInterventionDetail?.notesTerrain || selectedIntervention?.notesTerrain}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSelectedIntervention(null)}>
+              Fermer
+            </Button>
+            {selectedIntervention && (
+              <Button asChild>
+                <Link to={`/planning?interventionId=${selectedIntervention.id}`}>
+                  Ouvrir sur planning
+                </Link>
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

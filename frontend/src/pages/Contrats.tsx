@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Separator } from '@/components/ui/separator';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -53,10 +54,14 @@ export function ContratsPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingContrat, setEditingContrat] = useState<Contrat | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Contrat | null>(null);
+  const [selectedContrat, setSelectedContrat] = useState<Contrat | null>(null);
   const [pendingCreate, setPendingCreate] = useState<CreateContratInput | null>(null);
   const [confirmCreateOpen, setConfirmCreateOpen] = useState(false);
-
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statutFilter, setStatutFilter] = useState<ContratStatut | 'ALL'>('ALL');
+  const [typeFilter, setTypeFilter] = useState<ContratType | 'ALL'>('ALL');
   const clientIdFilter = searchParams.get('clientId') || undefined;
+  const [clientFilter, setClientFilter] = useState<string>(clientIdFilter || 'ALL');
 
   const { data: contratsData, isLoading } = useQuery({
     queryKey: ['contrats', clientIdFilter],
@@ -147,6 +152,42 @@ export function ContratsPage() {
 
   const contrats = contratsData?.contrats || [];
   const clients = clientsData?.clients || [];
+
+  const clientMap = useMemo(() => {
+    return new Map(clients.map((c) => [c.id, c.nomEntreprise]));
+  }, [clients]);
+
+  const filteredContrats = useMemo(() => {
+    let result = contrats;
+
+    if (clientFilter !== 'ALL') {
+      result = result.filter((c) => c.clientId === clientFilter);
+    }
+
+    if (statutFilter !== 'ALL') {
+      result = result.filter((c) => c.statut === statutFilter);
+    }
+
+    if (typeFilter !== 'ALL') {
+      result = result.filter((c) => c.type === typeFilter);
+    }
+
+    if (searchTerm.trim()) {
+      const q = searchTerm.trim().toLowerCase();
+      result = result.filter((c) => {
+        const clientName = c.client?.nomEntreprise || clientMap.get(c.clientId) || '';
+        const prestations = c.prestations.join(' ');
+        const bc = c.numeroBonCommande || '';
+        return (
+          clientName.toLowerCase().includes(q) ||
+          prestations.toLowerCase().includes(q) ||
+          bc.toLowerCase().includes(q)
+        );
+      });
+    }
+
+    return result;
+  }, [contrats, clientFilter, statutFilter, typeFilter, searchTerm, clientMap]);
   const users = usersData || [];
   const prestations = prestationsData || [];
 
@@ -698,10 +739,6 @@ export function ContratsPage() {
     );
   };
 
-  const clientMap = useMemo(() => {
-    return new Map(clients.map((c) => [c.id, c.nomEntreprise]));
-  }, [clients]);
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -719,9 +756,79 @@ export function ContratsPage() {
         )}
       </div>
 
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-col lg:flex-row lg:items-end gap-4">
+            <div className="flex-1">
+              <Label htmlFor="search-contrats">Recherche</Label>
+              <Input
+                id="search-contrats"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Entreprise, prestation, BC..."
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full lg:w-auto">
+              <div className="space-y-1">
+                <Label>Statut</Label>
+                <Select
+                  value={statutFilter}
+                  onValueChange={(v) => setStatutFilter(v as ContratStatut | 'ALL')}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Statut" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Tous</SelectItem>
+                    <SelectItem value="ACTIF">Actif</SelectItem>
+                    <SelectItem value="SUSPENDU">Suspendu</SelectItem>
+                    <SelectItem value="TERMINE">Terminé</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Type</Label>
+                <Select
+                  value={typeFilter}
+                  onValueChange={(v) => setTypeFilter(v as ContratType | 'ALL')}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Tous</SelectItem>
+                    <SelectItem value="ANNUEL">Annuel</SelectItem>
+                    <SelectItem value="PONCTUEL">Ponctuel</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Entreprise</Label>
+                <Select
+                  value={clientFilter}
+                  onValueChange={(v) => setClientFilter(v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Toutes" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Toutes</SelectItem>
+                    {clients.map((client) => (
+                      <SelectItem key={client.id} value={client.id}>
+                        {client.nomEntreprise}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {isLoading ? (
         <div className="text-center py-8 text-muted-foreground">Chargement...</div>
-      ) : contrats.length === 0 ? (
+      ) : filteredContrats.length === 0 ? (
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">
             Aucun contrat enregistré
@@ -729,8 +836,12 @@ export function ContratsPage() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {contrats.map((contrat) => (
-            <Card key={contrat.id} className="hover:shadow-md transition-shadow">
+          {filteredContrats.map((contrat) => (
+            <Card
+              key={contrat.id}
+              className="hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => setSelectedContrat(contrat)}
+            >
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
@@ -755,21 +866,40 @@ export function ContratsPage() {
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <MoreVertical className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem asChild>
-                        <Link to={`/contrats/${contrat.id}`}>Voir détail</Link>
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedContrat(contrat);
+                        }}
+                      >
+                        Voir détail
                       </DropdownMenuItem>
                       {canDo('editContrat') && (
-                        <DropdownMenuItem onClick={() => setEditingContrat(contrat)}>
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingContrat(contrat);
+                          }}
+                        >
                           Modifier
                         </DropdownMenuItem>
                       )}
                       {canDo('deleteContrat') && (
-                        <DropdownMenuItem onClick={() => setDeleteTarget(contrat)}>
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteTarget(contrat);
+                          }}
+                        >
                           Supprimer
                         </DropdownMenuItem>
                       )}
@@ -805,6 +935,167 @@ export function ContratsPage() {
           ))}
         </div>
       )}
+
+      <Dialog open={!!selectedContrat} onOpenChange={(open) => !open && setSelectedContrat(null)}>
+        <DialogContent className="max-w-2xl max-h-[85vh]">
+          <DialogHeader>
+            <DialogTitle>
+              Contrat - {selectedContrat?.client?.nomEntreprise || (selectedContrat?.clientId && clientMap.get(selectedContrat.clientId))}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedContrat?.type === 'PONCTUEL' ? 'Ponctuel' : 'Annuel'} • {selectedContrat?.statut}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedContrat && (
+            <div className="space-y-4 overflow-auto pr-1 max-h-[70vh]">
+              <div className="flex flex-wrap gap-2">
+                {selectedContrat.prestations.map((p) => (
+                  <Badge key={p} variant="outline" className="text-xs">
+                    {p}
+                  </Badge>
+                ))}
+              </div>
+
+              <Separator />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Début:</span>{' '}
+                  <span className="font-medium">{formatDate(selectedContrat.dateDebut)}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Fin:</span>{' '}
+                  <span className="font-medium">
+                    {selectedContrat.dateFin ? formatDate(selectedContrat.dateFin) : '—'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Responsable:</span>{' '}
+                  <span className="font-medium">
+                    {selectedContrat.responsablePlanning
+                      ? `${selectedContrat.responsablePlanning.prenom} ${selectedContrat.responsablePlanning.nom}`.trim()
+                      : '—'}
+                  </span>
+                </div>
+                {selectedContrat.numeroBonCommande && (
+                  <div>
+                    <span className="text-muted-foreground">BC:</span>{' '}
+                    <span className="font-medium">{selectedContrat.numeroBonCommande}</span>
+                  </div>
+                )}
+                <div>
+                  <span className="text-muted-foreground">Reconduction auto:</span>{' '}
+                  <span className="font-medium">{selectedContrat.reconductionAuto ? 'Oui' : 'Non'}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Auto-créer prochaine:</span>{' '}
+                  <span className="font-medium">{selectedContrat.autoCreerProchaine ? 'Oui' : 'Non'}</span>
+                </div>
+                {selectedContrat.nombreOperations !== undefined && (
+                  <div>
+                    <span className="text-muted-foreground">Nombre opérations:</span>{' '}
+                    <span className="font-medium">{selectedContrat.nombreOperations ?? '—'}</span>
+                  </div>
+                )}
+                {selectedContrat.frequenceOperations && (
+                  <div>
+                    <span className="text-muted-foreground">Fréquence opérations:</span>{' '}
+                    <span className="font-medium">
+                      {FREQUENCE_LABELS[selectedContrat.frequenceOperations]}
+                    </span>
+                  </div>
+                )}
+                {selectedContrat.frequenceControle && (
+                  <div>
+                    <span className="text-muted-foreground">Fréquence contrôles:</span>{' '}
+                    <span className="font-medium">
+                      {FREQUENCE_LABELS[selectedContrat.frequenceControle]}
+                    </span>
+                  </div>
+                )}
+                {selectedContrat.premiereDateOperation && (
+                  <div>
+                    <span className="text-muted-foreground">1ère opération:</span>{' '}
+                    <span className="font-medium">{formatDate(selectedContrat.premiereDateOperation)}</span>
+                  </div>
+                )}
+                {selectedContrat.premiereDateControle && (
+                  <div>
+                    <span className="text-muted-foreground">1er contrôle:</span>{' '}
+                    <span className="font-medium">{formatDate(selectedContrat.premiereDateControle)}</span>
+                  </div>
+                )}
+              </div>
+
+              {selectedContrat.contratSites && selectedContrat.contratSites.length > 0 && (
+                <>
+                  <Separator />
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-sm">Sites</h4>
+                    {selectedContrat.contratSites.map((cs) => (
+                      <div key={cs.id} className="rounded-md border p-3 text-sm space-y-2">
+                        <div className="font-medium">
+                          {cs.site?.nom}
+                          {cs.site?.adresse ? ` — ${cs.site.adresse}` : ''}
+                        </div>
+                        {cs.prestations?.length ? (
+                          <div className="flex flex-wrap gap-2">
+                            {cs.prestations.map((p) => (
+                              <Badge key={p} variant="outline" className="text-xs">
+                                {p}
+                              </Badge>
+                            ))}
+                          </div>
+                        ) : null}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-muted-foreground">
+                          {cs.frequenceOperations && (
+                            <div>Fréquence opérations: {FREQUENCE_LABELS[cs.frequenceOperations]}</div>
+                          )}
+                          {cs.frequenceControle && (
+                            <div>Fréquence contrôles: {FREQUENCE_LABELS[cs.frequenceControle]}</div>
+                          )}
+                          {cs.premiereDateOperation && (
+                            <div>1ère opération: {formatDate(cs.premiereDateOperation)}</div>
+                          )}
+                          {cs.premiereDateControle && (
+                            <div>1er contrôle: {formatDate(cs.premiereDateControle)}</div>
+                          )}
+                          {cs.nombreOperations !== undefined && (
+                            <div>Nb opérations: {cs.nombreOperations ?? '—'}</div>
+                          )}
+                          {cs.nombreVisitesControle !== undefined && (
+                            <div>Nb contrôles: {cs.nombreVisitesControle ?? '—'}</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {selectedContrat.notes && (
+                <>
+                  <Separator />
+                  <div className="text-sm">
+                    <div className="text-muted-foreground">Notes</div>
+                    <div className="mt-1 whitespace-pre-wrap">{selectedContrat.notes}</div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSelectedContrat(null)}>
+              Fermer
+            </Button>
+            <Button asChild>
+              <Link to={`/contrats/${selectedContrat?.id}`}>Ouvrir la fiche</Link>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh]">
