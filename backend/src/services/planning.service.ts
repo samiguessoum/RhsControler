@@ -170,6 +170,12 @@ export const planningService = {
         client: { select: { id: true, nomEntreprise: true, sites: { select: { id: true, nom: true, adresse: true } } } },
         contrat: { select: { id: true, type: true, prestations: true } },
         site: { select: { id: true, nom: true, adresse: true } },
+        interventionEmployes: {
+          include: {
+            employe: { include: { postes: true } },
+            poste: true,
+          },
+        },
       },
       orderBy: { datePrevue: 'asc' },
     });
@@ -190,6 +196,12 @@ export const planningService = {
         client: { select: { id: true, nomEntreprise: true, sites: { select: { id: true, nom: true, adresse: true } } } },
         contrat: { select: { id: true, type: true, prestations: true } },
         site: { select: { id: true, nom: true, adresse: true } },
+        interventionEmployes: {
+          include: {
+            employe: { include: { postes: true } },
+            poste: true,
+          },
+        },
       },
       orderBy: { datePrevue: 'asc' },
     });
@@ -209,6 +221,12 @@ export const planningService = {
         client: { select: { id: true, nomEntreprise: true, sites: { select: { id: true, nom: true, adresse: true } } } },
         contrat: { select: { id: true, type: true, prestations: true } },
         site: { select: { id: true, nom: true, adresse: true } },
+        interventionEmployes: {
+          include: {
+            employe: { include: { postes: true } },
+            poste: true,
+          },
+        },
       },
       orderBy: [{ datePrevue: 'asc' }, { heurePrevue: 'asc' }],
     });

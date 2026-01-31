@@ -67,12 +67,14 @@ model User {
 }
 
 model Employe {
-  id        String         @id @default(uuid())
+  id        String               @id @default(uuid())
   prenom    String
   nom       String
   postes    Poste[]
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  interventionEmployes InterventionEmploye[]
 }
 
 model Poste {
@@ -82,7 +84,8 @@ model Poste {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  employes  Employe[]
+  employes             Employe[]
+  interventionEmployes InterventionEmploye[]
 }
 
 model Client {
@@ -225,11 +228,28 @@ model Intervention {
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
 
+  interventionEmployes InterventionEmploye[]
+
   @@index([clientId])
   @@index([contratId])
   @@index([siteId])
   @@index([datePrevue])
   @@index([statut])
+}
+
+model InterventionEmploye {
+  id             String       @id @default(uuid())
+  interventionId String
+  intervention   Intervention @relation(fields: [interventionId], references: [id], onDelete: Cascade)
+  employeId      String
+  employe        Employe      @relation(fields: [employeId], references: [id])
+  posteId        String
+  poste          Poste        @relation(fields: [posteId], references: [id])
+  createdAt      DateTime     @default(now())
+
+  @@unique([interventionId, employeId, posteId])
+  @@index([interventionId])
+  @@index([employeId])
 }
 
 model Prestation {

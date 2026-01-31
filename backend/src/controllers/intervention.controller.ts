@@ -89,6 +89,14 @@ export const interventionController = {
             createdBy: {
               select: { id: true, nom: true, prenom: true },
             },
+            interventionEmployes: {
+              include: {
+                employe: {
+                  include: { postes: true },
+                },
+                poste: true,
+              },
+            },
           },
         }),
         prisma.intervention.count({ where }),
@@ -160,6 +168,18 @@ export const interventionController = {
         where: { id },
         include: {
           client: true,
+          site: {
+            select: {
+              id: true,
+              nom: true,
+              adresse: true,
+              contactNom: true,
+              contactFonction: true,
+              tel: true,
+              email: true,
+              notes: true,
+            },
+          },
           contrat: {
             include: {
               responsablePlanning: {
@@ -173,6 +193,14 @@ export const interventionController = {
           },
           updatedBy: {
             select: { id: true, nom: true, prenom: true, email: true },
+          },
+          interventionEmployes: {
+            include: {
+              employe: {
+                include: { postes: true },
+              },
+              poste: true,
+            },
           },
         },
       });
@@ -243,6 +271,43 @@ export const interventionController = {
         }
       }
 
+      // Récupérer les notes de la dernière intervention réalisée pour ce site
+      let previousIntervention: {
+        id: string;
+        type: string;
+        dateRealisee: Date | null;
+        notesTerrain: string;
+      } | null = null;
+
+      if (intervention.siteId) {
+        const previous = await prisma.intervention.findFirst({
+          where: {
+            siteId: intervention.siteId,
+            clientId: intervention.clientId,
+            statut: 'REALISEE',
+            notesTerrain: { not: null },
+            id: { not: intervention.id }, // Exclure l'intervention actuelle
+            dateRealisee: { not: null },
+          },
+          orderBy: { dateRealisee: 'desc' },
+          select: {
+            id: true,
+            type: true,
+            dateRealisee: true,
+            notesTerrain: true,
+          },
+        });
+
+        if (previous && previous.notesTerrain && previous.notesTerrain.trim() !== '') {
+          previousIntervention = {
+            id: previous.id,
+            type: previous.type,
+            dateRealisee: previous.dateRealisee,
+            notesTerrain: previous.notesTerrain,
+          };
+        }
+      }
+
       res.json({
         intervention: {
           ...intervention,
@@ -250,6 +315,7 @@ export const interventionController = {
           remainingControles,
           frequenceOperations: freqOps,
           frequenceControle: freqCtrls,
+          previousIntervention,
         },
       });
     } catch (error) {
@@ -291,6 +357,7 @@ export const interventionController = {
         data: {
           contratId: data.contratId,
           clientId: data.clientId,
+          siteId: data.siteId,
           type: data.type,
           prestation: data.prestation,
           datePrevue: data.datePrevue,
@@ -300,10 +367,26 @@ export const interventionController = {
           notesTerrain: data.notesTerrain,
           responsable: data.responsable,
           createdById: req.user!.id,
+          interventionEmployes: data.employes?.length
+            ? {
+                create: data.employes.map((emp: { employeId: string; posteId: string }) => ({
+                  employeId: emp.employeId,
+                  posteId: emp.posteId,
+                })),
+              }
+            : undefined,
         },
         include: {
           client: {
             select: { id: true, nomEntreprise: true },
+          },
+          interventionEmployes: {
+            include: {
+              employe: {
+                include: { postes: true },
+              },
+              poste: true,
+            },
           },
         },
       });
@@ -332,11 +415,28 @@ export const interventionController = {
         return res.status(404).json({ error: 'Intervention non trouvée' });
       }
 
+      // Si employes fourni, mettre à jour la liste
+      if (data.employes !== undefined) {
+        await prisma.interventionEmploye.deleteMany({
+          where: { interventionId: id },
+        });
+        if (data.employes?.length) {
+          await prisma.interventionEmploye.createMany({
+            data: data.employes.map((emp: { employeId: string; posteId: string }) => ({
+              interventionId: id,
+              employeId: emp.employeId,
+              posteId: emp.posteId,
+            })),
+          });
+        }
+      }
+
       const intervention = await prisma.intervention.update({
         where: { id },
         data: {
           contratId: data.contratId !== undefined ? data.contratId : existing.contratId,
           clientId: data.clientId ?? existing.clientId,
+          siteId: data.siteId !== undefined ? data.siteId : existing.siteId,
           type: data.type ?? existing.type,
           prestation: data.prestation ?? existing.prestation,
           datePrevue: data.datePrevue ?? existing.datePrevue,
@@ -350,6 +450,14 @@ export const interventionController = {
         include: {
           client: {
             select: { id: true, nomEntreprise: true },
+          },
+          interventionEmployes: {
+            include: {
+              employe: {
+                include: { postes: true },
+              },
+              poste: true,
+            },
           },
         },
       });

@@ -36,6 +36,16 @@ export interface Poste {
   updatedAt: string;
 }
 
+export interface InterventionEmploye {
+  id: string;
+  interventionId: string;
+  employeId: string;
+  employe?: Employe;
+  posteId: string;
+  poste?: Poste;
+  createdAt: string;
+}
+
 // ============ CLIENT ============
 export interface Client {
   id: string;
@@ -143,6 +153,13 @@ export interface Contrat {
 }
 
 // ============ INTERVENTION ============
+export interface PreviousIntervention {
+  id: string;
+  type: InterventionType;
+  dateRealisee: string;
+  notesTerrain: string;
+}
+
 export interface Intervention {
   id: string;
   contratId?: string;
@@ -171,6 +188,8 @@ export interface Intervention {
   remainingControles?: number | null;
   frequenceOperations?: string | null;
   frequenceControle?: string | null;
+  interventionEmployes?: InterventionEmploye[];
+  previousIntervention?: PreviousIntervention | null;
 }
 
 // ============ DASHBOARD ============
@@ -324,6 +343,11 @@ export interface CreateContratInput {
   contratSites?: ContratSiteInput[];
 }
 
+export interface InterventionEmployeInput {
+  employeId: string;
+  posteId: string;
+}
+
 export interface CreateInterventionInput {
   contratId?: string;
   clientId: string;
@@ -336,4 +360,5 @@ export interface CreateInterventionInput {
   statut?: InterventionStatut;
   notesTerrain?: string;
   responsable?: string;
+  employes?: InterventionEmployeInput[];
 }

@@ -97,10 +97,12 @@ import {
   prestationsApi,
   importExportApi,
   employesApi,
+  postesApi,
 } from '@/services/api';
 import { cn, formatDate, getStatutColor, getStatutLabel } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
-import type { Intervention, CreateInterventionInput, Client, Employe } from '@/types';
+import { EmployeSelector } from '@/components/EmployeSelector';
+import type { Intervention, CreateInterventionInput, Client, Employe, Poste, InterventionEmployeInput } from '@/types';
 
 // ============ TYPES ============
 type ViewMode = 'day' | 'week' | 'biweek' | 'month' | 'quarter' | 'year' | 'list';
@@ -928,29 +930,44 @@ function InterventionDetailDialog({
   onClose,
   onRealiser,
   onUpdateHoraire,
+  onUpdateEmployes,
   canRealiser,
+  employes,
+  postes,
 }: {
   intervention: Intervention | null;
   onClose: () => void;
   onRealiser: () => void;
   onUpdateHoraire: (data: { heurePrevue?: string; duree?: number }) => void;
+  onUpdateEmployes: (employes: InterventionEmployeInput[]) => void;
   canRealiser: boolean;
+  employes: Employe[];
+  postes: Poste[];
 }) {
-  if (!intervention) return null;
-
-  // Get site info - prioritize the intervention's site, fallback to first client site
-  const site = intervention.site || intervention.client?.sites?.[0];
+  // Tous les hooks doivent être appelés AVANT tout return conditionnel
   const [showContacts, setShowContacts] = useState(false);
   const [horaireDebut, setHoraireDebut] = useState('');
   const [horaireFin, setHoraireFin] = useState('');
   const [horaireError, setHoraireError] = useState<string | null>(null);
-  const clientContacts = intervention.client?.siegeContacts || [];
-  const hasSiteContact = !!(site?.contactNom || site?.contactFonction || site?.tel || site?.email);
-  const typeLabel = intervention.type === 'OPERATION' ? 'OPÉRATION' : 'VISITE CONTRÔLE';
-  const typeBadgeClass =
-    intervention.type === 'OPERATION'
-      ? 'bg-red-100 text-red-800'
-      : 'bg-blue-100 text-blue-800';
+  const [selectedEmployes, setSelectedEmployes] = useState<InterventionEmployeInput[]>([]);
+  const [employesModified, setEmployesModified] = useState(false);
+
+  // Initialiser les employés sélectionnés à partir de l'intervention
+  const interventionEmployesJson = JSON.stringify(
+    intervention?.interventionEmployes?.map((ie) => ({ employeId: ie.employeId, posteId: ie.posteId })) || []
+  );
+  useEffect(() => {
+    if (intervention) {
+      const empList = intervention.interventionEmployes || [];
+      setSelectedEmployes(
+        empList.map((ie) => ({
+          employeId: ie.employeId,
+          posteId: ie.posteId,
+        }))
+      );
+      setEmployesModified(false);
+    }
+  }, [intervention?.id, interventionEmployesJson]);
 
   useEffect(() => {
     if (!intervention) return;
@@ -969,6 +986,29 @@ function InterventionDetailDialog({
     setHoraireFin(end);
     setHoraireError(null);
   }, [intervention]);
+
+  // Early return APRÈS tous les hooks
+  if (!intervention) return null;
+
+  // Variables dérivées (après le early return car elles utilisent intervention)
+  const site = intervention.site || intervention.client?.sites?.[0];
+  const clientContacts = intervention.client?.siegeContacts || [];
+  const hasSiteContact = !!(site?.contactNom || site?.contactFonction || site?.tel || site?.email);
+  const typeLabel = intervention.type === 'OPERATION' ? 'OPÉRATION' : 'VISITE CONTRÔLE';
+  const typeBadgeClass =
+    intervention.type === 'OPERATION'
+      ? 'bg-red-100 text-red-800'
+      : 'bg-blue-100 text-blue-800';
+
+  const handleEmployesChange = (newEmployes: InterventionEmployeInput[]) => {
+    setSelectedEmployes(newEmployes);
+    setEmployesModified(true);
+  };
+
+  const saveEmployes = () => {
+    onUpdateEmployes(selectedEmployes);
+    setEmployesModified(false);
+  };
 
   const saveHoraire = () => {
     if (!horaireDebut && !horaireFin) {
@@ -1184,6 +1224,86 @@ function InterventionDetailDialog({
             </>
           )}
 
+          {/* Equipe assignée */}
+          {intervention.statut !== 'REALISEE' && intervention.statut !== 'ANNULEE' && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <EmployeSelector
+                  employes={employes}
+                  postes={postes}
+                  value={selectedEmployes}
+                  onChange={handleEmployesChange}
+                  label="Equipe assignée"
+                />
+                {employesModified && (
+                  <Button variant="outline" size="sm" onClick={saveEmployes}>
+                    Enregistrer l'équipe
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
+
+          {/* Affichage lecture seule pour interventions réalisées/annulées */}
+          {(intervention.statut === 'REALISEE' || intervention.statut === 'ANNULEE') &&
+            intervention.interventionEmployes &&
+            intervention.interventionEmployes.length > 0 && (
+              <>
+                <Separator />
+                <div className="space-y-3">
+                  <h4 className="font-semibold flex items-center gap-2">
+                    <User className="h-4 w-4" />
+                    Equipe assignée
+                  </h4>
+                  <div className="space-y-2">
+                    {(() => {
+                      // Regrouper par poste
+                      const groups: Record<string, { posteName: string; employes: string[] }> = {};
+                      intervention.interventionEmployes!.forEach((ie) => {
+                        const posteId = ie.posteId;
+                        const posteName = ie.poste?.nom || 'Poste inconnu';
+                        const employeName = ie.employe ? `${ie.employe.prenom} ${ie.employe.nom}` : 'Employé inconnu';
+                        if (!groups[posteId]) {
+                          groups[posteId] = { posteName, employes: [] };
+                        }
+                        groups[posteId].employes.push(employeName);
+                      });
+                      // Trier par ordre: Opérateur, Chauffeur, puis alphabétique
+                      const getOrder = (name: string) => {
+                        const n = name.toLowerCase();
+                        if (n.includes('opérateur') || n.includes('operateur')) return 1;
+                        if (n.includes('chauffeur')) return 2;
+                        return 100;
+                      };
+                      return Object.entries(groups)
+                        .sort(([, a], [, b]) => {
+                          const orderA = getOrder(a.posteName);
+                          const orderB = getOrder(b.posteName);
+                          if (orderA !== orderB) return orderA - orderB;
+                          return a.posteName.localeCompare(b.posteName);
+                        })
+                        .map(([posteId, { posteName, employes }]) => (
+                          <div key={posteId} className="rounded-md border bg-gray-50/50">
+                            <div className="px-3 py-1.5 border-b bg-gray-100/50">
+                              <Badge variant="secondary" className="text-xs font-medium">
+                                {posteName}
+                                <span className="ml-1.5 text-muted-foreground">({employes.length})</span>
+                              </Badge>
+                            </div>
+                            <div className="px-3 py-2 space-y-1">
+                              {employes.map((name, idx) => (
+                                <div key={idx} className="text-sm">{name}</div>
+                              ))}
+                            </div>
+                          </div>
+                        ));
+                    })()}
+                  </div>
+                </div>
+              </>
+            )}
+
           <Separator />
 
           {/* Intervention Details */}
@@ -1277,25 +1397,25 @@ function InterventionDetailDialog({
                 )}
                 {intervention.type === 'OPERATION' && intervention.remainingOperations != null && (
                   <p>
-                    <span className="text-muted-foreground">Opérations restantes à planifier:</span>{' '}
+                    <span className="text-muted-foreground">Opérations restantes à réaliser :</span>{' '}
                     <span className="font-medium">{intervention.remainingOperations}</span>
                   </p>
                 )}
                 {intervention.type === 'OPERATION' && intervention.remainingOperations == null && (
                   <p>
-                    <span className="text-muted-foreground">Opérations restantes à planifier:</span>{' '}
+                    <span className="text-muted-foreground">Opérations restantes à réaliser :</span>{' '}
                     <span className="font-medium">—</span>
                   </p>
                 )}
                 {intervention.type === 'CONTROLE' && intervention.remainingControles != null && (
                   <p>
-                    <span className="text-muted-foreground">Visites de contrôle restantes à planifier:</span>{' '}
+                    <span className="text-muted-foreground">Visites de contrôle restantes à réaliser :</span>{' '}
                     <span className="font-medium">{intervention.remainingControles}</span>
                   </p>
                 )}
                 {intervention.type === 'CONTROLE' && intervention.remainingControles == null && (
                   <p>
-                    <span className="text-muted-foreground">Visites de contrôle restantes à planifier:</span>{' '}
+                    <span className="text-muted-foreground">Visites de contrôle restantes à réaliser :</span>{' '}
                     <span className="font-medium">—</span>
                   </p>
                 )}
@@ -1353,7 +1473,25 @@ function InterventionDetailDialog({
             </>
           )}
 
-          {/* Notes */}
+          {/* Notes de l'intervention précédente */}
+          {intervention.previousIntervention && (
+            <div className="rounded-md border border-amber-200 bg-amber-50">
+              <div className="px-3 py-2 border-b border-amber-200 bg-amber-100/50">
+                <span className="text-sm font-medium text-amber-800 flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4" />
+                  Notes de {intervention.previousIntervention.type === 'CONTROLE' ? 'Visite de contrôle' : 'Opération'} du{' '}
+                  {formatDate(intervention.previousIntervention.dateRealisee, 'd MMMM yyyy')}
+                </span>
+              </div>
+              <div className="px-3 py-2">
+                <p className="text-sm text-amber-900 whitespace-pre-wrap">
+                  {intervention.previousIntervention.notesTerrain}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Notes terrain actuelles */}
           {intervention.notesTerrain && (
             <div>
               <span className="text-sm text-muted-foreground">Notes terrain:</span>
@@ -1437,13 +1575,31 @@ function RealiserDialog({
             )}
           </div>
 
+          {/* Notes de l'intervention précédente */}
+          {intervention.previousIntervention && (
+            <div className="rounded-md border border-amber-200 bg-amber-50">
+              <div className="px-3 py-2 border-b border-amber-200 bg-amber-100/50">
+                <span className="text-xs font-medium text-amber-800 flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  Notes de {intervention.previousIntervention.type === 'CONTROLE' ? 'Visite de contrôle' : 'Opération'} du{' '}
+                  {formatDate(intervention.previousIntervention.dateRealisee, 'd MMM yyyy')}
+                </span>
+              </div>
+              <div className="px-3 py-2">
+                <p className="text-xs text-amber-900 whitespace-pre-wrap">
+                  {intervention.previousIntervention.notesTerrain}
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2">
             <Label htmlFor="notesTerrain">Notes terrain (optionnel)</Label>
             <Textarea
               id="notesTerrain"
               value={notesTerrain}
               onChange={(e) => setNotesTerrain(e.target.value)}
-              placeholder="Observations, remarques..."
+              placeholder="Observations, remarques à noter pour la prochaine intervention..."
               rows={3}
             />
           </div>
@@ -1483,6 +1639,8 @@ function CreateInterventionDialog({
   onClose,
   clients,
   prestations,
+  employes,
+  postes,
   onSubmit,
   isPending,
 }: {
@@ -1490,6 +1648,8 @@ function CreateInterventionDialog({
   onClose: () => void;
   clients: Client[];
   prestations: { id: string; nom: string }[];
+  employes: Employe[];
+  postes: Poste[];
   onSubmit: (data: CreateInterventionInput) => void;
   isPending: boolean;
 }) {
@@ -1501,6 +1661,7 @@ function CreateInterventionDialog({
   const [heurePrevue, setHeurePrevue] = useState('');
   const [responsable, setResponsable] = useState('');
   const [notesTerrain, setNotesTerrain] = useState('');
+  const [selectedEmployes, setSelectedEmployes] = useState<InterventionEmployeInput[]>([]);
 
   const selectedClient = clients.find((c) => c.id === clientId);
   const sites = selectedClient?.sites || [];
@@ -1514,6 +1675,7 @@ function CreateInterventionDialog({
     setHeurePrevue('');
     setResponsable('');
     setNotesTerrain('');
+    setSelectedEmployes([]);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -1532,6 +1694,7 @@ function CreateInterventionDialog({
       responsable: responsable || undefined,
       notesTerrain: notesTerrain || undefined,
       statut: 'A_PLANIFIER',
+      employes: selectedEmployes.length > 0 ? selectedEmployes : undefined,
     });
   };
 
@@ -1645,15 +1808,13 @@ function CreateInterventionDialog({
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label>Responsable</Label>
-            <Input
-              list="employes-list"
-              value={responsable}
-              onChange={(e) => setResponsable(e.target.value)}
-              placeholder="Nom du responsable (optionnel)"
-            />
-          </div>
+          <EmployeSelector
+            employes={employes}
+            postes={postes}
+            value={selectedEmployes}
+            onChange={setSelectedEmployes}
+            label="Equipe"
+          />
 
           <div className="space-y-2">
             <Label>Notes</Label>
@@ -2062,6 +2223,11 @@ export function PlanningPage() {
     enabled: canDo('viewEmployes'),
   });
 
+  const { data: postes = [] } = useQuery({
+    queryKey: ['postes'],
+    queryFn: () => postesApi.list(true),
+  });
+
   const employeNames = useMemo(() => {
     const names = (employes as Employe[])
       .map((e) => `${e.prenom} ${e.nom}`.trim())
@@ -2130,10 +2296,11 @@ export function PlanningPage() {
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['interventions'] });
       queryClient.refetchQueries({ queryKey: ['interventions'] });
-      if (variables?.id) {
-        queryClient.invalidateQueries({ queryKey: ['intervention', variables.id] });
-        queryClient.refetchQueries({ queryKey: ['intervention', variables.id] });
-      }
+      // Invalider TOUTES les queries d'interventions individuelles
+      // car les notes terrain affectent previousIntervention des autres interventions du même site
+      queryClient.invalidateQueries({
+        predicate: (query) => query.queryKey[0] === 'intervention'
+      });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       if (data.nextCreated) {
         toast.success(
@@ -2408,7 +2575,7 @@ export function PlanningPage() {
           intervention={selectedInterventionDetail || selectedIntervention}
           onClose={() => setSelectedIntervention(null)}
           onRealiser={() => {
-            setRealiserIntervention(selectedIntervention);
+            setRealiserIntervention(selectedInterventionDetail || selectedIntervention);
           }}
           onUpdateHoraire={(data) => {
             if (!selectedIntervention) return;
@@ -2417,7 +2584,16 @@ export function PlanningPage() {
               data,
             });
           }}
+          onUpdateEmployes={(employesData) => {
+            if (!selectedIntervention) return;
+            updateMutation.mutate({
+              id: selectedIntervention.id,
+              data: { employes: employesData },
+            });
+          }}
           canRealiser={canDo('realiserIntervention')}
+          employes={employes as Employe[]}
+          postes={postes as Poste[]}
         />
 
         {/* Realiser Dialog */}
@@ -2441,6 +2617,8 @@ export function PlanningPage() {
           onClose={() => setIsCreateOpen(false)}
           clients={clients}
           prestations={prestations}
+          employes={employes as Employe[]}
+          postes={postes as Poste[]}
           onSubmit={(data) => createMutation.mutate(data)}
           isPending={createMutation.isPending}
         />

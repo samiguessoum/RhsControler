@@ -211,6 +211,11 @@ export const updateContratSchema = z.object({
 });
 
 // ============ INTERVENTIONS ============
+const interventionEmployeSchema = z.object({
+  employeId: z.string().uuid('ID employé invalide'),
+  posteId: z.string().uuid('ID poste invalide'),
+});
+
 export const createInterventionSchema = z.object({
   contratId: z.string().uuid().optional(),
   clientId: z.string().uuid('ID client invalide'),
@@ -223,6 +228,7 @@ export const createInterventionSchema = z.object({
   statut: z.enum(['A_PLANIFIER', 'PLANIFIEE', 'REALISEE', 'REPORTEE', 'ANNULEE']).optional().default('A_PLANIFIER'),
   notesTerrain: z.string().optional(),
   responsable: z.string().optional(),
+  employes: z.array(interventionEmployeSchema).optional(),
 });
 
 export const updateInterventionSchema = createInterventionSchema.partial();
