@@ -60,10 +60,12 @@ export const icsService = {
       startDate.setHours(hours, minutes, 0, 0);
       endDate.setHours(hours, minutes + duree, 0, 0);
 
-      const summary = `${intervention.type === 'OPERATION' ? '🔧' : '🔍'} ${intervention.client.nomEntreprise}${intervention.prestation ? ` - ${intervention.prestation}` : ''}`;
+      const typeEmoji = intervention.type === 'OPERATION' ? '🔧' : intervention.type === 'RECLAMATION' ? '⚠️' : '🔍';
+      const typeLabel = intervention.type === 'OPERATION' ? 'Opération' : intervention.type === 'RECLAMATION' ? 'Réclamation' : 'Contrôle';
+      const summary = `${typeEmoji} ${intervention.client.nomEntreprise}${intervention.prestation ? ` - ${intervention.prestation}` : ''}`;
 
       const description = [
-        `Type: ${intervention.type === 'OPERATION' ? 'Opération' : 'Contrôle'}`,
+        `Type: ${typeLabel}`,
         intervention.prestation ? `Prestation: ${intervention.prestation}` : null,
         intervention.responsable ? `Responsable: ${intervention.responsable}` : null,
         intervention.notesTerrain ? `Notes: ${intervention.notesTerrain}` : null,

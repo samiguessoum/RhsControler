@@ -273,8 +273,9 @@ export const planningService = {
     let nextIntervention = null;
     let suggestedDate = null;
 
-    // Si l'intervention est liée à un contrat avec fréquence
-    if (intervention.contrat) {
+    // Les réclamations ne créent pas de prochaine intervention (ce sont des urgences ponctuelles)
+    // Si l'intervention est liée à un contrat avec fréquence (et n'est pas une réclamation)
+    if (intervention.contrat && intervention.type !== 'RECLAMATION') {
       // Déterminer la fréquence : depuis le ContratSite si siteId, sinon depuis le contrat
       let frequence: Frequence | null = null;
       let joursPerso: number | null = null;

@@ -37,6 +37,7 @@ enum Frequence {
 enum InterventionType {
   OPERATION
   CONTROLE
+  RECLAMATION
 }
 
 enum InterventionStatut {

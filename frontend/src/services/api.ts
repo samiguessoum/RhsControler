@@ -289,6 +289,21 @@ export const interventionsApi = {
   delete: async (id: string): Promise<void> => {
     await api.delete(`/interventions/${id}`);
   },
+
+  getLastNotes: async (clientId: string, siteId?: string): Promise<{
+    previousIntervention: {
+      id: string;
+      type: string;
+      dateRealisee: string;
+      notesTerrain: string;
+      site?: { id: string; nom: string };
+    } | null;
+  }> => {
+    const { data } = await api.get(`/interventions/last-notes/${clientId}`, {
+      params: siteId ? { siteId } : undefined,
+    });
+    return data;
+  },
 };
 
 // ============ DASHBOARD ============

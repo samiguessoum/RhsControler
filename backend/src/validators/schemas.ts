@@ -220,7 +220,7 @@ export const createInterventionSchema = z.object({
   contratId: z.string().uuid().optional(),
   clientId: z.string().uuid('ID client invalide'),
   siteId: z.string().uuid().optional(),
-  type: z.enum(['OPERATION', 'CONTROLE']),
+  type: z.enum(['OPERATION', 'CONTROLE', 'RECLAMATION']),
   prestation: z.string().optional(),
   datePrevue: z.string().or(z.date()).transform((val) => new Date(val)),
   heurePrevue: z.string().regex(/^\d{2}:\d{2}$/, 'Format heure invalide (HH:MM)').optional(),
@@ -264,7 +264,7 @@ export const contratsQuerySchema = paginationSchema.extend({
 export const interventionsQuerySchema = paginationSchema.extend({
   clientId: z.string().uuid().optional(),
   contratId: z.string().uuid().optional(),
-  type: z.enum(['OPERATION', 'CONTROLE']).optional(),
+  type: z.enum(['OPERATION', 'CONTROLE', 'RECLAMATION']).optional(),
   statut: z.enum(['A_PLANIFIER', 'PLANIFIEE', 'REALISEE', 'REPORTEE', 'ANNULEE']).optional(),
   prestation: z.string().optional(),
   dateDebut: z.string().optional(),

@@ -120,6 +120,21 @@ function getTimeRange(intervention: Intervention) {
   return `${intervention.heurePrevue}-${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}`;
 }
 
+function getInterventionTypeLabel(type: Intervention['type']) {
+  if (type === 'RECLAMATION') return 'RÉCLAMATION';
+  return type === 'OPERATION' ? 'OPÉRATION' : 'VISITE CONTRÔLE';
+}
+
+function getInterventionTypeBadgeClass(type: Intervention['type']) {
+  if (type === 'RECLAMATION') return 'bg-orange-100 text-orange-800';
+  return type === 'OPERATION' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800';
+}
+
+function getInterventionTypeIcon(type: Intervention['type']) {
+  if (type === 'RECLAMATION') return '⚠️';
+  return type === 'OPERATION' ? '🔧' : '🔍';
+}
+
 function DraggableInterventionCard({
   intervention,
   onClick,
@@ -145,11 +160,8 @@ function DraggableInterventionCard({
 
   if (compact) {
     const siteName = intervention.site?.nom || intervention.client?.sites?.[0]?.nom;
-    const typeLabel = intervention.type === 'OPERATION' ? 'OPÉRATION' : 'VISITE CONTRÔLE';
-    const typeBadgeClass =
-      intervention.type === 'OPERATION'
-        ? 'bg-red-100 text-red-800'
-        : 'bg-blue-100 text-blue-800';
+    const typeLabel = getInterventionTypeLabel(intervention.type);
+    const typeBadgeClass = getInterventionTypeBadgeClass(intervention.type);
     return (
       <div
         ref={setNodeRef}
@@ -183,11 +195,8 @@ function DraggableInterventionCard({
   }
 
   const siteName = intervention.site?.nom || intervention.client?.sites?.[0]?.nom;
-  const typeLabel = intervention.type === 'OPERATION' ? 'OPÉRATION' : 'VISITE CONTRÔLE';
-  const typeBadgeClass =
-    intervention.type === 'OPERATION'
-      ? 'bg-red-100 text-red-800'
-      : 'bg-blue-100 text-blue-800';
+  const typeLabel = getInterventionTypeLabel(intervention.type);
+  const typeBadgeClass = getInterventionTypeBadgeClass(intervention.type);
 
   return (
     <div
@@ -238,11 +247,8 @@ function DraggableInterventionBlock({
   });
 
   const siteName = intervention.site?.nom || intervention.client?.sites?.[0]?.nom;
-  const typeLabel = intervention.type === 'OPERATION' ? 'OPÉRATION' : 'VISITE CONTRÔLE';
-  const typeBadgeClass =
-    intervention.type === 'OPERATION'
-      ? 'bg-red-100 text-red-800'
-      : 'bg-blue-100 text-blue-800';
+  const typeLabel = getInterventionTypeLabel(intervention.type);
+  const typeBadgeClass = getInterventionTypeBadgeClass(intervention.type);
   const timeRange = getTimeRange(intervention);
 
   const mergedStyle: React.CSSProperties = {
@@ -904,12 +910,10 @@ function ListView({
                   <Badge
                     className={cn(
                       'font-semibold',
-                      intervention.type === 'OPERATION'
-                        ? 'bg-red-100 text-red-800'
-                        : 'bg-blue-100 text-blue-800'
+                      getInterventionTypeBadgeClass(intervention.type)
                     )}
                   >
-                    {intervention.type === 'OPERATION' ? 'OPÉRATION' : 'VISITE CONTRÔLE'}
+                    {getInterventionTypeLabel(intervention.type)}
                   </Badge>
                   <Badge className={getStatutColor(intervention.statut)}>
                     {getStatutLabel(intervention.statut)}
@@ -994,11 +998,8 @@ function InterventionDetailDialog({
   const site = intervention.site || intervention.client?.sites?.[0];
   const clientContacts = intervention.client?.siegeContacts || [];
   const hasSiteContact = !!(site?.contactNom || site?.contactFonction || site?.tel || site?.email);
-  const typeLabel = intervention.type === 'OPERATION' ? 'OPÉRATION' : 'VISITE CONTRÔLE';
-  const typeBadgeClass =
-    intervention.type === 'OPERATION'
-      ? 'bg-red-100 text-red-800'
-      : 'bg-blue-100 text-blue-800';
+  const typeLabel = getInterventionTypeLabel(intervention.type);
+  const typeBadgeClass = getInterventionTypeBadgeClass(intervention.type);
 
   const handleEmployesChange = (newEmployes: InterventionEmployeInput[]) => {
     setSelectedEmployes(newEmployes);
@@ -1047,8 +1048,8 @@ function InterventionDetailDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <span>{intervention.type === 'OPERATION' ? '🔧' : '🔍'}</span>
-            Détail de l'intervention
+            <span>{getInterventionTypeIcon(intervention.type)}</span>
+            {intervention.type === 'RECLAMATION' ? 'Détail de la réclamation' : "Détail de l'intervention"}
           </DialogTitle>
         </DialogHeader>
 
@@ -1479,7 +1480,7 @@ function InterventionDetailDialog({
               <div className="px-3 py-2 border-b border-amber-200 bg-amber-100/50">
                 <span className="text-sm font-medium text-amber-800 flex items-center gap-2">
                   <AlertCircle className="h-4 w-4" />
-                  Notes de {intervention.previousIntervention.type === 'CONTROLE' ? 'Visite de contrôle' : 'Opération'} du{' '}
+                  Notes de {getStatutLabel(intervention.previousIntervention.type)} du{' '}
                   {formatDate(intervention.previousIntervention.dateRealisee, 'd MMMM yyyy')}
                 </span>
               </div>
@@ -1581,7 +1582,7 @@ function RealiserDialog({
               <div className="px-3 py-2 border-b border-amber-200 bg-amber-100/50">
                 <span className="text-xs font-medium text-amber-800 flex items-center gap-1">
                   <AlertCircle className="h-3 w-3" />
-                  Notes de {intervention.previousIntervention.type === 'CONTROLE' ? 'Visite de contrôle' : 'Opération'} du{' '}
+                  Notes de {getStatutLabel(intervention.previousIntervention.type)} du{' '}
                   {formatDate(intervention.previousIntervention.dateRealisee, 'd MMM yyyy')}
                 </span>
               </div>
@@ -1633,8 +1634,8 @@ function RealiserDialog({
   );
 }
 
-// ============ CREATE INTERVENTION DIALOG ============
-function CreateInterventionDialog({
+// ============ CREATE RECLAMATION DIALOG ============
+function CreateReclamationDialog({
   open,
   onClose,
   clients,
@@ -1655,27 +1656,65 @@ function CreateInterventionDialog({
 }) {
   const [clientId, setClientId] = useState('');
   const [siteId, setSiteId] = useState('');
-  const [type, setType] = useState<'OPERATION' | 'CONTROLE'>('OPERATION');
   const [prestation, setPrestation] = useState('');
   const [datePrevue, setDatePrevue] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [heurePrevue, setHeurePrevue] = useState('');
-  const [responsable, setResponsable] = useState('');
+  const [heureDebut, setHeureDebut] = useState('');
+  const [heureFin, setHeureFin] = useState('');
   const [notesTerrain, setNotesTerrain] = useState('');
   const [selectedEmployes, setSelectedEmployes] = useState<InterventionEmployeInput[]>([]);
+  const [previousNotes, setPreviousNotes] = useState<{
+    notesTerrain: string;
+    dateRealisee: string;
+    type: string;
+    site?: { id: string; nom: string };
+  } | null>(null);
+  const [loadingNotes, setLoadingNotes] = useState(false);
 
   const selectedClient = clients.find((c) => c.id === clientId);
   const sites = selectedClient?.sites || [];
 
+  // Fetch last notes when client or site changes
+  useEffect(() => {
+    if (!clientId) {
+      setPreviousNotes(null);
+      return;
+    }
+
+    const fetchLastNotes = async () => {
+      setLoadingNotes(true);
+      try {
+        const result = await interventionsApi.getLastNotes(clientId, siteId || undefined);
+        if (result.previousIntervention) {
+          setPreviousNotes({
+            notesTerrain: result.previousIntervention.notesTerrain,
+            dateRealisee: result.previousIntervention.dateRealisee,
+            type: result.previousIntervention.type,
+            site: result.previousIntervention.site,
+          });
+        } else {
+          setPreviousNotes(null);
+        }
+      } catch (error) {
+        console.error('Error fetching last notes:', error);
+        setPreviousNotes(null);
+      } finally {
+        setLoadingNotes(false);
+      }
+    };
+
+    fetchLastNotes();
+  }, [clientId, siteId]);
+
   const resetForm = () => {
     setClientId('');
     setSiteId('');
-    setType('OPERATION');
     setPrestation('');
     setDatePrevue(format(new Date(), 'yyyy-MM-dd'));
-    setHeurePrevue('');
-    setResponsable('');
+    setHeureDebut('');
+    setHeureFin('');
     setNotesTerrain('');
     setSelectedEmployes([]);
+    setPreviousNotes(null);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -1684,14 +1723,24 @@ function CreateInterventionDialog({
       toast.error('Client requis');
       return;
     }
+
+    // Calculate duration if both times are provided
+    let duree: number | undefined;
+    if (heureDebut && heureFin) {
+      const [startH, startM] = heureDebut.split(':').map(Number);
+      const [endH, endM] = heureFin.split(':').map(Number);
+      duree = (endH * 60 + endM) - (startH * 60 + startM);
+      if (duree < 0) duree += 24 * 60; // Handle crossing midnight
+    }
+
     onSubmit({
       clientId,
       siteId: siteId || undefined,
-      type,
+      type: 'RECLAMATION',
       prestation: prestation || undefined,
       datePrevue,
-      heurePrevue: heurePrevue || undefined,
-      responsable: responsable || undefined,
+      heurePrevue: heureDebut || undefined,
+      duree: duree || undefined,
       notesTerrain: notesTerrain || undefined,
       statut: 'A_PLANIFIER',
       employes: selectedEmployes.length > 0 ? selectedEmployes : undefined,
@@ -1708,10 +1757,13 @@ function CreateInterventionDialog({
         }
       }}
     >
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Nouvelle intervention</DialogTitle>
-          <DialogDescription>Créer une intervention liée à un client et un site</DialogDescription>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-orange-500" />
+            Nouvelle réclamation
+          </DialogTitle>
+          <DialogDescription>Créer une réclamation urgente pour un client</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -1756,18 +1808,36 @@ function CreateInterventionDialog({
             </div>
           )}
 
+          {/* Previous notes display */}
+          {loadingNotes && (
+            <div className="p-3 rounded-md bg-gray-50 border text-sm text-muted-foreground">
+              Chargement des notes précédentes...
+            </div>
+          )}
+          {!loadingNotes && previousNotes && (
+            <div className="p-3 rounded-md bg-amber-50 border border-amber-200 space-y-1">
+              <div className="flex items-center gap-2 text-sm font-medium text-amber-800">
+                <FileText className="h-4 w-4" />
+                Notes de la dernière intervention
+                {previousNotes.site && (
+                  <span className="text-amber-600">({previousNotes.site.nom})</span>
+                )}
+              </div>
+              <p className="text-xs text-amber-600">
+                {getStatutLabel(previousNotes.type)} du{' '}
+                {format(parseISO(previousNotes.dateRealisee), 'dd/MM/yyyy', { locale: fr })}
+              </p>
+              <p className="text-sm text-amber-900 whitespace-pre-wrap">{previousNotes.notesTerrain}</p>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Type *</Label>
-              <Select value={type} onValueChange={(v) => setType(v as 'OPERATION' | 'CONTROLE')}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="OPERATION">Opération</SelectItem>
-                  <SelectItem value="CONTROLE">Contrôle</SelectItem>
-                </SelectContent>
-              </Select>
+              <Label>Type</Label>
+              <div className="flex items-center h-10 px-3 rounded-md border bg-orange-50 text-orange-800 font-medium">
+                <AlertCircle className="h-4 w-4 mr-2" />
+                Réclamation
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -1787,23 +1857,34 @@ function CreateInterventionDialog({
             </div>
           </div>
 
+          <div className="space-y-2">
+            <Label>Date *</Label>
+            <Input
+              type="date"
+              value={datePrevue}
+              onChange={(e) => setDatePrevue(e.target.value)}
+              required
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Date *</Label>
+              <Label>Horaire - De</Label>
               <Input
-                type="date"
-                value={datePrevue}
-                onChange={(e) => setDatePrevue(e.target.value)}
-                required
+                type="time"
+                value={heureDebut}
+                onChange={(e) => setHeureDebut(e.target.value)}
+                placeholder="Heure de début"
               />
             </div>
 
             <div className="space-y-2">
-              <Label>Heure</Label>
+              <Label>Horaire - À</Label>
               <Input
                 type="time"
-                value={heurePrevue}
-                onChange={(e) => setHeurePrevue(e.target.value)}
+                value={heureFin}
+                onChange={(e) => setHeureFin(e.target.value)}
+                placeholder="Heure de fin"
               />
             </div>
           </div>
@@ -1821,8 +1902,8 @@ function CreateInterventionDialog({
             <Textarea
               value={notesTerrain}
               onChange={(e) => setNotesTerrain(e.target.value)}
-              placeholder="Notes terrain (optionnel)"
-              rows={2}
+              placeholder="Description de la réclamation..."
+              rows={3}
             />
           </div>
 
@@ -1830,8 +1911,8 @@ function CreateInterventionDialog({
             <Button type="button" variant="outline" onClick={onClose}>
               Annuler
             </Button>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? 'Création...' : 'Créer'}
+            <Button type="submit" disabled={isPending} className="bg-orange-600 hover:bg-orange-700">
+              {isPending ? 'Création...' : 'Créer la réclamation'}
             </Button>
           </DialogFooter>
         </form>
@@ -1923,6 +2004,7 @@ function FiltersSheet({
                   <SelectItem value="ALL">Tous types</SelectItem>
                   <SelectItem value="OPERATION">Opération</SelectItem>
                   <SelectItem value="CONTROLE">Contrôle</SelectItem>
+                  <SelectItem value="RECLAMATION">Réclamation</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -2403,9 +2485,9 @@ export function PlanningPage() {
               Google Calendar
             </Button>
             {canDo('createIntervention') && (
-              <Button onClick={() => setIsCreateOpen(true)}>
+              <Button onClick={() => setIsCreateOpen(true)} className="bg-orange-600 hover:bg-orange-700">
                 <Plus className="h-4 w-4 mr-2" />
-                Nouvelle intervention
+                Nouvelle réclamation
               </Button>
             )}
           </div>
@@ -2459,11 +2541,12 @@ export function PlanningPage() {
                     <SelectValue placeholder="Type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="ALL">Tous types</SelectItem>
-                    <SelectItem value="OPERATION">Opération</SelectItem>
-                    <SelectItem value="CONTROLE">Contrôle</SelectItem>
-                  </SelectContent>
-                </Select>
+                  <SelectItem value="ALL">Tous types</SelectItem>
+                  <SelectItem value="OPERATION">Opération</SelectItem>
+                  <SelectItem value="CONTROLE">Contrôle</SelectItem>
+                  <SelectItem value="RECLAMATION">Réclamation</SelectItem>
+                </SelectContent>
+              </Select>
 
                 {/* Advanced filters */}
                 <FiltersSheet
@@ -2564,7 +2647,7 @@ export function PlanningPage() {
             <div className={cn('p-2 rounded text-xs shadow-lg', getStatutColor(draggedIntervention.statut))}>
               <div className="font-medium">{draggedIntervention.client?.nomEntreprise}</div>
               <div className="opacity-75">
-                {draggedIntervention.type === 'OPERATION' ? '🔧' : '🔍'}
+                {getInterventionTypeIcon(draggedIntervention.type)}
               </div>
             </div>
           )}
@@ -2611,8 +2694,8 @@ export function PlanningPage() {
           isPending={realiserMutation.isPending}
         />
 
-        {/* Create Intervention Dialog */}
-        <CreateInterventionDialog
+        {/* Create Reclamation Dialog */}
+        <CreateReclamationDialog
           open={isCreateOpen}
           onClose={() => setIsCreateOpen(false)}
           clients={clients}

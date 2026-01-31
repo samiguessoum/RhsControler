@@ -559,6 +559,60 @@ export const interventionController = {
       res.status(500).json({ error: 'Erreur serveur' });
     }
   },
+
+  /**
+   * GET /api/interventions/last-notes/:clientId
+   * Récupère les notes terrain de la dernière intervention réalisée pour un client
+   * @query siteId - Optionnel, pour filtrer par site
+   */
+  async getLastNotes(req: AuthRequest, res: Response) {
+    try {
+      const { clientId } = req.params;
+      const { siteId } = req.query;
+
+      const where: any = {
+        clientId,
+        statut: 'REALISEE',
+        notesTerrain: { not: null },
+        dateRealisee: { not: null },
+      };
+
+      if (siteId) {
+        where.siteId = siteId as string;
+      }
+
+      const lastIntervention = await prisma.intervention.findFirst({
+        where,
+        orderBy: { dateRealisee: 'desc' },
+        select: {
+          id: true,
+          type: true,
+          dateRealisee: true,
+          notesTerrain: true,
+          site: {
+            select: { id: true, nom: true },
+          },
+        },
+      });
+
+      if (lastIntervention && lastIntervention.notesTerrain?.trim()) {
+        res.json({
+          previousIntervention: {
+            id: lastIntervention.id,
+            type: lastIntervention.type,
+            dateRealisee: lastIntervention.dateRealisee,
+            notesTerrain: lastIntervention.notesTerrain,
+            site: lastIntervention.site,
+          },
+        });
+      } else {
+        res.json({ previousIntervention: null });
+      }
+    } catch (error) {
+      console.error('Get last notes error:', error);
+      res.status(500).json({ error: 'Erreur serveur' });
+    }
+  },
 };
 
 export default interventionController;

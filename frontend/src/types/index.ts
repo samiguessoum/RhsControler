@@ -3,7 +3,7 @@ export type Role = 'DIRECTION' | 'PLANNING' | 'EQUIPE' | 'LECTURE';
 export type ContratType = 'ANNUEL' | 'PONCTUEL';
 export type ContratStatut = 'ACTIF' | 'SUSPENDU' | 'TERMINE';
 export type Frequence = 'HEBDOMADAIRE' | 'MENSUELLE' | 'TRIMESTRIELLE' | 'SEMESTRIELLE' | 'ANNUELLE' | 'PERSONNALISEE';
-export type InterventionType = 'OPERATION' | 'CONTROLE';
+export type InterventionType = 'OPERATION' | 'CONTROLE' | 'RECLAMATION';
 export type InterventionStatut = 'A_PLANIFIER' | 'PLANIFIEE' | 'REALISEE' | 'REPORTEE' | 'ANNULEE';
 
 // ============ USER ============

@@ -89,6 +89,7 @@ router.get('/interventions', authMiddleware, interventionController.list);
 router.get('/interventions/a-planifier', authMiddleware, interventionController.aPlanifier);
 router.get('/interventions/en-retard', authMiddleware, interventionController.enRetard);
 router.get('/interventions/semaine', authMiddleware, interventionController.semaine);
+router.get('/interventions/last-notes/:clientId', authMiddleware, interventionController.getLastNotes);
 router.get('/interventions/:id', authMiddleware, interventionController.get);
 router.post('/interventions', authMiddleware, canDo('createIntervention'), validate(createInterventionSchema), interventionController.create);
 router.put('/interventions/:id', authMiddleware, canDo('editIntervention'), validate(updateInterventionSchema), interventionController.update);
