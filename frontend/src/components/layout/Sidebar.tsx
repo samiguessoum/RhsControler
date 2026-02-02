@@ -8,6 +8,8 @@ import {
   Settings,
   LogOut,
   AlertTriangle,
+  Package,
+  UserCog,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -50,6 +52,18 @@ export function Sidebar({ stats }: SidebarProps) {
       icon: FileText,
       label: 'Contrats',
       show: true,
+    },
+    {
+      to: '/stocks',
+      icon: Package,
+      label: 'Stocks',
+      show: true,
+    },
+    {
+      to: '/rh',
+      icon: UserCog,
+      label: 'RH',
+      show: canDo('viewRH'),
     },
     {
       to: '/import-export',

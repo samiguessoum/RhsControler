@@ -16,6 +16,21 @@ import type {
   CreateInterventionInput,
   Employe,
   Poste,
+  Produit,
+  MouvementStock,
+  CreateProduitInput,
+  CreateMouvementInput,
+  StockStats,
+  StockAlerte,
+  Conge,
+  JourWeekendTravaille,
+  SoldeConge,
+  CreateCongeInput,
+  ApprouverCongeInput,
+  CreateWeekendTravailleInput,
+  UpdateSoldeInput,
+  RHDashboard,
+  EmployeRecap,
 } from '@/types';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
@@ -348,6 +363,136 @@ export const importExportApi = {
 
   execute: async (type: string, content: string) => {
     const { data } = await api.post('/import/execute', { type, content });
+    return data;
+  },
+};
+
+// ============ STOCK ============
+export const stockApi = {
+  // Produits
+  listProduits: async (params?: { search?: string; actif?: boolean; stockBas?: boolean }): Promise<Produit[]> => {
+    const { data } = await api.get('/produits', { params });
+    return data.produits;
+  },
+
+  getProduit: async (id: string): Promise<Produit> => {
+    const { data } = await api.get(`/produits/${id}`);
+    return data.produit;
+  },
+
+  createProduit: async (produitData: CreateProduitInput): Promise<Produit> => {
+    const { data } = await api.post('/produits', produitData);
+    return data.produit;
+  },
+
+  updateProduit: async (id: string, produitData: Partial<CreateProduitInput & { actif: boolean }>): Promise<Produit> => {
+    const { data } = await api.put(`/produits/${id}`, produitData);
+    return data.produit;
+  },
+
+  deleteProduit: async (id: string): Promise<void> => {
+    await api.delete(`/produits/${id}`);
+  },
+
+  // Mouvements
+  listMouvements: async (params?: {
+    produitId?: string;
+    type?: string;
+    dateDebut?: string;
+    dateFin?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const { data } = await api.get('/mouvements-stock', { params });
+    return { mouvements: data.mouvements as MouvementStock[], pagination: data.pagination };
+  },
+
+  createMouvement: async (mouvementData: CreateMouvementInput): Promise<MouvementStock> => {
+    const { data } = await api.post('/mouvements-stock', mouvementData);
+    return data.mouvement;
+  },
+
+  // Stats & Alertes
+  getStats: async (): Promise<StockStats> => {
+    const { data } = await api.get('/stock/stats');
+    return data.stats;
+  },
+
+  getAlertes: async (): Promise<{ alertes: StockAlerte[]; count: number }> => {
+    const { data } = await api.get('/stock/alertes');
+    return data;
+  },
+};
+
+// ============ RH ============
+export const rhApi = {
+  // Dashboard
+  getDashboard: async (): Promise<RHDashboard> => {
+    const { data } = await api.get('/rh/dashboard');
+    return data;
+  },
+
+  // Congés
+  listConges: async (params?: {
+    employeId?: string;
+    statut?: string;
+    type?: string;
+    dateDebut?: string;
+    dateFin?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const { data } = await api.get('/rh/conges', { params });
+    return { conges: data.conges as Conge[], pagination: data.pagination };
+  },
+
+  createConge: async (congeData: CreateCongeInput): Promise<{ conge: Conge }> => {
+    const { data } = await api.post('/rh/conges', congeData);
+    return data;
+  },
+
+  approuverConge: async (id: string, payload: ApprouverCongeInput): Promise<{ conge: Conge }> => {
+    const { data } = await api.put(`/rh/conges/${id}/approuver`, payload);
+    return data;
+  },
+
+  annulerConge: async (id: string): Promise<void> => {
+    await api.delete(`/rh/conges/${id}`);
+  },
+
+  // Weekend travaillés
+  listWeekendTravailles: async (params?: {
+    employeId?: string;
+    dateDebut?: string;
+    dateFin?: string;
+  }): Promise<{ jours: JourWeekendTravaille[] }> => {
+    const { data } = await api.get('/rh/weekend-travailles', { params });
+    return data;
+  },
+
+  createWeekendTravaille: async (payload: CreateWeekendTravailleInput): Promise<{ jour: JourWeekendTravaille }> => {
+    const { data } = await api.post('/rh/weekend-travailles', payload);
+    return data;
+  },
+
+  deleteWeekendTravaille: async (id: string): Promise<void> => {
+    await api.delete(`/rh/weekend-travailles/${id}`);
+  },
+
+  // Soldes
+  getSoldes: async (params?: { employeId?: string; annee?: number }): Promise<{ soldes: SoldeConge[] }> => {
+    const { data } = await api.get('/rh/soldes', { params });
+    return data;
+  },
+
+  updateSolde: async (payload: UpdateSoldeInput): Promise<{ solde: SoldeConge }> => {
+    const { data } = await api.put('/rh/soldes', payload);
+    return data;
+  },
+
+  // Récap employé
+  getEmployeRecap: async (employeId: string, annee?: number): Promise<EmployeRecap> => {
+    const { data } = await api.get(`/rh/employes/${employeId}/recap`, { params: { annee } });
     return data;
   },
 };

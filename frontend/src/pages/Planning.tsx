@@ -122,18 +122,36 @@ function getTimeRange(intervention: Intervention) {
 }
 
 function getInterventionTypeLabel(type: Intervention['type']) {
-  if (type === 'RECLAMATION') return 'RÉCLAMATION';
-  return type === 'OPERATION' ? 'OPÉRATION' : 'VISITE CONTRÔLE';
+  const labels: Record<string, string> = {
+    'OPERATION': 'OPÉRATION',
+    'CONTROLE': 'VISITE CONTRÔLE',
+    'RECLAMATION': 'RÉCLAMATION',
+    'PREMIERE_VISITE': 'PREMIÈRE VISITE',
+    'DEPLACEMENT_COMMERCIAL': 'DÉPLACEMENT COMMERCIAL',
+  };
+  return labels[type] || type;
 }
 
 function getInterventionTypeBadgeClass(type: Intervention['type']) {
-  if (type === 'RECLAMATION') return 'bg-orange-100 text-orange-800';
-  return type === 'OPERATION' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800';
+  const classes: Record<string, string> = {
+    'OPERATION': 'bg-red-100 text-red-800',
+    'CONTROLE': 'bg-blue-100 text-blue-800',
+    'RECLAMATION': 'bg-orange-100 text-orange-800',
+    'PREMIERE_VISITE': 'bg-purple-100 text-purple-800',
+    'DEPLACEMENT_COMMERCIAL': 'bg-amber-200 text-amber-900',
+  };
+  return classes[type] || 'bg-gray-100 text-gray-800';
 }
 
 function getInterventionTypeIcon(type: Intervention['type']) {
-  if (type === 'RECLAMATION') return '⚠️';
-  return type === 'OPERATION' ? '🔧' : '🔍';
+  const icons: Record<string, string> = {
+    'OPERATION': '🔧',
+    'CONTROLE': '🔍',
+    'RECLAMATION': '⚠️',
+    'PREMIERE_VISITE': '🏢',
+    'DEPLACEMENT_COMMERCIAL': '📦',
+  };
+  return icons[type] || '📋';
 }
 
 function DraggableInterventionCard({
@@ -1693,8 +1711,41 @@ function RealiserDialog({
   );
 }
 
-// ============ CREATE RECLAMATION DIALOG ============
-function CreateReclamationDialog({
+// ============ CREATE INTERVENTION DIALOG (Hors contrat) ============
+// Types d'intervention disponibles pour création manuelle (hors contrat)
+type InterventionHorsContratType = 'RECLAMATION' | 'PREMIERE_VISITE' | 'DEPLACEMENT_COMMERCIAL';
+
+const INTERVENTION_TYPES_CONFIG: Record<InterventionHorsContratType, {
+  label: string;
+  description: string;
+  icon: string;
+  color: string;
+  bgColor: string;
+}> = {
+  'RECLAMATION': {
+    label: 'Réclamation',
+    description: 'Intervention urgente suite à un problème client',
+    icon: '⚠️',
+    color: 'text-orange-800',
+    bgColor: 'bg-orange-50 border-orange-200',
+  },
+  'PREMIERE_VISITE': {
+    label: 'Première visite',
+    description: 'Visite commerciale pour établir un devis',
+    icon: '🏢',
+    color: 'text-purple-800',
+    bgColor: 'bg-purple-50 border-purple-200',
+  },
+  'DEPLACEMENT_COMMERCIAL': {
+    label: 'Déplacement commercial',
+    description: 'Livraison de marchandise ou visite commerciale',
+    icon: '📦',
+    color: 'text-amber-900',
+    bgColor: 'bg-amber-100 border-amber-300',
+  },
+};
+
+function CreateInterventionDialog({
   open,
   onClose,
   clients,
@@ -1715,6 +1766,7 @@ function CreateReclamationDialog({
 }) {
   const [clientId, setClientId] = useState('');
   const [siteId, setSiteId] = useState('');
+  const [interventionType, setInterventionType] = useState<InterventionHorsContratType>('RECLAMATION');
   const [prestation, setPrestation] = useState('');
   const [datePrevue, setDatePrevue] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [heureDebut, setHeureDebut] = useState('');
@@ -1731,6 +1783,7 @@ function CreateReclamationDialog({
 
   const selectedClient = clients.find((c) => c.id === clientId);
   const sites = selectedClient?.sites || [];
+  const typeConfig = INTERVENTION_TYPES_CONFIG[interventionType];
 
   // Fetch last notes when client or site changes
   useEffect(() => {
@@ -1767,6 +1820,7 @@ function CreateReclamationDialog({
   const resetForm = () => {
     setClientId('');
     setSiteId('');
+    setInterventionType('RECLAMATION');
     setPrestation('');
     setDatePrevue(format(new Date(), 'yyyy-MM-dd'));
     setHeureDebut('');
@@ -1795,7 +1849,7 @@ function CreateReclamationDialog({
     onSubmit({
       clientId,
       siteId: siteId || undefined,
-      type: 'RECLAMATION',
+      type: interventionType,
       prestation: prestation || undefined,
       datePrevue,
       heurePrevue: heureDebut || undefined,
@@ -1819,13 +1873,46 @@ function CreateReclamationDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-orange-500" />
-            Nouvelle réclamation
+            <Plus className="h-5 w-5" />
+            Nouvelle intervention
           </DialogTitle>
-          <DialogDescription>Créer une réclamation urgente pour un client</DialogDescription>
+          <DialogDescription>Créer une intervention hors contrat</DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Type selection */}
+          <div className="space-y-2">
+            <Label>Type d'intervention *</Label>
+            <div className="grid grid-cols-3 gap-2">
+              {(Object.keys(INTERVENTION_TYPES_CONFIG) as InterventionHorsContratType[]).map((type) => {
+                const config = INTERVENTION_TYPES_CONFIG[type];
+                const isSelected = interventionType === type;
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => {
+                      setInterventionType(type);
+                      if (type !== 'RECLAMATION') setPrestation('');
+                    }}
+                    className={cn(
+                      'p-2 rounded-md border text-center transition-all',
+                      isSelected
+                        ? `${config.bgColor} border-2 ring-2 ring-offset-1`
+                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
+                    )}
+                  >
+                    <div className="text-xl mb-1">{config.icon}</div>
+                    <div className={cn('text-xs font-medium', isSelected ? config.color : 'text-gray-700')}>
+                      {config.label}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">{typeConfig.description}</p>
+          </div>
+
           <div className="space-y-2">
             <Label>Client *</Label>
             <Select
@@ -1883,22 +1970,14 @@ function CreateReclamationDialog({
                 )}
               </div>
               <p className="text-xs text-amber-600">
-                {getStatutLabel(previousNotes.type)} du{' '}
+                {getInterventionTypeLabel(previousNotes.type as Intervention['type'])} du{' '}
                 {format(parseISO(previousNotes.dateRealisee), 'dd/MM/yyyy', { locale: fr })}
               </p>
               <p className="text-sm text-amber-900 whitespace-pre-wrap">{previousNotes.notesTerrain}</p>
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Type</Label>
-              <div className="flex items-center h-10 px-3 rounded-md border bg-orange-50 text-orange-800 font-medium">
-                <AlertCircle className="h-4 w-4 mr-2" />
-                Réclamation
-              </div>
-            </div>
-
+          {interventionType === 'RECLAMATION' && (
             <div className="space-y-2">
               <Label>Prestation</Label>
               <Select value={prestation} onValueChange={setPrestation}>
@@ -1914,7 +1993,7 @@ function CreateReclamationDialog({
                 </SelectContent>
               </Select>
             </div>
-          </div>
+          )}
 
           <div className="space-y-2">
             <Label>Date *</Label>
@@ -1961,7 +2040,7 @@ function CreateReclamationDialog({
             <Textarea
               value={notesTerrain}
               onChange={(e) => setNotesTerrain(e.target.value)}
-              placeholder="Description de la réclamation..."
+              placeholder="Description..."
               rows={3}
             />
           </div>
@@ -1970,8 +2049,8 @@ function CreateReclamationDialog({
             <Button type="button" variant="outline" onClick={onClose}>
               Annuler
             </Button>
-            <Button type="submit" disabled={isPending} className="bg-orange-600 hover:bg-orange-700">
-              {isPending ? 'Création...' : 'Créer la réclamation'}
+            <Button type="submit" disabled={isPending}>
+              {isPending ? 'Création...' : 'Créer'}
             </Button>
           </DialogFooter>
         </form>
@@ -2645,9 +2724,9 @@ export function PlanningPage() {
               Google Calendar
             </Button>
             {canDo('createIntervention') && (
-              <Button onClick={() => setIsCreateOpen(true)} className="bg-orange-600 hover:bg-orange-700">
+              <Button onClick={() => setIsCreateOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" />
-                Nouvelle réclamation
+                Nouvelle intervention
               </Button>
             )}
           </div>
@@ -2950,8 +3029,8 @@ export function PlanningPage() {
           isPending={realiserMutation.isPending}
         />
 
-        {/* Create Reclamation Dialog */}
-        <CreateReclamationDialog
+        {/* Create Intervention Dialog */}
+        <CreateInterventionDialog
           open={isCreateOpen}
           onClose={() => setIsCreateOpen(false)}
           clients={clients}

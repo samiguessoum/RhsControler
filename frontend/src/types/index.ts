@@ -3,7 +3,7 @@ export type Role = 'DIRECTION' | 'PLANNING' | 'EQUIPE' | 'LECTURE';
 export type ContratType = 'ANNUEL' | 'PONCTUEL';
 export type ContratStatut = 'ACTIF' | 'SUSPENDU' | 'TERMINE';
 export type Frequence = 'HEBDOMADAIRE' | 'MENSUELLE' | 'TRIMESTRIELLE' | 'SEMESTRIELLE' | 'ANNUELLE' | 'PERSONNALISEE';
-export type InterventionType = 'OPERATION' | 'CONTROLE' | 'RECLAMATION';
+export type InterventionType = 'OPERATION' | 'CONTROLE' | 'RECLAMATION' | 'PREMIERE_VISITE' | 'DEPLACEMENT_COMMERCIAL';
 export type InterventionStatut = 'A_PLANIFIER' | 'PLANIFIEE' | 'REALISEE' | 'REPORTEE' | 'ANNULEE';
 
 // ============ USER ============
@@ -361,4 +361,166 @@ export interface CreateInterventionInput {
   notesTerrain?: string;
   responsable?: string;
   employes?: InterventionEmployeInput[];
+}
+
+// ============ STOCK ============
+export type TypeMouvement = 'ENTREE' | 'SORTIE' | 'AJUSTEMENT';
+
+export interface Produit {
+  id: string;
+  reference: string;
+  nom: string;
+  description?: string;
+  unite: string;
+  quantite: number;
+  stockMinimum: number;
+  prixUnitaire?: number;
+  actif: boolean;
+  createdAt: string;
+  updatedAt: string;
+  mouvements?: MouvementStock[];
+}
+
+export interface MouvementStock {
+  id: string;
+  produitId: string;
+  produit?: Produit;
+  type: TypeMouvement;
+  quantite: number;
+  quantiteAvant: number;
+  quantiteApres: number;
+  motif?: string;
+  interventionId?: string;
+  intervention?: {
+    id: string;
+    type: InterventionType;
+    datePrevue: string;
+    client?: { id: string; nomEntreprise: string };
+  };
+  userId: string;
+  user?: { id: string; nom: string; prenom: string };
+  createdAt: string;
+}
+
+export interface CreateProduitInput {
+  reference: string;
+  nom: string;
+  description?: string;
+  unite?: string;
+  quantite?: number;
+  stockMinimum?: number;
+  prixUnitaire?: number;
+}
+
+export interface CreateMouvementInput {
+  produitId: string;
+  type: TypeMouvement;
+  quantite: number;
+  motif?: string;
+  interventionId?: string;
+}
+
+export interface StockStats {
+  totalProduits: number;
+  produitsActifs: number;
+  stockBas: number;
+  mouvementsRecents: number;
+}
+
+export interface StockAlerte extends Produit {
+  deficit: number;
+}
+
+// ============ RH ============
+export type TypeConge = 'ANNUEL' | 'MALADIE' | 'RECUPERATION' | 'SANS_SOLDE' | 'EXCEPTIONNEL';
+export type StatutConge = 'EN_ATTENTE' | 'APPROUVE' | 'REFUSE' | 'ANNULE';
+
+export interface Conge {
+  id: string;
+  employeId: string;
+  employe?: { id: string; nom: string; prenom: string };
+  type: TypeConge;
+  dateDebut: string;
+  dateFin: string;
+  nbJours: number;
+  motif?: string;
+  statut: StatutConge;
+  approuveParId?: string;
+  approuvePar?: { id: string; nom: string; prenom: string };
+  dateReponse?: string;
+  commentaire?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface JourWeekendTravaille {
+  id: string;
+  employeId: string;
+  employe?: { id: string; nom: string; prenom: string };
+  date: string;
+  estVendredi: boolean;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface SoldeConge {
+  id: string;
+  employeId: string;
+  employe?: { id: string; nom: string; prenom: string };
+  annee: number;
+  type: TypeConge;
+  joursAcquis: number;
+  joursPris: number;
+  joursRestants: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateCongeInput {
+  employeId: string;
+  type: TypeConge;
+  dateDebut: string;
+  dateFin: string;
+  nbJours: number;
+  motif?: string;
+}
+
+export interface ApprouverCongeInput {
+  approuve: boolean;
+  commentaire?: string;
+}
+
+export interface CreateWeekendTravailleInput {
+  employeId: string;
+  date: string;
+  notes?: string;
+}
+
+export interface UpdateSoldeInput {
+  employeId: string;
+  annee: number;
+  type: TypeConge;
+  joursAcquis: number;
+}
+
+export interface RHDashboard {
+  stats: {
+    congesEnAttente: number;
+    employesEnConge: number;
+    totalEmployes: number;
+  };
+  congesEnCours: Conge[];
+  employesAvecRecup: SoldeConge[];
+}
+
+export interface EmployeRecap {
+  employe: Employe;
+  annee: number;
+  soldes: SoldeConge[];
+  conges: Conge[];
+  weekendsTravailles: JourWeekendTravaille[];
+  stats: {
+    totalWeekendsTravailles: number;
+    joursRecupAcquis: number;
+  };
 }

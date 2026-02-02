@@ -60,8 +60,22 @@ export const icsService = {
       startDate.setHours(hours, minutes, 0, 0);
       endDate.setHours(hours, minutes + duree, 0, 0);
 
-      const typeEmoji = intervention.type === 'OPERATION' ? '🔧' : intervention.type === 'RECLAMATION' ? '⚠️' : '🔍';
-      const typeLabel = intervention.type === 'OPERATION' ? 'Opération' : intervention.type === 'RECLAMATION' ? 'Réclamation' : 'Contrôle';
+      const typeEmojiMap: Record<string, string> = {
+        'OPERATION': '🔧',
+        'CONTROLE': '🔍',
+        'RECLAMATION': '⚠️',
+        'PREMIERE_VISITE': '🏢',
+        'DEPLACEMENT_COMMERCIAL': '📦',
+      };
+      const typeLabelMap: Record<string, string> = {
+        'OPERATION': 'Opération',
+        'CONTROLE': 'Contrôle',
+        'RECLAMATION': 'Réclamation',
+        'PREMIERE_VISITE': 'Première visite',
+        'DEPLACEMENT_COMMERCIAL': 'Déplacement commercial',
+      };
+      const typeEmoji = typeEmojiMap[intervention.type] || '📋';
+      const typeLabel = typeLabelMap[intervention.type] || intervention.type;
       const summary = `${typeEmoji} ${intervention.client.nomEntreprise}${intervention.prestation ? ` - ${intervention.prestation}` : ''}`;
 
       const description = [

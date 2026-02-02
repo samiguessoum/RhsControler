@@ -38,6 +38,8 @@ enum InterventionType {
   OPERATION
   CONTROLE
   RECLAMATION
+  PREMIERE_VISITE
+  DEPLACEMENT_COMMERCIAL
 }
 
 enum InterventionStatut {
@@ -61,10 +63,12 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  contratsResponsable Contrat[]      @relation("ResponsablePlanning")
-  interventionsCrees  Intervention[] @relation("CreatedBy")
-  interventionsModif  Intervention[] @relation("UpdatedBy")
+  contratsResponsable Contrat[]        @relation("ResponsablePlanning")
+  interventionsCrees  Intervention[]   @relation("CreatedBy")
+  interventionsModif  Intervention[]   @relation("UpdatedBy")
   auditLogs           AuditLog[]
+  mouvementsStock     MouvementStock[]
+  congesApprouves     Conge[]          @relation("ApprouvePar")
 }
 
 model Employe {
@@ -75,7 +79,10 @@ model Employe {
   createdAt DateTime             @default(now())
   updatedAt DateTime             @updatedAt
 
-  interventionEmployes InterventionEmploye[]
+  interventionEmployes  InterventionEmploye[]
+  conges                Conge[]
+  joursWeekendTravailles JourWeekendTravaille[]
+  soldesConges          SoldeConge[]
 }
 
 model Poste {
@@ -230,6 +237,7 @@ model Intervention {
   updatedAt    DateTime           @updatedAt
 
   interventionEmployes InterventionEmploye[]
+  mouvementsStock      MouvementStock[]
 
   @@index([clientId])
   @@index([contratId])
@@ -274,4 +282,123 @@ model AuditLog {
 
   @@index([entity, entityId])
   @@index([userId])
+}
+
+// ============ GESTION DES STOCKS ============
+model Produit {
+  id           String           @id @default(uuid())
+  reference    String           @unique
+  nom          String
+  description  String?
+  unite        String           @default("unité") // unité, L, Kg, m², etc.
+  quantite     Float            @default(0)
+  stockMinimum Float            @default(0) // Seuil d'alerte
+  prixUnitaire Float?           // Prix unitaire (optionnel)
+  actif        Boolean          @default(true)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  mouvements MouvementStock[]
+
+  @@index([reference])
+  @@index([nom])
+}
+
+enum TypeMouvement {
+  ENTREE
+  SORTIE
+  AJUSTEMENT
+}
+
+model MouvementStock {
+  id             String         @id @default(uuid())
+  produitId      String
+  produit        Produit        @relation(fields: [produitId], references: [id])
+  type           TypeMouvement
+  quantite       Float          // Quantité (toujours positive, le type détermine +/-)
+  quantiteAvant  Float          // Stock avant le mouvement
+  quantiteApres  Float          // Stock après le mouvement
+  motif          String?        // Raison du mouvement
+  interventionId String?        // Lien optionnel avec une intervention
+  intervention   Intervention?  @relation(fields: [interventionId], references: [id])
+  userId         String
+  user           User           @relation(fields: [userId], references: [id])
+  createdAt      DateTime       @default(now())
+
+  @@index([produitId])
+  @@index([interventionId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ============ GESTION RH - CONGES ET RECUPERATION ============
+
+enum TypeConge {
+  ANNUEL           // Congé annuel
+  MALADIE          // Arrêt maladie
+  RECUPERATION     // Jour de récupération (weekend travaillé)
+  SANS_SOLDE       // Congé sans solde
+  EXCEPTIONNEL     // Événement familial, etc.
+}
+
+enum StatutConge {
+  EN_ATTENTE
+  APPROUVE
+  REFUSE
+  ANNULE
+}
+
+model Conge {
+  id          String       @id @default(uuid())
+  employeId   String
+  employe     Employe      @relation(fields: [employeId], references: [id])
+  type        TypeConge
+  dateDebut   DateTime
+  dateFin     DateTime
+  nbJours     Float        // Nombre de jours (peut être 0.5 pour demi-journée)
+  motif       String?
+  statut      StatutConge  @default(EN_ATTENTE)
+  approuveParId String?
+  approuvePar User?        @relation("ApprouvePar", fields: [approuveParId], references: [id])
+  dateReponse DateTime?
+  commentaire String?      // Commentaire lors de l'approbation/refus
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([employeId])
+  @@index([dateDebut])
+  @@index([statut])
+}
+
+// Suivi des jours de weekend travaillés
+model JourWeekendTravaille {
+  id          String   @id @default(uuid())
+  employeId   String
+  employe     Employe  @relation(fields: [employeId], references: [id])
+  date        DateTime // La date du jour travaillé (vendredi ou samedi)
+  estVendredi Boolean  // true = vendredi, false = samedi
+  notes       String?
+  createdAt   DateTime @default(now())
+
+  @@unique([employeId, date]) // Un employé ne peut avoir qu'une entrée par jour
+  @@index([employeId])
+  @@index([date])
+}
+
+// Solde des congés par employé et par année
+model SoldeConge {
+  id              String    @id @default(uuid())
+  employeId       String
+  employe         Employe   @relation(fields: [employeId], references: [id])
+  annee           Int       // L'année concernée
+  type            TypeConge
+  joursAcquis     Float     @default(0) // Jours acquis/alloués
+  joursPris       Float     @default(0) // Jours utilisés
+  joursRestants   Float     @default(0) // Calculé: acquis - pris
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([employeId, annee, type])
+  @@index([employeId])
+  @@index([annee])
 }

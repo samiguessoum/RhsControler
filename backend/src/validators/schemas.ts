@@ -220,7 +220,7 @@ export const createInterventionSchema = z.object({
   contratId: z.string().uuid().optional(),
   clientId: z.string().uuid('ID client invalide'),
   siteId: z.string().uuid().optional(),
-  type: z.enum(['OPERATION', 'CONTROLE', 'RECLAMATION']),
+  type: z.enum(['OPERATION', 'CONTROLE', 'RECLAMATION', 'PREMIERE_VISITE', 'DEPLACEMENT_COMMERCIAL']),
   prestation: z.string().optional(),
   datePrevue: z.string().or(z.date()).transform((val) => new Date(val)),
   heurePrevue: z.string().regex(/^\d{2}:\d{2}$/, 'Format heure invalide (HH:MM)').optional(),
@@ -264,7 +264,7 @@ export const contratsQuerySchema = paginationSchema.extend({
 export const interventionsQuerySchema = paginationSchema.extend({
   clientId: z.string().uuid().optional(),
   contratId: z.string().uuid().optional(),
-  type: z.enum(['OPERATION', 'CONTROLE', 'RECLAMATION']).optional(),
+  type: z.enum(['OPERATION', 'CONTROLE', 'RECLAMATION', 'PREMIERE_VISITE', 'DEPLACEMENT_COMMERCIAL']).optional(),
   statut: z.enum(['A_PLANIFIER', 'PLANIFIEE', 'REALISEE', 'REPORTEE', 'ANNULEE']).optional(),
   prestation: z.string().optional(),
   dateDebut: z.string().optional(),
@@ -273,6 +273,97 @@ export const interventionsQuerySchema = paginationSchema.extend({
 
 export const uuidParamSchema = z.object({
   id: z.string().uuid('ID invalide'),
+});
+
+// ============ STOCK ============
+export const createProduitSchema = z.object({
+  reference: z.string().min(1, 'Référence requise'),
+  nom: z.string().min(1, 'Nom requis'),
+  description: z.string().optional(),
+  unite: z.string().optional().default('unité'),
+  quantite: z.number().min(0, 'Quantité invalide').optional().default(0),
+  stockMinimum: z.number().min(0, 'Stock minimum invalide').optional().default(0),
+  prixUnitaire: z.number().min(0, 'Prix invalide').optional(),
+});
+
+export const updateProduitSchema = z.object({
+  reference: z.string().min(1, 'Référence requise').optional(),
+  nom: z.string().min(1, 'Nom requis').optional(),
+  description: z.string().optional().nullable(),
+  unite: z.string().optional(),
+  stockMinimum: z.number().min(0, 'Stock minimum invalide').optional(),
+  prixUnitaire: z.number().min(0, 'Prix invalide').optional().nullable(),
+  actif: z.boolean().optional(),
+});
+
+export const createMouvementSchema = z.object({
+  produitId: z.string().uuid('ID produit invalide'),
+  type: z.enum(['ENTREE', 'SORTIE', 'AJUSTEMENT']),
+  quantite: z.number().positive('Quantité doit être positive'),
+  motif: z.string().optional(),
+  interventionId: z.string().uuid().optional(),
+});
+
+// ============ RH (Congés, Récupération) ============
+export const typeCongeEnum = z.enum([
+  'ANNUEL',
+  'MALADIE',
+  'RECUPERATION',
+  'SANS_SOLDE',
+  'EXCEPTIONNEL',
+]);
+
+export const statutCongeEnum = z.enum([
+  'EN_ATTENTE',
+  'APPROUVE',
+  'REFUSE',
+  'ANNULE',
+]);
+
+export const createCongeSchema = z.object({
+  employeId: z.string().uuid('ID employé invalide'),
+  type: typeCongeEnum,
+  dateDebut: z.string().or(z.date()).transform((val) => new Date(val)),
+  dateFin: z.string().or(z.date()).transform((val) => new Date(val)),
+  nbJours: z.number().positive('Nombre de jours requis'),
+  motif: z.string().optional(),
+});
+
+export const approuverCongeSchema = z.object({
+  approuve: z.boolean(),
+  commentaire: z.string().optional(),
+});
+
+export const createWeekendTravailleSchema = z.object({
+  employeId: z.string().uuid('ID employé invalide'),
+  date: z.string().or(z.date()).transform((val) => new Date(val)),
+  notes: z.string().optional(),
+});
+
+export const updateSoldeSchema = z.object({
+  employeId: z.string().uuid('ID employé invalide'),
+  annee: z.number().int().min(2020).max(2100),
+  type: typeCongeEnum,
+  joursAcquis: z.number().min(0, 'Jours acquis invalide'),
+});
+
+export const congesQuerySchema = paginationSchema.extend({
+  employeId: z.string().uuid().optional(),
+  statut: statutCongeEnum.optional(),
+  type: typeCongeEnum.optional(),
+  dateDebut: z.string().optional(),
+  dateFin: z.string().optional(),
+});
+
+export const weekendTravailleQuerySchema = z.object({
+  employeId: z.string().uuid().optional(),
+  dateDebut: z.string().optional(),
+  dateFin: z.string().optional(),
+});
+
+export const soldesQuerySchema = z.object({
+  employeId: z.string().uuid().optional(),
+  annee: z.string().transform(Number).pipe(z.number().int()).optional(),
 });
 
 // Types exports

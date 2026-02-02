@@ -33,6 +33,9 @@ const permissions: Record<string, Role[]> = {
   viewPostes: ['DIRECTION', 'PLANNING', 'EQUIPE'],
   managePostes: ['DIRECTION'],
   managePrestations: ['DIRECTION', 'PLANNING'],
+  manageStock: ['DIRECTION', 'PLANNING'],
+  viewRH: ['DIRECTION', 'PLANNING'],
+  manageRH: ['DIRECTION'],
 };
 
 export const useAuthStore = create<AuthState>()(

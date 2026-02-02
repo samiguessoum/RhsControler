@@ -441,8 +441,8 @@ export const csvService = {
         errors.push({ row: rowNum, field: 'client_nom', message: 'Client non trouvé', value: row.client_nom });
       }
 
-      if (!row.type || !['OPERATION', 'CONTROLE', 'RECLAMATION'].includes(row.type.toUpperCase())) {
-        errors.push({ row: rowNum, field: 'type', message: 'Type invalide (OPERATION, CONTROLE ou RECLAMATION)', value: row.type });
+      if (!row.type || !['OPERATION', 'CONTROLE', 'RECLAMATION', 'PREMIERE_VISITE', 'DEPLACEMENT_COMMERCIAL'].includes(row.type.toUpperCase())) {
+        errors.push({ row: rowNum, field: 'type', message: 'Type invalide', value: row.type });
       }
 
       if (!row.date_prevue || !parseDate(row.date_prevue)) {

@@ -83,6 +83,13 @@ export const permissions = {
   viewPostes: [Role.DIRECTION, Role.PLANNING, Role.EQUIPE],
   managePostes: [Role.DIRECTION],
   managePrestations: [Role.DIRECTION, Role.PLANNING],
+
+  // Stock
+  manageStock: [Role.DIRECTION, Role.PLANNING],
+
+  // RH
+  viewRH: [Role.DIRECTION, Role.PLANNING],
+  manageRH: [Role.DIRECTION],
 };
 
 export function canDo(action: keyof typeof permissions) {

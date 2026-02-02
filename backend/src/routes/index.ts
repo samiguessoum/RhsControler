@@ -20,6 +20,13 @@ import {
   updateInterventionSchema,
   realiserInterventionSchema,
   reporterInterventionSchema,
+  createProduitSchema,
+  updateProduitSchema,
+  createMouvementSchema,
+  createCongeSchema,
+  approuverCongeSchema,
+  createWeekendTravailleSchema,
+  updateSoldeSchema,
 } from '../validators/schemas.js';
 
 import authController from '../controllers/auth.controller.js';
@@ -32,6 +39,8 @@ import contratController from '../controllers/contrat.controller.js';
 import interventionController from '../controllers/intervention.controller.js';
 import dashboardController from '../controllers/dashboard.controller.js';
 import importExportController from '../controllers/import-export.controller.js';
+import stockController from '../controllers/stock.controller.js';
+import rhController from '../controllers/rh.controller.js';
 
 const router = Router();
 
@@ -110,5 +119,39 @@ router.get('/export/google-calendar', authMiddleware, canDo('exportData'), impor
 router.get('/import/templates/:type', authMiddleware, importExportController.getTemplate);
 router.post('/import/preview', authMiddleware, canDo('importData'), importExportController.preview);
 router.post('/import/execute', authMiddleware, canDo('importData'), importExportController.execute);
+
+// ============ STOCK ============
+router.get('/produits', authMiddleware, stockController.listProduits);
+router.get('/produits/:id', authMiddleware, stockController.getProduit);
+router.post('/produits', authMiddleware, canDo('manageStock'), validate(createProduitSchema), stockController.createProduit);
+router.put('/produits/:id', authMiddleware, canDo('manageStock'), validate(updateProduitSchema), stockController.updateProduit);
+router.delete('/produits/:id', authMiddleware, canDo('manageStock'), stockController.deleteProduit);
+
+router.get('/mouvements-stock', authMiddleware, stockController.listMouvements);
+router.post('/mouvements-stock', authMiddleware, canDo('manageStock'), validate(createMouvementSchema), stockController.createMouvement);
+
+router.get('/stock/alertes', authMiddleware, stockController.getAlertes);
+router.get('/stock/stats', authMiddleware, stockController.getStats);
+
+// ============ RH ============
+router.get('/rh/dashboard', authMiddleware, canDo('viewRH'), rhController.getDashboard);
+
+// Congés
+router.get('/rh/conges', authMiddleware, canDo('viewRH'), rhController.listConges);
+router.post('/rh/conges', authMiddleware, canDo('viewRH'), validate(createCongeSchema), rhController.createConge);
+router.put('/rh/conges/:id/approuver', authMiddleware, canDo('manageRH'), validate(approuverCongeSchema), rhController.approuverConge);
+router.delete('/rh/conges/:id', authMiddleware, canDo('manageRH'), rhController.annulerConge);
+
+// Weekend travaillés
+router.get('/rh/weekend-travailles', authMiddleware, canDo('viewRH'), rhController.listWeekendTravailles);
+router.post('/rh/weekend-travailles', authMiddleware, canDo('manageRH'), validate(createWeekendTravailleSchema), rhController.createWeekendTravaille);
+router.delete('/rh/weekend-travailles/:id', authMiddleware, canDo('manageRH'), rhController.deleteWeekendTravaille);
+
+// Soldes
+router.get('/rh/soldes', authMiddleware, canDo('viewRH'), rhController.getSoldes);
+router.put('/rh/soldes', authMiddleware, canDo('manageRH'), validate(updateSoldeSchema), rhController.updateSolde);
+
+// Récap employé
+router.get('/rh/employes/:id/recap', authMiddleware, canDo('viewRH'), rhController.getEmployeRecap);
 
 export default router;
