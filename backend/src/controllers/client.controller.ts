@@ -26,10 +26,25 @@ export const clientController = {
                 OR: [
                   { nom: { contains: search as string, mode: 'insensitive' } },
                   { adresse: { contains: search as string, mode: 'insensitive' } },
-                  { contactNom: { contains: search as string, mode: 'insensitive' } },
                   { email: { contains: search as string, mode: 'insensitive' } },
                   { tel: { contains: search as string, mode: 'insensitive' } },
                 ],
+              },
+            },
+          },
+          {
+            sites: {
+              some: {
+                contacts: {
+                  some: {
+                    OR: [
+                      { nom: { contains: search as string, mode: 'insensitive' } },
+                      { fonction: { contains: search as string, mode: 'insensitive' } },
+                      { tel: { contains: search as string, mode: 'insensitive' } },
+                      { email: { contains: search as string, mode: 'insensitive' } },
+                    ],
+                  },
+                },
               },
             },
           },
@@ -60,7 +75,7 @@ export const clientController = {
           orderBy: { nomEntreprise: 'asc' },
           include: {
             siegeContacts: true,
-            sites: true,
+            sites: { include: { contacts: true } },
             _count: {
               select: { contrats: true, interventions: true },
             },
@@ -95,7 +110,7 @@ export const clientController = {
         where: { id },
         include: {
           siegeContacts: true,
-          sites: true,
+          sites: { include: { contacts: true } },
           contrats: {
             orderBy: { dateDebut: 'desc' },
             include: {
@@ -129,6 +144,27 @@ export const clientController = {
     try {
       const data = req.body;
 
+      const mappedSites = (data.sites || []).map((site: any) => ({
+        code: site.code,
+        nom: site.nom,
+        adresse: site.adresse,
+        complement: site.complement,
+        codePostal: site.codePostal,
+        ville: site.ville,
+        pays: site.pays,
+        latitude: site.latitude,
+        longitude: site.longitude,
+        tel: site.tel,
+        fax: site.fax,
+        email: site.email || null,
+        horairesOuverture: site.horairesOuverture,
+        accessibilite: site.accessibilite,
+        notes: site.notes,
+        ...(site.contacts?.length
+          ? { contacts: { create: site.contacts } }
+          : {}),
+      }));
+
       const client = await prisma.client.create({
         data: {
           nomEntreprise: data.nomEntreprise,
@@ -147,10 +183,10 @@ export const clientController = {
             create: data.siegeContacts || [],
           },
           sites: {
-            create: data.sites || [],
+            create: mappedSites,
           },
         },
-        include: { sites: true, siegeContacts: true },
+        include: { sites: { include: { contacts: true } }, siegeContacts: true },
       });
 
       // Audit log
@@ -177,6 +213,29 @@ export const clientController = {
         return res.status(404).json({ error: 'Client non trouvé' });
       }
 
+      const mappedSites = data.sites
+        ? data.sites.map((site: any) => ({
+          code: site.code,
+          nom: site.nom,
+          adresse: site.adresse,
+          complement: site.complement,
+          codePostal: site.codePostal,
+          ville: site.ville,
+          pays: site.pays,
+          latitude: site.latitude,
+          longitude: site.longitude,
+          tel: site.tel,
+          fax: site.fax,
+          email: site.email || null,
+          horairesOuverture: site.horairesOuverture,
+          accessibilite: site.accessibilite,
+          notes: site.notes,
+          ...(site.contacts?.length
+            ? { contacts: { create: site.contacts } }
+            : {}),
+        }))
+        : null;
+
       const client = await prisma.client.update({
         where: { id },
         data: {
@@ -201,16 +260,16 @@ export const clientController = {
                 },
               }
             : {}),
-          ...(data.sites
+          ...(mappedSites
             ? {
                 sites: {
                   deleteMany: {},
-                  create: data.sites,
+                  create: mappedSites,
                 },
               }
             : {}),
         },
-        include: { sites: true, siegeContacts: true },
+        include: { sites: { include: { contacts: true } }, siegeContacts: true },
       });
 
       // Audit log

@@ -50,6 +50,64 @@ enum InterventionStatut {
   ANNULEE
 }
 
+// ============ TIERS (Dolibarr-inspired) ============
+
+enum TypeTiers {
+  CLIENT            // Client uniquement
+  FOURNISSEUR       // Fournisseur uniquement
+  PROSPECT          // Prospect (client potentiel)
+  CLIENT_FOURNISSEUR // Les deux
+}
+
+enum FormeJuridique {
+  SARL              // Société à responsabilité limitée
+  EURL              // Entreprise unipersonnelle
+  SPA               // Société par actions
+  SNC               // Société en nom collectif
+  AUTO_ENTREPRENEUR // Auto-entrepreneur
+  ASSOCIATION       // Association
+  PARTICULIER       // Personne physique
+  AUTRE             // Autre forme
+}
+
+enum Civilite {
+  M                 // Monsieur
+  MME               // Madame
+  MLLE              // Mademoiselle
+}
+
+enum TypeAdresse {
+  SIEGE             // Siège social
+  FACTURATION       // Adresse de facturation
+  LIVRAISON         // Adresse de livraison
+  SITE              // Site d'intervention
+}
+
+// Mode de paiement
+model ModePaiement {
+  id          String   @id @default(uuid())
+  code        String   @unique  // VIR, CHQ, ESP, CB, etc.
+  libelle     String             // Virement, Chèque, Espèces, etc.
+  actif       Boolean  @default(true)
+  ordre       Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  tiers       Client[] @relation("ModePaiementTiers")
+}
+
+// Conditions de paiement
+model ConditionPaiement {
+  id          String   @id @default(uuid())
+  code        String   @unique  // RECEP, 30D, 60D, etc.
+  libelle     String             // À réception, 30 jours, etc.
+  nbJours     Int      @default(0)  // Nombre de jours
+  actif       Boolean  @default(true)
+  ordre       Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  tiers       Client[] @relation("ConditionPaiementTiers")
+}
+
 
 model User {
   id        String   @id @default(uuid())
@@ -98,38 +156,176 @@ model Poste {
 
 model Client {
   id              String   @id @default(uuid())
+
+  // === Identification ===
+  code            String?  @unique  // Code client/fournisseur auto-généré
   nomEntreprise   String
-  secteur         String?
+  nomAlias        String?           // Nom commercial, enseigne
+
+  // === Type de tiers ===
+  typeTiers       TypeTiers @default(CLIENT)
+
+  // === Informations légales ===
+  formeJuridique  FormeJuridique?
+  siegeRC         String?           // Registre du commerce
+  siegeNIF        String?           // Numéro d'identification fiscale
+  siegeAI         String?           // Article d'imposition
+  siegeNIS        String?           // Numéro d'identification statistique
+  siegeTIN        String?           // Tax Identification Number (international)
+  tvaIntracom     String?           // TVA intracommunautaire
+  capital         Float?            // Capital social
+  dateCreation    DateTime?         // Date de création de l'entreprise
+
+  // === Siège social (adresse principale) ===
   siegeNom        String
   siegeAdresse    String?
+  siegeCodePostal String?
+  siegeVille      String?
+  siegePays       String?  @default("Algérie")
   siegeTel        String?
+  siegeFax        String?
   siegeEmail      String?
+  siegeWebsite    String?
   siegeNotes      String?
-  siegeRC         String?
-  siegeNIF        String?
-  siegeAI         String?
-  siegeNIS        String?
-  siegeTIN        String?
+
+  // === Classification ===
+  secteur         String?           // Secteur d'activité
+  categorie       String?           // Catégorie interne
+  codeComptaClient     String?      // Code comptable client
+  codeComptaFournisseur String?     // Code comptable fournisseur
+
+  // === Conditions commerciales ===
+  modePaiementId       String?
+  modePaiement         ModePaiement?      @relation("ModePaiementTiers", fields: [modePaiementId], references: [id])
+  conditionPaiementId  String?
+  conditionPaiement    ConditionPaiement? @relation("ConditionPaiementTiers", fields: [conditionPaiementId], references: [id])
+  remiseParDefaut      Float?       @default(0)   // Remise en %
+  encoursMaximum       Float?                      // Limite d'encours autorisé
+
+  // === Devises ===
+  devise          String?  @default("DZD")        // Code devise par défaut
+
+  // === Notes ===
+  notePublique    String?           // Note visible sur les documents
+  notePrivee      String?           // Note interne uniquement
+
+  // === Prospect ===
+  prospectNiveau  Int?     @default(0)  // 0=froid, 1=tiède, 2=chaud
+  prospectStatut  String?               // Statut commercial du prospect
+
+  // === Statut ===
   actif           Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  contrats      Contrat[]
-  interventions Intervention[]
-  sites         Site[]
-  siegeContacts SiegeContact[]
+  // === Relations ===
+  contrats         Contrat[]
+  interventions    Intervention[]
+  sites            Site[]
+  siegeContacts    SiegeContact[]
+  adresses         Adresse[]
+  comptesBancaires CompteBancaire[]
+
+  @@index([typeTiers])
+  @@index([code])
+  @@index([nomEntreprise])
 }
 
 model SiegeContact {
-  id        String   @id @default(uuid())
-  clientId  String
-  client    Client   @relation(fields: [clientId], references: [id])
-  nom       String
-  fonction  String
-  tel       String
-  email     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String    @id @default(uuid())
+  clientId    String
+  client      Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  // === Identité ===
+  civilite    Civilite?
+  nom         String
+  prenom      String?
+  fonction    String              // Poste/fonction dans l'entreprise
+
+  // === Coordonnées ===
+  tel         String?             // Téléphone fixe
+  telMobile   String?             // Téléphone mobile
+  fax         String?
+  email       String?
+
+  // === Informations complémentaires ===
+  dateNaissance DateTime?
+  notes       String?
+  estPrincipal Boolean  @default(false)  // Contact principal
+  actif       Boolean  @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([clientId])
+  @@index([nom])
+}
+
+// Adresses multiples pour un tiers
+model Adresse {
+  id          String      @id @default(uuid())
+  clientId    String
+  client      Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  // === Type et libellé ===
+  type        TypeAdresse @default(SITE)
+  libelle     String?               // Nom de l'adresse (ex: "Entrepôt Nord")
+
+  // === Adresse ===
+  adresse     String?
+  complement  String?               // Complément d'adresse
+  codePostal  String?
+  ville       String?
+  pays        String?     @default("Algérie")
+
+  // === Contact sur place ===
+  contactNom  String?
+  contactTel  String?
+  contactEmail String?
+
+  // === Options ===
+  estDefaut   Boolean     @default(false)  // Adresse par défaut pour ce type
+  notes       String?
+  actif       Boolean     @default(true)
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@index([clientId])
+  @@index([type])
+}
+
+// Comptes bancaires d'un tiers
+model CompteBancaire {
+  id          String   @id @default(uuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  // === Identification du compte ===
+  libelle     String               // Nom du compte (ex: "Compte principal BNA")
+  banque      String               // Nom de la banque
+  agence      String?              // Agence/domiciliation
+
+  // === RIB (format algérien/français) ===
+  codeBanque  String?              // Code banque (5 chiffres)
+  codeGuichet String?              // Code guichet (5 chiffres)
+  numeroCompte String?             // Numéro de compte
+  cleRib      String?              // Clé RIB (2 chiffres)
+
+  // === Format international ===
+  iban        String?              // IBAN complet
+  bic         String?              // BIC/SWIFT
+
+  // === Titulaire ===
+  titulaire   String?              // Nom du titulaire si différent
+
+  // === Options ===
+  devise      String?   @default("DZD")
+  estDefaut   Boolean   @default(false)  // Compte par défaut
+  actif       Boolean   @default(true)
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([clientId])
 }
@@ -138,20 +334,73 @@ model Site {
   id              String   @id @default(uuid())
   clientId        String
   client          Client   @relation(fields: [clientId], references: [id])
-  nom             String
+
+  // === Identification ===
+  code            String?           // Code site unique (ex: SITE001)
+  nom             String            // Nom du site
+
+  // === Adresse complète ===
   adresse         String?
-  contactNom      String?
-  contactFonction String?
-  tel             String?
+  complement      String?           // Complément d'adresse
+  codePostal      String?
+  ville           String?
+  pays            String?  @default("Algérie")
+
+  // === Géolocalisation ===
+  latitude        Float?
+  longitude       Float?
+
+  // === Informations pratiques ===
+  tel             String?           // Téléphone du site
+  fax             String?
   email           String?
+  horairesOuverture String?         // Ex: "Lun-Ven: 8h-17h"
+  accessibilite   String?           // Infos parking, accès, etc.
+
+  // === Notes et statut ===
   notes           String?
+  actif           Boolean  @default(true)
+
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  // === Relations ===
+  contacts        SiteContact[]     // Contacts sur ce site
   contratSites    ContratSite[]
   interventions   Intervention[]
 
   @@index([clientId])
+  @@index([code])
+  @@index([ville])
+}
+
+// Contacts spécifiques à un site d'intervention
+model SiteContact {
+  id          String    @id @default(uuid())
+  siteId      String
+  site        Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  // === Identité ===
+  civilite    Civilite?
+  nom         String
+  prenom      String?
+  fonction    String?             // Poste/fonction sur le site
+
+  // === Coordonnées ===
+  tel         String?             // Téléphone fixe
+  telMobile   String?             // Téléphone mobile
+  email       String?
+
+  // === Informations complémentaires ===
+  notes       String?
+  estPrincipal Boolean  @default(false)  // Contact principal du site
+  actif       Boolean  @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([siteId])
+  @@index([nom])
 }
 
 model Contrat {

@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   Package,
   UserCog,
+  Building2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -45,6 +46,12 @@ export function Sidebar({ stats }: SidebarProps) {
       to: '/clients',
       icon: Users,
       label: 'Clients',
+      show: true,
+    },
+    {
+      to: '/tiers',
+      icon: Building2,
+      label: 'Tiers',
       show: true,
     },
     {

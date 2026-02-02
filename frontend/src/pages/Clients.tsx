@@ -43,7 +43,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { clientsApi } from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
-import type { Client, CreateClientInput, SiteInput, SiegeContactInput } from '@/types';
+import type { Client, CreateClientInput, CreateSiteContactInput, SiteInput, SiegeContactInput } from '@/types';
 
 export function ClientsPage() {
   const queryClient = useQueryClient();
@@ -111,13 +111,23 @@ export function ClientsPage() {
       ? client.sites.map((s) => ({
           nom: s.nom,
           adresse: s.adresse,
-          contactNom: s.contactNom,
-          contactFonction: s.contactFonction,
           tel: s.tel,
           email: s.email,
           notes: s.notes,
+          contacts: s.contacts?.length
+            ? s.contacts.map((c) => ({
+                nom: c.nom,
+                prenom: c.prenom,
+                fonction: c.fonction,
+                tel: c.tel,
+                telMobile: c.telMobile,
+                email: c.email,
+                notes: c.notes,
+                estPrincipal: c.estPrincipal,
+              }))
+            : [{ nom: '', fonction: '', tel: '', email: '' }],
         }))
-      : [{ nom: '', adresse: '', contactNom: '', contactFonction: '', tel: '', email: '', notes: '' }];
+      : [{ nom: '', adresse: '', tel: '', email: '', notes: '', contacts: [{ nom: '', fonction: '', tel: '', email: '' }] }];
 
     const [sites, setSites] = useState<SiteInput[]>(defaultSites);
     const defaultSiegeContacts: SiegeContactInput[] = client?.siegeContacts?.length
@@ -139,7 +149,46 @@ export function ClientsPage() {
     };
 
     const addSite = () => {
-      setSites((prev) => [{ nom: '', adresse: '', contactNom: '', contactFonction: '', tel: '', email: '', notes: '' }, ...prev]);
+      setSites((prev) => [
+        { nom: '', adresse: '', tel: '', email: '', notes: '', contacts: [{ nom: '', fonction: '', tel: '', email: '' }] },
+        ...prev,
+      ]);
+    };
+
+    const updateSiteContact = (
+      siteIndex: number,
+      contactIndex: number,
+      field: keyof CreateSiteContactInput,
+      value: string
+    ) => {
+      setSites((prev) =>
+        prev.map((site, i) => {
+          if (i !== siteIndex) return site;
+          const contacts = site.contacts ? [...site.contacts] : [];
+          contacts[contactIndex] = { ...contacts[contactIndex], [field]: value };
+          return { ...site, contacts };
+        })
+      );
+    };
+
+    const addSiteContact = (siteIndex: number) => {
+      setSites((prev) =>
+        prev.map((site, i) => {
+          if (i !== siteIndex) return site;
+          const contacts = site.contacts ? [...site.contacts] : [];
+          return { ...site, contacts: [{ nom: '', fonction: '', tel: '', email: '' }, ...contacts] };
+        })
+      );
+    };
+
+    const removeSiteContact = (siteIndex: number, contactIndex: number) => {
+      setSites((prev) =>
+        prev.map((site, i) => {
+          if (i !== siteIndex) return site;
+          const contacts = (site.contacts || []).filter((_, cIndex) => cIndex !== contactIndex);
+          return { ...site, contacts };
+        })
+      );
     };
 
     const updateSiegeContact = (index: number, field: keyof SiegeContactInput, value: string) => {
@@ -160,10 +209,26 @@ export function ClientsPage() {
           e.preventDefault();
           const formData = new FormData(e.currentTarget);
           const filteredSites = sites
-            .map((s) => ({
-              ...s,
-              nom: s.nom.trim(),
-            }))
+            .map((s) => {
+              const contacts = (s.contacts || [])
+                .map((c) => ({
+                  ...c,
+                  nom: c.nom.trim(),
+                  prenom: c.prenom?.trim(),
+                  fonction: c.fonction?.trim(),
+                  tel: c.tel?.trim(),
+                  telMobile: c.telMobile?.trim(),
+                  email: c.email?.trim(),
+                  notes: c.notes?.trim(),
+                }))
+                .filter((c) => c.nom || c.prenom || c.fonction || c.tel || c.telMobile || c.email || c.notes);
+
+              return {
+                ...s,
+                nom: s.nom.trim(),
+                contacts: contacts.length ? contacts : [],
+              };
+            })
             .filter((s) => s.nom.length > 0);
 
           if (filteredSites.length === 0) {
@@ -394,23 +459,6 @@ export function ClientsPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Nom du contact</Label>
-                  <Input
-                    value={site.contactNom || ''}
-                    onChange={(e) => updateSite(index, 'contactNom', e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Fonction</Label>
-                  <Input
-                    value={site.contactFonction || ''}
-                    onChange={(e) => updateSite(index, 'contactFonction', e.target.value)}
-                    placeholder="Ex: Directeur Qualité"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
                   <Label>Téléphone</Label>
                   <Input
                     value={site.tel || ''}
@@ -424,6 +472,67 @@ export function ClientsPage() {
                     onChange={(e) => updateSite(index, 'email', e.target.value)}
                     type="email"
                   />
+                </div>
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>Contacts du site</Label>
+                  <Button type="button" variant="outline" size="sm" onClick={() => addSiteContact(index)}>
+                    + Ajouter contact
+                  </Button>
+                </div>
+                <div className="space-y-3">
+                  {(site.contacts || []).map((contact, contactIndex) => (
+                    <div key={contactIndex} className="rounded-lg border p-3 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium">Contact {contactIndex + 1}</p>
+                        {(site.contacts || []).length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeSiteContact(index, contactIndex)}
+                          >
+                            Supprimer
+                          </Button>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Nom</Label>
+                          <Input
+                            value={contact.nom}
+                            onChange={(e) => updateSiteContact(index, contactIndex, 'nom', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Fonction</Label>
+                          <Input
+                            value={contact.fonction || ''}
+                            onChange={(e) => updateSiteContact(index, contactIndex, 'fonction', e.target.value)}
+                            placeholder="Ex: Directeur Qualité"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Téléphone</Label>
+                          <Input
+                            value={contact.tel || ''}
+                            onChange={(e) => updateSiteContact(index, contactIndex, 'tel', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Email</Label>
+                          <Input
+                            value={contact.email || ''}
+                            onChange={(e) => updateSiteContact(index, contactIndex, 'email', e.target.value)}
+                            type="email"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
               <div className="space-y-2">
@@ -693,14 +802,23 @@ export function ClientsPage() {
                       .filter((site) => {
                         if (!siteSearch.trim()) return true;
                         const q = siteSearch.toLowerCase();
+                        const contactHaystack = (site.contacts || [])
+                          .map((contact) => [
+                            contact.nom,
+                            contact.fonction,
+                            contact.tel,
+                            contact.email,
+                          ]
+                            .filter(Boolean)
+                            .join(' '))
+                          .join(' ');
                         const haystack = [
                           site.nom,
                           site.adresse,
-                          site.contactNom,
-                          site.contactFonction,
                           site.tel,
                           site.email,
                           site.notes,
+                          contactHaystack,
                         ]
                           .filter(Boolean)
                           .join(' ')
@@ -739,12 +857,6 @@ export function ClientsPage() {
                             {isOpen && (
                               <div className="px-3 pb-3 space-y-1">
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                                  {site.contactNom && (
-                                    <div><span className="text-muted-foreground">Contact:</span> {site.contactNom}</div>
-                                  )}
-                                  {site.contactFonction && (
-                                    <div><span className="text-muted-foreground">Fonction:</span> {site.contactFonction}</div>
-                                  )}
                                   {site.tel && (
                                     <div><span className="text-muted-foreground">Téléphone:</span> {site.tel}</div>
                                   )}
@@ -752,6 +864,37 @@ export function ClientsPage() {
                                     <div><span className="text-muted-foreground">Email:</span> {site.email}</div>
                                   )}
                                 </div>
+                                {site.contacts && site.contacts.length > 0 && (
+                                  <div className="mt-3 space-y-2">
+                                    <p className="text-xs text-muted-foreground">
+                                      {site.contacts.length} contact(s) site
+                                    </p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                      {site.contacts.map((contact) => (
+                                        <div key={contact.id} className="rounded-lg border bg-muted/30 p-3">
+                                          <p className="text-sm font-semibold">{contact.nom}</p>
+                                          {contact.fonction && (
+                                            <p className="text-xs text-muted-foreground">{contact.fonction}</p>
+                                          )}
+                                          <div className="mt-2 space-y-1 text-sm">
+                                            {contact.tel && (
+                                              <div className="flex items-center justify-between">
+                                                <span className="text-muted-foreground">Téléphone</span>
+                                                <span>{contact.tel}</span>
+                                              </div>
+                                            )}
+                                            {contact.email && (
+                                              <div className="flex items-center justify-between">
+                                                <span className="text-muted-foreground">Email</span>
+                                                <span className="truncate">{contact.email}</span>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
                                 {site.notes && (
                                   <p className="text-sm text-muted-foreground">{site.notes}</p>
                                 )}

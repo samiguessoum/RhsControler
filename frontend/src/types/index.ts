@@ -295,28 +295,80 @@ export interface SiegeContactInput {
   email: string;
 }
 
-export interface Site {
+export interface SiteContact {
   id: string;
-  clientId: string;
+  siteId: string;
+  civilite?: Civilite;
   nom: string;
-  adresse?: string;
-  contactNom?: string;
-  contactFonction?: string;
+  prenom?: string;
+  fonction?: string;
   tel?: string;
+  telMobile?: string;
   email?: string;
   notes?: string;
+  estPrincipal: boolean;
+  actif: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface SiteInput {
+export interface Site {
+  id: string;
+  clientId: string;
+  code?: string;
   nom: string;
   adresse?: string;
-  contactNom?: string;
-  contactFonction?: string;
+  complement?: string;
+  codePostal?: string;
+  ville?: string;
+  pays?: string;
+  latitude?: number;
+  longitude?: number;
   tel?: string;
+  fax?: string;
+  email?: string;
+  horairesOuverture?: string;
+  accessibilite?: string;
+  notes?: string;
+  actif: boolean;
+  createdAt: string;
+  updatedAt: string;
+  contacts?: SiteContact[];
+  _count?: {
+    contratSites: number;
+    interventions: number;
+  };
+}
+
+export interface SiteInput {
+  code?: string;
+  nom: string;
+  adresse?: string;
+  complement?: string;
+  codePostal?: string;
+  ville?: string;
+  pays?: string;
+  latitude?: number;
+  longitude?: number;
+  tel?: string;
+  fax?: string;
+  email?: string;
+  horairesOuverture?: string;
+  accessibilite?: string;
+  notes?: string;
+  contacts?: CreateSiteContactInput[];
+}
+
+export interface CreateSiteContactInput {
+  civilite?: Civilite;
+  nom: string;
+  prenom?: string;
+  fonction?: string;
+  tel?: string;
+  telMobile?: string;
   email?: string;
   notes?: string;
+  estPrincipal?: boolean;
 }
 
 export interface CreateContratInput {
@@ -523,4 +575,264 @@ export interface EmployeRecap {
     totalWeekendsTravailles: number;
     joursRecupAcquis: number;
   };
+}
+
+// ============ TIERS (Dolibarr-style) ============
+export type TypeTiers = 'CLIENT' | 'FOURNISSEUR' | 'PROSPECT' | 'CLIENT_FOURNISSEUR';
+export type FormeJuridique = 'SARL' | 'EURL' | 'SPA' | 'SNC' | 'AUTO_ENTREPRENEUR' | 'ASSOCIATION' | 'PARTICULIER' | 'AUTRE';
+export type Civilite = 'M' | 'MME' | 'MLLE';
+export type TypeAdresse = 'SIEGE' | 'FACTURATION' | 'LIVRAISON' | 'SITE';
+
+export interface ModePaiement {
+  id: string;
+  code: string;
+  libelle: string;
+  actif: boolean;
+  ordre: number;
+  createdAt: string;
+}
+
+export interface ConditionPaiement {
+  id: string;
+  code: string;
+  libelle: string;
+  nbJours: number;
+  actif: boolean;
+  ordre: number;
+  createdAt: string;
+}
+
+export interface Contact {
+  id: string;
+  clientId: string;
+  civilite?: Civilite;
+  nom: string;
+  prenom?: string;
+  fonction: string;
+  tel?: string;
+  telMobile?: string;
+  fax?: string;
+  email?: string;
+  dateNaissance?: string;
+  notes?: string;
+  estPrincipal: boolean;
+  actif: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Adresse {
+  id: string;
+  clientId: string;
+  type: TypeAdresse;
+  libelle?: string;
+  adresse?: string;
+  complement?: string;
+  codePostal?: string;
+  ville?: string;
+  pays?: string;
+  contactNom?: string;
+  contactTel?: string;
+  contactEmail?: string;
+  estDefaut: boolean;
+  notes?: string;
+  actif: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CompteBancaire {
+  id: string;
+  clientId: string;
+  libelle: string;
+  banque: string;
+  agence?: string;
+  codeBanque?: string;
+  codeGuichet?: string;
+  numeroCompte?: string;
+  cleRib?: string;
+  iban?: string;
+  bic?: string;
+  titulaire?: string;
+  devise?: string;
+  estDefaut: boolean;
+  actif: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Tiers {
+  id: string;
+  code?: string;
+  nomEntreprise: string;
+  nomAlias?: string;
+  typeTiers: TypeTiers;
+
+  // Informations légales
+  formeJuridique?: FormeJuridique;
+  siegeRC?: string;
+  siegeNIF?: string;
+  siegeAI?: string;
+  siegeNIS?: string;
+  siegeTIN?: string;
+  tvaIntracom?: string;
+  capital?: number;
+  dateCreation?: string;
+
+  // Siège social
+  siegeNom: string;
+  siegeAdresse?: string;
+  siegeCodePostal?: string;
+  siegeVille?: string;
+  siegePays?: string;
+  siegeTel?: string;
+  siegeFax?: string;
+  siegeEmail?: string;
+  siegeWebsite?: string;
+  siegeNotes?: string;
+
+  // Classification
+  secteur?: string;
+  categorie?: string;
+  codeComptaClient?: string;
+  codeComptaFournisseur?: string;
+
+  // Conditions commerciales
+  modePaiementId?: string;
+  modePaiement?: ModePaiement;
+  conditionPaiementId?: string;
+  conditionPaiement?: ConditionPaiement;
+  remiseParDefaut?: number;
+  encoursMaximum?: number;
+
+  // Devises
+  devise?: string;
+
+  // Notes
+  notePublique?: string;
+  notePrivee?: string;
+
+  // Prospect
+  prospectNiveau?: number;
+  prospectStatut?: string;
+
+  // Statut
+  actif: boolean;
+  createdAt: string;
+  updatedAt: string;
+
+  // Relations
+  siegeContacts?: Contact[];
+  sites?: Site[];
+  adresses?: Adresse[];
+  comptesBancaires?: CompteBancaire[];
+  contrats?: Contrat[];
+  interventions?: Intervention[];
+
+  _count?: {
+    contrats: number;
+    interventions: number;
+    comptesBancaires: number;
+  };
+}
+
+export interface CreateTiersInput {
+  code?: string;
+  nomEntreprise: string;
+  nomAlias?: string;
+  typeTiers?: TypeTiers;
+
+  formeJuridique?: FormeJuridique;
+  siegeRC?: string;
+  siegeNIF?: string;
+  siegeAI?: string;
+  siegeNIS?: string;
+  siegeTIN?: string;
+  tvaIntracom?: string;
+  capital?: number;
+  dateCreation?: string;
+
+  siegeNom?: string;
+  siegeAdresse?: string;
+  siegeCodePostal?: string;
+  siegeVille?: string;
+  siegePays?: string;
+  siegeTel?: string;
+  siegeFax?: string;
+  siegeEmail?: string;
+  siegeWebsite?: string;
+  siegeNotes?: string;
+
+  secteur?: string;
+  categorie?: string;
+  codeComptaClient?: string;
+  codeComptaFournisseur?: string;
+
+  modePaiementId?: string;
+  conditionPaiementId?: string;
+  remiseParDefaut?: number;
+  encoursMaximum?: number;
+
+  devise?: string;
+
+  notePublique?: string;
+  notePrivee?: string;
+
+  prospectNiveau?: number;
+  prospectStatut?: string;
+
+  contacts?: CreateContactInput[];
+  sites?: SiteInput[];
+  adresses?: CreateAdresseInput[];
+  comptesBancaires?: CreateCompteBancaireInput[];
+}
+
+export interface CreateContactInput {
+  civilite?: Civilite;
+  nom: string;
+  prenom?: string;
+  fonction?: string;
+  tel?: string;
+  telMobile?: string;
+  fax?: string;
+  email?: string;
+  dateNaissance?: string;
+  notes?: string;
+  estPrincipal?: boolean;
+}
+
+export interface CreateAdresseInput {
+  type?: TypeAdresse;
+  libelle?: string;
+  adresse?: string;
+  complement?: string;
+  codePostal?: string;
+  ville?: string;
+  pays?: string;
+  contactNom?: string;
+  contactTel?: string;
+  contactEmail?: string;
+  estDefaut?: boolean;
+  notes?: string;
+}
+
+export interface CreateCompteBancaireInput {
+  libelle: string;
+  banque: string;
+  agence?: string;
+  codeBanque?: string;
+  codeGuichet?: string;
+  numeroCompte?: string;
+  cleRib?: string;
+  iban?: string;
+  bic?: string;
+  titulaire?: string;
+  devise?: string;
+  estDefaut?: boolean;
+}
+
+export interface TiersStats {
+  clients: { total: number; actifs: number };
+  fournisseurs: { total: number; actifs: number };
+  prospects: { total: number; actifs: number };
 }

@@ -253,16 +253,27 @@ export const csvService = {
         }
         const hasSiteData = row.siteNom || row.siteAdresse || row.contactNom || row.contactFonction || row.tel || row.email || row.notes;
         if (hasSiteData) {
+          const hasSiteContact = row.contactNom || row.contactFonction || row.tel || row.email;
           await prisma.site.create({
             data: {
               clientId: existing.id,
               nom: row.siteNom || 'Site',
               adresse: row.siteAdresse,
-              contactNom: row.contactNom,
-              contactFonction: row.contactFonction,
               tel: row.tel,
               email: row.email || null,
               notes: row.notes,
+              ...(hasSiteContact
+                ? {
+                    contacts: {
+                      create: [{
+                        nom: row.contactNom || 'Contact',
+                        fonction: row.contactFonction || undefined,
+                        tel: row.tel || undefined,
+                        email: row.email || undefined,
+                      }],
+                    },
+                  }
+                : {}),
             },
           });
         }
@@ -299,16 +310,27 @@ export const csvService = {
         }
         const hasSiteData = row.siteNom || row.siteAdresse || row.contactNom || row.contactFonction || row.tel || row.email || row.notes;
         if (hasSiteData) {
+          const hasSiteContact = row.contactNom || row.contactFonction || row.tel || row.email;
           await prisma.site.create({
             data: {
               clientId: createdClient.id,
               nom: row.siteNom || 'Site',
               adresse: row.siteAdresse,
-              contactNom: row.contactNom,
-              contactFonction: row.contactFonction,
               tel: row.tel,
               email: row.email || null,
               notes: row.notes,
+              ...(hasSiteContact
+                ? {
+                    contacts: {
+                      create: [{
+                        nom: row.contactNom || 'Contact',
+                        fonction: row.contactFonction || undefined,
+                        tel: row.tel || undefined,
+                        email: row.email || undefined,
+                      }],
+                    },
+                  }
+                : {}),
             },
           });
         }
@@ -529,7 +551,7 @@ export const csvService = {
   async exportClients(): Promise<string> {
     const clients = await prisma.client.findMany({
       orderBy: { nomEntreprise: 'asc' },
-      include: { sites: true, siegeContacts: true },
+      include: { sites: { include: { contacts: true } }, siegeContacts: true },
     });
 
     const rows = clients.flatMap((c) => {
@@ -563,7 +585,9 @@ export const csvService = {
         }];
       }
       const siegeContact = c.siegeContacts?.[0];
-      return c.sites.map((s) => ({
+      return c.sites.map((s) => {
+        const siteContact = s.contacts?.find((contact) => contact.estPrincipal) || s.contacts?.[0];
+        return ({
         nom_entreprise: c.nomEntreprise,
         siege_nom: c.siegeNom || '',
         siege_adresse: c.siegeAdresse || '',
@@ -582,13 +606,14 @@ export const csvService = {
         site_nom: s.nom || '',
         site_adresse: s.adresse || '',
         secteur: c.secteur || '',
-        contact_nom: s.contactNom || '',
-        contact_fonction: s.contactFonction || '',
+        contact_nom: siteContact?.nom || '',
+        contact_fonction: siteContact?.fonction || '',
         tel: s.tel || '',
         email: s.email || '',
         notes: s.notes || '',
         actif: c.actif ? 'true' : 'false',
-      }));
+        });
+      });
     });
 
     return stringify(rows, { header: true });

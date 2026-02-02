@@ -31,6 +31,19 @@ import type {
   UpdateSoldeInput,
   RHDashboard,
   EmployeRecap,
+  // Tiers
+  Tiers,
+  Contact,
+  Adresse,
+  CompteBancaire,
+  ModePaiement,
+  ConditionPaiement,
+  CreateTiersInput,
+  CreateContactInput,
+  CreateAdresseInput,
+  CreateCompteBancaireInput,
+  TiersStats,
+  TypeTiers,
 } from '@/types';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
@@ -493,6 +506,120 @@ export const rhApi = {
   // Récap employé
   getEmployeRecap: async (employeId: string, annee?: number): Promise<EmployeRecap> => {
     const { data } = await api.get(`/rh/employes/${employeId}/recap`, { params: { annee } });
+    return data;
+  },
+};
+
+// ============ TIERS ============
+export const tiersApi = {
+  // Liste et CRUD
+  list: async (params?: {
+    search?: string;
+    typeTiers?: TypeTiers;
+    actif?: boolean;
+    formeJuridique?: string;
+    secteur?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const { data } = await api.get('/tiers', { params });
+    return { tiers: data.tiers as Tiers[], pagination: data.pagination };
+  },
+
+  get: async (id: string): Promise<Tiers> => {
+    const { data } = await api.get(`/tiers/${id}`);
+    return data.tiers;
+  },
+
+  create: async (tiersData: CreateTiersInput): Promise<{ tiers: Tiers }> => {
+    const { data } = await api.post('/tiers', tiersData);
+    return data;
+  },
+
+  update: async (id: string, tiersData: Partial<CreateTiersInput & { actif: boolean }>): Promise<{ tiers: Tiers }> => {
+    const { data } = await api.put(`/tiers/${id}`, tiersData);
+    return data;
+  },
+
+  delete: async (id: string): Promise<void> => {
+    await api.delete(`/tiers/${id}`);
+  },
+
+  convertirProspect: async (id: string): Promise<{ tiers: Tiers; message: string }> => {
+    const { data } = await api.post(`/tiers/${id}/convertir`);
+    return data;
+  },
+
+  getStats: async (): Promise<TiersStats> => {
+    const { data } = await api.get('/tiers/stats');
+    return data.stats;
+  },
+
+  // Contacts
+  addContact: async (tiersId: string, contact: CreateContactInput): Promise<{ contact: Contact }> => {
+    const { data } = await api.post(`/tiers/${tiersId}/contacts`, contact);
+    return data;
+  },
+
+  updateContact: async (tiersId: string, contactId: string, contact: Partial<CreateContactInput & { actif: boolean }>): Promise<{ contact: Contact }> => {
+    const { data } = await api.put(`/tiers/${tiersId}/contacts/${contactId}`, contact);
+    return data;
+  },
+
+  deleteContact: async (tiersId: string, contactId: string): Promise<void> => {
+    await api.delete(`/tiers/${tiersId}/contacts/${contactId}`);
+  },
+
+  // Adresses
+  addAdresse: async (tiersId: string, adresse: CreateAdresseInput): Promise<{ adresse: Adresse }> => {
+    const { data } = await api.post(`/tiers/${tiersId}/adresses`, adresse);
+    return data;
+  },
+
+  updateAdresse: async (tiersId: string, adresseId: string, adresse: Partial<CreateAdresseInput & { actif: boolean }>): Promise<{ adresse: Adresse }> => {
+    const { data } = await api.put(`/tiers/${tiersId}/adresses/${adresseId}`, adresse);
+    return data;
+  },
+
+  deleteAdresse: async (tiersId: string, adresseId: string): Promise<void> => {
+    await api.delete(`/tiers/${tiersId}/adresses/${adresseId}`);
+  },
+
+  // Comptes bancaires
+  addCompteBancaire: async (tiersId: string, compte: CreateCompteBancaireInput): Promise<{ compte: CompteBancaire }> => {
+    const { data } = await api.post(`/tiers/${tiersId}/comptes-bancaires`, compte);
+    return data;
+  },
+
+  updateCompteBancaire: async (tiersId: string, compteId: string, compte: Partial<CreateCompteBancaireInput & { actif: boolean }>): Promise<{ compte: CompteBancaire }> => {
+    const { data } = await api.put(`/tiers/${tiersId}/comptes-bancaires/${compteId}`, compte);
+    return data;
+  },
+
+  deleteCompteBancaire: async (tiersId: string, compteId: string): Promise<void> => {
+    await api.delete(`/tiers/${tiersId}/comptes-bancaires/${compteId}`);
+  },
+};
+
+// ============ RÉFÉRENTIELS ============
+export const referentielsApi = {
+  getModesPaiement: async (): Promise<ModePaiement[]> => {
+    const { data } = await api.get('/modes-paiement');
+    return data.modes;
+  },
+
+  createModePaiement: async (mode: { code: string; libelle: string; ordre?: number }): Promise<{ mode: ModePaiement }> => {
+    const { data } = await api.post('/modes-paiement', mode);
+    return data;
+  },
+
+  getConditionsPaiement: async (): Promise<ConditionPaiement[]> => {
+    const { data } = await api.get('/conditions-paiement');
+    return data.conditions;
+  },
+
+  createConditionPaiement: async (condition: { code: string; libelle: string; nbJours?: number; ordre?: number }): Promise<{ condition: ConditionPaiement }> => {
+    const { data } = await api.post('/conditions-paiement', condition);
     return data;
   },
 };

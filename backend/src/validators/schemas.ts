@@ -58,6 +58,13 @@ export const updateEmployeSchema = z.object({
 });
 
 // ============ CLIENTS ============
+const clientSiteContactSchema = z.object({
+  nom: z.string().optional(),
+  fonction: z.string().optional(),
+  tel: z.string().optional(),
+  email: z.string().email('Email invalide').optional().or(z.literal('')),
+});
+
 export const createClientSchema = z.object({
   nomEntreprise: z.string().min(1, 'Nom d\'entreprise requis'),
   secteur: z.string().optional(),
@@ -80,11 +87,10 @@ export const createClientSchema = z.object({
   sites: z.array(z.object({
     nom: z.string().min(1, 'Nom du site requis'),
     adresse: z.string().optional(),
-    contactNom: z.string().optional(),
-    contactFonction: z.string().optional(),
     tel: z.string().optional(),
     email: z.string().email('Email invalide').optional().or(z.literal('')),
     notes: z.string().optional(),
+    contacts: z.array(clientSiteContactSchema).optional(),
   })).min(1, 'Au moins un site requis'),
 });
 
@@ -364,6 +370,225 @@ export const weekendTravailleQuerySchema = z.object({
 export const soldesQuerySchema = z.object({
   employeId: z.string().uuid().optional(),
   annee: z.string().transform(Number).pipe(z.number().int()).optional(),
+});
+
+// ============ TIERS (Dolibarr-style) ============
+export const typeTiersEnum = z.enum([
+  'CLIENT',
+  'FOURNISSEUR',
+  'PROSPECT',
+  'CLIENT_FOURNISSEUR',
+]);
+
+export const formeJuridiqueEnum = z.enum([
+  'SARL',
+  'EURL',
+  'SPA',
+  'SNC',
+  'AUTO_ENTREPRENEUR',
+  'ASSOCIATION',
+  'PARTICULIER',
+  'AUTRE',
+]);
+
+export const civiliteEnum = z.enum(['M', 'MME', 'MLLE']);
+
+export const typeAdresseEnum = z.enum([
+  'SIEGE',
+  'FACTURATION',
+  'LIVRAISON',
+  'SITE',
+]);
+
+const contactSchema = z.object({
+  civilite: civiliteEnum.optional(),
+  nom: z.string().min(1, 'Nom requis'),
+  prenom: z.string().optional(),
+  fonction: z.string().optional(),
+  tel: z.string().optional(),
+  telMobile: z.string().optional(),
+  fax: z.string().optional(),
+  email: z.string().email().optional().or(z.literal('')),
+  dateNaissance: z.string().optional(),
+  notes: z.string().optional(),
+  estPrincipal: z.boolean().optional(),
+});
+
+const adresseSchema = z.object({
+  type: typeAdresseEnum.optional(),
+  libelle: z.string().optional(),
+  adresse: z.string().optional(),
+  complement: z.string().optional(),
+  codePostal: z.string().optional(),
+  ville: z.string().optional(),
+  pays: z.string().optional(),
+  contactNom: z.string().optional(),
+  contactTel: z.string().optional(),
+  contactEmail: z.string().email().optional().or(z.literal('')),
+  estDefaut: z.boolean().optional(),
+  notes: z.string().optional(),
+});
+
+const compteBancaireSchema = z.object({
+  libelle: z.string().min(1, 'Libellé requis'),
+  banque: z.string().min(1, 'Nom de banque requis'),
+  agence: z.string().optional(),
+  codeBanque: z.string().optional(),
+  codeGuichet: z.string().optional(),
+  numeroCompte: z.string().optional(),
+  cleRib: z.string().optional(),
+  iban: z.string().optional(),
+  bic: z.string().optional(),
+  titulaire: z.string().optional(),
+  devise: z.string().optional(),
+  estDefaut: z.boolean().optional(),
+});
+
+// Contact de site (pour les sites d'intervention)
+const siteContactSchema = z.object({
+  civilite: civiliteEnum.optional(),
+  nom: z.string().min(1, 'Nom requis'),
+  prenom: z.string().optional(),
+  fonction: z.string().optional(),
+  tel: z.string().optional(),
+  telMobile: z.string().optional(),
+  email: z.string().email().optional().or(z.literal('')),
+  notes: z.string().optional(),
+  estPrincipal: z.boolean().optional(),
+});
+
+// Site d'intervention
+const siteSchema = z.object({
+  code: z.string().optional(),
+  nom: z.string().min(1, 'Nom du site requis'),
+  adresse: z.string().optional(),
+  complement: z.string().optional(),
+  codePostal: z.string().optional(),
+  ville: z.string().optional(),
+  pays: z.string().optional(),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
+  tel: z.string().optional(),
+  fax: z.string().optional(),
+  email: z.string().email().optional().or(z.literal('')),
+  horairesOuverture: z.string().optional(),
+  accessibilite: z.string().optional(),
+  notes: z.string().optional(),
+  contacts: z.array(siteContactSchema).optional(),
+});
+
+export const createTiersSchema = z.object({
+  // Identification
+  code: z.string().optional(),
+  nomEntreprise: z.string().min(1, 'Nom d\'entreprise requis'),
+  nomAlias: z.string().optional(),
+  typeTiers: typeTiersEnum.optional().default('CLIENT'),
+
+  // Informations légales
+  formeJuridique: formeJuridiqueEnum.optional(),
+  siegeRC: z.string().optional(),
+  siegeNIF: z.string().optional(),
+  siegeAI: z.string().optional(),
+  siegeNIS: z.string().optional(),
+  siegeTIN: z.string().optional(),
+  tvaIntracom: z.string().optional(),
+  capital: z.number().optional(),
+  dateCreation: z.string().optional(),
+
+  // Siège social
+  siegeNom: z.string().optional(),
+  siegeAdresse: z.string().optional(),
+  siegeCodePostal: z.string().optional(),
+  siegeVille: z.string().optional(),
+  siegePays: z.string().optional(),
+  siegeTel: z.string().optional(),
+  siegeFax: z.string().optional(),
+  siegeEmail: z.string().email().optional().or(z.literal('')),
+  siegeWebsite: z.string().optional(),
+  siegeNotes: z.string().optional(),
+
+  // Classification
+  secteur: z.string().optional(),
+  categorie: z.string().optional(),
+  codeComptaClient: z.string().optional(),
+  codeComptaFournisseur: z.string().optional(),
+
+  // Conditions commerciales
+  modePaiementId: z.string().uuid().optional(),
+  conditionPaiementId: z.string().uuid().optional(),
+  remiseParDefaut: z.number().min(0).max(100).optional(),
+  encoursMaximum: z.number().min(0).optional(),
+
+  // Devises
+  devise: z.string().optional(),
+
+  // Notes
+  notePublique: z.string().optional(),
+  notePrivee: z.string().optional(),
+
+  // Prospect
+  prospectNiveau: z.number().int().min(0).max(2).optional(),
+  prospectStatut: z.string().optional(),
+
+  // Relations
+  contacts: z.array(contactSchema).optional(),
+  sites: z.array(siteSchema).optional(),
+  adresses: z.array(adresseSchema).optional(),
+  comptesBancaires: z.array(compteBancaireSchema).optional(),
+});
+
+export const updateTiersSchema = createTiersSchema.partial().extend({
+  actif: z.boolean().optional(),
+});
+
+export const createContactSchema = contactSchema;
+export const updateContactSchema = contactSchema.partial().extend({
+  actif: z.boolean().optional(),
+});
+
+export const createAdresseSchema = adresseSchema.extend({
+  type: typeAdresseEnum.optional(),
+});
+export const updateAdresseSchema = adresseSchema.partial().extend({
+  actif: z.boolean().optional(),
+});
+
+export const createCompteBancaireSchema = compteBancaireSchema;
+export const updateCompteBancaireSchema = compteBancaireSchema.partial().extend({
+  actif: z.boolean().optional(),
+});
+
+// Site schemas
+export const createSiteSchema = siteSchema;
+export const updateSiteSchema = siteSchema.partial().extend({
+  actif: z.boolean().optional(),
+});
+
+// Site contact schemas
+export const createSiteContactSchema = siteContactSchema;
+export const updateSiteContactSchema = siteContactSchema.partial().extend({
+  actif: z.boolean().optional(),
+});
+
+export const createModePaiementSchema = z.object({
+  code: z.string().min(1, 'Code requis'),
+  libelle: z.string().min(1, 'Libellé requis'),
+  ordre: z.number().int().optional(),
+});
+
+export const createConditionPaiementSchema = z.object({
+  code: z.string().min(1, 'Code requis'),
+  libelle: z.string().min(1, 'Libellé requis'),
+  nbJours: z.number().int().min(0).optional(),
+  ordre: z.number().int().optional(),
+});
+
+export const tiersQuerySchema = paginationSchema.extend({
+  search: z.string().optional(),
+  typeTiers: typeTiersEnum.optional(),
+  actif: z.string().transform((v) => v === 'true').optional(),
+  formeJuridique: formeJuridiqueEnum.optional(),
+  secteur: z.string().optional(),
 });
 
 // Types exports

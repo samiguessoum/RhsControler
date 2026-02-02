@@ -27,6 +27,22 @@ import {
   approuverCongeSchema,
   createWeekendTravailleSchema,
   updateSoldeSchema,
+  // Tiers
+  createTiersSchema,
+  updateTiersSchema,
+  createContactSchema,
+  updateContactSchema,
+  createAdresseSchema,
+  updateAdresseSchema,
+  createCompteBancaireSchema,
+  updateCompteBancaireSchema,
+  createModePaiementSchema,
+  createConditionPaiementSchema,
+  // Sites
+  createSiteSchema,
+  updateSiteSchema,
+  createSiteContactSchema,
+  updateSiteContactSchema,
 } from '../validators/schemas.js';
 
 import authController from '../controllers/auth.controller.js';
@@ -41,6 +57,7 @@ import dashboardController from '../controllers/dashboard.controller.js';
 import importExportController from '../controllers/import-export.controller.js';
 import stockController from '../controllers/stock.controller.js';
 import rhController from '../controllers/rh.controller.js';
+import tiersController from '../controllers/tiers.controller.js';
 
 const router = Router();
 
@@ -153,5 +170,49 @@ router.put('/rh/soldes', authMiddleware, canDo('manageRH'), validate(updateSolde
 
 // Récap employé
 router.get('/rh/employes/:id/recap', authMiddleware, canDo('viewRH'), rhController.getEmployeRecap);
+
+// ============ TIERS (Dolibarr-style) ============
+router.get('/tiers/stats', authMiddleware, tiersController.getStats);
+router.get('/tiers', authMiddleware, tiersController.list);
+router.get('/tiers/:id', authMiddleware, tiersController.get);
+router.post('/tiers', authMiddleware, canDo('createClient'), validate(createTiersSchema), tiersController.create);
+router.put('/tiers/:id', authMiddleware, canDo('editClient'), validate(updateTiersSchema), tiersController.update);
+router.delete('/tiers/:id', authMiddleware, canDo('deleteClient'), tiersController.delete);
+router.post('/tiers/:id/convertir', authMiddleware, canDo('editClient'), tiersController.convertirProspect);
+
+// Contacts d'un tiers
+router.post('/tiers/:id/contacts', authMiddleware, canDo('editClient'), validate(createContactSchema), tiersController.addContact);
+router.put('/tiers/:tiersId/contacts/:id', authMiddleware, canDo('editClient'), validate(updateContactSchema), tiersController.updateContact);
+router.delete('/tiers/:tiersId/contacts/:id', authMiddleware, canDo('editClient'), tiersController.deleteContact);
+
+// Adresses d'un tiers
+router.post('/tiers/:id/adresses', authMiddleware, canDo('editClient'), validate(createAdresseSchema), tiersController.addAdresse);
+router.put('/tiers/:tiersId/adresses/:id', authMiddleware, canDo('editClient'), validate(updateAdresseSchema), tiersController.updateAdresse);
+router.delete('/tiers/:tiersId/adresses/:id', authMiddleware, canDo('editClient'), tiersController.deleteAdresse);
+
+// Comptes bancaires d'un tiers
+router.post('/tiers/:id/comptes-bancaires', authMiddleware, canDo('editClient'), validate(createCompteBancaireSchema), tiersController.addCompteBancaire);
+router.put('/tiers/:tiersId/comptes-bancaires/:id', authMiddleware, canDo('editClient'), validate(updateCompteBancaireSchema), tiersController.updateCompteBancaire);
+router.delete('/tiers/:tiersId/comptes-bancaires/:id', authMiddleware, canDo('editClient'), tiersController.deleteCompteBancaire);
+
+// Sites d'un tiers
+router.get('/tiers/:id/sites', authMiddleware, tiersController.listSites);
+router.post('/tiers/:id/sites', authMiddleware, canDo('editClient'), validate(createSiteSchema), tiersController.addSite);
+
+// Sites (routes directes)
+router.get('/sites/:id', authMiddleware, tiersController.getSite);
+router.put('/sites/:id', authMiddleware, canDo('editClient'), validate(updateSiteSchema), tiersController.updateSite);
+router.delete('/sites/:id', authMiddleware, canDo('editClient'), tiersController.deleteSite);
+
+// Contacts d'un site
+router.post('/sites/:id/contacts', authMiddleware, canDo('editClient'), validate(createSiteContactSchema), tiersController.addSiteContact);
+router.put('/sites/:siteId/contacts/:id', authMiddleware, canDo('editClient'), validate(updateSiteContactSchema), tiersController.updateSiteContact);
+router.delete('/sites/:siteId/contacts/:id', authMiddleware, canDo('editClient'), tiersController.deleteSiteContact);
+
+// Référentiels
+router.get('/modes-paiement', authMiddleware, tiersController.listModesPaiement);
+router.post('/modes-paiement', authMiddleware, canDo('manageSettings'), validate(createModePaiementSchema), tiersController.createModePaiement);
+router.get('/conditions-paiement', authMiddleware, tiersController.listConditionsPaiement);
+router.post('/conditions-paiement', authMiddleware, canDo('manageSettings'), validate(createConditionPaiementSchema), tiersController.createConditionPaiement);
 
 export default router;

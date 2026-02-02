@@ -82,7 +82,6 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Checkbox } from '@/components/ui/checkbox';
 import {
   Sheet,
   SheetContent,
@@ -1074,7 +1073,9 @@ function InterventionDetailDialog({
   // Variables dérivées (après le early return car elles utilisent intervention)
   const site = intervention.site || intervention.client?.sites?.[0];
   const clientContacts = intervention.client?.siegeContacts || [];
-  const hasSiteContact = !!(site?.contactNom || site?.contactFonction || site?.tel || site?.email);
+  const siteContacts = site?.contacts || [];
+  const hasSiteContact = siteContacts.length > 0;
+  const principalSiteContact = siteContacts.find((c) => c.estPrincipal) || siteContacts[0];
   const typeLabel = getInterventionTypeLabel(intervention.type);
   const typeBadgeClass = getInterventionTypeBadgeClass(intervention.type);
 
@@ -1222,35 +1223,37 @@ function InterventionDetailDialog({
                 </div>
 
                 <div className="rounded-md border bg-gray-50 p-3">
-                  <p className="text-xs font-semibold text-muted-foreground mb-2">Contact site</p>
+                  <p className="text-xs font-semibold text-muted-foreground mb-2">Contacts site</p>
                   {!hasSiteContact ? (
                     <p className="text-xs text-muted-foreground">Aucun contact site</p>
                   ) : (
-                    <div className="space-y-1">
-                      {site?.contactNom && (
-                        <p className="font-medium">
-                          {site.contactNom}
-                          {site.contactFonction && (
-                            <span className="text-muted-foreground"> • {site.contactFonction}</span>
-                          )}
-                        </p>
-                      )}
-                      {(site?.tel || site?.email) && (
-                        <div className="flex flex-col gap-1 text-muted-foreground">
-                          {site?.tel && (
-                            <span className="flex items-center gap-2">
-                              <Phone className="h-3 w-3" />
-                              <a href={`tel:${site.tel}`} className="hover:underline">{site.tel}</a>
-                            </span>
-                          )}
-                          {site?.email && (
-                            <span className="flex items-center gap-2">
-                              <Mail className="h-3 w-3" />
-                              <a href={`mailto:${site.email}`} className="hover:underline">{site.email}</a>
-                            </span>
+                    <div className="space-y-3">
+                      {siteContacts.map((contact) => (
+                        <div key={contact.id} className="space-y-1">
+                          <p className="font-medium">
+                            {contact.nom}
+                            {contact.fonction && (
+                              <span className="text-muted-foreground"> • {contact.fonction}</span>
+                            )}
+                          </p>
+                          {(contact.tel || contact.email) && (
+                            <div className="flex flex-col gap-1 text-muted-foreground">
+                              {contact.tel && (
+                                <span className="flex items-center gap-2">
+                                  <Phone className="h-3 w-3" />
+                                  <a href={`tel:${contact.tel}`} className="hover:underline">{contact.tel}</a>
+                                </span>
+                              )}
+                              {contact.email && (
+                                <span className="flex items-center gap-2">
+                                  <Mail className="h-3 w-3" />
+                                  <a href={`mailto:${contact.email}`} className="hover:underline">{contact.email}</a>
+                                </span>
+                              )}
+                            </div>
                           )}
                         </div>
-                      )}
+                      ))}
                     </div>
                   )}
                 </div>
@@ -1272,12 +1275,12 @@ function InterventionDetailDialog({
                   {site.adresse && (
                     <p className="text-muted-foreground">{site.adresse}</p>
                   )}
-                  {site.contactNom && (
+                  {principalSiteContact && (
                     <p className="flex items-center gap-2">
                       <User className="h-3 w-3" />
-                      {site.contactNom}
-                      {site.contactFonction && (
-                        <span className="text-muted-foreground">({site.contactFonction})</span>
+                      {principalSiteContact.nom}
+                      {principalSiteContact.fonction && (
+                        <span className="text-muted-foreground">({principalSiteContact.fonction})</span>
                       )}
                     </p>
                   )}
@@ -2614,7 +2617,7 @@ export function PlanningPage() {
       id: string;
       options: { notesTerrain?: string; creerProchaine?: boolean; dateRealisee?: string };
     }) => interventionsApi.realiser(id, options),
-    onSuccess: (data, variables) => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['interventions'] });
       queryClient.refetchQueries({ queryKey: ['interventions'] });
       // Invalider TOUTES les queries d'interventions individuelles
