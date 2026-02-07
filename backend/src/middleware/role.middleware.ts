@@ -90,6 +90,13 @@ export const permissions = {
   // RH
   viewRH: [Role.DIRECTION, Role.PLANNING],
   manageRH: [Role.DIRECTION],
+
+  // Commerce
+  manageCommerce: [Role.DIRECTION, Role.PLANNING],
+
+  // Facturation
+  viewFacturation: [Role.DIRECTION, Role.PLANNING],
+  manageFacturation: [Role.DIRECTION, Role.PLANNING],
 };
 
 export function canDo(action: keyof typeof permissions) {

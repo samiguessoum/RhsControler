@@ -43,6 +43,40 @@ import {
   updateSiteSchema,
   createSiteContactSchema,
   updateSiteContactSchema,
+  // Produits/Services (Dolibarr-style)
+  createProduitServiceSchema,
+  updateProduitServiceSchema,
+  createCategorieProduitSchema,
+  updateCategorieProduitSchema,
+  createEntrepotSchema,
+  updateEntrepotSchema,
+  createPrixFournisseurSchema,
+  updatePrixFournisseurSchema,
+  createPrixClientSchema,
+  updatePrixClientSchema,
+  createMouvementProduitServiceSchema,
+  // Commerce
+  createDevisSchema,
+  updateDevisSchema,
+  createCommandeSchema,
+  updateCommandeSchema,
+  createFactureSchema,
+  updateFactureSchema,
+  createPaiementSchema,
+  createFactureRelanceSchema,
+  // Commandes Fournisseurs
+  createCommandeFournisseurSchema,
+  updateCommandeFournisseurSchema,
+  receptionCommandeFournisseurSchema,
+  // Facturation
+  createFactureFournisseurSchema,
+  updateFactureFournisseurSchema,
+  createPaiementFournisseurSchema,
+  createChargeSchema,
+  updateChargeSchema,
+  createPaiementChargeSchema,
+  createPaiementDiversSchema,
+  updatePaiementDiversSchema,
 } from '../validators/schemas.js';
 
 import authController from '../controllers/auth.controller.js';
@@ -58,6 +92,13 @@ import importExportController from '../controllers/import-export.controller.js';
 import stockController from '../controllers/stock.controller.js';
 import rhController from '../controllers/rh.controller.js';
 import tiersController from '../controllers/tiers.controller.js';
+import produitsServicesController from '../controllers/produits-services.controller.js';
+import commerceController from '../controllers/commerce.controller.js';
+import commandeFournisseurController from '../controllers/commande-fournisseur.controller.js';
+import factureFournisseurController from '../controllers/facture-fournisseur.controller.js';
+import chargeController from '../controllers/charge.controller.js';
+import paiementDiversController from '../controllers/paiement-divers.controller.js';
+import facturationStatsController from '../controllers/facturation-stats.controller.js';
 
 const router = Router();
 
@@ -214,5 +255,124 @@ router.get('/modes-paiement', authMiddleware, tiersController.listModesPaiement)
 router.post('/modes-paiement', authMiddleware, canDo('manageSettings'), validate(createModePaiementSchema), tiersController.createModePaiement);
 router.get('/conditions-paiement', authMiddleware, tiersController.listConditionsPaiement);
 router.post('/conditions-paiement', authMiddleware, canDo('manageSettings'), validate(createConditionPaiementSchema), tiersController.createConditionPaiement);
+
+// ============ PRODUITS/SERVICES (Dolibarr-style) ============
+router.get('/produits-services/stats', authMiddleware, produitsServicesController.getStats);
+router.get('/produits-services/alertes', authMiddleware, produitsServicesController.getAlertes);
+router.get('/produits-services', authMiddleware, produitsServicesController.list);
+router.get('/produits-services/:id', authMiddleware, produitsServicesController.get);
+router.post('/produits-services', authMiddleware, canDo('manageStock'), validate(createProduitServiceSchema), produitsServicesController.create);
+router.put('/produits-services/:id', authMiddleware, canDo('manageStock'), validate(updateProduitServiceSchema), produitsServicesController.update);
+router.delete('/produits-services/:id', authMiddleware, canDo('manageStock'), produitsServicesController.delete);
+router.post('/produits-services/:id/mouvement', authMiddleware, canDo('manageStock'), validate(createMouvementProduitServiceSchema), produitsServicesController.createMouvementProduitService);
+
+// Catégories de produits
+router.get('/categories-produits', authMiddleware, produitsServicesController.listCategories);
+router.get('/categories-produits/:id', authMiddleware, produitsServicesController.getCategorie);
+router.post('/categories-produits', authMiddleware, canDo('manageStock'), validate(createCategorieProduitSchema), produitsServicesController.createCategorie);
+router.put('/categories-produits/:id', authMiddleware, canDo('manageStock'), validate(updateCategorieProduitSchema), produitsServicesController.updateCategorie);
+router.delete('/categories-produits/:id', authMiddleware, canDo('manageStock'), produitsServicesController.deleteCategorie);
+
+// Entrepôts
+router.get('/entrepots', authMiddleware, produitsServicesController.listEntrepots);
+router.get('/entrepots/:id', authMiddleware, produitsServicesController.getEntrepot);
+router.post('/entrepots', authMiddleware, canDo('manageStock'), validate(createEntrepotSchema), produitsServicesController.createEntrepot);
+router.put('/entrepots/:id', authMiddleware, canDo('manageStock'), validate(updateEntrepotSchema), produitsServicesController.updateEntrepot);
+router.delete('/entrepots/:id', authMiddleware, canDo('manageStock'), produitsServicesController.deleteEntrepot);
+
+// Prix fournisseurs
+router.get('/prix-fournisseurs', authMiddleware, produitsServicesController.listPrixFournisseurs);
+router.post('/prix-fournisseurs', authMiddleware, canDo('manageStock'), validate(createPrixFournisseurSchema), produitsServicesController.createPrixFournisseur);
+router.put('/prix-fournisseurs/:id', authMiddleware, canDo('manageStock'), validate(updatePrixFournisseurSchema), produitsServicesController.updatePrixFournisseur);
+router.delete('/prix-fournisseurs/:id', authMiddleware, canDo('manageStock'), produitsServicesController.deletePrixFournisseur);
+
+// Prix clients
+router.get('/prix-clients', authMiddleware, produitsServicesController.listPrixClients);
+router.post('/prix-clients', authMiddleware, canDo('manageStock'), validate(createPrixClientSchema), produitsServicesController.createPrixClient);
+router.put('/prix-clients/:id', authMiddleware, canDo('manageStock'), validate(updatePrixClientSchema), produitsServicesController.updatePrixClient);
+router.delete('/prix-clients/:id', authMiddleware, canDo('manageStock'), produitsServicesController.deletePrixClient);
+
+// ============ COMMERCE (Dolibarr-style) ============
+// Devis
+router.get('/commerce/devis', authMiddleware, commerceController.listDevis);
+router.get('/commerce/devis/:id', authMiddleware, commerceController.getDevis);
+router.get('/commerce/devis/:id/pdf', authMiddleware, commerceController.exportDevisPDF);
+router.post('/commerce/devis', authMiddleware, canDo('manageCommerce'), validate(createDevisSchema), commerceController.createDevis);
+router.put('/commerce/devis/:id', authMiddleware, canDo('manageCommerce'), validate(updateDevisSchema), commerceController.updateDevis);
+router.delete('/commerce/devis/:id', authMiddleware, canDo('manageCommerce'), commerceController.deleteDevis);
+router.post('/commerce/devis/:id/convertir-commande', authMiddleware, canDo('manageCommerce'), commerceController.convertirDevisCommande);
+
+// Commandes
+router.get('/commerce/commandes', authMiddleware, commerceController.listCommandes);
+router.get('/commerce/commandes/:id', authMiddleware, commerceController.getCommande);
+router.get('/commerce/commandes/:id/pdf', authMiddleware, commerceController.exportCommandePDF);
+router.post('/commerce/commandes', authMiddleware, canDo('manageCommerce'), validate(createCommandeSchema), commerceController.createCommande);
+router.put('/commerce/commandes/:id', authMiddleware, canDo('manageCommerce'), validate(updateCommandeSchema), commerceController.updateCommande);
+router.delete('/commerce/commandes/:id', authMiddleware, canDo('manageCommerce'), commerceController.deleteCommande);
+router.post('/commerce/commandes/:id/convertir-facture', authMiddleware, canDo('manageCommerce'), commerceController.convertirCommandeFacture);
+
+// Factures
+router.get('/commerce/factures', authMiddleware, commerceController.listFactures);
+router.get('/commerce/factures/:id', authMiddleware, commerceController.getFacture);
+router.get('/commerce/factures/:id/pdf', authMiddleware, commerceController.exportFacturePDF);
+router.post('/commerce/factures', authMiddleware, canDo('manageCommerce'), validate(createFactureSchema), commerceController.createFacture);
+router.put('/commerce/factures/:id', authMiddleware, canDo('manageCommerce'), validate(updateFactureSchema), commerceController.updateFacture);
+router.delete('/commerce/factures/:id', authMiddleware, canDo('manageCommerce'), commerceController.deleteFacture);
+router.get('/commerce/factures/:id/relances', authMiddleware, canDo('manageCommerce'), commerceController.listRelances);
+router.post('/commerce/factures/:id/relances', authMiddleware, canDo('manageCommerce'), validate(createFactureRelanceSchema), commerceController.createRelance);
+
+// Paiements
+router.post('/commerce/paiements', authMiddleware, canDo('manageCommerce'), validate(createPaiementSchema), commerceController.createPaiement);
+router.delete('/commerce/paiements/:id', authMiddleware, canDo('manageCommerce'), commerceController.deletePaiement);
+
+// ============ COMMANDES FOURNISSEURS ============
+router.get('/commandes-fournisseurs', authMiddleware, commandeFournisseurController.list);
+router.get('/commandes-fournisseurs/:id', authMiddleware, commandeFournisseurController.get);
+router.get('/commandes-fournisseurs/:id/pdf', authMiddleware, commandeFournisseurController.exportPDF);
+router.post('/commandes-fournisseurs', authMiddleware, canDo('manageCommerce'), validate(createCommandeFournisseurSchema), commandeFournisseurController.create);
+router.put('/commandes-fournisseurs/:id', authMiddleware, canDo('manageCommerce'), validate(updateCommandeFournisseurSchema), commandeFournisseurController.update);
+router.delete('/commandes-fournisseurs/:id', authMiddleware, canDo('manageCommerce'), commandeFournisseurController.delete);
+router.post('/commandes-fournisseurs/:id/reception', authMiddleware, canDo('manageCommerce'), validate(receptionCommandeFournisseurSchema), commandeFournisseurController.reception);
+
+// ============ FACTURATION ============
+// Factures fournisseurs
+router.get('/factures-fournisseurs', authMiddleware, canDo('viewFacturation'), factureFournisseurController.list);
+router.get('/factures-fournisseurs/:id', authMiddleware, canDo('viewFacturation'), factureFournisseurController.get);
+router.get('/factures-fournisseurs/:id/pdf', authMiddleware, canDo('viewFacturation'), factureFournisseurController.exportPDF);
+router.post('/factures-fournisseurs', authMiddleware, canDo('manageFacturation'), validate(createFactureFournisseurSchema), factureFournisseurController.create);
+router.put('/factures-fournisseurs/:id', authMiddleware, canDo('manageFacturation'), validate(updateFactureFournisseurSchema), factureFournisseurController.update);
+router.delete('/factures-fournisseurs/:id', authMiddleware, canDo('manageFacturation'), factureFournisseurController.delete);
+router.post('/factures-fournisseurs/:id/paiements', authMiddleware, canDo('manageFacturation'), validate(createPaiementFournisseurSchema), factureFournisseurController.createPaiement);
+router.delete('/factures-fournisseurs/:id/paiements/:paiementId', authMiddleware, canDo('manageFacturation'), factureFournisseurController.deletePaiement);
+router.post('/factures-fournisseurs/convertir-commande/:commandeId', authMiddleware, canDo('manageFacturation'), factureFournisseurController.convertirFromCommande);
+
+// Charges
+router.get('/charges/categories', authMiddleware, canDo('viewFacturation'), chargeController.getCategories);
+router.get('/charges/stats', authMiddleware, canDo('viewFacturation'), chargeController.getStatsByType);
+router.get('/charges', authMiddleware, canDo('viewFacturation'), chargeController.list);
+router.get('/charges/:id', authMiddleware, canDo('viewFacturation'), chargeController.get);
+router.post('/charges', authMiddleware, canDo('manageFacturation'), validate(createChargeSchema), chargeController.create);
+router.put('/charges/:id', authMiddleware, canDo('manageFacturation'), validate(updateChargeSchema), chargeController.update);
+router.delete('/charges/:id', authMiddleware, canDo('manageFacturation'), chargeController.delete);
+router.post('/charges/:id/paiements', authMiddleware, canDo('manageFacturation'), validate(createPaiementChargeSchema), chargeController.createPaiement);
+router.delete('/charges/:id/paiements/:paiementId', authMiddleware, canDo('manageFacturation'), chargeController.deletePaiement);
+router.post('/charges/:id/annuler', authMiddleware, canDo('manageFacturation'), chargeController.annuler);
+
+// Paiements divers
+router.get('/paiements-divers/categories', authMiddleware, canDo('viewFacturation'), paiementDiversController.getCategories);
+router.get('/paiements-divers/stats', authMiddleware, canDo('viewFacturation'), paiementDiversController.getStats);
+router.get('/paiements-divers', authMiddleware, canDo('viewFacturation'), paiementDiversController.list);
+router.get('/paiements-divers/:id', authMiddleware, canDo('viewFacturation'), paiementDiversController.get);
+router.post('/paiements-divers', authMiddleware, canDo('manageFacturation'), validate(createPaiementDiversSchema), paiementDiversController.create);
+router.put('/paiements-divers/:id', authMiddleware, canDo('manageFacturation'), validate(updatePaiementDiversSchema), paiementDiversController.update);
+router.delete('/paiements-divers/:id', authMiddleware, canDo('manageFacturation'), paiementDiversController.delete);
+
+// Statistiques facturation
+router.get('/facturation/stats/global', authMiddleware, canDo('viewFacturation'), facturationStatsController.getGlobalStats);
+router.get('/facturation/stats/tva', authMiddleware, canDo('viewFacturation'), facturationStatsController.getTVASummary);
+router.get('/facturation/stats/marges', authMiddleware, canDo('viewFacturation'), facturationStatsController.getMarges);
+router.get('/facturation/stats/commandes-facturables', authMiddleware, canDo('viewFacturation'), facturationStatsController.getCommandesFacturables);
+router.get('/facturation/stats/tresorerie', authMiddleware, canDo('viewFacturation'), facturationStatsController.getTresorerie);
+router.get('/facturation/stats/retards', authMiddleware, canDo('viewFacturation'), facturationStatsController.getFacturesEnRetard);
 
 export default router;

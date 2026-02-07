@@ -836,3 +836,788 @@ export interface TiersStats {
   fournisseurs: { total: number; actifs: number };
   prospects: { total: number; actifs: number };
 }
+
+// ============ PRODUITS/SERVICES (Dolibarr-style) ============
+export type TypeProduit = 'PRODUIT' | 'SERVICE';
+export type NatureProduit = 'MATIERE_PREMIERE' | 'PRODUIT_FINI' | 'PRODUIT_SEMI_FINI' | 'CONSOMMABLE' | 'PIECE_DETACHEE' | 'AUTRE';
+export type TypeMouvementPS = 'ENTREE' | 'SORTIE' | 'AJUSTEMENT' | 'TRANSFERT' | 'INVENTAIRE';
+
+// Catégorie de produit
+export interface CategorieProduit {
+  id: string;
+  code?: string;
+  nom: string;
+  description?: string;
+  parentId?: string;
+  parent?: { id: string; nom: string };
+  enfants?: CategorieProduit[];
+  couleur?: string;
+  icone?: string;
+  ordre: number;
+  actif: boolean;
+  createdAt: string;
+  updatedAt: string;
+  _count?: {
+    produits: number;
+    enfants: number;
+  };
+}
+
+// Entrepôt
+export interface Entrepot {
+  id: string;
+  code: string;
+  nom: string;
+  description?: string;
+  adresse?: string;
+  codePostal?: string;
+  ville?: string;
+  pays?: string;
+  responsable?: string;
+  tel?: string;
+  email?: string;
+  estDefaut: boolean;
+  actif: boolean;
+  createdAt: string;
+  updatedAt: string;
+  _count?: {
+    stocks: number;
+  };
+}
+
+// Stock par entrepôt
+export interface StockEntrepot {
+  id: string;
+  produitId: string;
+  entrepotId: string;
+  entrepot?: { id: string; code: string; nom: string };
+  quantite: number;
+  emplacement?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Produit/Service
+export interface ProduitService {
+  id: string;
+  reference: string;
+  codeBarres?: string;
+  nom: string;
+  description?: string;
+  descriptionLongue?: string;
+
+  type: TypeProduit;
+  nature?: NatureProduit;
+
+  unite: string;
+  uniteAchat?: string;
+  ratioUnites?: number;
+
+  prixVenteHT?: number;
+  tauxTVA?: number;
+  prixVenteTTC?: number;
+  prixAchatHT?: number;
+  margeParDefaut?: number;
+
+  aStock: boolean;
+  quantite: number;
+  stockMinimum: number;
+  stockMaximum?: number;
+  lotSuivi: boolean;
+  dlcSuivi: boolean;
+
+  dureeService?: number;
+
+  fournisseurId?: string;
+  fournisseur?: { id: string; nomEntreprise: string; code?: string };
+  delaiLivraison?: number;
+
+  marque?: string;
+  modele?: string;
+  poids?: number;
+  longueur?: number;
+  largeur?: number;
+  hauteur?: number;
+
+  compteVente?: string;
+  compteAchat?: string;
+
+  notePublique?: string;
+  notePrivee?: string;
+  urlExterne?: string;
+
+  enVente: boolean;
+  enAchat: boolean;
+  actif: boolean;
+  createdAt: string;
+  updatedAt: string;
+
+  categories?: {
+    categorie: { id: string; nom: string; couleur?: string };
+  }[];
+  prixFournisseurs?: PrixFournisseur[];
+  prixClients?: PrixClient[];
+  stocks?: StockEntrepot[];
+  lots?: LotProduit[];
+  mouvements?: MouvementStockPS[];
+
+  _count?: {
+    prixFournisseurs: number;
+    prixClients: number;
+    stocks: number;
+  };
+}
+
+// Prix fournisseur
+export interface PrixFournisseur {
+  id: string;
+  produitId: string;
+  produit?: { id: string; reference: string; nom: string };
+  fournisseurId: string;
+  fournisseur?: { id: string; nomEntreprise: string; code?: string };
+  refFournisseur?: string;
+  prixAchatHT: number;
+  remise?: number;
+  quantiteMin?: number;
+  delaiLivraison?: number;
+  dateDebut?: string;
+  dateFin?: string;
+  estDefaut: boolean;
+  notes?: string;
+  actif: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Prix client
+export interface PrixClient {
+  id: string;
+  produitId: string;
+  produit?: { id: string; reference: string; nom: string };
+  clientId: string;
+  client?: { id: string; nomEntreprise: string; code?: string };
+  prixVenteHT: number;
+  remise?: number;
+  quantiteMin?: number;
+  dateDebut?: string;
+  dateFin?: string;
+  notes?: string;
+  actif: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Lot de produit
+export interface LotProduit {
+  id: string;
+  produitId: string;
+  numeroLot: string;
+  quantite: number;
+  datePeremption?: string;
+  dateFabrication?: string;
+  notes?: string;
+  actif: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Mouvement de stock (nouveau modèle)
+export interface MouvementStockPS {
+  id: string;
+  produitServiceId?: string;
+  produitService?: { id: string; reference: string; nom: string; unite: string };
+  entrepotId?: string;
+  entrepot?: { id: string; code: string; nom: string };
+  entrepotDestId?: string;
+  type: TypeMouvementPS;
+  quantite: number;
+  quantiteAvant: number;
+  quantiteApres: number;
+  motif?: string;
+  numeroLot?: string;
+  interventionId?: string;
+  userId: string;
+  user?: { id: string; nom: string; prenom: string };
+  createdAt: string;
+}
+
+// Inputs
+export interface CreateProduitServiceInput {
+  reference: string;
+  codeBarres?: string;
+  nom: string;
+  description?: string;
+  descriptionLongue?: string;
+  type?: TypeProduit;
+  nature?: NatureProduit;
+  unite?: string;
+  uniteAchat?: string;
+  ratioUnites?: number;
+  prixVenteHT?: number;
+  tauxTVA?: number;
+  prixAchatHT?: number;
+  margeParDefaut?: number;
+  aStock?: boolean;
+  quantite?: number;
+  stockMinimum?: number;
+  stockMaximum?: number;
+  lotSuivi?: boolean;
+  dlcSuivi?: boolean;
+  dureeService?: number;
+  fournisseurId?: string;
+  delaiLivraison?: number;
+  marque?: string;
+  modele?: string;
+  poids?: number;
+  longueur?: number;
+  largeur?: number;
+  hauteur?: number;
+  compteVente?: string;
+  compteAchat?: string;
+  notePublique?: string;
+  notePrivee?: string;
+  urlExterne?: string;
+  enVente?: boolean;
+  enAchat?: boolean;
+  categorieIds?: string[];
+}
+
+export interface CreateCategorieProduitInput {
+  code?: string;
+  nom: string;
+  description?: string;
+  parentId?: string;
+  couleur?: string;
+  icone?: string;
+  ordre?: number;
+}
+
+export interface CreateEntrepotInput {
+  code: string;
+  nom: string;
+  description?: string;
+  adresse?: string;
+  codePostal?: string;
+  ville?: string;
+  pays?: string;
+  responsable?: string;
+  tel?: string;
+  email?: string;
+  estDefaut?: boolean;
+}
+
+export interface CreatePrixFournisseurInput {
+  produitId: string;
+  fournisseurId: string;
+  refFournisseur?: string;
+  prixAchatHT: number;
+  remise?: number;
+  quantiteMin?: number;
+  delaiLivraison?: number;
+  dateDebut?: string;
+  dateFin?: string;
+  estDefaut?: boolean;
+  notes?: string;
+}
+
+export interface CreatePrixClientInput {
+  produitId: string;
+  clientId: string;
+  prixVenteHT: number;
+  remise?: number;
+  quantiteMin?: number;
+  dateDebut?: string;
+  dateFin?: string;
+  notes?: string;
+}
+
+export interface CreateMouvementPSInput {
+  type: TypeMouvementPS;
+  quantite: number;
+  entrepotId?: string;
+  entrepotDestId?: string;
+  motif?: string;
+  numeroLot?: string;
+  interventionId?: string;
+}
+
+// Stats
+export interface ProduitsServicesStats {
+  totalProduits: number;
+  totalServices: number;
+  produitsActifs: number;
+  servicesActifs: number;
+  stockBas: number;
+  totalCategories: number;
+  totalEntrepots: number;
+  mouvementsRecents: number;
+}
+
+export interface ProduitServiceAlerte extends ProduitService {
+  deficit: number;
+}
+
+// ============ COMMERCE ============
+
+export type DevisStatut = 'BROUILLON' | 'VALIDE' | 'SIGNE' | 'REFUSE' | 'EXPIRE' | 'ANNULE';
+export type CommandeStatut = 'BROUILLON' | 'VALIDEE' | 'EN_PREPARATION' | 'EXPEDIEE' | 'LIVREE' | 'ANNULEE';
+export type FactureStatut = 'BROUILLON' | 'VALIDEE' | 'EN_RETARD' | 'PARTIELLEMENT_PAYEE' | 'PAYEE' | 'ANNULEE';
+export type FactureType = 'FACTURE' | 'AVOIR';
+export type PaiementStatut = 'RECU' | 'ANNULE';
+
+export interface CommerceLigne {
+  id?: string;
+  produitServiceId?: string;
+  produitService?: { id: string; nom: string; reference?: string };
+  libelle: string;
+  description?: string;
+  quantite: number;
+  unite?: string;
+  prixUnitaireHT: number;
+  tauxTVA: number;
+  remisePct?: number;
+  totalHT: number;
+  totalTVA: number;
+  totalTTC: number;
+  ordre?: number;
+}
+
+export interface Devis {
+  id: string;
+  ref: string;
+  clientId: string;
+  client?: { id: string; nomEntreprise: string; code?: string };
+  dateDevis: string;
+  dateValidite?: string;
+  statut: DevisStatut;
+  remiseGlobalPct?: number;
+  remiseGlobalMontant?: number;
+  totalHT: number;
+  totalTVA: number;
+  totalTTC: number;
+  devise?: string;
+  notes?: string;
+  conditions?: string;
+  lignes?: CommerceLigne[];
+}
+
+export interface Commande {
+  id: string;
+  ref: string;
+  clientId: string;
+  client?: { id: string; nomEntreprise: string; code?: string };
+  devisId?: string;
+  dateCommande: string;
+  dateLivraisonSouhaitee?: string;
+  statut: CommandeStatut;
+  remiseGlobalPct?: number;
+  remiseGlobalMontant?: number;
+  totalHT: number;
+  totalTVA: number;
+  totalTTC: number;
+  devise?: string;
+  notes?: string;
+  conditions?: string;
+  lignes?: CommerceLigne[];
+}
+
+export interface Facture {
+  id: string;
+  ref: string;
+  clientId: string;
+  client?: { id: string; nomEntreprise: string; code?: string };
+  devisId?: string;
+  commandeId?: string;
+  dateFacture: string;
+  dateEcheance?: string;
+  type: FactureType;
+  statut: FactureStatut;
+  remiseGlobalPct?: number;
+  remiseGlobalMontant?: number;
+  totalHT: number;
+  totalTVA: number;
+  totalTTC: number;
+  totalPaye: number;
+  devise?: string;
+  notes?: string;
+  conditions?: string;
+  lignes?: CommerceLigne[];
+  paiements?: Paiement[];
+  relances?: FactureRelance[];
+}
+
+export interface Paiement {
+  id: string;
+  factureId: string;
+  modePaiementId?: string;
+  datePaiement: string;
+  montant: number;
+  reference?: string;
+  notes?: string;
+  statut: PaiementStatut;
+}
+
+export interface CreateDevisInput {
+  clientId: string;
+  adresseFacturationId?: string;
+  adresseLivraisonId?: string;
+  dateDevis?: string;
+  dateValidite?: string;
+  statut?: DevisStatut;
+  remiseGlobalPct?: number;
+  remiseGlobalMontant?: number;
+  devise?: string;
+  notes?: string;
+  conditions?: string;
+  lignes: Array<{
+    produitServiceId?: string;
+    libelle?: string;
+    description?: string;
+    quantite: number;
+    unite?: string;
+    prixUnitaireHT?: number;
+    tauxTVA?: number;
+    remisePct?: number;
+    ordre?: number;
+  }>;
+}
+
+export type CreateCommandeInput = Omit<CreateDevisInput, 'statut' | 'dateDevis' | 'dateValidite'> & {
+  devisId?: string;
+  dateCommande?: string;
+  dateLivraisonSouhaitee?: string;
+  statut?: CommandeStatut;
+};
+
+export type CreateFactureInput = Omit<CreateDevisInput, 'statut' | 'dateDevis' | 'dateValidite'> & {
+  devisId?: string;
+  commandeId?: string;
+  dateFacture?: string;
+  dateEcheance?: string;
+  statut?: FactureStatut;
+  type?: FactureType;
+};
+
+export interface FactureRelance {
+  id: string;
+  factureId: string;
+  niveau: number;
+  canal: 'EMAIL' | 'SMS' | 'COURRIER' | 'APPEL';
+  commentaire?: string;
+  dateRelance: string;
+  createdBy?: { id: string; nom: string; prenom: string };
+}
+
+export interface CreateFactureRelanceInput {
+  niveau?: number;
+  canal: 'EMAIL' | 'SMS' | 'COURRIER' | 'APPEL';
+  commentaire?: string;
+  dateRelance?: string;
+}
+
+export interface CreatePaiementInput {
+  factureId: string;
+  modePaiementId?: string;
+  datePaiement?: string;
+  montant: number;
+  reference?: string;
+  notes?: string;
+}
+
+// ============ COMMANDES FOURNISSEURS ============
+
+export type CommandeFournisseurStatut = 'BROUILLON' | 'ENVOYEE' | 'CONFIRMEE' | 'EN_RECEPTION' | 'RECUE' | 'ANNULEE';
+
+export interface CommandeFournisseurLigne {
+  id: string;
+  commandeFournisseurId: string;
+  produitServiceId?: string;
+  produitService?: {
+    id: string;
+    nom: string;
+    reference: string;
+  };
+  libelle: string;
+  description?: string;
+  quantite: number;
+  unite?: string;
+  prixUnitaireHT: number;
+  tauxTVA: number;
+  remisePct?: number;
+  totalHT: number;
+  totalTVA: number;
+  totalTTC: number;
+  quantiteRecue: number;
+  ordre: number;
+}
+
+export interface CommandeFournisseur {
+  id: string;
+  ref: string;
+  fournisseurId: string;
+  fournisseur?: {
+    id: string;
+    nomEntreprise: string;
+    code?: string;
+  };
+  dateCommande: string;
+  dateLivraisonSouhaitee?: string;
+  dateLivraison?: string;
+  statut: CommandeFournisseurStatut;
+  remiseGlobalPct?: number;
+  remiseGlobalMontant?: number;
+  totalHT: number;
+  totalTVA: number;
+  totalTTC: number;
+  devise?: string;
+  notes?: string;
+  conditions?: string;
+  lignes?: CommandeFournisseurLigne[];
+  createdAt: string;
+  updatedAt: string;
+  _count?: {
+    lignes: number;
+  };
+}
+
+export interface CreateCommandeFournisseurLigneInput {
+  produitServiceId?: string;
+  libelle?: string;
+  description?: string;
+  quantite: number;
+  unite?: string;
+  prixUnitaireHT?: number;
+  tauxTVA?: number;
+  remisePct?: number;
+  quantiteRecue?: number;
+  ordre?: number;
+}
+
+export interface CreateCommandeFournisseurInput {
+  fournisseurId: string;
+  dateCommande?: string;
+  dateLivraisonSouhaitee?: string;
+  statut?: CommandeFournisseurStatut;
+  remiseGlobalPct?: number;
+  remiseGlobalMontant?: number;
+  devise?: string;
+  notes?: string;
+  conditions?: string;
+  lignes: CreateCommandeFournisseurLigneInput[];
+}
+
+export interface ReceptionLigneInput {
+  id: string;
+  quantiteRecue: number;
+}
+
+export interface ReceptionCommandeFournisseurInput {
+  dateLivraison?: string;
+  lignes?: ReceptionLigneInput[];
+}
+
+// ============ FACTURATION ============
+
+export type FactureFournisseurStatut = 'BROUILLON' | 'VALIDEE' | 'EN_RETARD' | 'PARTIELLEMENT_PAYEE' | 'PAYEE' | 'ANNULEE';
+
+export interface FactureFournisseurLigne {
+  id: string;
+  factureFournisseurId: string;
+  produitServiceId?: string;
+  produitService?: {
+    id: string;
+    nom: string;
+    reference: string;
+  };
+  libelle: string;
+  description?: string;
+  quantite: number;
+  unite?: string;
+  prixUnitaireHT: number;
+  tauxTVA: number;
+  remisePct?: number;
+  totalHT: number;
+  totalTVA: number;
+  totalTTC: number;
+  ordre: number;
+}
+
+export interface PaiementFournisseur {
+  id: string;
+  factureFournisseurId: string;
+  modePaiementId?: string;
+  datePaiement: string;
+  montant: number;
+  reference?: string;
+  banque?: string;
+  notes?: string;
+  statut: 'RECU' | 'ANNULE';
+}
+
+export interface FactureFournisseur {
+  id: string;
+  ref: string;
+  refFournisseur?: string;
+  fournisseurId: string;
+  fournisseur?: { id: string; nomEntreprise: string; code?: string };
+  commandeFournisseurId?: string;
+  dateFacture: string;
+  dateEcheance?: string;
+  dateReception?: string;
+  statut: FactureFournisseurStatut;
+  remiseGlobalPct?: number;
+  remiseGlobalMontant?: number;
+  totalHT: number;
+  totalTVA: number;
+  totalTTC: number;
+  totalPaye: number;
+  devise?: string;
+  notes?: string;
+  conditions?: string;
+  lignes?: FactureFournisseurLigne[];
+  paiements?: PaiementFournisseur[];
+  _count?: { lignes: number; paiements: number };
+}
+
+export interface CreateFactureFournisseurLigneInput {
+  produitServiceId?: string;
+  libelle?: string;
+  description?: string;
+  quantite: number;
+  unite?: string;
+  prixUnitaireHT?: number;
+  tauxTVA?: number;
+  remisePct?: number;
+  ordre?: number;
+}
+
+export interface CreateFactureFournisseurInput {
+  fournisseurId: string;
+  commandeFournisseurId?: string;
+  refFournisseur?: string;
+  dateFacture?: string;
+  dateEcheance?: string;
+  dateReception?: string;
+  statut?: FactureFournisseurStatut;
+  remiseGlobalPct?: number;
+  remiseGlobalMontant?: number;
+  devise?: string;
+  notes?: string;
+  conditions?: string;
+  lignes: CreateFactureFournisseurLigneInput[];
+}
+
+export interface CreatePaiementFournisseurInput {
+  modePaiementId?: string;
+  datePaiement?: string;
+  montant: number;
+  reference?: string;
+  banque?: string;
+  notes?: string;
+}
+
+export type TypeCharge = 'FOURNISSEUR' | 'FISCALE' | 'SOCIALE' | 'DIVERSE';
+export type ChargeStatut = 'A_PAYER' | 'PARTIELLEMENT_PAYEE' | 'PAYEE' | 'ANNULEE';
+
+export interface Charge {
+  id: string;
+  ref: string;
+  typeCharge: TypeCharge;
+  libelle: string;
+  description?: string;
+  fournisseurId?: string;
+  fournisseur?: { id: string; nomEntreprise: string; code?: string };
+  categorie?: string;
+  sousCategorie?: string;
+  dateCharge: string;
+  dateEcheance?: string;
+  periodeDebut?: string;
+  periodeFin?: string;
+  montantHT: number;
+  tauxTVA: number;
+  montantTVA: number;
+  montantTTC: number;
+  montantPaye: number;
+  devise?: string;
+  statut: ChargeStatut;
+  estRecurrente?: boolean;
+  frequenceRecurrence?: string;
+  notes?: string;
+  paiements?: PaiementCharge[];
+}
+
+export interface PaiementCharge {
+  id: string;
+  chargeId: string;
+  modePaiementId?: string;
+  datePaiement: string;
+  montant: number;
+  reference?: string;
+  banque?: string;
+  notes?: string;
+  statut: 'RECU' | 'ANNULE';
+}
+
+export interface CreateChargeInput {
+  typeCharge: TypeCharge;
+  libelle: string;
+  description?: string;
+  fournisseurId?: string;
+  categorie?: string;
+  sousCategorie?: string;
+  dateCharge?: string;
+  dateEcheance?: string;
+  periodeDebut?: string;
+  periodeFin?: string;
+  montantHT?: number;
+  tauxTVA?: number;
+  devise?: string;
+  estRecurrente?: boolean;
+  frequenceRecurrence?: string;
+  notes?: string;
+}
+
+export interface CreatePaiementChargeInput {
+  modePaiementId?: string;
+  datePaiement?: string;
+  montant: number;
+  reference?: string;
+  banque?: string;
+  notes?: string;
+}
+
+export type TypePaiementDivers = 'ENCAISSEMENT' | 'DECAISSEMENT';
+
+export interface PaiementDivers {
+  id: string;
+  ref: string;
+  libelle: string;
+  description?: string;
+  typeOperation: TypePaiementDivers;
+  categorie?: string;
+  tiersId?: string;
+  tiers?: { id: string; nomEntreprise: string; code?: string };
+  montant: number;
+  devise?: string;
+  datePaiement: string;
+  modePaiementId?: string;
+  reference?: string;
+  banque?: string;
+  notes?: string;
+  statut: string;
+}
+
+export interface CreatePaiementDiversInput {
+  libelle: string;
+  description?: string;
+  typeOperation: TypePaiementDivers;
+  categorie?: string;
+  tiersId?: string;
+  montant: number;
+  devise?: string;
+  datePaiement?: string;
+  modePaiementId?: string;
+  reference?: string;
+  banque?: string;
+  notes?: string;
+}

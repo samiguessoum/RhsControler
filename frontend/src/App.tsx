@@ -15,6 +15,9 @@ import { PrestationsPage } from '@/pages/Prestations';
 import StocksPage from '@/pages/Stocks';
 import RHPage from '@/pages/RH';
 import TiersPage from '@/pages/Tiers';
+import ProduitsServicesPage from '@/pages/ProduitsServices';
+import CommercePage from '@/pages/Commerce';
+import FacturationPage from '@/pages/Facturation';
 
 function RequireAuth() {
   const { isAuthenticated } = useAuthStore();
@@ -88,6 +91,9 @@ export default function App() {
             <Route path="/import-export" element={<ImportExportPage />} />
             <Route path="/prestations" element={<PrestationsPage />} />
             <Route path="/stocks" element={<StocksPage />} />
+            <Route path="/produits-services" element={<ProduitsServicesPage />} />
+            <Route path="/commerce" element={<CommercePage />} />
+            <Route path="/facturation" element={<FacturationPage />} />
             <Route path="/rh" element={<RHPage />} />
             <Route path="/parametres" element={<ParametresPage />} />
           </Route>

@@ -607,3 +607,499 @@ export type CreateContratInput = z.infer<typeof createContratSchema>;
 export type UpdateContratInput = z.infer<typeof updateContratSchema>;
 export type CreateInterventionInput = z.infer<typeof createInterventionSchema>;
 export type UpdateInterventionInput = z.infer<typeof updateInterventionSchema>;
+
+// ============ PRODUITS/SERVICES (Dolibarr-style) ============
+export const typeProduitEnum = z.enum(['PRODUIT', 'SERVICE']);
+
+export const natureProduitEnum = z.enum([
+  'MATIERE_PREMIERE',
+  'PRODUIT_FINI',
+  'PRODUIT_SEMI_FINI',
+  'CONSOMMABLE',
+  'PIECE_DETACHEE',
+  'AUTRE',
+]);
+
+export const typeMouvementEnum = z.enum([
+  'ENTREE',
+  'SORTIE',
+  'AJUSTEMENT',
+  'TRANSFERT',
+  'INVENTAIRE',
+]);
+
+// Catégorie de produit
+export const createCategorieProduitSchema = z.object({
+  code: z.string().optional(),
+  nom: z.string().min(1, 'Nom requis'),
+  description: z.string().optional(),
+  parentId: z.string().uuid().optional().nullable(),
+  couleur: z.string().optional(),
+  icone: z.string().optional(),
+  ordre: z.number().int().optional(),
+});
+
+export const updateCategorieProduitSchema = createCategorieProduitSchema.partial().extend({
+  actif: z.boolean().optional(),
+});
+
+// Entrepôt
+export const createEntrepotSchema = z.object({
+  code: z.string().min(1, 'Code requis'),
+  nom: z.string().min(1, 'Nom requis'),
+  description: z.string().optional(),
+  adresse: z.string().optional(),
+  codePostal: z.string().optional(),
+  ville: z.string().optional(),
+  pays: z.string().optional(),
+  responsable: z.string().optional(),
+  tel: z.string().optional(),
+  email: z.string().email().optional().or(z.literal('')),
+  estDefaut: z.boolean().optional(),
+});
+
+export const updateEntrepotSchema = createEntrepotSchema.partial().extend({
+  actif: z.boolean().optional(),
+});
+
+// Produit/Service complet
+export const createProduitServiceSchema = z.object({
+  // Identification
+  reference: z.string().min(1, 'Référence requise'),
+  codeBarres: z.string().optional(),
+  nom: z.string().min(1, 'Nom requis'),
+  description: z.string().optional(),
+  descriptionLongue: z.string().optional(),
+
+  // Type et nature
+  type: typeProduitEnum.optional().default('PRODUIT'),
+  nature: natureProduitEnum.optional(),
+
+  // Unités
+  unite: z.string().optional().default('unité'),
+  uniteAchat: z.string().optional(),
+  ratioUnites: z.number().positive().optional(),
+
+  // Prix de vente
+  prixVenteHT: z.number().min(0).optional(),
+  tauxTVA: z.number().min(0).max(100).optional().default(19),
+
+  // Prix d'achat
+  prixAchatHT: z.number().min(0).optional(),
+  margeParDefaut: z.number().min(0).max(100).optional(),
+
+  // Stock
+  aStock: z.boolean().optional(),
+  quantite: z.number().min(0).optional().default(0),
+  stockMinimum: z.number().min(0).optional().default(0),
+  stockMaximum: z.number().min(0).optional(),
+  lotSuivi: z.boolean().optional(),
+  dlcSuivi: z.boolean().optional(),
+
+  // Service
+  dureeService: z.number().positive().optional(),
+
+  // Fournisseur
+  fournisseurId: z.string().uuid().optional(),
+  delaiLivraison: z.number().int().positive().optional(),
+
+  // Classification
+  marque: z.string().optional(),
+  modele: z.string().optional(),
+  poids: z.number().positive().optional(),
+  longueur: z.number().positive().optional(),
+  largeur: z.number().positive().optional(),
+  hauteur: z.number().positive().optional(),
+
+  // Comptabilité
+  compteVente: z.string().optional(),
+  compteAchat: z.string().optional(),
+
+  // Notes
+  notePublique: z.string().optional(),
+  notePrivee: z.string().optional(),
+  urlExterne: z.string().url().optional().or(z.literal('')),
+
+  // Statut
+  enVente: z.boolean().optional().default(true),
+  enAchat: z.boolean().optional().default(true),
+
+  // Catégories
+  categorieIds: z.array(z.string().uuid()).optional(),
+});
+
+export const updateProduitServiceSchema = createProduitServiceSchema.partial().extend({
+  actif: z.boolean().optional(),
+});
+
+// Prix fournisseur
+export const createPrixFournisseurSchema = z.object({
+  produitId: z.string().uuid('ID produit invalide'),
+  fournisseurId: z.string().uuid('ID fournisseur invalide'),
+  refFournisseur: z.string().optional(),
+  prixAchatHT: z.number().min(0, 'Prix invalide'),
+  remise: z.number().min(0).max(100).optional(),
+  quantiteMin: z.number().positive().optional(),
+  delaiLivraison: z.number().int().positive().optional(),
+  dateDebut: z.string().optional(),
+  dateFin: z.string().optional(),
+  estDefaut: z.boolean().optional(),
+  notes: z.string().optional(),
+});
+
+export const updatePrixFournisseurSchema = createPrixFournisseurSchema.partial().omit({
+  produitId: true,
+  fournisseurId: true,
+}).extend({
+  actif: z.boolean().optional(),
+});
+
+// Prix client
+export const createPrixClientSchema = z.object({
+  produitId: z.string().uuid('ID produit invalide'),
+  clientId: z.string().uuid('ID client invalide'),
+  prixVenteHT: z.number().min(0, 'Prix invalide'),
+  remise: z.number().min(0).max(100).optional(),
+  quantiteMin: z.number().positive().optional(),
+  dateDebut: z.string().optional(),
+  dateFin: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const updatePrixClientSchema = createPrixClientSchema.partial().omit({
+  produitId: true,
+  clientId: true,
+}).extend({
+  actif: z.boolean().optional(),
+});
+
+// Lot produit
+export const createLotProduitSchema = z.object({
+  produitId: z.string().uuid('ID produit invalide'),
+  numeroLot: z.string().min(1, 'Numéro de lot requis'),
+  quantite: z.number().min(0).optional(),
+  datePeremption: z.string().optional(),
+  dateFabrication: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const updateLotProduitSchema = createLotProduitSchema.partial().omit({
+  produitId: true,
+}).extend({
+  actif: z.boolean().optional(),
+});
+
+// Mouvement de stock (nouveau modèle)
+export const createMouvementProduitServiceSchema = z.object({
+  type: typeMouvementEnum,
+  quantite: z.number().positive('Quantité doit être positive'),
+  entrepotId: z.string().uuid().optional(),
+  entrepotDestId: z.string().uuid().optional(),
+  motif: z.string().optional(),
+  numeroLot: z.string().optional(),
+  interventionId: z.string().uuid().optional(),
+});
+
+// Query schemas
+export const produitsServicesQuerySchema = paginationSchema.extend({
+  search: z.string().optional(),
+  type: typeProduitEnum.optional(),
+  categorieId: z.string().uuid().optional(),
+  fournisseurId: z.string().uuid().optional(),
+  actif: z.string().transform((v) => v === 'true').optional(),
+  stockBas: z.string().transform((v) => v === 'true').optional(),
+  enVente: z.string().transform((v) => v === 'true').optional(),
+  enAchat: z.string().transform((v) => v === 'true').optional(),
+});
+
+export const categoriesProduitsQuerySchema = z.object({
+  search: z.string().optional(),
+  actif: z.string().transform((v) => v === 'true').optional(),
+  parentId: z.string().optional(),
+});
+
+export const entrepotsQuerySchema = z.object({
+  search: z.string().optional(),
+  actif: z.string().transform((v) => v === 'true').optional(),
+});
+
+export const prixFournisseursQuerySchema = z.object({
+  produitId: z.string().uuid().optional(),
+  fournisseurId: z.string().uuid().optional(),
+  actif: z.string().transform((v) => v === 'true').optional(),
+});
+
+export const prixClientsQuerySchema = z.object({
+  produitId: z.string().uuid().optional(),
+  clientId: z.string().uuid().optional(),
+  actif: z.string().transform((v) => v === 'true').optional(),
+});
+
+// ============ COMMERCE ============
+
+const commerceLigneSchema = z.object({
+  produitServiceId: z.string().uuid().optional(),
+  libelle: z.string().min(1, 'Libellé requis').optional(),
+  description: z.string().optional(),
+  quantite: z.number().positive('Quantité invalide'),
+  unite: z.string().optional(),
+  prixUnitaireHT: z.number().min(0).optional(),
+  tauxTVA: z.number().min(0).max(100).optional(),
+  remisePct: z.number().min(0).max(100).optional(),
+  ordre: z.number().int().optional(),
+});
+
+export const createDevisSchema = z.object({
+  clientId: z.string().uuid('ID client invalide'),
+  adresseFacturationId: z.string().uuid().optional(),
+  adresseLivraisonId: z.string().uuid().optional(),
+  dateDevis: z.string().optional(),
+  dateValidite: z.string().optional(),
+  statut: z.enum(['BROUILLON', 'VALIDE', 'SIGNE', 'REFUSE', 'EXPIRE', 'ANNULE']).optional(),
+  remiseGlobalPct: z.number().min(0).max(100).optional(),
+  remiseGlobalMontant: z.number().min(0).optional(),
+  devise: z.string().optional(),
+  notes: z.string().optional(),
+  conditions: z.string().optional(),
+  lignes: z.array(commerceLigneSchema).min(1, 'Au moins une ligne requise'),
+});
+
+export const updateDevisSchema = createDevisSchema.partial().extend({
+  lignes: z.array(commerceLigneSchema).optional(),
+});
+
+export const createCommandeSchema = z.object({
+  clientId: z.string().uuid('ID client invalide'),
+  devisId: z.string().uuid().optional(),
+  adresseFacturationId: z.string().uuid().optional(),
+  adresseLivraisonId: z.string().uuid().optional(),
+  dateCommande: z.string().optional(),
+  dateLivraisonSouhaitee: z.string().optional(),
+  statut: z.enum(['BROUILLON', 'VALIDEE', 'EN_PREPARATION', 'EXPEDIEE', 'LIVREE', 'ANNULEE']).optional(),
+  remiseGlobalPct: z.number().min(0).max(100).optional(),
+  remiseGlobalMontant: z.number().min(0).optional(),
+  devise: z.string().optional(),
+  notes: z.string().optional(),
+  conditions: z.string().optional(),
+  lignes: z.array(commerceLigneSchema).min(1, 'Au moins une ligne requise'),
+});
+
+export const updateCommandeSchema = createCommandeSchema.partial().extend({
+  lignes: z.array(commerceLigneSchema).optional(),
+});
+
+export const createFactureSchema = z.object({
+  clientId: z.string().uuid('ID client invalide'),
+  devisId: z.string().uuid().optional(),
+  commandeId: z.string().uuid().optional(),
+  adresseFacturationId: z.string().uuid().optional(),
+  adresseLivraisonId: z.string().uuid().optional(),
+  dateFacture: z.string().optional(),
+  dateEcheance: z.string().optional(),
+  statut: z.enum(['BROUILLON', 'VALIDEE', 'EN_RETARD', 'PARTIELLEMENT_PAYEE', 'PAYEE', 'ANNULEE']).optional(),
+  type: z.enum(['FACTURE', 'AVOIR']).optional(),
+  remiseGlobalPct: z.number().min(0).max(100).optional(),
+  remiseGlobalMontant: z.number().min(0).optional(),
+  devise: z.string().optional(),
+  notes: z.string().optional(),
+  conditions: z.string().optional(),
+  lignes: z.array(commerceLigneSchema).min(1, 'Au moins une ligne requise'),
+});
+
+export const updateFactureSchema = createFactureSchema.partial().extend({
+  lignes: z.array(commerceLigneSchema).optional(),
+});
+
+// Relances factures clients
+export const createFactureRelanceSchema = z.object({
+  niveau: z.number().int().min(1).optional(),
+  canal: z.enum(['EMAIL', 'SMS', 'COURRIER', 'APPEL']),
+  commentaire: z.string().optional(),
+  dateRelance: z.string().optional(),
+});
+
+export const createPaiementSchema = z.object({
+  factureId: z.string().uuid('ID facture invalide'),
+  modePaiementId: z.string().uuid().optional(),
+  datePaiement: z.string().optional(),
+  montant: z.number().positive('Montant invalide'),
+  reference: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+// ============ COMMANDES FOURNISSEURS ============
+
+const commandeFournisseurLigneSchema = z.object({
+  produitServiceId: z.string().uuid().optional(),
+  libelle: z.string().optional(),
+  description: z.string().optional(),
+  quantite: z.number().positive('Quantité invalide'),
+  unite: z.string().optional(),
+  prixUnitaireHT: z.number().min(0).optional(),
+  tauxTVA: z.number().min(0).max(100).optional(),
+  remisePct: z.number().min(0).max(100).optional(),
+  quantiteRecue: z.number().min(0).optional(),
+  ordre: z.number().int().optional(),
+});
+
+export const createCommandeFournisseurSchema = z.object({
+  fournisseurId: z.string().uuid('ID fournisseur invalide'),
+  dateCommande: z.string().optional(),
+  dateLivraisonSouhaitee: z.string().optional(),
+  statut: z.enum(['BROUILLON', 'ENVOYEE', 'CONFIRMEE', 'EN_RECEPTION', 'RECUE', 'ANNULEE']).optional(),
+  remiseGlobalPct: z.number().min(0).max(100).optional(),
+  remiseGlobalMontant: z.number().min(0).optional(),
+  devise: z.string().optional(),
+  notes: z.string().optional(),
+  conditions: z.string().optional(),
+  lignes: z.array(commandeFournisseurLigneSchema).min(1, 'Au moins une ligne requise'),
+});
+
+export const updateCommandeFournisseurSchema = createCommandeFournisseurSchema.partial().extend({
+  lignes: z.array(commandeFournisseurLigneSchema).optional(),
+  dateLivraison: z.string().optional(),
+});
+
+export const receptionCommandeFournisseurSchema = z.object({
+  dateLivraison: z.string().optional(),
+  lignes: z.array(z.object({
+    id: z.string().uuid(),
+    quantiteRecue: z.number().min(0),
+  })).optional(),
+});
+
+// ============ FACTURES FOURNISSEURS ============
+
+export const factureFournisseurStatutEnum = z.enum([
+  'BROUILLON', 'VALIDEE', 'EN_RETARD', 'PARTIELLEMENT_PAYEE', 'PAYEE', 'ANNULEE'
+]);
+
+const factureFournisseurLigneSchema = z.object({
+  produitServiceId: z.string().uuid().optional(),
+  libelle: z.string().optional(),
+  description: z.string().optional(),
+  quantite: z.number().positive('Quantité invalide').default(1),
+  unite: z.string().optional(),
+  prixUnitaireHT: z.number().min(0).optional(),
+  tauxTVA: z.number().min(0).max(100).optional().default(19),
+  remisePct: z.number().min(0).max(100).optional(),
+  ordre: z.number().int().optional(),
+});
+
+export const createFactureFournisseurSchema = z.object({
+  fournisseurId: z.string().uuid('ID fournisseur invalide'),
+  commandeFournisseurId: z.string().uuid().optional(),
+  refFournisseur: z.string().optional(),
+  dateFacture: z.string().optional(),
+  dateEcheance: z.string().optional(),
+  dateReception: z.string().optional(),
+  statut: factureFournisseurStatutEnum.optional().default('BROUILLON'),
+  remiseGlobalPct: z.number().min(0).max(100).optional(),
+  remiseGlobalMontant: z.number().min(0).optional(),
+  devise: z.string().optional(),
+  notes: z.string().optional(),
+  conditions: z.string().optional(),
+  lignes: z.array(factureFournisseurLigneSchema).min(1, 'Au moins une ligne requise'),
+});
+
+export const updateFactureFournisseurSchema = createFactureFournisseurSchema.partial().extend({
+  lignes: z.array(factureFournisseurLigneSchema).optional(),
+});
+
+export const createPaiementFournisseurSchema = z.object({
+  modePaiementId: z.string().uuid().optional(),
+  datePaiement: z.string().optional(),
+  montant: z.number().positive('Montant requis'),
+  reference: z.string().optional(),
+  banque: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+// ============ CHARGES & DEPENSES ============
+
+export const typeChargeEnum = z.enum(['FOURNISSEUR', 'FISCALE', 'SOCIALE', 'DIVERSE']);
+export const chargeStatutEnum = z.enum(['A_PAYER', 'PARTIELLEMENT_PAYEE', 'PAYEE', 'ANNULEE']);
+
+export const createChargeSchema = z.object({
+  typeCharge: typeChargeEnum,
+  libelle: z.string().min(1, 'Libellé requis'),
+  description: z.string().optional(),
+  fournisseurId: z.string().uuid().optional(),
+  categorie: z.string().optional(),
+  sousCategorie: z.string().optional(),
+  dateCharge: z.string().optional(),
+  dateEcheance: z.string().optional(),
+  periodeDebut: z.string().optional(),
+  periodeFin: z.string().optional(),
+  montantHT: z.number().min(0).default(0),
+  tauxTVA: z.number().min(0).max(100).optional().default(0),
+  devise: z.string().optional(),
+  estRecurrente: z.boolean().optional().default(false),
+  frequenceRecurrence: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const updateChargeSchema = createChargeSchema.partial().extend({
+  statut: chargeStatutEnum.optional(),
+});
+
+export const createPaiementChargeSchema = z.object({
+  modePaiementId: z.string().uuid().optional(),
+  datePaiement: z.string().optional(),
+  montant: z.number().positive('Montant requis'),
+  reference: z.string().optional(),
+  banque: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+// ============ PAIEMENTS DIVERS ============
+
+export const createPaiementDiversSchema = z.object({
+  libelle: z.string().min(1, 'Libellé requis'),
+  description: z.string().optional(),
+  typeOperation: z.enum(['ENCAISSEMENT', 'DECAISSEMENT']),
+  categorie: z.string().optional(),
+  tiersId: z.string().uuid().optional(),
+  montant: z.number().positive('Montant requis'),
+  devise: z.string().optional(),
+  datePaiement: z.string().optional(),
+  modePaiementId: z.string().uuid().optional(),
+  reference: z.string().optional(),
+  banque: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const updatePaiementDiversSchema = createPaiementDiversSchema.partial();
+
+// Types exports
+export type CreateProduitServiceInput = z.infer<typeof createProduitServiceSchema>;
+export type UpdateProduitServiceInput = z.infer<typeof updateProduitServiceSchema>;
+export type CreateCategorieProduitInput = z.infer<typeof createCategorieProduitSchema>;
+export type UpdateCategorieProduitInput = z.infer<typeof updateCategorieProduitSchema>;
+export type CreateEntrepotInput = z.infer<typeof createEntrepotSchema>;
+export type UpdateEntrepotInput = z.infer<typeof updateEntrepotSchema>;
+export type CreatePrixFournisseurInput = z.infer<typeof createPrixFournisseurSchema>;
+export type UpdatePrixFournisseurInput = z.infer<typeof updatePrixFournisseurSchema>;
+export type CreatePrixClientInput = z.infer<typeof createPrixClientSchema>;
+export type UpdatePrixClientInput = z.infer<typeof updatePrixClientSchema>;
+export type CreateLotProduitInput = z.infer<typeof createLotProduitSchema>;
+export type CreateMouvementProduitServiceInput = z.infer<typeof createMouvementProduitServiceSchema>;
+export type CreateDevisInput = z.infer<typeof createDevisSchema>;
+export type UpdateDevisInput = z.infer<typeof updateDevisSchema>;
+export type CreateCommandeInput = z.infer<typeof createCommandeSchema>;
+export type UpdateCommandeInput = z.infer<typeof updateCommandeSchema>;
+export type CreateFactureInput = z.infer<typeof createFactureSchema>;
+export type UpdateFactureInput = z.infer<typeof updateFactureSchema>;
+export type CreatePaiementInput = z.infer<typeof createPaiementSchema>;
+export type CreateFactureRelanceInput = z.infer<typeof createFactureRelanceSchema>;
+export type CreateCommandeFournisseurInput = z.infer<typeof createCommandeFournisseurSchema>;
+export type UpdateCommandeFournisseurInput = z.infer<typeof updateCommandeFournisseurSchema>;
+export type ReceptionCommandeFournisseurInput = z.infer<typeof receptionCommandeFournisseurSchema>;
+export type CreateFactureFournisseurInput = z.infer<typeof createFactureFournisseurSchema>;
+export type UpdateFactureFournisseurInput = z.infer<typeof updateFactureFournisseurSchema>;
+export type CreatePaiementFournisseurInput = z.infer<typeof createPaiementFournisseurSchema>;
+export type CreateChargeInput = z.infer<typeof createChargeSchema>;
+export type UpdateChargeInput = z.infer<typeof updateChargeSchema>;
+export type CreatePaiementChargeInput = z.infer<typeof createPaiementChargeSchema>;
+export type CreatePaiementDiversInput = z.infer<typeof createPaiementDiversSchema>;
+export type UpdatePaiementDiversInput = z.infer<typeof updatePaiementDiversSchema>;

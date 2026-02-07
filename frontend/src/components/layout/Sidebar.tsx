@@ -4,6 +4,7 @@ import {
   Calendar,
   Users,
   FileText,
+  Receipt,
   Upload,
   Settings,
   LogOut,
@@ -11,6 +12,8 @@ import {
   Package,
   UserCog,
   Building2,
+  ShoppingBag,
+  Wallet,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -61,9 +64,27 @@ export function Sidebar({ stats }: SidebarProps) {
       show: true,
     },
     {
+      to: '/commerce',
+      icon: Receipt,
+      label: 'Commerce',
+      show: true,
+    },
+    {
+      to: '/facturation',
+      icon: Wallet,
+      label: 'Facturation',
+      show: canDo('viewFacturation'),
+    },
+    {
       to: '/stocks',
       icon: Package,
       label: 'Stocks',
+      show: true,
+    },
+    {
+      to: '/produits-services',
+      icon: ShoppingBag,
+      label: 'Produits/Services',
       show: true,
     },
     {

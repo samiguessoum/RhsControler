@@ -83,6 +83,56 @@ enum TypeAdresse {
   SITE              // Site d'intervention
 }
 
+// ============ COMMERCE (Dolibarr-inspired) ============
+
+enum DocumentType {
+  DEVIS
+  COMMANDE
+  FACTURE
+  FACTURE_AVOIR
+  COMMANDE_FOURNISSEUR
+  FACTURE_FOURNISSEUR
+  CHARGE
+  PAIEMENT_DIVERS
+}
+
+enum DevisStatut {
+  BROUILLON
+  VALIDE
+  SIGNE
+  REFUSE
+  EXPIRE
+  ANNULE
+}
+
+enum CommandeStatut {
+  BROUILLON
+  VALIDEE
+  EN_PREPARATION
+  EXPEDIEE
+  LIVREE
+  ANNULEE
+}
+
+enum FactureStatut {
+  BROUILLON
+  VALIDEE
+  EN_RETARD
+  PARTIELLEMENT_PAYEE
+  PAYEE
+  ANNULEE
+}
+
+enum FactureType {
+  FACTURE
+  AVOIR
+}
+
+enum PaiementStatut {
+  RECU
+  ANNULE
+}
+
 // Mode de paiement
 model ModePaiement {
   id          String   @id @default(uuid())
@@ -92,7 +142,11 @@ model ModePaiement {
   ordre       Int      @default(0)
   createdAt   DateTime @default(now())
 
-  tiers       Client[] @relation("ModePaiementTiers")
+  tiers                Client[]              @relation("ModePaiementTiers")
+  paiements            Paiement[]
+  paiementsFournisseur PaiementFournisseur[] @relation("PaiementsFournisseur")
+  paiementsCharge      PaiementCharge[]      @relation("PaiementsCharge")
+  paiementsDivers      PaiementDivers[]      @relation("PaiementsDivers")
 }
 
 // Conditions de paiement
@@ -127,6 +181,27 @@ model User {
   auditLogs           AuditLog[]
   mouvementsStock     MouvementStock[]
   congesApprouves     Conge[]          @relation("ApprouvePar")
+
+  // Commerce
+  devisCrees          Devis[]          @relation("DevisCreatedBy")
+  devisModifies       Devis[]          @relation("DevisUpdatedBy")
+  commandesCrees      Commande[]       @relation("CommandeCreatedBy")
+  commandesModifies   Commande[]       @relation("CommandeUpdatedBy")
+  facturesCrees       Facture[]        @relation("FactureCreatedBy")
+  facturesModifies    Facture[]        @relation("FactureUpdatedBy")
+  paiementsCrees      Paiement[]       @relation("PaiementCreatedBy")
+  facturesRelancees   FactureRelance[] @relation("FactureRelanceCreatedBy")
+  commandesFournisseurCrees    CommandeFournisseur[] @relation("CommandeFournisseurCreatedBy")
+  commandesFournisseurModifies CommandeFournisseur[] @relation("CommandeFournisseurUpdatedBy")
+
+  // Facturation
+  facturesFournisseurCrees    FactureFournisseur[]  @relation("FactureFournisseurCreatedBy")
+  facturesFournisseurModifies FactureFournisseur[]  @relation("FactureFournisseurUpdatedBy")
+  paiementsFournisseurCrees   PaiementFournisseur[] @relation("PaiementFournisseurCreatedBy")
+  chargesCrees                Charge[]              @relation("ChargeCreatedBy")
+  chargesModifies             Charge[]              @relation("ChargeUpdatedBy")
+  paiementsChargeCrees        PaiementCharge[]      @relation("PaiementChargeCreatedBy")
+  paiementsDiversCrees        PaiementDivers[]      @relation("PaiementDiversCreatedBy")
 }
 
 model Employe {
@@ -226,6 +301,20 @@ model Client {
   adresses         Adresse[]
   comptesBancaires CompteBancaire[]
 
+  // Relations produits/services (Dolibarr-style)
+  produitsFournis   ProduitService[]  @relation("FournisseurProduit")
+  prixFournisseur   PrixFournisseur[] @relation("PrixFournisseurTiers")
+  prixClient        PrixClient[]      @relation("PrixClientTiers")
+
+  // Commerce
+  devis            Devis[]
+  commandes        Commande[]
+  factures         Facture[]
+  commandesFournisseur CommandeFournisseur[] @relation("CommandesFournisseur")
+  facturesFournisseur  FactureFournisseur[]  @relation("FacturesFournisseur")
+  charges              Charge[]              @relation("ChargesFournisseur")
+  paiementsDivers      PaiementDivers[]      @relation("PaiementsDivers")
+
   @@index([typeTiers])
   @@index([code])
   @@index([nomEntreprise])
@@ -290,6 +379,14 @@ model Adresse {
 
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
+
+  // Commerce
+  devisFacturation     Devis[]    @relation("DevisAdresseFacturation")
+  devisLivraison       Devis[]    @relation("DevisAdresseLivraison")
+  commandesFacturation Commande[] @relation("CommandeAdresseFacturation")
+  commandesLivraison   Commande[] @relation("CommandeAdresseLivraison")
+  facturesFacturation  Facture[]  @relation("FactureAdresseFacturation")
+  facturesLivraison    Facture[]  @relation("FactureAdresseLivraison")
 
   @@index([clientId])
   @@index([type])
@@ -533,7 +630,259 @@ model AuditLog {
   @@index([userId])
 }
 
-// ============ GESTION DES STOCKS ============
+// ============ GESTION DES PRODUITS/SERVICES (Dolibarr-inspired) ============
+
+enum TypeProduit {
+  PRODUIT              // Article physique avec gestion de stock
+  SERVICE              // Prestation immatérielle sans stock
+}
+
+enum NatureProduit {
+  MATIERE_PREMIERE     // Matière première
+  PRODUIT_FINI         // Produit fini
+  PRODUIT_SEMI_FINI    // Produit semi-fini
+  CONSOMMABLE          // Consommable
+  PIECE_DETACHEE       // Pièce détachée
+  AUTRE                // Autre
+}
+
+// Catégories de produits/services (hiérarchique)
+model CategorieProduit {
+  id           String             @id @default(uuid())
+  code         String?            @unique
+  nom          String
+  description  String?
+  parentId     String?
+  parent       CategorieProduit?  @relation("CategorieHierarchie", fields: [parentId], references: [id])
+  enfants      CategorieProduit[] @relation("CategorieHierarchie")
+  couleur      String?            // Couleur pour affichage (hex)
+  icone        String?            // Icône (nom lucide-react)
+  ordre        Int                @default(0)
+  actif        Boolean            @default(true)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  produits     ProduitServiceCategorie[]
+
+  @@index([parentId])
+  @@index([nom])
+}
+
+// Table de liaison Produit-Catégorie (many-to-many)
+model ProduitServiceCategorie {
+  id          String           @id @default(uuid())
+  produitId   String
+  produit     ProduitService   @relation(fields: [produitId], references: [id], onDelete: Cascade)
+  categorieId String
+  categorie   CategorieProduit @relation(fields: [categorieId], references: [id], onDelete: Cascade)
+  createdAt   DateTime         @default(now())
+
+  @@unique([produitId, categorieId])
+  @@index([produitId])
+  @@index([categorieId])
+}
+
+// Entrepôts pour gestion multi-stocks
+model Entrepot {
+  id           String           @id @default(uuid())
+  code         String           @unique
+  nom          String
+  description  String?
+  adresse      String?
+  codePostal   String?
+  ville        String?
+  pays         String?          @default("Algérie")
+  responsable  String?          // Nom du responsable
+  tel          String?
+  email        String?
+  estDefaut    Boolean          @default(false)
+  actif        Boolean          @default(true)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  stocks       StockEntrepot[]
+  mouvements   MouvementStock[]
+
+  @@index([code])
+  @@index([nom])
+}
+
+// Stock par entrepôt
+model StockEntrepot {
+  id           String         @id @default(uuid())
+  produitId    String
+  produit      ProduitService @relation(fields: [produitId], references: [id], onDelete: Cascade)
+  entrepotId   String
+  entrepot     Entrepot       @relation(fields: [entrepotId], references: [id], onDelete: Cascade)
+  quantite     Float          @default(0)
+  emplacement  String?        // Emplacement dans l'entrepôt (ex: A1-B2)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@unique([produitId, entrepotId])
+  @@index([produitId])
+  @@index([entrepotId])
+}
+
+// Modèle enrichi Produit/Service (remplace l'ancien Produit)
+model ProduitService {
+  id              String          @id @default(uuid())
+
+  // === Identification ===
+  reference       String          @unique
+  codeBarres      String?         @unique   // Code-barres EAN13, UPC, etc.
+  nom             String
+  description     String?
+  descriptionLongue String?                 // Description détaillée pour devis/factures
+
+  // === Type et nature ===
+  type            TypeProduit     @default(PRODUIT)
+  nature          NatureProduit?            // Nature du produit
+
+  // === Unités ===
+  unite           String          @default("unité")  // Unité de vente (unité, L, Kg, m², h, etc.)
+  uniteAchat      String?                            // Unité d'achat si différente
+  ratioUnites     Float?          @default(1)        // Ratio unité achat / unité vente
+
+  // === Prix de vente ===
+  prixVenteHT     Float?                    // Prix de vente HT
+  tauxTVA         Float?          @default(19)  // Taux TVA en % (19% par défaut en Algérie)
+  prixVenteTTC    Float?                    // Prix TTC (calculé)
+
+  // === Prix d'achat ===
+  prixAchatHT     Float?                    // Prix d'achat moyen HT
+  margeParDefaut  Float?                    // Marge en %
+
+  // === Stock (pour type PRODUIT) ===
+  aStock          Boolean         @default(true)    // Gérer le stock (false pour services)
+  quantite        Float           @default(0)       // Quantité totale en stock
+  stockMinimum    Float           @default(0)       // Seuil d'alerte
+  stockMaximum    Float?                            // Stock maximum souhaité
+  lotSuivi        Boolean         @default(false)   // Suivi par lot/série
+  dlcSuivi        Boolean         @default(false)   // Suivi date limite consommation
+
+  // === Service spécifique ===
+  dureeService    Float?                    // Durée du service (en heures)
+
+  // === Fournisseur par défaut ===
+  fournisseurId   String?
+  fournisseur     Client?         @relation("FournisseurProduit", fields: [fournisseurId], references: [id])
+  delaiLivraison  Int?                      // Délai de livraison en jours
+
+  // === Classification ===
+  marque          String?                   // Marque
+  modele          String?                   // Modèle
+  poids           Float?                    // Poids en kg
+  longueur        Float?                    // Dimensions en cm
+  largeur         Float?
+  hauteur         Float?
+
+  // === Comptabilité ===
+  compteVente     String?                   // Compte comptable vente
+  compteAchat     String?                   // Compte comptable achat
+
+  // === Notes et fichiers ===
+  notePublique    String?                   // Note sur documents
+  notePrivee      String?                   // Note interne
+  urlExterne      String?                   // Lien vers documentation externe
+
+  // === Statut ===
+  enVente         Boolean         @default(true)    // Peut être vendu
+  enAchat         Boolean         @default(true)    // Peut être acheté
+  actif           Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // === Relations ===
+  categories      ProduitServiceCategorie[]
+  prixFournisseurs PrixFournisseur[]
+  prixClients     PrixClient[]
+  stocks          StockEntrepot[]
+  mouvements      MouvementStock[]
+  lots            LotProduit[]
+  devisLignes     DevisLigne[]
+  commandeLignes  CommandeLigne[]
+  factureLignes   FactureLigne[]
+  commandeFournisseurLignes   CommandeFournisseurLigne[]
+  factureFournisseurLignes    FactureFournisseurLigne[] @relation("FactureFournisseurLignes")
+
+  @@index([reference])
+  @@index([codeBarres])
+  @@index([nom])
+  @@index([type])
+  @@index([fournisseurId])
+}
+
+// Prix par fournisseur
+model PrixFournisseur {
+  id            String         @id @default(uuid())
+  produitId     String
+  produit       ProduitService @relation(fields: [produitId], references: [id], onDelete: Cascade)
+  fournisseurId String
+  fournisseur   Client         @relation("PrixFournisseurTiers", fields: [fournisseurId], references: [id], onDelete: Cascade)
+
+  refFournisseur String?                   // Référence chez le fournisseur
+  prixAchatHT    Float                     // Prix d'achat HT
+  remise         Float?         @default(0) // Remise en %
+  quantiteMin    Float?         @default(1) // Quantité minimum de commande
+  delaiLivraison Int?                       // Délai en jours
+  dateDebut      DateTime?                  // Date début validité prix
+  dateFin        DateTime?                  // Date fin validité prix
+  estDefaut      Boolean        @default(false)  // Fournisseur par défaut pour ce produit
+  notes          String?
+  actif          Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([produitId, fournisseurId])
+  @@index([produitId])
+  @@index([fournisseurId])
+}
+
+// Prix spécifiques par client
+model PrixClient {
+  id            String         @id @default(uuid())
+  produitId     String
+  produit       ProduitService @relation(fields: [produitId], references: [id], onDelete: Cascade)
+  clientId      String
+  client        Client         @relation("PrixClientTiers", fields: [clientId], references: [id], onDelete: Cascade)
+
+  prixVenteHT   Float                      // Prix de vente spécifique HT
+  remise        Float?         @default(0) // Remise additionnelle en %
+  quantiteMin   Float?         @default(1) // Quantité minimum
+  dateDebut     DateTime?                  // Date début validité
+  dateFin       DateTime?                  // Date fin validité
+  notes         String?
+  actif         Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([produitId, clientId])
+  @@index([produitId])
+  @@index([clientId])
+}
+
+// Lots et numéros de série
+model LotProduit {
+  id            String         @id @default(uuid())
+  produitId     String
+  produit       ProduitService @relation(fields: [produitId], references: [id], onDelete: Cascade)
+
+  numeroLot     String                     // Numéro de lot ou série
+  quantite      Float          @default(0) // Quantité dans ce lot
+  datePeremption DateTime?                 // Date de péremption
+  dateFabrication DateTime?                // Date de fabrication
+  notes         String?
+  actif         Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@unique([produitId, numeroLot])
+  @@index([produitId])
+  @@index([numeroLot])
+}
+
+// ============ ANCIEN MODELE PRODUIT (conservé pour compatibilité stock existant) ============
 model Produit {
   id           String           @id @default(uuid())
   reference    String           @unique
@@ -557,27 +906,275 @@ enum TypeMouvement {
   ENTREE
   SORTIE
   AJUSTEMENT
+  TRANSFERT       // Transfert entre entrepôts
+  INVENTAIRE      // Correction d'inventaire
 }
 
 model MouvementStock {
-  id             String         @id @default(uuid())
-  produitId      String
-  produit        Produit        @relation(fields: [produitId], references: [id])
-  type           TypeMouvement
-  quantite       Float          // Quantité (toujours positive, le type détermine +/-)
-  quantiteAvant  Float          // Stock avant le mouvement
-  quantiteApres  Float          // Stock après le mouvement
-  motif          String?        // Raison du mouvement
-  interventionId String?        // Lien optionnel avec une intervention
-  intervention   Intervention?  @relation(fields: [interventionId], references: [id])
-  userId         String
-  user           User           @relation(fields: [userId], references: [id])
-  createdAt      DateTime       @default(now())
+  id               String          @id @default(uuid())
+  // Support ancien modèle Produit
+  produitId        String?
+  produit          Produit?        @relation(fields: [produitId], references: [id])
+  // Support nouveau modèle ProduitService
+  produitServiceId String?
+  produitService   ProduitService? @relation(fields: [produitServiceId], references: [id])
+  // Entrepôt (pour gestion multi-entrepôts)
+  entrepotId       String?
+  entrepot         Entrepot?       @relation(fields: [entrepotId], references: [id])
+  entrepotDestId   String?         // Pour les transferts
+
+  type             TypeMouvement
+  quantite         Float           // Quantité (toujours positive, le type détermine +/-)
+  quantiteAvant    Float           // Stock avant le mouvement
+  quantiteApres    Float           // Stock après le mouvement
+  motif            String?         // Raison du mouvement
+  numeroLot        String?         // Numéro de lot si applicable
+  interventionId   String?         // Lien optionnel avec une intervention
+  intervention     Intervention?   @relation(fields: [interventionId], references: [id])
+  userId           String
+  user             User            @relation(fields: [userId], references: [id])
+  createdAt        DateTime        @default(now())
 
   @@index([produitId])
+  @@index([produitServiceId])
+  @@index([entrepotId])
   @@index([interventionId])
   @@index([userId])
   @@index([createdAt])
+}
+
+// ============ COMMERCE (Devis, Commandes, Factures) ============
+
+model CompteurDocument {
+  id             String       @id @default(uuid())
+  type           DocumentType
+  annee          Int
+  prochainNumero Int          @default(1)
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([type, annee])
+  @@index([type])
+  @@index([annee])
+}
+
+model Devis {
+  id                   String       @id @default(uuid())
+  ref                  String       @unique
+  clientId             String
+  client               Client       @relation(fields: [clientId], references: [id])
+  adresseFacturationId String?
+  adresseFacturation   Adresse?     @relation("DevisAdresseFacturation", fields: [adresseFacturationId], references: [id])
+  adresseLivraisonId   String?
+  adresseLivraison     Adresse?     @relation("DevisAdresseLivraison", fields: [adresseLivraisonId], references: [id])
+  dateDevis            DateTime     @default(now())
+  dateValidite         DateTime?
+  statut               DevisStatut  @default(BROUILLON)
+  remiseGlobalPct      Float?       @default(0)
+  remiseGlobalMontant  Float?       @default(0)
+  totalHT              Float        @default(0)
+  totalTVA             Float        @default(0)
+  totalTTC             Float        @default(0)
+  devise               String?      @default("DZD")
+  notes                String?
+  conditions           String?
+  createdById          String?
+  createdBy            User?        @relation("DevisCreatedBy", fields: [createdById], references: [id])
+  updatedById          String?
+  updatedBy            User?        @relation("DevisUpdatedBy", fields: [updatedById], references: [id])
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  lignes               DevisLigne[]
+  commandes            Commande[]
+  factures             Facture[]
+
+  @@index([clientId])
+  @@index([statut])
+  @@index([ref])
+  @@index([dateDevis])
+}
+
+model DevisLigne {
+  id               String         @id @default(uuid())
+  devisId          String
+  devis            Devis          @relation(fields: [devisId], references: [id], onDelete: Cascade)
+  produitServiceId String?
+  produitService   ProduitService? @relation(fields: [produitServiceId], references: [id])
+  libelle          String
+  description      String?
+  quantite         Float          @default(1)
+  unite            String?
+  prixUnitaireHT   Float          @default(0)
+  tauxTVA          Float          @default(0)
+  remisePct        Float?         @default(0)
+  totalHT          Float          @default(0)
+  totalTVA         Float          @default(0)
+  totalTTC         Float          @default(0)
+  ordre            Int            @default(0)
+
+  @@index([devisId])
+  @@index([produitServiceId])
+}
+
+model Commande {
+  id                   String          @id @default(uuid())
+  ref                  String          @unique
+  clientId             String
+  client               Client          @relation(fields: [clientId], references: [id])
+  devisId              String?
+  devis                Devis?          @relation(fields: [devisId], references: [id])
+  adresseFacturationId String?
+  adresseFacturation   Adresse?        @relation("CommandeAdresseFacturation", fields: [adresseFacturationId], references: [id])
+  adresseLivraisonId   String?
+  adresseLivraison     Adresse?        @relation("CommandeAdresseLivraison", fields: [adresseLivraisonId], references: [id])
+  dateCommande         DateTime        @default(now())
+  dateLivraisonSouhaitee DateTime?
+  statut               CommandeStatut  @default(BROUILLON)
+  remiseGlobalPct      Float?          @default(0)
+  remiseGlobalMontant  Float?          @default(0)
+  totalHT              Float           @default(0)
+  totalTVA             Float           @default(0)
+  totalTTC             Float           @default(0)
+  devise               String?         @default("DZD")
+  notes                String?
+  conditions           String?
+  createdById          String?
+  createdBy            User?           @relation("CommandeCreatedBy", fields: [createdById], references: [id])
+  updatedById          String?
+  updatedBy            User?           @relation("CommandeUpdatedBy", fields: [updatedById], references: [id])
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  lignes               CommandeLigne[]
+  factures             Facture[]
+
+  @@index([clientId])
+  @@index([statut])
+  @@index([ref])
+  @@index([dateCommande])
+}
+
+model CommandeLigne {
+  id               String         @id @default(uuid())
+  commandeId       String
+  commande         Commande       @relation(fields: [commandeId], references: [id], onDelete: Cascade)
+  produitServiceId String?
+  produitService   ProduitService? @relation(fields: [produitServiceId], references: [id])
+  libelle          String
+  description      String?
+  quantite         Float          @default(1)
+  unite            String?
+  prixUnitaireHT   Float          @default(0)
+  tauxTVA          Float          @default(0)
+  remisePct        Float?         @default(0)
+  totalHT          Float          @default(0)
+  totalTVA         Float          @default(0)
+  totalTTC         Float          @default(0)
+  ordre            Int            @default(0)
+
+  @@index([commandeId])
+  @@index([produitServiceId])
+}
+
+model Facture {
+  id                   String        @id @default(uuid())
+  ref                  String        @unique
+  clientId             String
+  client               Client        @relation(fields: [clientId], references: [id])
+  devisId              String?
+  devis                Devis?        @relation(fields: [devisId], references: [id])
+  commandeId           String?
+  commande             Commande?     @relation(fields: [commandeId], references: [id])
+  adresseFacturationId String?
+  adresseFacturation   Adresse?      @relation("FactureAdresseFacturation", fields: [adresseFacturationId], references: [id])
+  adresseLivraisonId   String?
+  adresseLivraison     Adresse?      @relation("FactureAdresseLivraison", fields: [adresseLivraisonId], references: [id])
+  dateFacture          DateTime      @default(now())
+  dateEcheance         DateTime?
+  type                 FactureType   @default(FACTURE)
+  statut               FactureStatut @default(BROUILLON)
+  remiseGlobalPct      Float?        @default(0)
+  remiseGlobalMontant  Float?        @default(0)
+  totalHT              Float         @default(0)
+  totalTVA             Float         @default(0)
+  totalTTC             Float         @default(0)
+  totalPaye            Float         @default(0)
+  devise               String?       @default("DZD")
+  notes                String?
+  conditions           String?
+  createdById          String?
+  createdBy            User?         @relation("FactureCreatedBy", fields: [createdById], references: [id])
+  updatedById          String?
+  updatedBy            User?         @relation("FactureUpdatedBy", fields: [updatedById], references: [id])
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  lignes               FactureLigne[]
+  paiements            Paiement[]
+  relances             FactureRelance[]
+
+  @@index([clientId])
+  @@index([statut])
+  @@index([type])
+  @@index([ref])
+  @@index([dateFacture])
+}
+
+model FactureRelance {
+  id          String   @id @default(uuid())
+  factureId   String
+  facture     Facture  @relation(fields: [factureId], references: [id], onDelete: Cascade)
+  niveau      Int      @default(1)
+  canal       String   // EMAIL, SMS, COURRIER, APPEL
+  commentaire String?
+  dateRelance DateTime @default(now())
+  createdById String?
+  createdBy   User?    @relation("FactureRelanceCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([factureId])
+  @@index([dateRelance])
+}
+
+model FactureLigne {
+  id               String         @id @default(uuid())
+  factureId        String
+  facture          Facture        @relation(fields: [factureId], references: [id], onDelete: Cascade)
+  produitServiceId String?
+  produitService   ProduitService? @relation(fields: [produitServiceId], references: [id])
+  libelle          String
+  description      String?
+  quantite         Float          @default(1)
+  unite            String?
+  prixUnitaireHT   Float          @default(0)
+  tauxTVA          Float          @default(0)
+  remisePct        Float?         @default(0)
+  totalHT          Float          @default(0)
+  totalTVA         Float          @default(0)
+  totalTTC         Float          @default(0)
+  ordre            Int            @default(0)
+
+  @@index([factureId])
+  @@index([produitServiceId])
+}
+
+model Paiement {
+  id             String         @id @default(uuid())
+  factureId      String
+  facture        Facture        @relation(fields: [factureId], references: [id], onDelete: Cascade)
+  modePaiementId String?
+  modePaiement   ModePaiement?  @relation(fields: [modePaiementId], references: [id])
+  datePaiement   DateTime       @default(now())
+  montant        Float
+  reference      String?
+  notes          String?
+  statut         PaiementStatut @default(RECU)
+  createdById    String?
+  createdBy      User?          @relation("PaiementCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime       @default(now())
+
+  @@index([factureId])
+  @@index([datePaiement])
 }
 
 // ============ GESTION RH - CONGES ET RECUPERATION ============
@@ -650,4 +1247,292 @@ model SoldeConge {
   @@unique([employeId, annee, type])
   @@index([employeId])
   @@index([annee])
+}
+
+// ============ COMMANDES FOURNISSEURS ============
+
+enum CommandeFournisseurStatut {
+  BROUILLON
+  ENVOYEE
+  CONFIRMEE
+  EN_RECEPTION
+  RECUE
+  ANNULEE
+}
+
+model CommandeFournisseur {
+  id                     String                    @id @default(uuid())
+  ref                    String                    @unique
+  fournisseurId          String
+  fournisseur            Client                    @relation("CommandesFournisseur", fields: [fournisseurId], references: [id])
+  dateCommande           DateTime                  @default(now())
+  dateLivraisonSouhaitee DateTime?
+  dateLivraison          DateTime?
+  statut                 CommandeFournisseurStatut @default(BROUILLON)
+  remiseGlobalPct        Float?                    @default(0)
+  remiseGlobalMontant    Float?                    @default(0)
+  totalHT                Float                     @default(0)
+  totalTVA               Float                     @default(0)
+  totalTTC               Float                     @default(0)
+  devise                 String?                   @default("DZD")
+  notes                  String?
+  conditions             String?
+  createdById            String?
+  createdBy              User?                     @relation("CommandeFournisseurCreatedBy", fields: [createdById], references: [id])
+  updatedById            String?
+  updatedBy              User?                     @relation("CommandeFournisseurUpdatedBy", fields: [updatedById], references: [id])
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+
+  lignes               CommandeFournisseurLigne[]
+  facturesFournisseur  FactureFournisseur[]
+
+  @@index([fournisseurId])
+  @@index([statut])
+  @@index([ref])
+  @@index([dateCommande])
+}
+
+model CommandeFournisseurLigne {
+  id                    String              @id @default(uuid())
+  commandeFournisseurId String
+  commandeFournisseur   CommandeFournisseur @relation(fields: [commandeFournisseurId], references: [id], onDelete: Cascade)
+  produitServiceId      String?
+  produitService        ProduitService?     @relation(fields: [produitServiceId], references: [id])
+  libelle               String
+  description           String?
+  quantite              Float               @default(1)
+  unite                 String?
+  prixUnitaireHT        Float               @default(0)
+  tauxTVA               Float               @default(0)
+  remisePct             Float?              @default(0)
+  totalHT               Float               @default(0)
+  totalTVA              Float               @default(0)
+  totalTTC              Float               @default(0)
+  quantiteRecue         Float               @default(0)
+  ordre                 Int                 @default(0)
+
+  @@index([commandeFournisseurId])
+  @@index([produitServiceId])
+}
+
+// ============ FACTURES FOURNISSEURS ============
+
+enum FactureFournisseurStatut {
+  BROUILLON
+  VALIDEE
+  EN_RETARD
+  PARTIELLEMENT_PAYEE
+  PAYEE
+  ANNULEE
+}
+
+model FactureFournisseur {
+  id                    String                   @id @default(uuid())
+  ref                   String                   @unique
+  refFournisseur        String?                  // Référence de la facture chez le fournisseur
+  fournisseurId         String
+  fournisseur           Client                   @relation("FacturesFournisseur", fields: [fournisseurId], references: [id])
+  commandeFournisseurId String?
+  commandeFournisseur   CommandeFournisseur?     @relation(fields: [commandeFournisseurId], references: [id])
+  dateFacture           DateTime                 @default(now())
+  dateEcheance          DateTime?
+  dateReception         DateTime?                // Date de réception de la facture
+  statut                FactureFournisseurStatut @default(BROUILLON)
+  remiseGlobalPct       Float?                   @default(0)
+  remiseGlobalMontant   Float?                   @default(0)
+  totalHT               Float                    @default(0)
+  totalTVA              Float                    @default(0)
+  totalTTC              Float                    @default(0)
+  totalPaye             Float                    @default(0)
+  devise                String?                  @default("DZD")
+  notes                 String?
+  conditions            String?
+  createdById           String?
+  createdBy             User?                    @relation("FactureFournisseurCreatedBy", fields: [createdById], references: [id])
+  updatedById           String?
+  updatedBy             User?                    @relation("FactureFournisseurUpdatedBy", fields: [updatedById], references: [id])
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+
+  lignes                FactureFournisseurLigne[]
+  paiements             PaiementFournisseur[]
+
+  @@index([fournisseurId])
+  @@index([statut])
+  @@index([ref])
+  @@index([dateFacture])
+}
+
+model FactureFournisseurLigne {
+  id                   String              @id @default(uuid())
+  factureFournisseurId String
+  factureFournisseur   FactureFournisseur  @relation(fields: [factureFournisseurId], references: [id], onDelete: Cascade)
+  produitServiceId     String?
+  produitService       ProduitService?     @relation("FactureFournisseurLignes", fields: [produitServiceId], references: [id])
+  libelle              String
+  description          String?
+  quantite             Float               @default(1)
+  unite                String?
+  prixUnitaireHT       Float               @default(0)
+  tauxTVA              Float               @default(0)
+  remisePct            Float?              @default(0)
+  totalHT              Float               @default(0)
+  totalTVA             Float               @default(0)
+  totalTTC             Float               @default(0)
+  ordre                Int                 @default(0)
+
+  @@index([factureFournisseurId])
+  @@index([produitServiceId])
+}
+
+model PaiementFournisseur {
+  id                   String              @id @default(uuid())
+  factureFournisseurId String
+  factureFournisseur   FactureFournisseur  @relation(fields: [factureFournisseurId], references: [id], onDelete: Cascade)
+  modePaiementId       String?
+  modePaiement         ModePaiement?       @relation("PaiementsFournisseur", fields: [modePaiementId], references: [id])
+  datePaiement         DateTime            @default(now())
+  montant              Float
+  reference            String?             // Référence du virement/chèque
+  banque               String?             // Banque émettrice
+  notes                String?
+  statut               PaiementStatut      @default(RECU)
+  createdById          String?
+  createdBy            User?               @relation("PaiementFournisseurCreatedBy", fields: [createdById], references: [id])
+  createdAt            DateTime            @default(now())
+
+  @@index([factureFournisseurId])
+  @@index([datePaiement])
+}
+
+// ============ CHARGES & DEPENSES ============
+
+enum TypeCharge {
+  FOURNISSEUR    // Charge liée à un fournisseur
+  FISCALE        // Impôts, taxes (hors TVA)
+  SOCIALE        // Charges sociales, CNAS, CASNOS
+  DIVERSE        // Autres charges (loyer, utilities, etc.)
+}
+
+enum ChargeStatut {
+  A_PAYER
+  PARTIELLEMENT_PAYEE
+  PAYEE
+  ANNULEE
+}
+
+model Charge {
+  id                  String       @id @default(uuid())
+  ref                 String       @unique
+  typeCharge          TypeCharge
+  libelle             String
+  description         String?
+
+  // Fournisseur (pour type FOURNISSEUR)
+  fournisseurId       String?
+  fournisseur         Client?      @relation("ChargesFournisseur", fields: [fournisseurId], references: [id])
+
+  // Catégorisation
+  categorie           String?      // Ex: "Loyer", "Electricité", "IS", "TVA", "CNAS"
+  sousCategorie       String?      // Ex: "Bureaux", "Entrepôt"
+
+  // Dates
+  dateCharge          DateTime     @default(now())  // Date de la charge
+  dateEcheance        DateTime?                     // Date limite de paiement
+  periodeDebut        DateTime?                     // Début de la période concernée
+  periodeFin          DateTime?                     // Fin de la période concernée
+
+  // Montants
+  montantHT           Float        @default(0)
+  tauxTVA             Float        @default(0)
+  montantTVA          Float        @default(0)
+  montantTTC          Float        @default(0)
+  montantPaye         Float        @default(0)
+
+  devise              String?      @default("DZD")
+  statut              ChargeStatut @default(A_PAYER)
+
+  // Récurrence
+  estRecurrente       Boolean      @default(false)
+  frequenceRecurrence String?      // MENSUELLE, TRIMESTRIELLE, ANNUELLE
+
+  notes               String?
+  pieceJointe         String?      // Chemin vers document justificatif
+
+  createdById         String?
+  createdBy           User?        @relation("ChargeCreatedBy", fields: [createdById], references: [id])
+  updatedById         String?
+  updatedBy           User?        @relation("ChargeUpdatedBy", fields: [updatedById], references: [id])
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  paiements           PaiementCharge[]
+
+  @@index([typeCharge])
+  @@index([categorie])
+  @@index([dateCharge])
+  @@index([dateEcheance])
+  @@index([statut])
+}
+
+model PaiementCharge {
+  id             String         @id @default(uuid())
+  chargeId       String
+  charge         Charge         @relation(fields: [chargeId], references: [id], onDelete: Cascade)
+  modePaiementId String?
+  modePaiement   ModePaiement?  @relation("PaiementsCharge", fields: [modePaiementId], references: [id])
+  datePaiement   DateTime       @default(now())
+  montant        Float
+  reference      String?
+  banque         String?
+  notes          String?
+  statut         PaiementStatut @default(RECU)
+  createdById    String?
+  createdBy      User?          @relation("PaiementChargeCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime       @default(now())
+
+  @@index([chargeId])
+  @@index([datePaiement])
+}
+
+// ============ PAIEMENTS DIVERS ============
+
+model PaiementDivers {
+  id             String         @id @default(uuid())
+  ref            String         @unique
+  libelle        String
+  description    String?
+
+  // Type
+  typeOperation  String         // ENCAISSEMENT, DECAISSEMENT
+  categorie      String?        // Classement libre
+
+  // Tiers (optionnel)
+  tiersId        String?
+  tiers          Client?        @relation("PaiementsDivers", fields: [tiersId], references: [id])
+
+  // Montant
+  montant        Float
+  devise         String?        @default("DZD")
+
+  // Paiement
+  datePaiement   DateTime       @default(now())
+  modePaiementId String?
+  modePaiement   ModePaiement?  @relation("PaiementsDivers", fields: [modePaiementId], references: [id])
+  reference      String?
+  banque         String?
+
+  notes          String?
+  statut         String         @default("EFFECTUE") // EFFECTUE, ANNULE
+
+  createdById    String?
+  createdBy      User?          @relation("PaiementDiversCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([typeOperation])
+  @@index([categorie])
+  @@index([datePaiement])
+  @@index([tiersId])
 }

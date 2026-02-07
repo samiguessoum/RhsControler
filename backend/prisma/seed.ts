@@ -515,6 +515,147 @@ async function main() {
 
   console.log(`Created ${interventions.length} interventions`);
 
+  // ============ COMMERCE ============
+  console.log('Creating commerce sample data...');
+
+  const year = new Date().getFullYear();
+
+  const produitService = await prisma.produitService.upsert({
+    where: { reference: 'SV-0001' },
+    update: {},
+    create: {
+      reference: 'SV-0001',
+      nom: 'Traitement préventif standard',
+      description: 'Service de traitement préventif (forfait)',
+      type: 'SERVICE',
+      aStock: false,
+      prixVenteHT: 5000,
+      tauxTVA: 19,
+      enVente: true,
+      enAchat: false,
+    },
+  });
+
+  const totalHT = 2 * 5000;
+  const totalTVA = totalHT * 0.19;
+  const totalTTC = totalHT + totalTVA;
+
+  const devis = await prisma.devis.create({
+    data: {
+      ref: `DV${year}-SEED`,
+      clientId: clients[0].id,
+      dateDevis: new Date(),
+      statut: 'VALIDE',
+      totalHT,
+      totalTVA,
+      totalTTC,
+      devise: 'DZD',
+      createdById: direction.id,
+      updatedById: direction.id,
+      lignes: {
+        create: [
+          {
+            produitServiceId: produitService.id,
+            libelle: produitService.nom,
+            description: produitService.description,
+            quantite: 2,
+            unite: produitService.unite,
+            prixUnitaireHT: 5000,
+            tauxTVA: 19,
+            remisePct: 0,
+            totalHT,
+            totalTVA,
+            totalTTC,
+            ordre: 1,
+          },
+        ],
+      },
+    },
+  });
+
+  const commande = await prisma.commande.create({
+    data: {
+      ref: `CMD${year}-SEED`,
+      clientId: clients[0].id,
+      devisId: devis.id,
+      dateCommande: new Date(),
+      statut: 'VALIDEE',
+      totalHT,
+      totalTVA,
+      totalTTC,
+      devise: 'DZD',
+      createdById: direction.id,
+      updatedById: direction.id,
+      lignes: {
+        create: [
+          {
+            produitServiceId: produitService.id,
+            libelle: produitService.nom,
+            description: produitService.description,
+            quantite: 2,
+            unite: produitService.unite,
+            prixUnitaireHT: 5000,
+            tauxTVA: 19,
+            remisePct: 0,
+            totalHT,
+            totalTVA,
+            totalTTC,
+            ordre: 1,
+          },
+        ],
+      },
+    },
+  });
+
+  const facture = await prisma.facture.create({
+    data: {
+      ref: `FAC${year}-SEED`,
+      clientId: clients[0].id,
+      devisId: devis.id,
+      commandeId: commande.id,
+      dateFacture: new Date(),
+      statut: 'PARTIELLEMENT_PAYEE',
+      totalHT,
+      totalTVA,
+      totalTTC,
+      totalPaye: 5000,
+      devise: 'DZD',
+      createdById: direction.id,
+      updatedById: direction.id,
+      lignes: {
+        create: [
+          {
+            produitServiceId: produitService.id,
+            libelle: produitService.nom,
+            description: produitService.description,
+            quantite: 2,
+            unite: produitService.unite,
+            prixUnitaireHT: 5000,
+            tauxTVA: 19,
+            remisePct: 0,
+            totalHT,
+            totalTVA,
+            totalTTC,
+            ordre: 1,
+          },
+        ],
+      },
+    },
+  });
+
+  await prisma.paiement.create({
+    data: {
+      factureId: facture.id,
+      datePaiement: new Date(),
+      montant: 5000,
+      reference: `PAY-${year}-SEED`,
+      notes: 'Acompte de démonstration',
+      createdById: direction.id,
+    },
+  });
+
+  console.log('Created commerce sample data');
+
   console.log('✅ Seeding completed!');
   console.log('\n📋 Comptes de test:');
   console.log('   Direction: direction@rhs.dz / password123');
