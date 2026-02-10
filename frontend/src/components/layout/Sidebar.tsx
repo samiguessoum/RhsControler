@@ -2,7 +2,6 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
   Calendar,
-  Users,
   FileText,
   Receipt,
   Upload,
@@ -43,12 +42,6 @@ export function Sidebar({ stats }: SidebarProps) {
       label: 'Planning',
       badge: stats?.aPlanifier ? stats.aPlanifier : undefined,
       badgeVariant: 'warning' as const,
-      show: true,
-    },
-    {
-      to: '/clients',
-      icon: Users,
-      label: 'Clients',
       show: true,
     },
     {

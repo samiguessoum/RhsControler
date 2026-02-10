@@ -60,6 +60,7 @@ import type {
   FormeJuridique,
   CreateTiersInput,
 } from '@/types';
+import { ClientsPage } from './Clients';
 
 // ============ CONFIGURATION ============
 const TYPE_TIERS_CONFIG: Record<TypeTiers, { label: string; icon: any; color: string; bgColor: string }> = {
@@ -133,7 +134,7 @@ export default function TiersPage() {
             Gestion des clients, fournisseurs et prospects
           </p>
         </div>
-        {canCreate && (
+        {canCreate && activeTab !== 'CLIENT' && (
           <Button onClick={() => setShowCreateDialog(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Nouveau tiers
@@ -194,129 +195,136 @@ export default function TiersPage() {
               <TabsTrigger value="PROSPECT">Prospects</TabsTrigger>
             </TabsList>
 
-            <div className="relative w-72">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Rechercher..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-10"
-              />
-            </div>
+            {activeTab !== 'CLIENT' && (
+              <div className="relative w-72">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Rechercher..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            )}
           </div>
         </Tabs>
       </div>
 
-      {/* Tiers List */}
-      <Card>
-        {isLoading ? (
-          <div className="text-center py-8">Chargement...</div>
-        ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Code</TableHead>
-                <TableHead>Nom</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Ville</TableHead>
-                <TableHead>Contact</TableHead>
-                <TableHead>Téléphone</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {tiersData?.tiers.map((tiers) => {
-                const config = TYPE_TIERS_CONFIG[tiers.typeTiers];
-                const contactPrincipal = tiers.siegeContacts?.[0];
-                return (
-                  <TableRow key={tiers.id} className="cursor-pointer hover:bg-gray-50">
-                    <TableCell className="font-mono text-sm">
-                      {tiers.code || '-'}
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{tiers.nomEntreprise}</div>
-                        {tiers.nomAlias && (
-                          <div className="text-xs text-muted-foreground">{tiers.nomAlias}</div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={`${config.bgColor} ${config.color}`}>
-                        {config.label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{tiers.siegeVille || '-'}</TableCell>
-                    <TableCell>
-                      {contactPrincipal ? (
-                        <div className="text-sm">
-                          {contactPrincipal.nom}
-                          {contactPrincipal.fonction && (
-                            <span className="text-muted-foreground"> ({contactPrincipal.fonction})</span>
+      {/* Clients Module (when CLIENT tab is selected) */}
+      {activeTab === 'CLIENT' ? (
+        <ClientsPage />
+      ) : (
+        /* Tiers List */
+        <Card>
+          {isLoading ? (
+            <div className="text-center py-8">Chargement...</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Code</TableHead>
+                  <TableHead>Nom</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Ville</TableHead>
+                  <TableHead>Contact</TableHead>
+                  <TableHead>Téléphone</TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {tiersData?.tiers.map((tiers) => {
+                  const config = TYPE_TIERS_CONFIG[tiers.typeTiers];
+                  const contactPrincipal = tiers.siegeContacts?.[0];
+                  return (
+                    <TableRow key={tiers.id} className="cursor-pointer hover:bg-gray-50">
+                      <TableCell className="font-mono text-sm">
+                        {tiers.code || '-'}
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <div className="font-medium">{tiers.nomEntreprise}</div>
+                          {tiers.nomAlias && (
+                            <div className="text-xs text-muted-foreground">{tiers.nomAlias}</div>
                           )}
                         </div>
-                      ) : '-'}
-                    </TableCell>
-                    <TableCell>{tiers.siegeTel || '-'}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setViewingTiers(tiers)}
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        {canEdit && (
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={`${config.bgColor} ${config.color}`}>
+                          {config.label}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{tiers.siegeVille || '-'}</TableCell>
+                      <TableCell>
+                        {contactPrincipal ? (
+                          <div className="text-sm">
+                            {contactPrincipal.nom}
+                            {contactPrincipal.fonction && (
+                              <span className="text-muted-foreground"> ({contactPrincipal.fonction})</span>
+                            )}
+                          </div>
+                        ) : '-'}
+                      </TableCell>
+                      <TableCell>{tiers.siegeTel || '-'}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => setEditingTiers(tiers)}
+                            onClick={() => setViewingTiers(tiers)}
                           >
-                            <Edit className="h-4 w-4" />
+                            <Eye className="h-4 w-4" />
                           </Button>
-                        )}
-                        {tiers.typeTiers === 'PROSPECT' && canEdit && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-green-600"
-                            onClick={() => convertMutation.mutate(tiers.id)}
-                            title="Convertir en client"
-                          >
-                            <ArrowRightLeft className="h-4 w-4" />
-                          </Button>
-                        )}
-                        {canDelete && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-red-500"
-                            onClick={() => {
-                              if (confirm('Supprimer ce tiers ?')) {
-                                deleteMutation.mutate(tiers.id);
-                              }
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
+                          {canEdit && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setEditingTiers(tiers)}
+                            >
+                              <Edit className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {tiers.typeTiers === 'PROSPECT' && canEdit && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-green-600"
+                              onClick={() => convertMutation.mutate(tiers.id)}
+                              title="Convertir en client"
+                            >
+                              <ArrowRightLeft className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {canDelete && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-red-500"
+                              onClick={() => {
+                                if (confirm('Supprimer ce tiers ?')) {
+                                  deleteMutation.mutate(tiers.id);
+                                }
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+                {tiersData?.tiers.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                      Aucun tiers trouvé
                     </TableCell>
                   </TableRow>
-                );
-              })}
-              {tiersData?.tiers.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                    Aucun tiers trouvé
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        )}
-      </Card>
+                )}
+              </TableBody>
+            </Table>
+          )}
+        </Card>
+      )}
 
       {/* Create/Edit Dialog */}
       <TiersFormDialog
