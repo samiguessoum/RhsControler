@@ -523,6 +523,7 @@ model Contrat {
   // Champs spécifiques au contrat ponctuel
   numeroBonCommande        String?
   nombreOperations         Int?
+  nombreVisitesControle    Int?
   createdAt                DateTime      @default(now())
   updatedAt                DateTime      @updatedAt
 

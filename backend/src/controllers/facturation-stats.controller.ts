@@ -22,7 +22,7 @@ export const facturationStatsController = {
           totalHT: true,
           totalTVA: true,
           totalTTC: true,
-          montantPaye: true,
+          totalPaye: true,
         },
         _count: true,
       });
@@ -37,7 +37,7 @@ export const facturationStatsController = {
           totalHT: true,
           totalTVA: true,
           totalTTC: true,
-          montantPaye: true,
+          totalPaye: true,
         },
         _count: true,
       });
@@ -74,27 +74,27 @@ export const facturationStatsController = {
         annee: year,
         facturesClients: {
           count: facturesClientsStats._count,
-          totalHT: facturesClientsStats._sum.totalHT || 0,
-          totalTVA: facturesClientsStats._sum.totalTVA || 0,
-          totalTTC: facturesClientsStats._sum.totalTTC || 0,
-          montantPaye: facturesClientsStats._sum.montantPaye || 0,
-          resteAPayer: (facturesClientsStats._sum.totalTTC || 0) - (facturesClientsStats._sum.montantPaye || 0),
+          totalHT: facturesClientsStats._sum?.totalHT || 0,
+          totalTVA: facturesClientsStats._sum?.totalTVA || 0,
+          totalTTC: facturesClientsStats._sum?.totalTTC || 0,
+          totalPaye: facturesClientsStats._sum?.totalPaye || 0,
+          resteAPayer: (facturesClientsStats._sum?.totalTTC || 0) - (facturesClientsStats._sum?.totalPaye || 0),
         },
         facturesFournisseurs: {
           count: facturesFournisseursStats._count,
-          totalHT: facturesFournisseursStats._sum.totalHT || 0,
-          totalTVA: facturesFournisseursStats._sum.totalTVA || 0,
-          totalTTC: facturesFournisseursStats._sum.totalTTC || 0,
-          montantPaye: facturesFournisseursStats._sum.montantPaye || 0,
-          resteAPayer: (facturesFournisseursStats._sum.totalTTC || 0) - (facturesFournisseursStats._sum.montantPaye || 0),
+          totalHT: facturesFournisseursStats._sum?.totalHT || 0,
+          totalTVA: facturesFournisseursStats._sum?.totalTVA || 0,
+          totalTTC: facturesFournisseursStats._sum?.totalTTC || 0,
+          totalPaye: facturesFournisseursStats._sum?.totalPaye || 0,
+          resteAPayer: (facturesFournisseursStats._sum?.totalTTC || 0) - (facturesFournisseursStats._sum?.totalPaye || 0),
         },
         charges: {
           count: chargesStats._count,
-          montantHT: chargesStats._sum.montantHT || 0,
-          montantTVA: chargesStats._sum.montantTVA || 0,
-          montantTTC: chargesStats._sum.montantTTC || 0,
-          montantPaye: chargesStats._sum.montantPaye || 0,
-          resteAPayer: (chargesStats._sum.montantTTC || 0) - (chargesStats._sum.montantPaye || 0),
+          montantHT: chargesStats._sum?.montantHT || 0,
+          montantTVA: chargesStats._sum?.montantTVA || 0,
+          montantTTC: chargesStats._sum?.montantTTC || 0,
+          montantPaye: chargesStats._sum?.montantPaye || 0,
+          resteAPayer: (chargesStats._sum?.montantTTC || 0) - (chargesStats._sum?.montantPaye || 0),
         },
         paiementsDivers: {
           encaissements: encaissementsDivers,
@@ -102,9 +102,9 @@ export const facturationStatsController = {
           solde: encaissementsDivers - decaissementsDivers,
         },
         resume: {
-          totalVentes: facturesClientsStats._sum.totalTTC || 0,
-          totalAchats: (facturesFournisseursStats._sum.totalTTC || 0) + (chargesStats._sum.montantTTC || 0),
-          resultatBrut: (facturesClientsStats._sum.totalTTC || 0) - (facturesFournisseursStats._sum.totalTTC || 0) - (chargesStats._sum.montantTTC || 0),
+          totalVentes: facturesClientsStats._sum?.totalTTC || 0,
+          totalAchats: (facturesFournisseursStats._sum?.totalTTC || 0) + (chargesStats._sum?.montantTTC || 0),
+          resultatBrut: (facturesClientsStats._sum?.totalTTC || 0) - (facturesFournisseursStats._sum?.totalTTC || 0) - (chargesStats._sum?.montantTTC || 0),
         },
       });
     } catch (error) {
@@ -335,7 +335,7 @@ export const facturationStatsController = {
     try {
       const commandesClients = await prisma.commande.findMany({
         where: {
-          statut: { in: ['CONFIRMEE', 'EN_COURS', 'LIVREE'] },
+          statut: { in: ['VALIDEE', 'EN_PREPARATION', 'EXPEDIEE', 'LIVREE'] },
           factures: { none: {} },
         },
         include: {
@@ -488,7 +488,7 @@ export const facturationStatsController = {
       const facturesClientsEnRetard = await prisma.facture.findMany({
         where: {
           dateEcheance: { lt: today },
-          statut: { in: ['ENVOYEE', 'PARTIELLEMENT_PAYEE'] },
+          statut: { in: ['VALIDEE', 'EN_RETARD', 'PARTIELLEMENT_PAYEE'] },
         },
         include: {
           client: { select: { id: true, nomEntreprise: true, code: true } },
@@ -524,12 +524,12 @@ export const facturationStatsController = {
         facturesClients: facturesClientsEnRetard.map((f) => ({
           ...f,
           joursRetard: Math.floor((today.getTime() - f.dateEcheance!.getTime()) / (1000 * 60 * 60 * 24)),
-          resteAPayer: f.totalTTC - f.montantPaye,
+          resteAPayer: f.totalTTC - f.totalPaye,
         })),
         facturesFournisseurs: facturesFournisseursEnRetard.map((f) => ({
           ...f,
           joursRetard: Math.floor((today.getTime() - f.dateEcheance!.getTime()) / (1000 * 60 * 60 * 24)),
-          resteAPayer: f.totalTTC - f.montantPaye,
+          resteAPayer: f.totalTTC - f.totalPaye,
         })),
         charges: chargesEnRetard.map((c) => ({
           ...c,

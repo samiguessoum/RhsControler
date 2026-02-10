@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { prisma } from '../config/database.js';
+import { ChargeStatut } from '@prisma/client';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
 
@@ -23,7 +24,7 @@ async function generateReference(date: Date): Promise<string> {
   return `${REF_PREFIX}${annee}-${String(numero).padStart(5, '0')}`;
 }
 
-function determineStatut(montantTTC: number, montantPaye: number): string {
+function determineStatut(montantTTC: number, montantPaye: number): ChargeStatut {
   if (montantPaye >= montantTTC) return 'PAYEE';
   if (montantPaye > 0) return 'PARTIELLEMENT_PAYEE';
   return 'A_PAYER';
@@ -103,11 +104,11 @@ export const chargeController = {
       const charge = await prisma.charge.findUnique({
         where: { id },
         include: {
-          fournisseur: { select: { id: true, nomEntreprise: true, code: true, email: true } },
+          fournisseur: { select: { id: true, nomEntreprise: true, code: true, siegeEmail: true } },
           paiements: {
             orderBy: { datePaiement: 'desc' },
             include: {
-              modePaiement: { select: { id: true, nom: true } },
+              modePaiement: { select: { id: true, libelle: true } },
             },
           },
         },
@@ -321,13 +322,13 @@ export const chargeController = {
           createdById: req.user?.id,
         },
         include: {
-          modePaiement: { select: { id: true, nom: true } },
+          modePaiement: { select: { id: true, libelle: true } },
         },
       });
 
       // Mettre à jour le montant payé et le statut
       const nouveauMontantPaye = charge.montantPaye + montant;
-      const nouveauStatut = determineStatut(charge.montantTTC, nouveauMontantPaye);
+      const nouveauStatut = determineStatut(charge.montantTTC, nouveauMontantPaye) as 'A_PAYER' | 'PARTIELLEMENT_PAYEE' | 'PAYEE';
 
       await prisma.charge.update({
         where: { id },
@@ -366,7 +367,7 @@ export const chargeController = {
       // Mettre à jour le montant payé et le statut
       const charge = paiement.charge;
       const nouveauMontantPaye = Math.max(0, charge.montantPaye - paiement.montant);
-      const nouveauStatut = determineStatut(charge.montantTTC, nouveauMontantPaye);
+      const nouveauStatut = determineStatut(charge.montantTTC, nouveauMontantPaye) as 'A_PAYER' | 'PARTIELLEMENT_PAYEE' | 'PAYEE';
 
       await prisma.charge.update({
         where: { id },
@@ -496,7 +497,7 @@ export const chargeController = {
         },
       });
 
-      await createAuditLog(req.user!.id, 'UPDATE', 'Charge', charge.id, { after: charge, action: 'ANNULER' });
+      await createAuditLog(req.user!.id, 'UPDATE', 'Charge', charge.id, { after: charge });
 
       res.json({ charge, message: 'Charge annulée' });
     } catch (error) {

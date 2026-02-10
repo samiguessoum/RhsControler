@@ -67,7 +67,7 @@ export const paiementDiversController = {
           orderBy: { datePaiement: 'desc' },
           include: {
             tiers: { select: { id: true, nomEntreprise: true, code: true } },
-            modePaiement: { select: { id: true, nom: true } },
+            modePaiement: { select: { id: true, libelle: true } },
           },
         }),
         prisma.paiementDivers.count({ where }),
@@ -95,8 +95,8 @@ export const paiementDiversController = {
       const paiement = await prisma.paiementDivers.findUnique({
         where: { id },
         include: {
-          tiers: { select: { id: true, nomEntreprise: true, code: true, email: true } },
-          modePaiement: { select: { id: true, nom: true } },
+          tiers: { select: { id: true, nomEntreprise: true, code: true, siegeEmail: true } },
+          modePaiement: { select: { id: true, libelle: true } },
         },
       });
 
@@ -143,13 +143,11 @@ export const paiementDiversController = {
           reference: data.reference,
           banque: data.banque,
           notes: data.notes,
-          pieceJointe: data.pieceJointe,
           createdById: req.user?.id,
-          updatedById: req.user?.id,
         },
         include: {
           tiers: { select: { id: true, nomEntreprise: true } },
-          modePaiement: { select: { id: true, nom: true } },
+          modePaiement: { select: { id: true, libelle: true } },
         },
       });
 
@@ -199,12 +197,10 @@ export const paiementDiversController = {
           reference: data.reference,
           banque: data.banque,
           notes: data.notes,
-          pieceJointe: data.pieceJointe,
-          updatedById: req.user?.id,
         },
         include: {
           tiers: { select: { id: true, nomEntreprise: true } },
-          modePaiement: { select: { id: true, nom: true } },
+          modePaiement: { select: { id: true, libelle: true } },
         },
       });
 

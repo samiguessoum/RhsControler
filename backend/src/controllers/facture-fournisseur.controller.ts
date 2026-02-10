@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { prisma } from '../config/database.js';
+import { FactureFournisseurStatut } from '@prisma/client';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
 import { generateFactureFournisseurPDF } from '../services/pdf.service.js';
@@ -103,9 +104,9 @@ async function buildLignes(lignes: Array<any>): Promise<Array<any>> {
   });
 }
 
-function determineStatut(totalTTC: number, montantPaye: number, dateEcheance?: Date | null): string {
-  if (montantPaye >= totalTTC) return 'PAYEE';
-  if (montantPaye > 0) return 'PARTIELLEMENT_PAYEE';
+function determineStatut(totalTTC: number, totalPaye: number, dateEcheance?: Date | null): FactureFournisseurStatut {
+  if (totalPaye >= totalTTC) return 'PAYEE';
+  if (totalPaye > 0) return 'PARTIELLEMENT_PAYEE';
   if (dateEcheance && dateEcheance < new Date()) return 'EN_RETARD';
   return 'VALIDEE';
 }
@@ -173,7 +174,7 @@ export const factureFournisseurController = {
       const facture = await prisma.factureFournisseur.findUnique({
         where: { id },
         include: {
-          fournisseur: { select: { id: true, nomEntreprise: true, code: true, email: true, telephone: true } },
+          fournisseur: { select: { id: true, nomEntreprise: true, code: true, siegeEmail: true, siegeTel: true, siegeAdresse: true } },
           commandeFournisseur: { select: { id: true, ref: true } },
           lignes: {
             orderBy: { ordre: 'asc' },
@@ -184,7 +185,7 @@ export const factureFournisseurController = {
           paiements: {
             orderBy: { datePaiement: 'desc' },
             include: {
-              modePaiement: { select: { id: true, nom: true } },
+              modePaiement: { select: { id: true, libelle: true } },
             },
           },
         },
@@ -237,7 +238,7 @@ export const factureFournisseurController = {
           totalHT: totals.totalHT,
           totalTVA: totals.totalTVA,
           totalTTC: totals.totalTTC,
-          montantPaye: 0,
+          totalPaye: 0,
           devise: data.devise,
           notes: data.notes,
           createdById: req.user?.id,
@@ -388,7 +389,7 @@ export const factureFournisseurController = {
         return res.status(400).json({ error: 'Impossible d\'ajouter un paiement à une facture annulée' });
       }
 
-      const resteAPayer = facture.totalTTC - facture.montantPaye;
+      const resteAPayer = facture.totalTTC - facture.totalPaye;
       if (montant > resteAPayer) {
         return res.status(400).json({ error: `Le montant dépasse le reste à payer (${resteAPayer.toFixed(2)})` });
       }
@@ -405,18 +406,18 @@ export const factureFournisseurController = {
           createdById: req.user?.id,
         },
         include: {
-          modePaiement: { select: { id: true, nom: true } },
+          modePaiement: { select: { id: true, libelle: true } },
         },
       });
 
       // Mettre à jour le montant payé et le statut
-      const nouveauMontantPaye = facture.montantPaye + montant;
+      const nouveauMontantPaye = facture.totalPaye + montant;
       const nouveauStatut = determineStatut(facture.totalTTC, nouveauMontantPaye, facture.dateEcheance);
 
       await prisma.factureFournisseur.update({
         where: { id },
         data: {
-          montantPaye: nouveauMontantPaye,
+          totalPaye: nouveauMontantPaye,
           statut: nouveauStatut,
           updatedById: req.user?.id,
         },
@@ -449,13 +450,13 @@ export const factureFournisseurController = {
 
       // Mettre à jour le montant payé et le statut
       const facture = paiement.factureFournisseur;
-      const nouveauMontantPaye = Math.max(0, facture.montantPaye - paiement.montant);
+      const nouveauMontantPaye = Math.max(0, facture.totalPaye - paiement.montant);
       const nouveauStatut = determineStatut(facture.totalTTC, nouveauMontantPaye, facture.dateEcheance);
 
       await prisma.factureFournisseur.update({
         where: { id },
         data: {
-          montantPaye: nouveauMontantPaye,
+          totalPaye: nouveauMontantPaye,
           statut: nouveauStatut,
           updatedById: req.user?.id,
         },
@@ -538,7 +539,7 @@ export const factureFournisseurController = {
           totalHT: totals.totalHT,
           totalTVA: totals.totalTVA,
           totalTTC: totals.totalTTC,
-          montantPaye: 0,
+          totalPaye: 0,
           devise: commande.devise,
           notes: data.notes || commande.notes,
           createdById: req.user?.id,
@@ -554,8 +555,6 @@ export const factureFournisseurController = {
 
       await createAuditLog(req.user!.id, 'CREATE', 'FactureFournisseur', facture.id, {
         after: facture,
-        source: 'CommandeFournisseur',
-        commandeId,
       });
 
       res.status(201).json({ facture });
@@ -572,11 +571,11 @@ export const factureFournisseurController = {
       const facture = await prisma.factureFournisseur.findUnique({
         where: { id },
         include: {
-          fournisseur: { select: { id: true, nomEntreprise: true, code: true, adresse: true, email: true, telephone: true } },
+          fournisseur: { select: { id: true, nomEntreprise: true, code: true, siegeAdresse: true, siegeEmail: true, siegeTel: true } },
           lignes: { orderBy: { ordre: 'asc' } },
           paiements: {
             orderBy: { datePaiement: 'desc' },
-            include: { modePaiement: { select: { nom: true } } },
+            include: { modePaiement: { select: { libelle: true } } },
           },
         },
       });
