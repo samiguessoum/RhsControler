@@ -49,15 +49,18 @@ const EMPTY_FOURNISSEUR_LINE = {
   ordre: 1,
 };
 
-function computeTotals(lignes: Array<{ quantite: number; prixUnitaireHT: number; tauxTVA: number; remisePct?: number }>) {
+function computeTotals(lignes: Array<{ quantite: number; prixUnitaireHT?: number; tauxTVA?: number; remisePct?: number }>) {
   const totalHT = lignes.reduce((sum, l) => {
     const remise = l.remisePct ? (l.remisePct / 100) : 0;
-    return sum + l.quantite * l.prixUnitaireHT * (1 - remise);
+    const prix = l.prixUnitaireHT || 0;
+    return sum + l.quantite * prix * (1 - remise);
   }, 0);
   const totalTVA = lignes.reduce((sum, l) => {
     const remise = l.remisePct ? (l.remisePct / 100) : 0;
-    const ht = l.quantite * l.prixUnitaireHT * (1 - remise);
-    return sum + ht * (l.tauxTVA / 100);
+    const prix = l.prixUnitaireHT || 0;
+    const tva = l.tauxTVA || 0;
+    const ht = l.quantite * prix * (1 - remise);
+    return sum + ht * (tva / 100);
   }, 0);
   return { totalHT, totalTVA, totalTTC: totalHT + totalTVA };
 }

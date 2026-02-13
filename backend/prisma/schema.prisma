@@ -302,9 +302,10 @@ model Client {
   comptesBancaires CompteBancaire[]
 
   // Relations produits/services (Dolibarr-style)
-  produitsFournis   ProduitService[]  @relation("FournisseurProduit")
-  prixFournisseur   PrixFournisseur[] @relation("PrixFournisseurTiers")
-  prixClient        PrixClient[]      @relation("PrixClientTiers")
+  produitsFournis           ProduitService[]           @relation("FournisseurProduit")
+  produitsDefautFournisseur ProduitFournisseurDefaut[] @relation("FournisseurDefautProduit")
+  prixFournisseur           PrixFournisseur[]          @relation("PrixFournisseurTiers")
+  prixClient                PrixClient[]               @relation("PrixClientTiers")
 
   // Commerce
   devis            Devis[]
@@ -639,12 +640,9 @@ enum TypeProduit {
 }
 
 enum NatureProduit {
-  MATIERE_PREMIERE     // Matière première
-  PRODUIT_FINI         // Produit fini
-  PRODUIT_SEMI_FINI    // Produit semi-fini
-  CONSOMMABLE          // Consommable
-  PIECE_DETACHEE       // Pièce détachée
-  AUTRE                // Autre
+  CONSOMMABLE                // Produit consommable (produits chimiques, etc.)
+  EPI                        // Équipement de Protection Individuelle
+  MATERIEL_ANTI_NUISIBLES    // Matériel anti-nuisibles (fly killer, pièges, pics pigeons, etc.)
 }
 
 // Catégories de produits/services (hiérarchique)
@@ -807,11 +805,29 @@ model ProduitService {
   commandeFournisseurLignes   CommandeFournisseurLigne[]
   factureFournisseurLignes    FactureFournisseurLigne[] @relation("FactureFournisseurLignes")
 
+  fournisseursDefaut ProduitFournisseurDefaut[]
+
   @@index([reference])
   @@index([codeBarres])
   @@index([nom])
   @@index([type])
   @@index([fournisseurId])
+}
+
+// Fournisseurs par défaut avec ordre de préférence
+model ProduitFournisseurDefaut {
+  id            String         @id @default(uuid())
+  produitId     String
+  produit       ProduitService @relation(fields: [produitId], references: [id], onDelete: Cascade)
+  fournisseurId String
+  fournisseur   Client         @relation("FournisseurDefautProduit", fields: [fournisseurId], references: [id], onDelete: Cascade)
+  ordre         Int            @default(1)  // 1 = premier choix, 2 = second, etc.
+  createdAt     DateTime       @default(now())
+
+  @@unique([produitId, fournisseurId])
+  @@index([produitId])
+  @@index([fournisseurId])
+  @@index([ordre])
 }
 
 // Prix par fournisseur

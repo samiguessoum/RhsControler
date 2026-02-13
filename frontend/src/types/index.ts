@@ -839,7 +839,7 @@ export interface TiersStats {
 
 // ============ PRODUITS/SERVICES (Dolibarr-style) ============
 export type TypeProduit = 'PRODUIT' | 'SERVICE';
-export type NatureProduit = 'MATIERE_PREMIERE' | 'PRODUIT_FINI' | 'PRODUIT_SEMI_FINI' | 'CONSOMMABLE' | 'PIECE_DETACHEE' | 'AUTRE';
+export type NatureProduit = 'CONSOMMABLE' | 'EPI' | 'MATERIEL_ANTI_NUISIBLES';
 export type TypeMouvementPS = 'ENTREE' | 'SORTIE' | 'AJUSTEMENT' | 'TRANSFERT' | 'INVENTAIRE';
 
 // Catégorie de produit
@@ -955,6 +955,7 @@ export interface ProduitService {
   categories?: {
     categorie: { id: string; nom: string; couleur?: string };
   }[];
+  fournisseursDefaut?: ProduitFournisseurDefaut[];
   prixFournisseurs?: PrixFournisseur[];
   prixClients?: PrixClient[];
   stocks?: StockEntrepot[];
@@ -966,6 +967,16 @@ export interface ProduitService {
     prixClients: number;
     stocks: number;
   };
+}
+
+// Fournisseur par défaut (avec ordre de préférence)
+export interface ProduitFournisseurDefaut {
+  id: string;
+  produitId: string;
+  fournisseurId: string;
+  fournisseur?: { id: string; nomEntreprise: string; code?: string };
+  ordre: number;
+  createdAt: string;
 }
 
 // Prix fournisseur
@@ -1064,7 +1075,8 @@ export interface CreateProduitServiceInput {
   lotSuivi?: boolean;
   dlcSuivi?: boolean;
   dureeService?: number;
-  fournisseurId?: string;
+  fournisseurId?: string;  // Deprecated: use fournisseursDefaut
+  fournisseursDefaut?: { fournisseurId: string; ordre: number }[];
   delaiLivraison?: number;
   marque?: string;
   modele?: string;

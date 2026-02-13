@@ -15,6 +15,15 @@ import {
   MapPin,
   CreditCard,
   ArrowRightLeft,
+  LayoutGrid,
+  List,
+  ChevronDown,
+  ChevronUp,
+  Flame,
+  Thermometer,
+  Snowflake,
+  FileText,
+  X,
 } from 'lucide-react';
 
 import { tiersApi, referentielsApi } from '@/services/api';
@@ -23,8 +32,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { Tooltip } from '@/components/ui/tooltip';
 import {
   Dialog,
   DialogContent,
@@ -53,21 +63,33 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { useAuthStore } from '@/store/auth.store';
 import type {
   Tiers,
   TypeTiers,
   FormeJuridique,
   CreateTiersInput,
+  SiteInput,
+  CreateContactInput,
 } from '@/types';
-import { ClientsPage } from './Clients';
+import { cn } from '@/lib/utils';
 
 // ============ CONFIGURATION ============
-const TYPE_TIERS_CONFIG: Record<TypeTiers, { label: string; icon: any; color: string; bgColor: string }> = {
-  CLIENT: { label: 'Client', icon: Users, color: 'text-blue-700', bgColor: 'bg-blue-100' },
-  FOURNISSEUR: { label: 'Fournisseur', icon: Truck, color: 'text-orange-700', bgColor: 'bg-orange-100' },
-  PROSPECT: { label: 'Prospect', icon: UserPlus, color: 'text-purple-700', bgColor: 'bg-purple-100' },
-  CLIENT_FOURNISSEUR: { label: 'Client & Fournisseur', icon: ArrowRightLeft, color: 'text-green-700', bgColor: 'bg-green-100' },
+const TYPE_TIERS_CONFIG: Record<TypeTiers, { label: string; icon: any; color: string; bgColor: string; borderColor: string }> = {
+  CLIENT: { label: 'Client', icon: Users, color: 'text-blue-700', bgColor: 'bg-blue-50', borderColor: 'border-blue-200' },
+  FOURNISSEUR: { label: 'Fournisseur', icon: Truck, color: 'text-orange-700', bgColor: 'bg-orange-50', borderColor: 'border-orange-200' },
+  PROSPECT: { label: 'Prospect', icon: UserPlus, color: 'text-purple-700', bgColor: 'bg-purple-50', borderColor: 'border-purple-200' },
+  CLIENT_FOURNISSEUR: { label: 'Client & Fournisseur', icon: ArrowRightLeft, color: 'text-green-700', bgColor: 'bg-green-50', borderColor: 'border-green-200' },
 };
 
 const FORME_JURIDIQUE_OPTIONS: { value: FormeJuridique; label: string }[] = [
@@ -81,6 +103,210 @@ const FORME_JURIDIQUE_OPTIONS: { value: FormeJuridique; label: string }[] = [
   { value: 'AUTRE', label: 'Autre' },
 ];
 
+const PROSPECT_NIVEAUX = [
+  { value: 3, label: 'Chaud', icon: Flame, color: 'text-red-600', bgColor: 'bg-red-100' },
+  { value: 2, label: 'Tiède', icon: Thermometer, color: 'text-yellow-600', bgColor: 'bg-yellow-100' },
+  { value: 1, label: 'Froid', icon: Snowflake, color: 'text-blue-600', bgColor: 'bg-blue-100' },
+];
+
+// ============ COLLAPSIBLE SECTION ============
+function CollapsibleSection({
+  title,
+  icon,
+  defaultOpen = false,
+  children,
+  className,
+}: {
+  title: string;
+  icon?: React.ReactNode;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
+
+  return (
+    <div className={cn('border rounded-lg bg-white', className)}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center justify-between w-full p-4 text-left hover:bg-gray-50 transition-colors rounded-lg"
+      >
+        <div className="flex items-center gap-2">
+          {icon}
+          <span className="font-medium text-sm">{title}</span>
+        </div>
+        {isOpen ? (
+          <ChevronUp className="h-4 w-4 text-muted-foreground" />
+        ) : (
+          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+        )}
+      </button>
+      {isOpen && (
+        <div className="px-4 pb-4 pt-0 border-t space-y-4">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============ TIERS CARD COMPONENT ============
+function TiersCard({
+  tiers,
+  onView,
+  onEdit,
+  onDelete,
+  onConvert,
+  canEdit,
+  canDelete,
+}: {
+  tiers: Tiers;
+  onView: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onConvert?: () => void;
+  canEdit: boolean;
+  canDelete: boolean;
+}) {
+  const config = TYPE_TIERS_CONFIG[tiers.typeTiers];
+  const Icon = config.icon;
+  const prospectNiveau = PROSPECT_NIVEAUX.find(n => n.value === tiers.prospectNiveau);
+
+  return (
+    <Card
+      className={cn(
+        'hover:shadow-md transition-all cursor-pointer border-l-4',
+        config.borderColor
+      )}
+      onClick={onView}
+    >
+      <CardHeader className="pb-2">
+        <div className="flex items-start justify-between">
+          <div className="flex items-center gap-3">
+            <div className={cn('w-10 h-10 rounded-full flex items-center justify-center', config.bgColor)}>
+              <Icon className={cn('h-5 w-5', config.color)} />
+            </div>
+            <div className="min-w-0">
+              <CardTitle className="text-base truncate">{tiers.nomEntreprise}</CardTitle>
+              {tiers.nomAlias && (
+                <p className="text-xs text-muted-foreground truncate">{tiers.nomAlias}</p>
+              )}
+            </div>
+          </div>
+          <Badge className={cn(config.bgColor, config.color, 'text-xs')}>
+            {config.label}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {/* Location */}
+        {tiers.siegeVille && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <MapPin className="h-4 w-4 flex-shrink-0" />
+            <span className="truncate">{tiers.siegeVille}</span>
+          </div>
+        )}
+
+        {/* Contact info - clickable */}
+        <div className="space-y-1">
+          {tiers.siegeTel && (
+            <a
+              href={`tel:${tiers.siegeTel}`}
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors"
+            >
+              <Phone className="h-4 w-4 flex-shrink-0" />
+              <span>{tiers.siegeTel}</span>
+            </a>
+          )}
+          {tiers.siegeEmail && (
+            <a
+              href={`mailto:${tiers.siegeEmail}`}
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors truncate"
+            >
+              <Mail className="h-4 w-4 flex-shrink-0" />
+              <span className="truncate">{tiers.siegeEmail}</span>
+            </a>
+          )}
+        </div>
+
+        {/* Type-specific info */}
+        <div className="pt-2 border-t">
+          {tiers.typeTiers === 'CLIENT' && (
+            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+              {tiers.sites && tiers.sites.length > 0 && (
+                <span className="flex items-center gap-1">
+                  <Building2 className="h-3 w-3" />
+                  {tiers.sites.length} site(s)
+                </span>
+              )}
+              <span className="flex items-center gap-1">
+                <FileText className="h-3 w-3" />
+                {tiers._count?.contrats || 0} contrat(s)
+              </span>
+            </div>
+          )}
+
+          {tiers.typeTiers === 'FOURNISSEUR' && (
+            <div className="text-xs text-muted-foreground">
+              {tiers.siegeRC && <span>RC: {tiers.siegeRC}</span>}
+            </div>
+          )}
+
+          {tiers.typeTiers === 'PROSPECT' && prospectNiveau && (
+            <div className="flex items-center justify-between">
+              <Badge className={cn(prospectNiveau.bgColor, prospectNiveau.color, 'text-xs')}>
+                <prospectNiveau.icon className="h-3 w-3 mr-1" />
+                {prospectNiveau.label}
+              </Badge>
+              {canEdit && onConvert && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs h-7"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onConvert();
+                  }}
+                >
+                  <ArrowRightLeft className="h-3 w-3 mr-1" />
+                  Convertir
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-1 pt-2 border-t" onClick={(e) => e.stopPropagation()}>
+          <Tooltip content="Voir les détails">
+            <Button size="sm" variant="ghost" onClick={onView}>
+              <Eye className="h-4 w-4" />
+            </Button>
+          </Tooltip>
+          {canEdit && (
+            <Tooltip content="Modifier">
+              <Button size="sm" variant="ghost" onClick={onEdit}>
+                <Edit className="h-4 w-4" />
+              </Button>
+            </Tooltip>
+          )}
+          {canDelete && (
+            <Tooltip content="Supprimer">
+              <Button size="sm" variant="ghost" className="text-red-500" onClick={onDelete}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </Tooltip>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============ MAIN PAGE ============
 export default function TiersPage() {
   const { canDo } = useAuthStore();
   const canCreate = canDo('createClient');
@@ -90,9 +316,12 @@ export default function TiersPage() {
 
   const [activeTab, setActiveTab] = useState<string>('all');
   const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingTiers, setEditingTiers] = useState<Tiers | null>(null);
   const [viewingTiers, setViewingTiers] = useState<Tiers | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Tiers | null>(null);
+  const [convertTarget, setConvertTarget] = useState<Tiers | null>(null);
 
   // Fetch stats
   const { data: stats } = useQuery({
@@ -113,6 +342,7 @@ export default function TiersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tiers'] });
       queryClient.invalidateQueries({ queryKey: ['tiers-stats'] });
+      setDeleteTarget(null);
     },
   });
 
@@ -122,11 +352,15 @@ export default function TiersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tiers'] });
       queryClient.invalidateQueries({ queryKey: ['tiers-stats'] });
+      setConvertTarget(null);
     },
   });
 
+  const tiersList = tiersData?.tiers || [];
+
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Tiers</h1>
@@ -134,7 +368,7 @@ export default function TiersPage() {
             Gestion des clients, fournisseurs et prospects
           </p>
         </div>
-        {canCreate && activeTab !== 'CLIENT' && (
+        {canCreate && (
           <Button onClick={() => setShowCreateDialog(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Nouveau tiers
@@ -144,7 +378,13 @@ export default function TiersPage() {
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setActiveTab('CLIENT')}>
+        <Card
+          className={cn(
+            'cursor-pointer hover:shadow-md transition-all',
+            activeTab === 'CLIENT' && 'ring-2 ring-blue-500'
+          )}
+          onClick={() => setActiveTab('CLIENT')}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Clients</CardTitle>
             <Users className="h-4 w-4 text-blue-600" />
@@ -157,7 +397,13 @@ export default function TiersPage() {
           </CardContent>
         </Card>
 
-        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setActiveTab('FOURNISSEUR')}>
+        <Card
+          className={cn(
+            'cursor-pointer hover:shadow-md transition-all',
+            activeTab === 'FOURNISSEUR' && 'ring-2 ring-orange-500'
+          )}
+          onClick={() => setActiveTab('FOURNISSEUR')}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Fournisseurs</CardTitle>
             <Truck className="h-4 w-4 text-orange-600" />
@@ -170,7 +416,13 @@ export default function TiersPage() {
           </CardContent>
         </Card>
 
-        <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => setActiveTab('PROSPECT')}>
+        <Card
+          className={cn(
+            'cursor-pointer hover:shadow-md transition-all',
+            activeTab === 'PROSPECT' && 'ring-2 ring-purple-500'
+          )}
+          onClick={() => setActiveTab('PROSPECT')}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Prospects</CardTitle>
             <UserPlus className="h-4 w-4 text-purple-600" />
@@ -184,89 +436,137 @@ export default function TiersPage() {
         </Card>
       </div>
 
-      {/* Tabs and Search */}
-      <div className="flex flex-col gap-4">
+      {/* Tabs, Search and View Toggle */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <div className="flex items-center justify-between">
-            <TabsList>
-              <TabsTrigger value="all">Tous</TabsTrigger>
-              <TabsTrigger value="CLIENT">Clients</TabsTrigger>
-              <TabsTrigger value="FOURNISSEUR">Fournisseurs</TabsTrigger>
-              <TabsTrigger value="PROSPECT">Prospects</TabsTrigger>
-            </TabsList>
-
-            {activeTab !== 'CLIENT' && (
-              <div className="relative w-72">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Rechercher..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            )}
-          </div>
+          <TabsList>
+            <TabsTrigger value="all">Tous</TabsTrigger>
+            <TabsTrigger value="CLIENT">Clients</TabsTrigger>
+            <TabsTrigger value="FOURNISSEUR">Fournisseurs</TabsTrigger>
+            <TabsTrigger value="PROSPECT">Prospects</TabsTrigger>
+          </TabsList>
         </Tabs>
+
+        <div className="flex items-center gap-2">
+          <div className="relative w-64">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Rechercher..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10"
+            />
+          </div>
+
+          {/* View Toggle */}
+          <div className="flex border rounded-md">
+            <Tooltip content="Vue cartes">
+              <Button
+                variant={viewMode === 'cards' ? 'default' : 'ghost'}
+                size="sm"
+                className="rounded-r-none"
+                onClick={() => setViewMode('cards')}
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </Button>
+            </Tooltip>
+            <Tooltip content="Vue liste">
+              <Button
+                variant={viewMode === 'list' ? 'default' : 'ghost'}
+                size="sm"
+                className="rounded-l-none"
+                onClick={() => setViewMode('list')}
+              >
+                <List className="h-4 w-4" />
+              </Button>
+            </Tooltip>
+          </div>
+        </div>
       </div>
 
-      {/* Clients Module (when CLIENT tab is selected) */}
-      {activeTab === 'CLIENT' ? (
-        <ClientsPage />
-      ) : (
-        /* Tiers List */
+      {/* Content */}
+      {isLoading ? (
+        <div className="text-center py-8 text-muted-foreground">Chargement...</div>
+      ) : tiersList.length === 0 ? (
         <Card>
-          {isLoading ? (
-            <div className="text-center py-8">Chargement...</div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Code</TableHead>
-                  <TableHead>Nom</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Ville</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Téléphone</TableHead>
-                  <TableHead></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {tiersData?.tiers.map((tiers) => {
-                  const config = TYPE_TIERS_CONFIG[tiers.typeTiers];
-                  const contactPrincipal = tiers.siegeContacts?.[0];
-                  return (
-                    <TableRow key={tiers.id} className="cursor-pointer hover:bg-gray-50">
-                      <TableCell className="font-mono text-sm">
-                        {tiers.code || '-'}
-                      </TableCell>
-                      <TableCell>
-                        <div>
-                          <div className="font-medium">{tiers.nomEntreprise}</div>
-                          {tiers.nomAlias && (
-                            <div className="text-xs text-muted-foreground">{tiers.nomAlias}</div>
-                          )}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge className={`${config.bgColor} ${config.color}`}>
-                          {config.label}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>{tiers.siegeVille || '-'}</TableCell>
-                      <TableCell>
-                        {contactPrincipal ? (
-                          <div className="text-sm">
-                            {contactPrincipal.nom}
-                            {contactPrincipal.fonction && (
-                              <span className="text-muted-foreground"> ({contactPrincipal.fonction})</span>
-                            )}
-                          </div>
-                        ) : '-'}
-                      </TableCell>
-                      <TableCell>{tiers.siegeTel || '-'}</TableCell>
-                      <TableCell>
-                        <div className="flex gap-1">
+          <CardContent className="py-8 text-center text-muted-foreground">
+            {search ? 'Aucun tiers trouvé pour cette recherche' : 'Aucun tiers enregistré'}
+          </CardContent>
+        </Card>
+      ) : viewMode === 'cards' ? (
+        /* Cards View */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {tiersList.map((tiers) => (
+            <TiersCard
+              key={tiers.id}
+              tiers={tiers}
+              onView={() => setViewingTiers(tiers)}
+              onEdit={() => setEditingTiers(tiers)}
+              onDelete={() => setDeleteTarget(tiers)}
+              onConvert={tiers.typeTiers === 'PROSPECT' ? () => setConvertTarget(tiers) : undefined}
+              canEdit={canEdit}
+              canDelete={canDelete}
+            />
+          ))}
+        </div>
+      ) : (
+        /* List View */
+        <Card>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Nom</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Ville</TableHead>
+                <TableHead>Téléphone</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {tiersList.map((tiers) => {
+                const config = TYPE_TIERS_CONFIG[tiers.typeTiers];
+                return (
+                  <TableRow key={tiers.id} className="cursor-pointer hover:bg-gray-50">
+                    <TableCell>
+                      <div>
+                        <div className="font-medium">{tiers.nomEntreprise}</div>
+                        {tiers.nomAlias && (
+                          <div className="text-xs text-muted-foreground">{tiers.nomAlias}</div>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={cn(config.bgColor, config.color)}>
+                        {config.label}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{tiers.siegeVille || '-'}</TableCell>
+                    <TableCell>
+                      {tiers.siegeTel ? (
+                        <a
+                          href={`tel:${tiers.siegeTel}`}
+                          className="text-primary hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {tiers.siegeTel}
+                        </a>
+                      ) : '-'}
+                    </TableCell>
+                    <TableCell>
+                      {tiers.siegeEmail ? (
+                        <a
+                          href={`mailto:${tiers.siegeEmail}`}
+                          className="text-primary hover:underline"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {tiers.siegeEmail}
+                        </a>
+                      ) : '-'}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Tooltip content="Voir">
                           <Button
                             size="sm"
                             variant="ghost"
@@ -274,7 +574,9 @@ export default function TiersPage() {
                           >
                             <Eye className="h-4 w-4" />
                           </Button>
-                          {canEdit && (
+                        </Tooltip>
+                        {canEdit && (
+                          <Tooltip content="Modifier">
                             <Button
                               size="sm"
                               variant="ghost"
@@ -282,47 +584,39 @@ export default function TiersPage() {
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
-                          )}
-                          {tiers.typeTiers === 'PROSPECT' && canEdit && (
+                          </Tooltip>
+                        )}
+                        {tiers.typeTiers === 'PROSPECT' && canEdit && (
+                          <Tooltip content="Convertir en client">
                             <Button
                               size="sm"
                               variant="ghost"
                               className="text-green-600"
-                              onClick={() => convertMutation.mutate(tiers.id)}
-                              title="Convertir en client"
+                              onClick={() => setConvertTarget(tiers)}
                             >
                               <ArrowRightLeft className="h-4 w-4" />
                             </Button>
-                          )}
-                          {canDelete && (
+                          </Tooltip>
+                        )}
+                        {canDelete && (
+                          <Tooltip content="Supprimer">
                             <Button
                               size="sm"
                               variant="ghost"
                               className="text-red-500"
-                              onClick={() => {
-                                if (confirm('Supprimer ce tiers ?')) {
-                                  deleteMutation.mutate(tiers.id);
-                                }
-                              }}
+                              onClick={() => setDeleteTarget(tiers)}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-                {tiersData?.tiers.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      Aucun tiers trouvé
+                          </Tooltip>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          )}
+                );
+              })}
+            </TableBody>
+          </Table>
         </Card>
       )}
 
@@ -351,11 +645,55 @@ export default function TiersPage() {
           }
         }}
       />
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer ce tiers ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Voulez-vous vraiment supprimer <strong>{deleteTarget?.nomEntreprise}</strong> ?
+              Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Convert Confirmation */}
+      <AlertDialog open={!!convertTarget} onOpenChange={(open) => !open && setConvertTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Convertir en client ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Voulez-vous convertir <strong>{convertTarget?.nomEntreprise}</strong> en client ?
+              Le prospect deviendra un client actif.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-green-600 hover:bg-green-700"
+              onClick={() => convertTarget && convertMutation.mutate(convertTarget.id)}
+            >
+              Convertir en client
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
 
-// ============ TIERS FORM DIALOG ============
+// ============ UNIFIED FORM DIALOG ============
 function TiersFormDialog({
   open,
   onOpenChange,
@@ -373,7 +711,10 @@ function TiersFormDialog({
     typeTiers: 'CLIENT',
   });
 
-  const [activeTab, setActiveTab] = useState('general');
+  const [sites, setSites] = useState<SiteInput[]>([]);
+  const [contactPrincipal, setContactPrincipal] = useState<CreateContactInput>({
+    nom: '',
+  });
 
   // Reset form when dialog opens
   useEffect(() => {
@@ -394,7 +735,7 @@ function TiersFormDialog({
           siegeAdresse: tiers.siegeAdresse,
           siegeCodePostal: tiers.siegeCodePostal,
           siegeVille: tiers.siegeVille,
-          siegePays: tiers.siegePays,
+          siegePays: tiers.siegePays || 'Algérie',
           siegeTel: tiers.siegeTel,
           siegeFax: tiers.siegeFax,
           siegeEmail: tiers.siegeEmail,
@@ -402,19 +743,31 @@ function TiersFormDialog({
           secteur: tiers.secteur,
           remiseParDefaut: tiers.remiseParDefaut,
           encoursMaximum: tiers.encoursMaximum,
-          devise: tiers.devise,
+          devise: tiers.devise || 'DZD',
           notePublique: tiers.notePublique,
           notePrivee: tiers.notePrivee,
+          prospectNiveau: tiers.prospectNiveau,
+          prospectStatut: tiers.prospectStatut,
         });
+        setSites(tiers.sites?.map(s => ({
+          nom: s.nom,
+          adresse: s.adresse,
+          tel: s.tel,
+          email: s.email,
+          notes: s.notes,
+        })) || []);
+        setContactPrincipal(tiers.siegeContacts?.[0] || { nom: '' });
       } else {
         setFormData({
           nomEntreprise: '',
           typeTiers: 'CLIENT',
           siegePays: 'Algérie',
           devise: 'DZD',
+          prospectNiveau: 2,
         });
+        setSites([{ nom: '', adresse: '', contacts: [] }]);
+        setContactPrincipal({ nom: '' });
       }
-      setActiveTab('general');
     }
   }, [open, tiers]);
 
@@ -451,81 +804,97 @@ function TiersFormDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Prepare data
+    const submitData: CreateTiersInput = {
+      ...formData,
+      siegeNom: formData.siegeNom || formData.nomEntreprise,
+      contacts: contactPrincipal.nom ? [{ ...contactPrincipal, estPrincipal: true }] : [],
+      sites: formData.typeTiers === 'CLIENT'
+        ? sites.filter(s => s.nom?.trim())
+        : undefined,
+    };
+
     if (isEdit && tiers) {
-      updateMutation.mutate({ id: tiers.id, data: formData });
+      updateMutation.mutate({ id: tiers.id, data: submitData });
     } else {
-      createMutation.mutate(formData);
+      createMutation.mutate(submitData);
     }
   };
 
   const isPending = createMutation.isPending || updateMutation.isPending;
+  const isClient = formData.typeTiers === 'CLIENT';
+  const isFournisseur = formData.typeTiers === 'FOURNISSEUR';
+  const isProspect = formData.typeTiers === 'PROSPECT';
+
+  const addSite = () => {
+    setSites(prev => [...prev, { nom: '', adresse: '', contacts: [] }]);
+  };
+
+  const removeSite = (index: number) => {
+    setSites(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const updateSite = (index: number, field: keyof SiteInput, value: string) => {
+    setSites(prev => prev.map((site, i) =>
+      i === index ? { ...site, [field]: value } : site
+    ));
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {isEdit ? 'Modifier le tiers' : 'Nouveau tiers'}
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit}>
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-            <TabsList className="grid w-full grid-cols-4">
-              <TabsTrigger value="general">Général</TabsTrigger>
-              <TabsTrigger value="adresse">Adresse</TabsTrigger>
-              <TabsTrigger value="legal">Légal</TabsTrigger>
-              <TabsTrigger value="commercial">Commercial</TabsTrigger>
-            </TabsList>
-
-            {/* General Tab */}
-            <TabsContent value="general" className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Type de tiers *</Label>
-                  <Select
-                    value={formData.typeTiers}
-                    onValueChange={(v) => setFormData({ ...formData, typeTiers: v as TypeTiers })}
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Type Selection */}
+          <div className="space-y-3">
+            <Label className="text-base font-semibold">Type de tiers</Label>
+            <div className="grid grid-cols-3 gap-3">
+              {(['CLIENT', 'FOURNISSEUR', 'PROSPECT'] as TypeTiers[]).map((type) => {
+                const config = TYPE_TIERS_CONFIG[type];
+                const Icon = config.icon;
+                const isSelected = formData.typeTiers === type;
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, typeTiers: type })}
+                    className={cn(
+                      'flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all',
+                      isSelected
+                        ? `${config.borderColor} ${config.bgColor} border-2`
+                        : 'border-gray-200 hover:border-gray-300'
+                    )}
                   >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(TYPE_TIERS_CONFIG).map(([key, config]) => (
-                        <SelectItem key={key} value={key}>
-                          {config.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                    <Icon className={cn('h-6 w-6', isSelected ? config.color : 'text-gray-400')} />
+                    <span className={cn('text-sm font-medium', isSelected ? config.color : 'text-gray-600')}>
+                      {config.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-                <div className="space-y-2">
-                  <Label>Forme juridique</Label>
-                  <Select
-                    value={formData.formeJuridique || ''}
-                    onValueChange={(v) => setFormData({ ...formData, formeJuridique: v as FormeJuridique })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionner..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {FORME_JURIDIQUE_OPTIONS.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+          {/* Main Info */}
+          <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
+            <h3 className="font-semibold flex items-center gap-2">
+              <Building2 className="h-4 w-4" />
+              Informations principales
+            </h3>
 
+            <div className="grid gap-4">
               <div className="space-y-2">
-                <Label>Raison sociale *</Label>
+                <Label>Nom de l'entreprise <span className="text-red-500">*</span></Label>
                 <Input
                   value={formData.nomEntreprise}
                   onChange={(e) => setFormData({ ...formData, nomEntreprise: e.target.value })}
-                  placeholder="Nom de l'entreprise"
+                  placeholder="Raison sociale"
                   required
                 />
               </div>
@@ -535,22 +904,35 @@ function TiersFormDialog({
                 <Input
                   value={formData.nomAlias || ''}
                   onChange={(e) => setFormData({ ...formData, nomAlias: e.target.value })}
-                  placeholder="Nom commercial"
+                  placeholder="Optionnel"
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label>Secteur d'activité</Label>
-                <Input
-                  value={formData.secteur || ''}
-                  onChange={(e) => setFormData({ ...formData, secteur: e.target.value })}
-                  placeholder="Ex: BTP, Services, Commerce..."
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Téléphone</Label>
+                  <Input
+                    value={formData.siegeTel || ''}
+                    onChange={(e) => setFormData({ ...formData, siegeTel: e.target.value })}
+                    placeholder="+213..."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <Input
+                    type="email"
+                    value={formData.siegeEmail || ''}
+                    onChange={(e) => setFormData({ ...formData, siegeEmail: e.target.value })}
+                    placeholder="contact@exemple.dz"
+                  />
+                </div>
               </div>
-            </TabsContent>
+            </div>
+          </div>
 
-            {/* Address Tab */}
-            <TabsContent value="adresse" className="space-y-4">
+          {/* Address Section */}
+          <CollapsibleSection title="Adresse" icon={<MapPin className="h-4 w-4" />}>
+            <div className="space-y-4 pt-4">
               <div className="space-y-2">
                 <Label>Adresse</Label>
                 <Textarea
@@ -584,207 +966,306 @@ function TiersFormDialog({
                   />
                 </div>
               </div>
+            </div>
+          </CollapsibleSection>
 
+          {/* Contact Principal */}
+          <CollapsibleSection title="Contact principal" icon={<Users className="h-4 w-4" />}>
+            <div className="space-y-4 pt-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Nom</Label>
+                  <Input
+                    value={contactPrincipal.nom || ''}
+                    onChange={(e) => setContactPrincipal({ ...contactPrincipal, nom: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Fonction</Label>
+                  <Input
+                    value={contactPrincipal.fonction || ''}
+                    onChange={(e) => setContactPrincipal({ ...contactPrincipal, fonction: e.target.value })}
+                    placeholder="Ex: Directeur"
+                  />
+                </div>
+              </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Téléphone</Label>
                   <Input
-                    value={formData.siegeTel || ''}
-                    onChange={(e) => setFormData({ ...formData, siegeTel: e.target.value })}
-                    placeholder="+213..."
+                    value={contactPrincipal.tel || ''}
+                    onChange={(e) => setContactPrincipal({ ...contactPrincipal, tel: e.target.value })}
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label>Fax</Label>
-                  <Input
-                    value={formData.siegeFax || ''}
-                    onChange={(e) => setFormData({ ...formData, siegeFax: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Email</Label>
                   <Input
                     type="email"
-                    value={formData.siegeEmail || ''}
-                    onChange={(e) => setFormData({ ...formData, siegeEmail: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Site web</Label>
-                  <Input
-                    value={formData.siegeWebsite || ''}
-                    onChange={(e) => setFormData({ ...formData, siegeWebsite: e.target.value })}
-                    placeholder="https://..."
+                    value={contactPrincipal.email || ''}
+                    onChange={(e) => setContactPrincipal({ ...contactPrincipal, email: e.target.value })}
                   />
                 </div>
               </div>
-            </TabsContent>
+            </div>
+          </CollapsibleSection>
 
-            {/* Legal Tab */}
-            <TabsContent value="legal" className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Registre du Commerce (RC)</Label>
-                  <Input
-                    value={formData.siegeRC || ''}
-                    onChange={(e) => setFormData({ ...formData, siegeRC: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>NIF</Label>
-                  <Input
-                    value={formData.siegeNIF || ''}
-                    onChange={(e) => setFormData({ ...formData, siegeNIF: e.target.value })}
-                  />
-                </div>
+          {/* CLIENT: Sites Section */}
+          {isClient && (
+            <div className="space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold flex items-center gap-2 text-blue-700">
+                  <Building2 className="h-4 w-4" />
+                  Sites
+                </h3>
+                <Button type="button" variant="outline" size="sm" onClick={addSite}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  Ajouter un site
+                </Button>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Article d'Imposition (AI)</Label>
-                  <Input
-                    value={formData.siegeAI || ''}
-                    onChange={(e) => setFormData({ ...formData, siegeAI: e.target.value })}
-                  />
+              {sites.map((site, index) => (
+                <div key={index} className="p-4 bg-white rounded-lg border space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Site {index + 1}</span>
+                    {sites.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeSite(index)}
+                        className="text-red-500 h-8"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Nom du site <span className="text-red-500">*</span></Label>
+                      <Input
+                        value={site.nom}
+                        onChange={(e) => updateSite(index, 'nom', e.target.value)}
+                        placeholder="Ex: Usine Oued Smar"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Adresse</Label>
+                      <Input
+                        value={site.adresse || ''}
+                        onChange={(e) => updateSite(index, 'adresse', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Téléphone</Label>
+                      <Input
+                        value={site.tel || ''}
+                        onChange={(e) => updateSite(index, 'tel', e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Email</Label>
+                      <Input
+                        type="email"
+                        value={site.email || ''}
+                        onChange={(e) => updateSite(index, 'email', e.target.value)}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>NIS</Label>
-                  <Input
-                    value={formData.siegeNIS || ''}
-                    onChange={(e) => setFormData({ ...formData, siegeNIS: e.target.value })}
-                  />
-                </div>
-              </div>
+              ))}
+            </div>
+          )}
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>TVA Intracommunautaire</Label>
-                  <Input
-                    value={formData.tvaIntracom || ''}
-                    onChange={(e) => setFormData({ ...formData, tvaIntracom: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Capital social</Label>
-                  <Input
-                    type="number"
-                    value={formData.capital || ''}
-                    onChange={(e) => setFormData({ ...formData, capital: parseFloat(e.target.value) || undefined })}
-                    placeholder="En DZD"
-                  />
-                </div>
-              </div>
-            </TabsContent>
+          {/* PROSPECT: Qualification Section */}
+          {isProspect && (
+            <div className="space-y-4 p-4 bg-purple-50 rounded-lg border border-purple-200">
+              <h3 className="font-semibold flex items-center gap-2 text-purple-700">
+                <UserPlus className="h-4 w-4" />
+                Qualification du prospect
+              </h3>
 
-            {/* Commercial Tab */}
-            <TabsContent value="commercial" className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Mode de paiement par défaut</Label>
-                  <Select
-                    value={formData.modePaiementId || ''}
-                    onValueChange={(v) => setFormData({ ...formData, modePaiementId: v || undefined })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionner..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {modesPaiement?.map((mode) => (
-                        <SelectItem key={mode.id} value={mode.id}>
-                          {mode.libelle}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Conditions de paiement</Label>
-                  <Select
-                    value={formData.conditionPaiementId || ''}
-                    onValueChange={(v) => setFormData({ ...formData, conditionPaiementId: v || undefined })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sélectionner..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {conditionsPaiement?.map((cond) => (
-                        <SelectItem key={cond.id} value={cond.id}>
-                          {cond.libelle}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>Remise par défaut (%)</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.5"
-                    value={formData.remiseParDefaut || ''}
-                    onChange={(e) => setFormData({ ...formData, remiseParDefaut: parseFloat(e.target.value) || undefined })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Encours maximum</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={formData.encoursMaximum || ''}
-                    onChange={(e) => setFormData({ ...formData, encoursMaximum: parseFloat(e.target.value) || undefined })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Devise</Label>
-                  <Select
-                    value={formData.devise || 'DZD'}
-                    onValueChange={(v) => setFormData({ ...formData, devise: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="DZD">DZD - Dinar algérien</SelectItem>
-                      <SelectItem value="EUR">EUR - Euro</SelectItem>
-                      <SelectItem value="USD">USD - Dollar US</SelectItem>
-                    </SelectContent>
-                  </Select>
+              <div className="space-y-2">
+                <Label>Niveau d'intérêt</Label>
+                <div className="flex gap-3">
+                  {PROSPECT_NIVEAUX.map((niveau) => {
+                    const Icon = niveau.icon;
+                    const isSelected = formData.prospectNiveau === niveau.value;
+                    return (
+                      <button
+                        key={niveau.value}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, prospectNiveau: niveau.value })}
+                        className={cn(
+                          'flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition-all',
+                          isSelected
+                            ? `${niveau.bgColor} border-current ${niveau.color}`
+                            : 'border-gray-200 hover:border-gray-300'
+                        )}
+                      >
+                        <Icon className={cn('h-4 w-4', isSelected ? niveau.color : 'text-gray-400')} />
+                        <span className={cn('text-sm font-medium', isSelected ? niveau.color : 'text-gray-600')}>
+                          {niveau.label}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label>Note publique (visible sur documents)</Label>
-                <Textarea
-                  value={formData.notePublique || ''}
-                  onChange={(e) => setFormData({ ...formData, notePublique: e.target.value })}
-                  rows={2}
+                <Label>Source / Origine</Label>
+                <Input
+                  value={formData.prospectStatut || ''}
+                  onChange={(e) => setFormData({ ...formData, prospectStatut: e.target.value })}
+                  placeholder="Ex: Salon professionnel, Recommandation..."
                 />
               </div>
+            </div>
+          )}
 
+          {/* Legal Info (for Client & Fournisseur) */}
+          {(isClient || isFournisseur) && (
+            <CollapsibleSection
+              title="Informations légales"
+              icon={<FileText className="h-4 w-4" />}
+              defaultOpen={isFournisseur}
+            >
+              <div className="space-y-4 pt-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Forme juridique</Label>
+                    <Select
+                      value={formData.formeJuridique || ''}
+                      onValueChange={(v) => setFormData({ ...formData, formeJuridique: v as FormeJuridique })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sélectionner..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {FORME_JURIDIQUE_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Secteur d'activité</Label>
+                    <Input
+                      value={formData.secteur || ''}
+                      onChange={(e) => setFormData({ ...formData, secteur: e.target.value })}
+                      placeholder="Ex: BTP, Agroalimentaire..."
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>RC (Registre du Commerce)</Label>
+                    <Input
+                      value={formData.siegeRC || ''}
+                      onChange={(e) => setFormData({ ...formData, siegeRC: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>NIF</Label>
+                    <Input
+                      value={formData.siegeNIF || ''}
+                      onChange={(e) => setFormData({ ...formData, siegeNIF: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>AI (Article d'Imposition)</Label>
+                    <Input
+                      value={formData.siegeAI || ''}
+                      onChange={(e) => setFormData({ ...formData, siegeAI: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>NIS</Label>
+                    <Input
+                      value={formData.siegeNIS || ''}
+                      onChange={(e) => setFormData({ ...formData, siegeNIS: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+            </CollapsibleSection>
+          )}
+
+          {/* Commercial (for Fournisseur) */}
+          {isFournisseur && (
+            <CollapsibleSection title="Conditions commerciales" icon={<CreditCard className="h-4 w-4" />}>
+              <div className="space-y-4 pt-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Mode de paiement</Label>
+                    <Select
+                      value={formData.modePaiementId || ''}
+                      onValueChange={(v) => setFormData({ ...formData, modePaiementId: v || undefined })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sélectionner..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {modesPaiement?.map((mode) => (
+                          <SelectItem key={mode.id} value={mode.id}>
+                            {mode.libelle}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Conditions de paiement</Label>
+                    <Select
+                      value={formData.conditionPaiementId || ''}
+                      onValueChange={(v) => setFormData({ ...formData, conditionPaiementId: v || undefined })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Sélectionner..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {conditionsPaiement?.map((cond) => (
+                          <SelectItem key={cond.id} value={cond.id}>
+                            {cond.libelle}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            </CollapsibleSection>
+          )}
+
+          {/* Notes */}
+          <CollapsibleSection title="Notes" icon={<FileText className="h-4 w-4" />}>
+            <div className="space-y-4 pt-4">
               <div className="space-y-2">
-                <Label>Note privée (interne)</Label>
+                <Label>Notes internes</Label>
                 <Textarea
                   value={formData.notePrivee || ''}
                   onChange={(e) => setFormData({ ...formData, notePrivee: e.target.value })}
-                  rows={2}
+                  placeholder="Notes visibles uniquement en interne..."
+                  rows={3}
                 />
               </div>
-            </TabsContent>
-          </Tabs>
+            </div>
+          </CollapsibleSection>
 
-          <DialogFooter className="mt-6">
+          <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Annuler
             </Button>
             <Button type="submit" disabled={isPending || !formData.nomEntreprise}>
-              {isEdit ? 'Modifier' : 'Créer'}
+              {isPending ? 'Enregistrement...' : isEdit ? 'Modifier' : 'Créer le tiers'}
             </Button>
           </DialogFooter>
         </form>
@@ -816,6 +1297,9 @@ function TiersDetailSheet({
   if (!tiersId) return null;
 
   const config = tiers ? TYPE_TIERS_CONFIG[tiers.typeTiers] : null;
+  const prospectNiveau = tiers?.prospectNiveau
+    ? PROSPECT_NIVEAUX.find(n => n.value === tiers.prospectNiveau)
+    : null;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -838,16 +1322,16 @@ function TiersDetailSheet({
           <div className="space-y-6 mt-6">
             {/* Header */}
             <div className="flex items-start gap-4">
-              <div className={`p-3 rounded-lg ${config?.bgColor}`}>
-                <Building2 className={`h-8 w-8 ${config?.color}`} />
+              <div className={cn('p-3 rounded-lg', config?.bgColor)}>
+                <Building2 className={cn('h-8 w-8', config?.color)} />
               </div>
               <div className="flex-1">
                 <h2 className="text-xl font-bold">{tiers.nomEntreprise}</h2>
                 {tiers.nomAlias && (
                   <p className="text-muted-foreground">{tiers.nomAlias}</p>
                 )}
-                <div className="flex gap-2 mt-2">
-                  <Badge className={`${config?.bgColor} ${config?.color}`}>
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  <Badge className={cn(config?.bgColor, config?.color)}>
                     {config?.label}
                   </Badge>
                   {tiers.code && (
@@ -857,6 +1341,12 @@ function TiersDetailSheet({
                   )}
                   {!tiers.actif && (
                     <Badge variant="destructive">Inactif</Badge>
+                  )}
+                  {prospectNiveau && (
+                    <Badge className={cn(prospectNiveau.bgColor, prospectNiveau.color)}>
+                      <prospectNiveau.icon className="h-3 w-3 mr-1" />
+                      {prospectNiveau.label}
+                    </Badge>
                   )}
                 </div>
               </div>
@@ -876,18 +1366,22 @@ function TiersDetailSheet({
                 </div>
               )}
               {tiers.siegeTel && (
-                <div className="flex items-center gap-2">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
+                <a
+                  href={`tel:${tiers.siegeTel}`}
+                  className="flex items-center gap-2 text-primary hover:underline"
+                >
+                  <Phone className="h-4 w-4" />
                   <span>{tiers.siegeTel}</span>
-                </div>
+                </a>
               )}
               {tiers.siegeEmail && (
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <a href={`mailto:${tiers.siegeEmail}`} className="text-primary hover:underline">
-                    {tiers.siegeEmail}
-                  </a>
-                </div>
+                <a
+                  href={`mailto:${tiers.siegeEmail}`}
+                  className="flex items-center gap-2 text-primary hover:underline"
+                >
+                  <Mail className="h-4 w-4" />
+                  <span>{tiers.siegeEmail}</span>
+                </a>
               )}
             </div>
 
@@ -896,6 +1390,11 @@ function TiersDetailSheet({
               <div className="space-y-3">
                 <h3 className="font-semibold border-b pb-2">Informations légales</h3>
                 <div className="grid grid-cols-2 gap-3 text-sm">
+                  {tiers.formeJuridique && (
+                    <div>
+                      <span className="text-muted-foreground">Forme:</span> {tiers.formeJuridique}
+                    </div>
+                  )}
                   {tiers.siegeRC && (
                     <div>
                       <span className="text-muted-foreground">RC:</span> {tiers.siegeRC}
@@ -920,6 +1419,35 @@ function TiersDetailSheet({
               </div>
             )}
 
+            {/* Sites (for clients) */}
+            {tiers.sites && tiers.sites.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="font-semibold border-b pb-2">Sites ({tiers.sites.length})</h3>
+                <div className="space-y-2">
+                  {tiers.sites.map((site) => (
+                    <div key={site.id} className="p-3 bg-gray-50 rounded-lg">
+                      <div className="font-medium">{site.nom}</div>
+                      {site.adresse && (
+                        <p className="text-sm text-muted-foreground">{site.adresse}</p>
+                      )}
+                      <div className="flex gap-4 mt-1 text-sm">
+                        {site.tel && (
+                          <a href={`tel:${site.tel}`} className="text-primary hover:underline">
+                            {site.tel}
+                          </a>
+                        )}
+                        {site.email && (
+                          <a href={`mailto:${site.email}`} className="text-primary hover:underline">
+                            {site.email}
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Contacts */}
             {tiers.siegeContacts && tiers.siegeContacts.length > 0 && (
               <div className="space-y-3">
@@ -939,7 +1467,11 @@ function TiersDetailSheet({
                         <p className="text-sm text-muted-foreground">{contact.fonction}</p>
                       )}
                       <div className="flex gap-4 mt-1 text-sm">
-                        {contact.tel && <span>{contact.tel}</span>}
+                        {contact.tel && (
+                          <a href={`tel:${contact.tel}`} className="text-primary hover:underline">
+                            {contact.tel}
+                          </a>
+                        )}
                         {contact.email && (
                           <a href={`mailto:${contact.email}`} className="text-primary hover:underline">
                             {contact.email}
@@ -992,6 +1524,16 @@ function TiersDetailSheet({
                 </div>
               </div>
             </div>
+
+            {/* Notes */}
+            {tiers.notePrivee && (
+              <div className="space-y-3">
+                <h3 className="font-semibold border-b pb-2">Notes</h3>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                  {tiers.notePrivee}
+                </p>
+              </div>
+            )}
           </div>
         ) : null}
       </SheetContent>
