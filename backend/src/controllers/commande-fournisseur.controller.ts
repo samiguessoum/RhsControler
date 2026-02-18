@@ -2,7 +2,6 @@ import { Response } from 'express';
 import { prisma } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
-import { generateCommandeFournisseurPDF } from '../services/pdf.service.js';
 
 const REF_PREFIX = 'CF';
 
@@ -406,6 +405,7 @@ export const commandeFournisseurController = {
         return res.status(404).json({ error: 'Commande fournisseur non trouvée' });
       }
 
+      const { generateCommandeFournisseurPDF } = await import('../services/pdf.service.js');
       const pdfBuffer = await generateCommandeFournisseurPDF({
         ...commande,
         client: commande.fournisseur, // Pour compatibilité avec le template PDF

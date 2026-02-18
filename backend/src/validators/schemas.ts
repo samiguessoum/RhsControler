@@ -701,6 +701,10 @@ export const createProduitServiceSchema = z.object({
 
   // Fournisseur
   fournisseurId: z.string().uuid().optional(),
+  fournisseursDefaut: z.array(z.object({
+    fournisseurId: z.string().uuid('ID fournisseur invalide'),
+    ordre: z.number().int().min(1).optional().default(1),
+  })).optional(),
   delaiLivraison: z.number().int().positive().optional(),
 
   // Classification

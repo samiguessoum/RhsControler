@@ -3,7 +3,6 @@ import { prisma } from '../config/database.js';
 import { FactureFournisseurStatut } from '@prisma/client';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
-import { generateFactureFournisseurPDF } from '../services/pdf.service.js';
 
 const REF_PREFIX = 'FF';
 
@@ -584,6 +583,7 @@ export const factureFournisseurController = {
         return res.status(404).json({ error: 'Facture fournisseur non trouvée' });
       }
 
+      const { generateFactureFournisseurPDF } = await import('../services/pdf.service.js');
       const pdfBuffer = await generateFactureFournisseurPDF(facture as any);
 
       res.setHeader('Content-Type', 'application/pdf');

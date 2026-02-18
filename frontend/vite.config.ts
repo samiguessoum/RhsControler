@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 
 export default defineConfig({
+  cacheDir: process.env.VITE_CACHE_DIR || '/tmp/rhs-controler-vite-cache',
   plugins: [react()],
   resolve: {
     alias: {

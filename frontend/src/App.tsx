@@ -1,23 +1,26 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { useAuthStore } from '@/store/auth.store';
 import { authApi } from '@/services/api';
-import { DashboardPage } from '@/pages/Dashboard';
-import { PlanningPage } from '@/pages/Planning';
-import { ClientsPage } from '@/pages/Clients';
-import { ContratsPage } from '@/pages/Contrats';
-import { ContratDetailPage } from '@/pages/ContratDetail';
-import { ImportExportPage } from '@/pages/ImportExport';
-import { ParametresPage } from '@/pages/Parametres';
-import { LoginPage } from '@/pages/Login';
-import { PrestationsPage } from '@/pages/Prestations';
-import StocksPage from '@/pages/Stocks';
-import RHPage from '@/pages/RH';
-import TiersPage from '@/pages/Tiers';
-import ProduitsServicesPage from '@/pages/ProduitsServices';
-import CommercePage from '@/pages/Commerce';
-import FacturationPage from '@/pages/Facturation';
+
+const DashboardPage = lazy(() => import('@/pages/Dashboard').then((m) => ({ default: m.DashboardPage })));
+const PlanningPage = lazy(() => import('@/pages/Planning').then((m) => ({ default: m.PlanningPage })));
+const ClientsPage = lazy(() => import('@/pages/Clients').then((m) => ({ default: m.ClientsPage })));
+const ContratsPage = lazy(() => import('@/pages/Contrats').then((m) => ({ default: m.ContratsPage })));
+const ContratDetailPage = lazy(() => import('@/pages/ContratDetail').then((m) => ({ default: m.ContratDetailPage })));
+const ImportExportPage = lazy(() => import('@/pages/ImportExport').then((m) => ({ default: m.ImportExportPage })));
+const ParametresPage = lazy(() => import('@/pages/Parametres').then((m) => ({ default: m.ParametresPage })));
+const LoginPage = lazy(() => import('@/pages/Login').then((m) => ({ default: m.LoginPage })));
+const PrestationsPage = lazy(() => import('@/pages/Prestations').then((m) => ({ default: m.PrestationsPage })));
+const StocksPage = lazy(() => import('@/pages/Stocks'));
+const RHPage = lazy(() => import('@/pages/RH'));
+const TiersPage = lazy(() => import('@/pages/Tiers'));
+const ProduitsServicesPage = lazy(() => import('@/pages/ProduitsServices'));
+const CommercePage = lazy(() => import('@/pages/Commerce'));
+const FacturationPage = lazy(() => import('@/pages/Facturation'));
+
+const AUTH_BOOT_TIMEOUT_MS = 2500;
 
 function RequireAuth() {
   const { isAuthenticated } = useAuthStore();
@@ -27,6 +30,14 @@ function RequireAuth() {
   }
 
   return <Outlet />;
+}
+
+function PageFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center text-muted-foreground">
+      Chargement...
+    </div>
+  );
 }
 
 export default function App() {
@@ -48,7 +59,12 @@ export default function App() {
       }
 
       try {
-        const me = await authApi.me();
+        const me = await Promise.race([
+          authApi.me(),
+          new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('Auth bootstrap timeout')), AUTH_BOOT_TIMEOUT_MS);
+          }),
+        ]);
         login(token, me);
       } catch {
         logout();
@@ -77,25 +93,25 @@ export default function App() {
       <Routes>
         <Route
           path="/login"
-          element={token && user ? <Navigate to="/" replace /> : <LoginPage />}
+          element={token && user ? <Navigate to="/" replace /> : <Suspense fallback={<PageFallback />}><LoginPage /></Suspense>}
         />
 
         <Route element={<RequireAuth />}>
           <Route element={<MainLayout />}>
-            <Route index element={<DashboardPage />} />
-            <Route path="/planning" element={<PlanningPage />} />
-            <Route path="/clients" element={<ClientsPage />} />
-            <Route path="/tiers" element={<TiersPage />} />
-            <Route path="/contrats" element={<ContratsPage />} />
-            <Route path="/contrats/:id" element={<ContratDetailPage />} />
-            <Route path="/import-export" element={<ImportExportPage />} />
-            <Route path="/prestations" element={<PrestationsPage />} />
-            <Route path="/stocks" element={<StocksPage />} />
-            <Route path="/produits-services" element={<ProduitsServicesPage />} />
-            <Route path="/commerce" element={<CommercePage />} />
-            <Route path="/facturation" element={<FacturationPage />} />
-            <Route path="/rh" element={<RHPage />} />
-            <Route path="/parametres" element={<ParametresPage />} />
+            <Route index element={<Suspense fallback={<PageFallback />}><DashboardPage /></Suspense>} />
+            <Route path="/planning" element={<Suspense fallback={<PageFallback />}><PlanningPage /></Suspense>} />
+            <Route path="/clients" element={<Suspense fallback={<PageFallback />}><ClientsPage /></Suspense>} />
+            <Route path="/tiers" element={<Suspense fallback={<PageFallback />}><TiersPage /></Suspense>} />
+            <Route path="/contrats" element={<Suspense fallback={<PageFallback />}><ContratsPage /></Suspense>} />
+            <Route path="/contrats/:id" element={<Suspense fallback={<PageFallback />}><ContratDetailPage /></Suspense>} />
+            <Route path="/import-export" element={<Suspense fallback={<PageFallback />}><ImportExportPage /></Suspense>} />
+            <Route path="/prestations" element={<Suspense fallback={<PageFallback />}><PrestationsPage /></Suspense>} />
+            <Route path="/stocks" element={<Suspense fallback={<PageFallback />}><StocksPage /></Suspense>} />
+            <Route path="/produits-services" element={<Suspense fallback={<PageFallback />}><ProduitsServicesPage /></Suspense>} />
+            <Route path="/commerce" element={<Suspense fallback={<PageFallback />}><CommercePage /></Suspense>} />
+            <Route path="/facturation" element={<Suspense fallback={<PageFallback />}><FacturationPage /></Suspense>} />
+            <Route path="/rh" element={<Suspense fallback={<PageFallback />}><RHPage /></Suspense>} />
+            <Route path="/parametres" element={<Suspense fallback={<PageFallback />}><ParametresPage /></Suspense>} />
           </Route>
         </Route>
 

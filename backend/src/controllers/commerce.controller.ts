@@ -2,7 +2,6 @@ import { Response } from 'express';
 import { prisma } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
-import { generateDevisPDF, generateCommandePDF, generateFacturePDF } from '../services/pdf.service.js';
 
 const REF_PREFIX: Record<'DEVIS' | 'COMMANDE' | 'FACTURE' | 'FACTURE_AVOIR', string> = {
   DEVIS: 'DV',
@@ -993,6 +992,7 @@ export const commerceController = {
         return res.status(404).json({ error: 'Devis non trouvé' });
       }
 
+      const { generateDevisPDF } = await import('../services/pdf.service.js');
       const pdfBuffer = await generateDevisPDF(devis as any);
 
       res.setHeader('Content-Type', 'application/pdf');
@@ -1020,6 +1020,7 @@ export const commerceController = {
         return res.status(404).json({ error: 'Commande non trouvée' });
       }
 
+      const { generateCommandePDF } = await import('../services/pdf.service.js');
       const pdfBuffer = await generateCommandePDF(commande as any);
 
       res.setHeader('Content-Type', 'application/pdf');
@@ -1038,7 +1039,21 @@ export const commerceController = {
       const facture = await prisma.facture.findUnique({
         where: { id },
         include: {
-          client: { select: { id: true, nomEntreprise: true, code: true } },
+          client: {
+            select: {
+              id: true,
+              nomEntreprise: true,
+              code: true,
+              siegeNom: true,
+              siegeAdresse: true,
+              siegeVille: true,
+              siegePays: true,
+              siegeRC: true,
+              siegeNIF: true,
+              siegeAI: true,
+              siegeNIS: true,
+            },
+          },
           lignes: { orderBy: { ordre: 'asc' } },
         },
       });
@@ -1047,6 +1062,7 @@ export const commerceController = {
         return res.status(404).json({ error: 'Facture non trouvée' });
       }
 
+      const { generateFacturePDF } = await import('../services/pdf.service.js');
       const pdfBuffer = await generateFacturePDF(facture as any);
 
       res.setHeader('Content-Type', 'application/pdf');

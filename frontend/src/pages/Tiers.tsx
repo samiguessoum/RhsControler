@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Building2,
@@ -313,6 +314,7 @@ export default function TiersPage() {
   const canEdit = canDo('editClient');
   const canDelete = canDo('deleteClient');
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [activeTab, setActiveTab] = useState<string>('all');
   const [search, setSearch] = useState('');
@@ -322,6 +324,7 @@ export default function TiersPage() {
   const [viewingTiers, setViewingTiers] = useState<Tiers | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Tiers | null>(null);
   const [convertTarget, setConvertTarget] = useState<Tiers | null>(null);
+  const [createType, setCreateType] = useState<TypeTiers | 'all'>('all');
 
   // Fetch stats
   const { data: stats } = useQuery({
@@ -358,6 +361,29 @@ export default function TiersPage() {
 
   const tiersList = tiersData?.tiers || [];
 
+  useEffect(() => {
+    const viewId = searchParams.get('view');
+    if (!viewId) return;
+    let isActive = true;
+    tiersApi.get(viewId)
+      .then((tiers) => {
+        if (isActive) setViewingTiers(tiers);
+      })
+      .catch(() => {
+        if (isActive) setViewingTiers(null);
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [searchParams]);
+
+  const clearViewParam = () => {
+    if (!searchParams.get('view')) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('view');
+    setSearchParams(next, { replace: true });
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -369,7 +395,15 @@ export default function TiersPage() {
           </p>
         </div>
         {canCreate && (
-          <Button onClick={() => setShowCreateDialog(true)}>
+          <Button
+            onClick={() => {
+              const type = (activeTab === 'CLIENT' || activeTab === 'FOURNISSEUR' || activeTab === 'PROSPECT')
+                ? activeTab
+                : 'CLIENT';
+              setCreateType(type as TypeTiers);
+              setShowCreateDialog(true);
+            }}
+          >
             <Plus className="h-4 w-4 mr-2" />
             Nouveau tiers
           </Button>
@@ -630,12 +664,18 @@ export default function TiersPage() {
           }
         }}
         tiers={editingTiers}
+        initialType={createType}
       />
 
       {/* View Sheet */}
       <TiersDetailSheet
         open={!!viewingTiers}
-        onOpenChange={(open) => !open && setViewingTiers(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setViewingTiers(null);
+            clearViewParam();
+          }
+        }}
         tiersId={viewingTiers?.id}
         canEdit={canEdit}
         onEdit={() => {
@@ -698,10 +738,12 @@ function TiersFormDialog({
   open,
   onOpenChange,
   tiers,
+  initialType,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   tiers: Tiers | null;
+  initialType?: TypeTiers | 'all';
 }) {
   const queryClient = useQueryClient();
   const isEdit = !!tiers;
@@ -715,11 +757,14 @@ function TiersFormDialog({
   const [contactPrincipal, setContactPrincipal] = useState<CreateContactInput>({
     nom: '',
   });
+  const [extraContacts, setExtraContacts] = useState<CreateContactInput[]>([]);
 
   // Reset form when dialog opens
   useEffect(() => {
     if (open) {
       if (tiers) {
+        const principalContact = tiers.siegeContacts?.find(c => c.estPrincipal) || tiers.siegeContacts?.[0];
+        const otherContacts = tiers.siegeContacts?.filter(c => c.id !== principalContact?.id) || [];
         setFormData({
           nomEntreprise: tiers.nomEntreprise,
           nomAlias: tiers.nomAlias,
@@ -756,20 +801,32 @@ function TiersFormDialog({
           email: s.email,
           notes: s.notes,
         })) || []);
-        setContactPrincipal(tiers.siegeContacts?.[0] || { nom: '' });
+        setContactPrincipal(principalContact || { nom: '' });
+        setExtraContacts(otherContacts.map(c => ({
+          civilite: c.civilite,
+          nom: c.nom,
+          prenom: c.prenom,
+          fonction: c.fonction,
+          tel: c.tel,
+          telMobile: c.telMobile,
+          fax: c.fax,
+          email: c.email,
+          notes: c.notes,
+        })));
       } else {
         setFormData({
           nomEntreprise: '',
-          typeTiers: 'CLIENT',
+          typeTiers: initialType && initialType !== 'all' ? initialType : 'CLIENT',
           siegePays: 'Algérie',
           devise: 'DZD',
           prospectNiveau: 2,
         });
         setSites([{ nom: '', adresse: '', contacts: [] }]);
         setContactPrincipal({ nom: '' });
+        setExtraContacts([]);
       }
     }
-  }, [open, tiers]);
+  }, [open, tiers, initialType]);
 
   const { data: modesPaiement } = useQuery({
     queryKey: ['modes-paiement'],
@@ -806,10 +863,17 @@ function TiersFormDialog({
     e.preventDefault();
 
     // Prepare data
+    const contactsInput = [contactPrincipal, ...extraContacts]
+      .filter(c => c.nom && c.nom.trim())
+      .map((c, index) => ({
+        ...c,
+        estPrincipal: index === 0,
+      }));
+
     const submitData: CreateTiersInput = {
       ...formData,
       siegeNom: formData.siegeNom || formData.nomEntreprise,
-      contacts: contactPrincipal.nom ? [{ ...contactPrincipal, estPrincipal: true }] : [],
+      contacts: contactsInput,
       sites: formData.typeTiers === 'CLIENT'
         ? sites.filter(s => s.nom?.trim())
         : undefined,
@@ -838,6 +902,20 @@ function TiersFormDialog({
   const updateSite = (index: number, field: keyof SiteInput, value: string) => {
     setSites(prev => prev.map((site, i) =>
       i === index ? { ...site, [field]: value } : site
+    ));
+  };
+
+  const addExtraContact = () => {
+    setExtraContacts(prev => [...prev, { nom: '' }]);
+  };
+
+  const removeExtraContact = (index: number) => {
+    setExtraContacts(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const updateExtraContact = (index: number, field: keyof CreateContactInput, value: string) => {
+    setExtraContacts(prev => prev.map((c, i) =>
+      i === index ? { ...c, [field]: value } : c
     ));
   };
 
@@ -1009,6 +1087,76 @@ function TiersFormDialog({
             </div>
           </CollapsibleSection>
 
+          {/* Autres contacts */}
+          <div className="space-y-4 p-4 bg-gray-50 rounded-lg border">
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Autres contacts
+              </h3>
+              <Button type="button" variant="outline" size="sm" onClick={addExtraContact}>
+                <Plus className="h-4 w-4 mr-1" />
+                Ajouter un contact
+              </Button>
+            </div>
+
+            {extraContacts.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Aucun contact supplémentaire</p>
+            ) : (
+              <div className="space-y-3">
+                {extraContacts.map((contact, index) => (
+                  <div key={index} className="p-3 bg-white rounded-lg border space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Contact {index + 1}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeExtraContact(index)}
+                        className="text-red-500 h-8"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Nom</Label>
+                        <Input
+                          value={contact.nom || ''}
+                          onChange={(e) => updateExtraContact(index, 'nom', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Fonction</Label>
+                        <Input
+                          value={contact.fonction || ''}
+                          onChange={(e) => updateExtraContact(index, 'fonction', e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Téléphone</Label>
+                        <Input
+                          value={contact.tel || ''}
+                          onChange={(e) => updateExtraContact(index, 'tel', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Email</Label>
+                        <Input
+                          type="email"
+                          value={contact.email || ''}
+                          onChange={(e) => updateExtraContact(index, 'email', e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* CLIENT: Sites Section */}
           {isClient && (
             <div className="space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
@@ -1164,35 +1312,51 @@ function TiersFormDialog({
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>RC (Registre du Commerce)</Label>
+                    <Label>Registre du Commerce (RC)</Label>
                     <Input
                       value={formData.siegeRC || ''}
                       onChange={(e) => setFormData({ ...formData, siegeRC: e.target.value })}
+                      placeholder="Ex: 16/00-0123456B99"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Numéro d'immatriculation au registre du commerce
+                    </p>
                   </div>
                   <div className="space-y-2">
-                    <Label>NIF</Label>
+                    <Label>Numéro d'Identification Fiscale (NIF)</Label>
                     <Input
                       value={formData.siegeNIF || ''}
                       onChange={(e) => setFormData({ ...formData, siegeNIF: e.target.value })}
+                      placeholder="Ex: 001516123456789"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Identifiant fiscal unique délivré par les impôts
+                    </p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>AI (Article d'Imposition)</Label>
+                    <Label>Article d'Imposition (AI)</Label>
                     <Input
                       value={formData.siegeAI || ''}
                       onChange={(e) => setFormData({ ...formData, siegeAI: e.target.value })}
+                      placeholder="Ex: 16123456789"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Numéro d'article fiscal pour la TVA
+                    </p>
                   </div>
                   <div className="space-y-2">
-                    <Label>NIS</Label>
+                    <Label>Numéro d'Identification Statistique (NIS)</Label>
                     <Input
                       value={formData.siegeNIS || ''}
                       onChange={(e) => setFormData({ ...formData, siegeNIS: e.target.value })}
+                      placeholder="Ex: 001516123456789123"
                     />
+                    <p className="text-xs text-muted-foreground">
+                      Identifiant statistique délivré par l'ONS
+                    </p>
                   </div>
                 </div>
               </div>
@@ -1297,7 +1461,7 @@ function TiersDetailSheet({
   if (!tiersId) return null;
 
   const config = tiers ? TYPE_TIERS_CONFIG[tiers.typeTiers] : null;
-  const prospectNiveau = tiers?.prospectNiveau
+  const prospectNiveau = tiers?.typeTiers === 'PROSPECT' && tiers.prospectNiveau
     ? PROSPECT_NIVEAUX.find(n => n.value === tiers.prospectNiveau)
     : null;
 
@@ -1334,7 +1498,7 @@ function TiersDetailSheet({
                   <Badge className={cn(config?.bgColor, config?.color)}>
                     {config?.label}
                   </Badge>
-                  {tiers.code && (
+                  {tiers.code && tiers.typeTiers !== 'FOURNISSEUR' && (
                     <Badge variant="outline" className="font-mono">
                       {tiers.code}
                     </Badge>
@@ -1342,7 +1506,7 @@ function TiersDetailSheet({
                   {!tiers.actif && (
                     <Badge variant="destructive">Inactif</Badge>
                   )}
-                  {prospectNiveau && (
+                  {tiers.typeTiers === 'PROSPECT' && prospectNiveau && (
                     <Badge className={cn(prospectNiveau.bgColor, prospectNiveau.color)}>
                       <prospectNiveau.icon className="h-3 w-3 mr-1" />
                       {prospectNiveau.label}

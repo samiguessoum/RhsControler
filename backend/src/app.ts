@@ -3,11 +3,8 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from './config/database.js';
 import routes from './routes/index.js';
-
-// Prisma client singleton
-export const prisma = new PrismaClient();
 
 const app = express();
 const PORT = process.env.PORT || 3000;

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   produitsServicesApi,
@@ -187,6 +188,8 @@ function ProduitCard({
   onDelete,
   onMouvement,
   canManage,
+  fournisseurs,
+  onOpenFournisseur,
 }: {
   produit: ProduitService;
   onView: () => void;
@@ -194,10 +197,15 @@ function ProduitCard({
   onDelete: () => void;
   onMouvement: () => void;
   canManage: boolean;
+  fournisseurs: { id: string; nomEntreprise: string }[];
+  onOpenFournisseur: (id: string) => void;
 }) {
   const config = TYPE_CONFIG[produit.type];
   const Icon = config.icon;
   const isStockLow = produit.aStock && produit.quantite <= produit.stockMinimum;
+  const stockModeLabel = produit.type === 'PRODUIT'
+    ? (!produit.aStock ? 'Flux tendu' : (produit.stockMaximum === undefined || produit.stockMaximum === null) ? 'Mixte' : 'Entrepôt')
+    : null;
 
   return (
     <Card
@@ -256,6 +264,13 @@ function ProduitCard({
             </span>
           </div>
         )}
+        {/* Mode de stock */}
+        {stockModeLabel && (
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Mode d’approvisionnement</span>
+            <span className="font-medium text-gray-700">{stockModeLabel}</span>
+          </div>
+        )}
 
         {/* Catégories */}
         {produit.categories && produit.categories.length > 0 && (
@@ -275,6 +290,29 @@ function ProduitCard({
                 +{produit.categories.length - 2}
               </Badge>
             )}
+          </div>
+        )}
+
+        {/* Fournisseurs */}
+        {produit.type === 'PRODUIT' && fournisseurs.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">Fournisseurs</p>
+            <div className="flex flex-wrap gap-1">
+              {fournisseurs.map((f, index) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenFournisseur(f.id);
+                  }}
+                  className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-0.5 hover:bg-blue-100 transition-colors"
+                  title="Ouvrir la fiche fournisseur"
+                >
+                  {index + 1}. {f.nomEntreprise}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -327,10 +365,12 @@ export default function ProduitsServices() {
   const { canDo } = useAuthStore();
   const canManage = canDo('manageStock');
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState('produits');
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeProduit | 'all'>('all');
+  const [categorieFilter, setCategorieFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards');
 
   // Modals
@@ -350,10 +390,11 @@ export default function ProduitsServices() {
   // ============ QUERIES ============
 
   const { data: produitsData, isLoading: loadingProduits } = useQuery({
-    queryKey: ['produits-services', search, typeFilter],
+    queryKey: ['produits-services', search, typeFilter, categorieFilter],
     queryFn: () => produitsServicesApi.list({
       search: search || undefined,
       type: typeFilter !== 'all' ? typeFilter : undefined,
+      categorieId: categorieFilter !== 'all' ? categorieFilter : undefined,
       limit: 100,
     }),
   });
@@ -735,6 +776,40 @@ export default function ProduitsServices() {
 
   const produits = produitsData?.produits || [];
   const isProduitPending = createProduitMutation.isPending || updateProduitMutation.isPending;
+  const fournisseursById = useMemo(() => {
+    const map = new Map<string, { id: string; nomEntreprise: string }>();
+    (fournisseurs?.tiers || []).forEach((f) => {
+      map.set(f.id, { id: f.id, nomEntreprise: f.nomEntreprise });
+    });
+    return map;
+  }, [fournisseurs]);
+
+  const getFournisseursForProduit = (produit: ProduitService) => {
+    const ordered = (produit.fournisseursDefaut || [])
+      .slice()
+      .sort((a, b) => a.ordre - b.ordre)
+      .map((fd) => (
+        fournisseursById.get(fd.fournisseurId)
+        || (fd.fournisseur ? { id: fd.fournisseur.id, nomEntreprise: fd.fournisseur.nomEntreprise } : null)
+        || { id: fd.fournisseurId, nomEntreprise: 'Fournisseur inconnu' }
+      ));
+
+    if (ordered.length > 0) return ordered;
+
+    if (produit.fournisseur) {
+      return [{ id: produit.fournisseur.id, nomEntreprise: produit.fournisseur.nomEntreprise }];
+    }
+
+    if (produit.fournisseurId) {
+      return [fournisseursById.get(produit.fournisseurId) || { id: produit.fournisseurId, nomEntreprise: 'Fournisseur inconnu' }];
+    }
+
+    return [];
+  };
+
+  const handleOpenFournisseur = (fournisseurId: string) => {
+    navigate(`/tiers?view=${fournisseurId}`);
+  };
 
   return (
     <div className="space-y-6">
@@ -864,6 +939,17 @@ export default function ProduitsServices() {
                   <SelectItem value="SERVICE">Services</SelectItem>
                 </SelectContent>
               </Select>
+              <Select value={categorieFilter} onValueChange={(v) => setCategorieFilter(v)}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="Catégorie" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Toutes catégories</SelectItem>
+                  {categories?.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>{cat.nom}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="flex items-center gap-2">
@@ -920,6 +1006,8 @@ export default function ProduitsServices() {
                   onDelete={() => setDeleteTarget({ type: 'produit', item: produit })}
                   onMouvement={() => handleOpenMouvement(produit)}
                   canManage={canManage}
+                  fournisseurs={getFournisseursForProduit(produit)}
+                  onOpenFournisseur={handleOpenFournisseur}
                 />
               ))}
             </div>
@@ -932,6 +1020,7 @@ export default function ProduitsServices() {
                     <TableHead>Nom</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Catégories</TableHead>
+                    <TableHead>Fournisseurs</TableHead>
                     <TableHead className="text-right">Prix HT</TableHead>
                     <TableHead className="text-right">Stock</TableHead>
                     <TableHead>Statut</TableHead>
@@ -942,8 +1031,13 @@ export default function ProduitsServices() {
                   {produits.map((produit) => {
                     const config = TYPE_CONFIG[produit.type];
                     const Icon = config.icon;
+                    const fournisseursOrdered = getFournisseursForProduit(produit);
                     return (
-                      <TableRow key={produit.id} className={cn(!produit.actif && 'opacity-50')}>
+                      <TableRow
+                        key={produit.id}
+                        className={cn('cursor-pointer hover:bg-gray-50', !produit.actif && 'opacity-50')}
+                        onClick={() => handleViewDetail(produit)}
+                      >
                         <TableCell className="font-mono text-sm">{produit.reference}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
@@ -983,6 +1077,28 @@ export default function ProduitsServices() {
                             )}
                           </div>
                         </TableCell>
+                        <TableCell>
+                          {produit.type === 'PRODUIT' && fournisseursOrdered.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {fournisseursOrdered.map((f, index) => (
+                                <button
+                                  key={f.id}
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenFournisseur(f.id);
+                                  }}
+                                  className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-0.5 hover:bg-blue-100 transition-colors"
+                                  title="Ouvrir la fiche fournisseur"
+                                >
+                                  {index + 1}. {f.nomEntreprise}
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">-</span>
+                          )}
+                        </TableCell>
                         <TableCell className="text-right">
                           {produit.prixVenteHT ? `${produit.prixVenteHT.toFixed(2)} DA` : '-'}
                         </TableCell>
@@ -1002,7 +1118,7 @@ export default function ProduitsServices() {
                             {produit.enAchat && <Badge variant="outline" className="text-xs text-blue-600 border-blue-200">Achat</Badge>}
                           </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="icon">
@@ -2207,6 +2323,18 @@ export default function ProduitsServices() {
                   </div>
                 </div>
               )}
+              {selectedProduit.type === 'PRODUIT' && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Mode d’approvisionnement</p>
+                  <p className="font-medium">
+                    {!selectedProduit.aStock
+                      ? 'Flux tendu'
+                      : (selectedProduit.stockMaximum === undefined || selectedProduit.stockMaximum === null)
+                        ? 'Mixte'
+                        : 'Entrepôt'}
+                  </p>
+                </div>
+              )}
 
               {/* Catégories */}
               {selectedProduit.categories && selectedProduit.categories.length > 0 && (
@@ -2226,11 +2354,26 @@ export default function ProduitsServices() {
                 </div>
               )}
 
-              {/* Fournisseur */}
-              {selectedProduit.fournisseur && (
+              {/* Fournisseurs */}
+              {selectedProduit.type === 'PRODUIT' && (
                 <div>
-                  <p className="text-sm text-muted-foreground">Fournisseur par défaut</p>
-                  <p>{selectedProduit.fournisseur.nomEntreprise}</p>
+                  <p className="text-sm text-muted-foreground">Fournisseurs</p>
+                  {getFournisseursForProduit(selectedProduit).length > 0 ? (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {getFournisseursForProduit(selectedProduit).map((f, index) => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => handleOpenFournisseur(f.id)}
+                          className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded px-2 py-1 hover:bg-blue-100 transition-colors"
+                        >
+                          {index + 1}. {f.nomEntreprise}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">-</p>
+                  )}
                 </div>
               )}
 

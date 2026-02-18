@@ -79,6 +79,12 @@ export const produitsServicesController = {
               }
             },
             fournisseur: { select: { id: true, nomEntreprise: true } },
+            fournisseursDefaut: {
+              include: {
+                fournisseur: { select: { id: true, nomEntreprise: true } }
+              },
+              orderBy: { ordre: 'asc' }
+            },
             _count: {
               select: {
                 prixFournisseurs: true,
@@ -128,6 +134,12 @@ export const produitsServicesController = {
             }
           },
           fournisseur: { select: { id: true, nomEntreprise: true, code: true } },
+          fournisseursDefaut: {
+            include: {
+              fournisseur: { select: { id: true, nomEntreprise: true, code: true } }
+            },
+            orderBy: { ordre: 'asc' }
+          },
           prixFournisseurs: {
             where: { actif: true },
             include: {
@@ -200,6 +212,7 @@ export const produitsServicesController = {
         dlcSuivi,
         dureeService,
         fournisseurId,
+        fournisseursDefaut,
         delaiLivraison,
         marque,
         modele,
@@ -286,6 +299,16 @@ export const produitsServicesController = {
         }
       });
 
+      if (fournisseursDefaut && fournisseursDefaut.length > 0) {
+        await prisma.produitFournisseurDefaut.createMany({
+          data: fournisseursDefaut.map((fd: { fournisseurId: string; ordre?: number }) => ({
+            produitId: produit.id,
+            fournisseurId: fd.fournisseurId,
+            ordre: fd.ordre || 1,
+          })),
+        });
+      }
+
       // Ajouter les catégories si fournies
       if (categorieIds && categorieIds.length > 0) {
         await prisma.produitServiceCategorie.createMany({
@@ -338,6 +361,10 @@ export const produitsServicesController = {
             include: { categorie: { select: { id: true, nom: true, couleur: true } } }
           },
           fournisseur: { select: { id: true, nomEntreprise: true } },
+          fournisseursDefaut: {
+            include: { fournisseur: { select: { id: true, nomEntreprise: true } } },
+            orderBy: { ordre: 'asc' }
+          },
         }
       });
 
@@ -376,6 +403,7 @@ export const produitsServicesController = {
         dlcSuivi,
         dureeService,
         fournisseurId,
+        fournisseursDefaut,
         delaiLivraison,
         marque,
         modele,
@@ -487,6 +515,21 @@ export const produitsServicesController = {
         }
       }
 
+      if (fournisseursDefaut !== undefined) {
+        await prisma.produitFournisseurDefaut.deleteMany({
+          where: { produitId: id },
+        });
+        if (fournisseursDefaut.length > 0) {
+          await prisma.produitFournisseurDefaut.createMany({
+            data: fournisseursDefaut.map((fd: { fournisseurId: string; ordre?: number }) => ({
+              produitId: id,
+              fournisseurId: fd.fournisseurId,
+              ordre: fd.ordre || 1,
+            })),
+          });
+        }
+      }
+
       await createAuditLog(req.user!.id, 'UPDATE', 'ProduitService', produit.id, {
         before: existing,
         after: produit,
@@ -500,6 +543,10 @@ export const produitsServicesController = {
             include: { categorie: { select: { id: true, nom: true, couleur: true } } }
           },
           fournisseur: { select: { id: true, nomEntreprise: true } },
+          fournisseursDefaut: {
+            include: { fournisseur: { select: { id: true, nomEntreprise: true } } },
+            orderBy: { ordre: 'asc' }
+          },
         }
       });
 
@@ -519,27 +566,32 @@ export const produitsServicesController = {
 
       const existing = await prisma.produitService.findUnique({
         where: { id },
-        include: { _count: { select: { mouvements: true, prixFournisseurs: true, prixClients: true } } },
       });
 
       if (!existing) {
         return res.status(404).json({ error: 'Produit/Service non trouvé' });
       }
 
-      // Si des relations existent, désactiver plutôt que supprimer
-      if (existing._count.mouvements > 0 || existing._count.prixFournisseurs > 0 || existing._count.prixClients > 0) {
-        await prisma.produitService.update({
-          where: { id },
-          data: { actif: false },
-        });
-        return res.json({ message: 'Produit/Service désactivé (historique conservé)' });
-      }
+      await prisma.$transaction([
+        // Détacher le produit des documents commerciaux pour conserver l'historique
+        prisma.devisLigne.updateMany({ where: { produitServiceId: id }, data: { produitServiceId: null } }),
+        prisma.commandeLigne.updateMany({ where: { produitServiceId: id }, data: { produitServiceId: null } }),
+        prisma.factureLigne.updateMany({ where: { produitServiceId: id }, data: { produitServiceId: null } }),
+        prisma.commandeFournisseurLigne.updateMany({ where: { produitServiceId: id }, data: { produitServiceId: null } }),
+        prisma.factureFournisseurLigne.updateMany({ where: { produitServiceId: id }, data: { produitServiceId: null } }),
+        prisma.mouvementStock.updateMany({ where: { produitServiceId: id }, data: { produitServiceId: null } }),
 
-      // Supprimer les catégories associées
-      await prisma.produitServiceCategorie.deleteMany({ where: { produitId: id } });
+        // Nettoyage des données internes
+        prisma.stockEntrepot.deleteMany({ where: { produitId: id } }),
+        prisma.lotProduit.deleteMany({ where: { produitId: id } }),
+        prisma.prixFournisseur.deleteMany({ where: { produitId: id } }),
+        prisma.prixClient.deleteMany({ where: { produitId: id } }),
+        prisma.produitServiceCategorie.deleteMany({ where: { produitId: id } }),
+        prisma.produitFournisseurDefaut.deleteMany({ where: { produitId: id } }),
 
-      // Supprimer le produit
-      await prisma.produitService.delete({ where: { id } });
+        // Supprimer le produit
+        prisma.produitService.delete({ where: { id } }),
+      ]);
 
       await createAuditLog(req.user!.id, 'DELETE', 'ProduitService', id);
 
