@@ -389,6 +389,50 @@ export const commandeFournisseurController = {
     }
   },
 
+  // Valider une commande fournisseur (passer de BROUILLON à VALIDEE)
+  async valider(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+
+      const existing = await prisma.commandeFournisseur.findUnique({
+        where: { id },
+        include: {
+          fournisseur: { select: { id: true, nomEntreprise: true } },
+        },
+      });
+
+      if (!existing) {
+        return res.status(404).json({ error: 'Commande fournisseur non trouvée' });
+      }
+
+      if (existing.statut !== 'BROUILLON') {
+        return res.status(400).json({ error: 'Seules les commandes en brouillon peuvent être validées' });
+      }
+
+      const commande = await prisma.commandeFournisseur.update({
+        where: { id },
+        data: {
+          statut: 'VALIDEE',
+          updatedById: req.user?.id,
+        },
+        include: {
+          fournisseur: { select: { id: true, nomEntreprise: true } },
+          lignes: true,
+        },
+      });
+
+      await createAuditLog(req.user!.id, 'UPDATE', 'CommandeFournisseur', commande.id, {
+        before: { statut: 'BROUILLON' },
+        after: { statut: 'VALIDEE' },
+      });
+
+      res.json({ commande, message: 'Commande fournisseur validée avec succès' });
+    } catch (error) {
+      console.error('Valider commande fournisseur error:', error);
+      res.status(500).json({ error: 'Erreur lors de la validation de la commande fournisseur' });
+    }
+  },
+
   // Export PDF
   async exportPDF(req: AuthRequest, res: Response) {
     try {

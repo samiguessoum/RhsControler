@@ -1,13 +1,22 @@
 import { Response } from 'express';
 import { prisma } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
+import { cacheService, CACHE_KEYS, CACHE_TTL } from '../services/cache.service.js';
 
 export const facturationStatsController = {
   // Statistiques globales de facturation
   async getGlobalStats(req: AuthRequest, res: Response) {
     try {
-      const { annee } = req.query;
+      const { annee, noCache } = req.query;
       const year = annee ? parseInt(annee as string) : new Date().getFullYear();
+
+      // Vérifier le cache sauf si noCache est spécifié
+      if (noCache !== 'true') {
+        const cached = cacheService.get(CACHE_KEYS.STATS_GLOBAL(year));
+        if (cached) {
+          return res.json({ ...cached, fromCache: true });
+        }
+      }
 
       const startDate = new Date(year, 0, 1);
       const endDate = new Date(year, 11, 31, 23, 59, 59);
@@ -70,7 +79,7 @@ export const facturationStatsController = {
       const encaissementsDivers = paiementsDiversStats.find((p) => p.typeOperation === 'ENCAISSEMENT')?._sum.montant || 0;
       const decaissementsDivers = paiementsDiversStats.find((p) => p.typeOperation === 'DECAISSEMENT')?._sum.montant || 0;
 
-      res.json({
+      const result = {
         annee: year,
         facturesClients: {
           count: facturesClientsStats._count,
@@ -106,7 +115,12 @@ export const facturationStatsController = {
           totalAchats: (facturesFournisseursStats._sum?.totalTTC || 0) + (chargesStats._sum?.montantTTC || 0),
           resultatBrut: (facturesClientsStats._sum?.totalTTC || 0) - (facturesFournisseursStats._sum?.totalTTC || 0) - (chargesStats._sum?.montantTTC || 0),
         },
-      });
+      };
+
+      // Mettre en cache pour 5 minutes
+      cacheService.set(CACHE_KEYS.STATS_GLOBAL(year), result, CACHE_TTL.MEDIUM);
+
+      res.json(result);
     } catch (error) {
       console.error('Get global stats error:', error);
       res.status(500).json({ error: 'Erreur serveur' });

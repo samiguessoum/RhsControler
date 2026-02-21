@@ -557,15 +557,20 @@ function drawInvoiceHeader(doc: PDFKit.PDFDocument, facture: FactureDocument, ti
   doc.font('Helvetica-Bold')
     .fontSize(20)
     .fillColor('#0b1b55')
-    .text(`${title} ${facture.ref}`, rightBoxX, 28, { width: 190, align: 'right' });
+    .text(`${title}`, rightBoxX, 28, { width: 190, align: 'right' });
+
+  doc.font('Helvetica-Bold')
+    .fontSize(14)
+    .fillColor('#0b1b55')
+    .text(facture.ref, rightBoxX, 50, { width: 190, align: 'right' });
 
   doc.font('Helvetica')
     .fontSize(9)
     .fillColor('#111827')
-    .text(`Date facturation : ${formatDate(facture.dateFacture)}`, rightBoxX, 54, { width: 190, align: 'right' });
+    .text(`Date facturation : ${formatDate(facture.dateFacture)}`, rightBoxX, 70, { width: 190, align: 'right' });
 
   if (facture.dateEcheance) {
-    doc.text(`Date echeance : ${formatDate(facture.dateEcheance)}`, rightBoxX, 67, { width: 190, align: 'right' });
+    doc.text(`Date echeance : ${formatDate(facture.dateEcheance)}`, rightBoxX, 83, { width: 190, align: 'right' });
   }
 }
 

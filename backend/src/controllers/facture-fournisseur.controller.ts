@@ -3,6 +3,7 @@ import { prisma } from '../config/database.js';
 import { FactureFournisseurStatut } from '@prisma/client';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
+import { facturationEvents } from '../services/events.service.js';
 
 const REF_PREFIX = 'FF';
 
@@ -222,35 +223,54 @@ export const factureFournisseurController = {
       const totals = computeTotals(lignes, data.remiseGlobalPct, data.remiseGlobalMontant);
       const ref = data.ref || (await generateReference(dateFacture));
 
-      const facture = await prisma.factureFournisseur.create({
-        data: {
-          ref,
-          refFournisseur: data.refFournisseur,
-          fournisseurId: data.fournisseurId,
-          commandeFournisseurId: data.commandeFournisseurId,
-          dateFacture,
-          dateReception: parseDate(data.dateReception),
-          dateEcheance: parseDate(data.dateEcheance),
-          statut: data.statut ?? 'BROUILLON',
-          remiseGlobalPct: data.remiseGlobalPct,
-          remiseGlobalMontant: data.remiseGlobalMontant,
-          totalHT: totals.totalHT,
-          totalTVA: totals.totalTVA,
-          totalTTC: totals.totalTTC,
-          totalPaye: 0,
-          devise: data.devise,
-          notes: data.notes,
-          createdById: req.user?.id,
-          updatedById: req.user?.id,
-          lignes: { create: lignes },
-        },
-        include: {
-          fournisseur: { select: { id: true, nomEntreprise: true } },
-          lignes: true,
-        },
+      // Utiliser une transaction pour garantir l'atomicité
+      const facture = await prisma.$transaction(async (tx) => {
+        const newFacture = await tx.factureFournisseur.create({
+          data: {
+            ref,
+            refFournisseur: data.refFournisseur,
+            fournisseurId: data.fournisseurId,
+            commandeFournisseurId: data.commandeFournisseurId,
+            dateFacture,
+            dateReception: parseDate(data.dateReception),
+            dateEcheance: parseDate(data.dateEcheance),
+            statut: data.statut ?? 'BROUILLON',
+            remiseGlobalPct: data.remiseGlobalPct,
+            remiseGlobalMontant: data.remiseGlobalMontant,
+            totalHT: totals.totalHT,
+            totalTVA: totals.totalTVA,
+            totalTTC: totals.totalTTC,
+            totalPaye: 0,
+            devise: data.devise,
+            notes: data.notes,
+            createdById: req.user?.id,
+            updatedById: req.user?.id,
+            lignes: { create: lignes },
+          },
+          include: {
+            fournisseur: { select: { id: true, nomEntreprise: true } },
+            lignes: true,
+          },
+        });
+
+        return newFacture;
       });
 
       await createAuditLog(req.user!.id, 'CREATE', 'FactureFournisseur', facture.id, { after: facture });
+
+      // Émettre l'événement de création
+      facturationEvents.emitEvent({
+        type: 'facture_fournisseur.created',
+        entityId: facture.id,
+        entityType: 'FactureFournisseur',
+        data: {
+          ref: facture.ref,
+          fournisseurNom: facture.fournisseur.nomEntreprise,
+          totalTTC: facture.totalTTC,
+        },
+        userId: req.user?.id,
+        timestamp: new Date(),
+      });
 
       res.status(201).json({ facture });
     } catch (error) {
@@ -374,6 +394,7 @@ export const factureFournisseurController = {
 
       const facture = await prisma.factureFournisseur.findUnique({
         where: { id },
+        include: { fournisseur: { select: { nomEntreprise: true } } },
       });
 
       if (!facture) {
@@ -393,36 +414,57 @@ export const factureFournisseurController = {
         return res.status(400).json({ error: `Le montant dépasse le reste à payer (${resteAPayer.toFixed(2)})` });
       }
 
-      const paiement = await prisma.paiementFournisseur.create({
-        data: {
-          factureFournisseurId: id,
-          modePaiementId,
-          datePaiement: parseDate(datePaiement) ?? new Date(),
-          montant,
-          reference,
-          banque,
-          notes,
-          createdById: req.user?.id,
-        },
-        include: {
-          modePaiement: { select: { id: true, libelle: true } },
-        },
-      });
+      // Utiliser une transaction pour garantir l'atomicité
+      const { paiement, nouveauStatut, nouveauMontantPaye } = await prisma.$transaction(async (tx) => {
+        const newPaiement = await tx.paiementFournisseur.create({
+          data: {
+            factureFournisseurId: id,
+            modePaiementId,
+            datePaiement: parseDate(datePaiement) ?? new Date(),
+            montant,
+            reference,
+            banque,
+            notes,
+            createdById: req.user?.id,
+          },
+          include: {
+            modePaiement: { select: { id: true, libelle: true } },
+          },
+        });
 
-      // Mettre à jour le montant payé et le statut
-      const nouveauMontantPaye = facture.totalPaye + montant;
-      const nouveauStatut = determineStatut(facture.totalTTC, nouveauMontantPaye, facture.dateEcheance);
+        // Mettre à jour le montant payé et le statut
+        const newMontantPaye = facture.totalPaye + montant;
+        const newStatut = determineStatut(facture.totalTTC, newMontantPaye, facture.dateEcheance);
 
-      await prisma.factureFournisseur.update({
-        where: { id },
-        data: {
-          totalPaye: nouveauMontantPaye,
-          statut: nouveauStatut,
-          updatedById: req.user?.id,
-        },
+        await tx.factureFournisseur.update({
+          where: { id },
+          data: {
+            totalPaye: newMontantPaye,
+            statut: newStatut,
+            updatedById: req.user?.id,
+          },
+        });
+
+        return { paiement: newPaiement, nouveauStatut: newStatut, nouveauMontantPaye: newMontantPaye };
       });
 
       await createAuditLog(req.user!.id, 'CREATE', 'PaiementFournisseur', paiement.id, { after: paiement });
+
+      // Émettre des événements selon le statut
+      if (nouveauStatut === 'PAYEE') {
+        facturationEvents.emitEvent({
+          type: 'facture_fournisseur.paid',
+          entityId: facture.id,
+          entityType: 'FactureFournisseur',
+          data: {
+            ref: facture.ref,
+            fournisseurNom: facture.fournisseur.nomEntreprise,
+            totalTTC: facture.totalTTC,
+          },
+          userId: req.user?.id,
+          timestamp: new Date(),
+        });
+      }
 
       res.status(201).json({ paiement, nouveauStatut, montantPaye: nouveauMontantPaye });
     } catch (error) {
@@ -560,6 +602,64 @@ export const factureFournisseurController = {
     } catch (error) {
       console.error('Convertir commande en facture error:', error);
       res.status(500).json({ error: 'Erreur lors de la conversion de la commande en facture' });
+    }
+  },
+
+  // Valider une facture fournisseur (passer de BROUILLON à VALIDEE)
+  async valider(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+
+      const existing = await prisma.factureFournisseur.findUnique({
+        where: { id },
+        include: {
+          fournisseur: { select: { id: true, nomEntreprise: true } },
+        },
+      });
+
+      if (!existing) {
+        return res.status(404).json({ error: 'Facture fournisseur non trouvée' });
+      }
+
+      if (existing.statut !== 'BROUILLON') {
+        return res.status(400).json({ error: 'Seules les factures en brouillon peuvent être validées' });
+      }
+
+      const facture = await prisma.factureFournisseur.update({
+        where: { id },
+        data: {
+          statut: 'VALIDEE',
+          updatedById: req.user?.id,
+        },
+        include: {
+          fournisseur: { select: { id: true, nomEntreprise: true } },
+          lignes: true,
+        },
+      });
+
+      await createAuditLog(req.user!.id, 'UPDATE', 'FactureFournisseur', facture.id, {
+        before: { statut: 'BROUILLON' },
+        after: { statut: 'VALIDEE' },
+      });
+
+      // Émettre un événement de validation
+      facturationEvents.emitEvent({
+        type: 'facture_fournisseur.validated',
+        entityId: facture.id,
+        entityType: 'FactureFournisseur',
+        data: {
+          ref: facture.ref,
+          fournisseurNom: facture.fournisseur.nomEntreprise,
+          totalTTC: facture.totalTTC,
+        },
+        userId: req.user?.id,
+        timestamp: new Date(),
+      });
+
+      res.json({ facture, message: 'Facture fournisseur validée avec succès' });
+    } catch (error) {
+      console.error('Valider facture fournisseur error:', error);
+      res.status(500).json({ error: 'Erreur lors de la validation de la facture fournisseur' });
     }
   },
 

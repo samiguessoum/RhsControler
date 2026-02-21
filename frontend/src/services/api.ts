@@ -849,6 +849,10 @@ export const commerceApi = {
   deleteDevis: async (id: string): Promise<void> => {
     await api.delete(`/commerce/devis/${id}`);
   },
+  validerDevis: async (id: string): Promise<{ devis: Devis; message: string }> => {
+    const { data } = await api.post(`/commerce/devis/${id}/valider`);
+    return data;
+  },
   convertirDevisCommande: async (id: string): Promise<{ commande: Commande; message: string }> => {
     const { data } = await api.post(`/commerce/devis/${id}/convertir-commande`);
     return data;
@@ -874,6 +878,10 @@ export const commerceApi = {
   deleteCommande: async (id: string): Promise<void> => {
     await api.delete(`/commerce/commandes/${id}`);
   },
+  validerCommande: async (id: string): Promise<{ commande: Commande; message: string }> => {
+    const { data } = await api.post(`/commerce/commandes/${id}/valider`);
+    return data;
+  },
   convertirCommandeFacture: async (id: string): Promise<{ facture: Facture; message: string }> => {
     const { data } = await api.post(`/commerce/commandes/${id}/convertir-facture`);
     return data;
@@ -898,6 +906,10 @@ export const commerceApi = {
   },
   deleteFacture: async (id: string): Promise<void> => {
     await api.delete(`/commerce/factures/${id}`);
+  },
+  validerFacture: async (id: string): Promise<{ facture: Facture; message: string }> => {
+    const { data } = await api.post(`/commerce/factures/${id}/valider`);
+    return data;
   },
   listRelances: async (id: string): Promise<FactureRelance[]> => {
     const { data } = await api.get(`/commerce/factures/${id}/relances`);
@@ -981,6 +993,10 @@ export const commandesFournisseursApi = {
     const url = window.URL.createObjectURL(blob);
     window.open(url, '_blank');
   },
+  valider: async (id: string): Promise<{ commande: CommandeFournisseur; message: string }> => {
+    const { data } = await api.post(`/commandes-fournisseurs/${id}/valider`);
+    return data;
+  },
 };
 
 // ============ FACTURATION ============
@@ -1019,6 +1035,10 @@ export const facturesFournisseursApi = {
     const blob = new Blob([response.data], { type: 'application/pdf' });
     const url = window.URL.createObjectURL(blob);
     window.open(url, '_blank');
+  },
+  valider: async (id: string): Promise<{ facture: FactureFournisseur; message: string }> => {
+    const { data } = await api.post(`/factures-fournisseurs/${id}/valider`);
+    return data;
   },
 };
 

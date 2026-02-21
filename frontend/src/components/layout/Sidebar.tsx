@@ -53,9 +53,13 @@ export function Sidebar({ stats }: SidebarProps) {
 
   // Check which group should be open by default based on current path
   const getDefaultOpenGroups = () => {
-    const commercePaths = ['/commerce', '/produits-services', '/stocks'];
-    if (commercePaths.some(path => location.pathname.startsWith(path))) {
-      return ['commerce'];
+    const ventesPaths = ['/commerce', '/produits-services', '/stocks'];
+    const achatsPaths = ['/facturation'];
+    if (ventesPaths.some(path => location.pathname.startsWith(path))) {
+      return ['ventes'];
+    }
+    if (achatsPaths.some(path => location.pathname.startsWith(path))) {
+      return ['achats'];
     }
     return [];
   };
@@ -103,9 +107,9 @@ export function Sidebar({ stats }: SidebarProps) {
   // Grouped navigation items
   const navGroups: NavGroup[] = [
     {
-      id: 'commerce',
+      id: 'ventes',
       icon: Store,
-      label: 'Commerce & Ventes',
+      label: 'Ventes',
       show: true,
       items: [
         {
@@ -128,16 +132,24 @@ export function Sidebar({ stats }: SidebarProps) {
         },
       ],
     },
+    {
+      id: 'achats',
+      icon: Wallet,
+      label: 'Achats & Dépenses',
+      show: canDo('viewFacturation'),
+      items: [
+        {
+          to: '/facturation',
+          icon: Receipt,
+          label: 'Factures & Charges',
+          show: true,
+        },
+      ],
+    },
   ];
 
   // Bottom navigation items
   const bottomNavItems: NavItem[] = [
-    {
-      to: '/facturation',
-      icon: Wallet,
-      label: 'Facturation',
-      show: canDo('viewFacturation'),
-    },
     {
       to: '/rh',
       icon: UserCog,

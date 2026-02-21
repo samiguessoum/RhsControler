@@ -99,6 +99,7 @@ import factureFournisseurController from '../controllers/facture-fournisseur.con
 import chargeController from '../controllers/charge.controller.js';
 import paiementDiversController from '../controllers/paiement-divers.controller.js';
 import facturationStatsController from '../controllers/facturation-stats.controller.js';
+import notificationsController from '../controllers/notifications.controller.js';
 
 const router = Router();
 
@@ -300,6 +301,7 @@ router.get('/commerce/devis/:id/pdf', authMiddleware, commerceController.exportD
 router.post('/commerce/devis', authMiddleware, canDo('manageCommerce'), validate(createDevisSchema), commerceController.createDevis);
 router.put('/commerce/devis/:id', authMiddleware, canDo('manageCommerce'), validate(updateDevisSchema), commerceController.updateDevis);
 router.delete('/commerce/devis/:id', authMiddleware, canDo('manageCommerce'), commerceController.deleteDevis);
+router.post('/commerce/devis/:id/valider', authMiddleware, canDo('manageCommerce'), commerceController.validerDevis);
 router.post('/commerce/devis/:id/convertir-commande', authMiddleware, canDo('manageCommerce'), commerceController.convertirDevisCommande);
 
 // Commandes
@@ -309,6 +311,7 @@ router.get('/commerce/commandes/:id/pdf', authMiddleware, commerceController.exp
 router.post('/commerce/commandes', authMiddleware, canDo('manageCommerce'), validate(createCommandeSchema), commerceController.createCommande);
 router.put('/commerce/commandes/:id', authMiddleware, canDo('manageCommerce'), validate(updateCommandeSchema), commerceController.updateCommande);
 router.delete('/commerce/commandes/:id', authMiddleware, canDo('manageCommerce'), commerceController.deleteCommande);
+router.post('/commerce/commandes/:id/valider', authMiddleware, canDo('manageCommerce'), commerceController.validerCommande);
 router.post('/commerce/commandes/:id/convertir-facture', authMiddleware, canDo('manageCommerce'), commerceController.convertirCommandeFacture);
 
 // Factures
@@ -318,6 +321,7 @@ router.get('/commerce/factures/:id/pdf', authMiddleware, commerceController.expo
 router.post('/commerce/factures', authMiddleware, canDo('manageCommerce'), validate(createFactureSchema), commerceController.createFacture);
 router.put('/commerce/factures/:id', authMiddleware, canDo('manageCommerce'), validate(updateFactureSchema), commerceController.updateFacture);
 router.delete('/commerce/factures/:id', authMiddleware, canDo('manageCommerce'), commerceController.deleteFacture);
+router.post('/commerce/factures/:id/valider', authMiddleware, canDo('manageCommerce'), commerceController.validerFacture);
 router.get('/commerce/factures/:id/relances', authMiddleware, canDo('manageCommerce'), commerceController.listRelances);
 router.post('/commerce/factures/:id/relances', authMiddleware, canDo('manageCommerce'), validate(createFactureRelanceSchema), commerceController.createRelance);
 
@@ -333,6 +337,7 @@ router.post('/commandes-fournisseurs', authMiddleware, canDo('manageCommerce'), 
 router.put('/commandes-fournisseurs/:id', authMiddleware, canDo('manageCommerce'), validate(updateCommandeFournisseurSchema), commandeFournisseurController.update);
 router.delete('/commandes-fournisseurs/:id', authMiddleware, canDo('manageCommerce'), commandeFournisseurController.delete);
 router.post('/commandes-fournisseurs/:id/reception', authMiddleware, canDo('manageCommerce'), validate(receptionCommandeFournisseurSchema), commandeFournisseurController.reception);
+router.post('/commandes-fournisseurs/:id/valider', authMiddleware, canDo('manageCommerce'), commandeFournisseurController.valider);
 
 // ============ FACTURATION ============
 // Factures fournisseurs
@@ -345,6 +350,7 @@ router.delete('/factures-fournisseurs/:id', authMiddleware, canDo('manageFactura
 router.post('/factures-fournisseurs/:id/paiements', authMiddleware, canDo('manageFacturation'), validate(createPaiementFournisseurSchema), factureFournisseurController.createPaiement);
 router.delete('/factures-fournisseurs/:id/paiements/:paiementId', authMiddleware, canDo('manageFacturation'), factureFournisseurController.deletePaiement);
 router.post('/factures-fournisseurs/convertir-commande/:commandeId', authMiddleware, canDo('manageFacturation'), factureFournisseurController.convertirFromCommande);
+router.post('/factures-fournisseurs/:id/valider', authMiddleware, canDo('manageFacturation'), factureFournisseurController.valider);
 
 // Charges
 router.get('/charges/categories', authMiddleware, canDo('viewFacturation'), chargeController.getCategories);
@@ -374,5 +380,12 @@ router.get('/facturation/stats/marges', authMiddleware, canDo('viewFacturation')
 router.get('/facturation/stats/commandes-facturables', authMiddleware, canDo('viewFacturation'), facturationStatsController.getCommandesFacturables);
 router.get('/facturation/stats/tresorerie', authMiddleware, canDo('viewFacturation'), facturationStatsController.getTresorerie);
 router.get('/facturation/stats/retards', authMiddleware, canDo('viewFacturation'), facturationStatsController.getFacturesEnRetard);
+
+// ============ NOTIFICATIONS ============
+router.get('/notifications', authMiddleware, notificationsController.list);
+router.put('/notifications/:id/read', authMiddleware, notificationsController.markAsRead);
+router.put('/notifications/read-all', authMiddleware, notificationsController.markAllAsRead);
+router.post('/notifications/check-overdue', authMiddleware, canDo('viewFacturation'), notificationsController.checkOverdue);
+router.post('/notifications/check-stock', authMiddleware, canDo('manageStock'), notificationsController.checkStock);
 
 export default router;

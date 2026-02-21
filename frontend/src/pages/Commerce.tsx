@@ -8,16 +8,16 @@ import {
   ShoppingCart,
   ArrowRightLeft,
   FileDown,
-  Truck,
   Search,
   Eye,
-  X,
   Phone,
   Mail,
   MapPin,
   Calendar,
   Trash2,
   Bell,
+  CheckCircle2,
+  Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,7 +33,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from '@/components/ui/dialog';
 import {
@@ -50,96 +49,19 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
-import { commerceApi, commandesFournisseursApi, produitsServicesApi, tiersApi } from '@/services/api';
-import type { CreateCommandeInput, CreateDevisInput, CreateFactureInput, CreateCommandeFournisseurInput, ProduitService, Tiers, FactureType } from '@/types';
+import { commerceApi, produitsServicesApi, tiersApi } from '@/services/api';
+import type { CreateCommandeInput, CreateDevisInput, CreateFactureInput, ProduitService, Tiers, FactureType } from '@/types';
 import { useAuthStore } from '@/store/auth.store';
 import { cn } from '@/lib/utils';
-
-// ============ CONFIGURATION ============
-
-const EMPTY_LINE = {
-  produitServiceId: undefined as string | undefined,
-  libelle: '',
-  description: '',
-  quantite: 1,
-  unite: '',
-  prixUnitaireHT: 0,
-  tauxTVA: 19,
-  remisePct: 0,
-  ordre: 1,
-};
-
-const TVA_OPTIONS = [
-  { value: 0, label: '0%' },
-  { value: 9, label: '9%' },
-  { value: 19, label: '19%' },
-];
-
-const NIVEAU_RELANCE_OPTIONS = [
-  { value: 1, label: 'Niveau 1 - Rappel amical', description: 'Premier rappel courtois' },
-  { value: 2, label: 'Niveau 2 - Relance ferme', description: 'Deuxième rappel plus insistant' },
-  { value: 3, label: 'Niveau 3 - Mise en demeure', description: 'Dernier avertissement avant action' },
-];
-
-// ============ HELPERS ============
-
-function computeTotals(lignes: Array<{ quantite: number; prixUnitaireHT?: number; tauxTVA?: number; remisePct?: number }>, sign: number = 1) {
-  const totalHT = lignes.reduce((sum, l) => {
-    const prix = l.prixUnitaireHT ?? 0;
-    const remise = l.remisePct ? (l.remisePct / 100) : 0;
-    return sum + l.quantite * prix * (1 - remise);
-  }, 0) * sign;
-  const totalTVA = lignes.reduce((sum, l) => {
-    const prix = l.prixUnitaireHT ?? 0;
-    const tva = l.tauxTVA ?? 0;
-    const remise = l.remisePct ? (l.remisePct / 100) : 0;
-    const ht = l.quantite * prix * (1 - remise);
-    return sum + ht * (tva / 100);
-  }, 0) * sign;
-  return { totalHT, totalTVA, totalTTC: totalHT + totalTVA };
-}
-
-function formatMontant(montant: number | undefined | null): string {
-  if (montant === undefined || montant === null) return '-';
-  return new Intl.NumberFormat('fr-DZ', {
-    style: 'decimal',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(montant) + ' DA';
-}
-
-function formatDate(date: string | Date): string {
-  return new Date(date).toLocaleDateString('fr-FR', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  });
-}
-
-function statusBadge(status: string) {
-  const map: Record<string, { label: string; variant: 'default' | 'secondary' | 'success' | 'warning' | 'destructive' }> = {
-    BROUILLON: { label: 'Brouillon', variant: 'secondary' },
-    VALIDE: { label: 'Validé', variant: 'success' },
-    SIGNE: { label: 'Signé', variant: 'success' },
-    REFUSE: { label: 'Refusé', variant: 'destructive' },
-    EXPIRE: { label: 'Expiré', variant: 'warning' },
-    ANNULE: { label: 'Annulé', variant: 'destructive' },
-    ANNULEE: { label: 'Annulée', variant: 'destructive' },
-    VALIDEE: { label: 'Validée', variant: 'success' },
-    EN_PREPARATION: { label: 'En préparation', variant: 'warning' },
-    EXPEDIEE: { label: 'Expédiée', variant: 'warning' },
-    LIVREE: { label: 'Livrée', variant: 'success' },
-    EN_RETARD: { label: 'En retard', variant: 'destructive' },
-    PARTIELLEMENT_PAYEE: { label: 'Partiellement payée', variant: 'warning' },
-    PAYEE: { label: 'Payée', variant: 'success' },
-    ENVOYEE: { label: 'Envoyée', variant: 'default' },
-    CONFIRMEE: { label: 'Confirmée', variant: 'success' },
-    EN_RECEPTION: { label: 'En réception', variant: 'warning' },
-    RECUE: { label: 'Reçue', variant: 'success' },
-  };
-  const badge = map[status] || { label: status, variant: 'secondary' };
-  return <Badge variant={badge.variant}>{badge.label}</Badge>;
-}
+import {
+  EMPTY_LINE,
+  TVA_OPTIONS,
+  NIVEAU_RELANCE_OPTIONS,
+  computeTotals,
+  formatMontant,
+  formatDate,
+  statusBadge,
+} from '@/lib/commerce-utils';
 
 // ============ TOTALS DISPLAY COMPONENT ============
 
@@ -364,7 +286,7 @@ function DocumentDetailSheet({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  type: 'devis' | 'commande' | 'facture' | 'commandeFournisseur';
+  type: 'devis' | 'commande' | 'facture';
   document: any;
   onConvert?: () => void;
   onDownloadPdf: () => void;
@@ -376,18 +298,16 @@ function DocumentDetailSheet({
     devis: 'Devis',
     commande: 'Commande',
     facture: document.type === 'AVOIR' ? 'Avoir' : 'Facture',
-    commandeFournisseur: 'Commande fournisseur',
   };
 
   const typeIcons = {
     devis: FileText,
     commande: ShoppingCart,
     facture: Receipt,
-    commandeFournisseur: Truck,
   };
 
   const Icon = typeIcons[type];
-  const client = type === 'commandeFournisseur' ? document.fournisseur : document.client;
+  const client = document.client;
   const lignes = document.lignes || [];
 
   return (
@@ -418,11 +338,9 @@ function DocumentDetailSheet({
             </div>
           </div>
 
-          {/* Informations client/fournisseur */}
+          {/* Informations client */}
           <div className="p-4 bg-gray-50 rounded-lg space-y-2">
-            <h3 className="font-semibold text-sm text-gray-700">
-              {type === 'commandeFournisseur' ? 'Fournisseur' : 'Client'}
-            </h3>
+            <h3 className="font-semibold text-sm text-gray-700">Client</h3>
             {client && (
               <>
                 <p className="font-medium">{client.nomEntreprise}</p>
@@ -544,7 +462,7 @@ function RelanceDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   facture: any;
-  onSubmit: (data: { canal: string; commentaire?: string; niveau: number }) => void;
+  onSubmit: (data: { canal: 'EMAIL' | 'SMS' | 'COURRIER' | 'APPEL'; commentaire?: string; niveau: number }) => void;
   isPending: boolean;
 }) {
   const [canal, setCanal] = useState<'EMAIL' | 'SMS' | 'COURRIER' | 'APPEL'>('EMAIL');
@@ -680,11 +598,10 @@ export function CommercePage() {
   const [searchDevis, setSearchDevis] = useState('');
   const [searchCommandes, setSearchCommandes] = useState('');
   const [searchFactures, setSearchFactures] = useState('');
-  const [searchCmdFournisseurs, setSearchCmdFournisseurs] = useState('');
 
   // Detail sheet state
   const [viewingDocument, setViewingDocument] = useState<{
-    type: 'devis' | 'commande' | 'facture' | 'commandeFournisseur';
+    type: 'devis' | 'commande' | 'facture';
     document: any;
   } | null>(null);
 
@@ -708,11 +625,6 @@ export function CommercePage() {
     queryFn: () => commerceApi.listFactures({ limit: 100 }),
   });
 
-  const { data: commandesFournisseursData, isLoading: commandesFournisseursLoading } = useQuery({
-    queryKey: ['commerce', 'commandes-fournisseurs'],
-    queryFn: () => commandesFournisseursApi.list({ limit: 100 }),
-  });
-
   const { data: tiersData } = useQuery({
     queryKey: ['tiers', 'commerce'],
     queryFn: () => tiersApi.list({ page: 1, limit: 200 }),
@@ -723,17 +635,10 @@ export function CommercePage() {
     queryFn: () => produitsServicesApi.list({ page: 1, limit: 200, actif: true, enVente: true }),
   });
 
-  const { data: produitsAchatData } = useQuery({
-    queryKey: ['produits-services', 'commerce-achat'],
-    queryFn: () => produitsServicesApi.list({ page: 1, limit: 200, actif: true, enAchat: true }),
-  });
-
-  // Filter clients and fournisseurs
+  // Filter clients only (fournisseurs are handled in Achats & Dépenses)
   const tiers = tiersData?.tiers || [];
   const clients = tiers.filter((t) => t.typeTiers === 'CLIENT' || t.typeTiers === 'CLIENT_FOURNISSEUR');
-  const fournisseurs = tiers.filter((t) => t.typeTiers === 'FOURNISSEUR' || t.typeTiers === 'CLIENT_FOURNISSEUR');
   const produits = produitsData?.produits || [];
-  const produitsAchat = produitsAchatData?.produits || [];
 
   // Filter lists based on search
   const filteredDevis = useMemo(() => {
@@ -766,16 +671,6 @@ export function CommercePage() {
     );
   }, [facturesData?.factures, searchFactures]);
 
-  const filteredCmdFournisseurs = useMemo(() => {
-    const list = commandesFournisseursData?.commandes || [];
-    if (!searchCmdFournisseurs) return list;
-    const search = searchCmdFournisseurs.toLowerCase();
-    return list.filter((cf) =>
-      cf.ref?.toLowerCase().includes(search) ||
-      cf.fournisseur?.nomEntreprise?.toLowerCase().includes(search)
-    );
-  }, [commandesFournisseursData?.commandes, searchCmdFournisseurs]);
-
   // ============ FORM STATES ============
 
   const [devisForm, setDevisForm] = useState<CreateDevisInput>({
@@ -791,22 +686,21 @@ export function CommercePage() {
     lignes: [{ ...EMPTY_LINE }],
     type: 'FACTURE',
   });
-  const [commandeFournisseurForm, setCommandeFournisseurForm] = useState<CreateCommandeFournisseurInput>({
-    fournisseurId: '',
-    lignes: [{ ...EMPTY_LINE }],
-  });
 
   // Dialog states
   const [showDevisDialog, setShowDevisDialog] = useState(false);
   const [showCommandeDialog, setShowCommandeDialog] = useState(false);
   const [showFactureDialog, setShowFactureDialog] = useState(false);
-  const [showCmdFournisseurDialog, setShowCmdFournisseurDialog] = useState(false);
+
+  // Editing states (null = create mode, string = edit mode with document id)
+  const [editingDevisId, setEditingDevisId] = useState<string | null>(null);
+  const [editingCommandeId, setEditingCommandeId] = useState<string | null>(null);
+  const [editingFactureId, setEditingFactureId] = useState<string | null>(null);
 
   const totalsDevis = useMemo(() => computeTotals(devisForm.lignes), [devisForm.lignes]);
   const totalsCommande = useMemo(() => computeTotals(commandeForm.lignes), [commandeForm.lignes]);
   const factureSign = factureForm.type === 'AVOIR' ? -1 : 1;
   const totalsFacture = useMemo(() => computeTotals(factureForm.lignes, factureSign), [factureForm.lignes, factureSign]);
-  const totalsCommandeFournisseur = useMemo(() => computeTotals(commandeFournisseurForm.lignes), [commandeFournisseurForm.lignes]);
 
   // ============ MUTATIONS ============
 
@@ -859,6 +753,52 @@ export function CommercePage() {
     },
   });
 
+  // Update mutations for draft documents
+  const updateDevisMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Partial<CreateDevisInput> }) =>
+      commerceApi.updateDevis(id, payload),
+    onSuccess: () => {
+      toast.success('Devis mis à jour avec succès');
+      queryClient.invalidateQueries({ queryKey: ['commerce', 'devis'] });
+      setDevisForm({ clientId: '', lignes: [{ ...EMPTY_LINE }] });
+      setEditingDevisId(null);
+      setShowDevisDialog(false);
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Erreur lors de la mise à jour du devis');
+    },
+  });
+
+  const updateCommandeMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Partial<CreateCommandeInput> }) =>
+      commerceApi.updateCommande(id, payload),
+    onSuccess: () => {
+      toast.success('Commande mise à jour avec succès');
+      queryClient.invalidateQueries({ queryKey: ['commerce', 'commandes'] });
+      setCommandeForm({ clientId: '', lignes: [{ ...EMPTY_LINE }] });
+      setEditingCommandeId(null);
+      setShowCommandeDialog(false);
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Erreur lors de la mise à jour de la commande');
+    },
+  });
+
+  const updateFactureMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Partial<CreateFactureInput> }) =>
+      commerceApi.updateFacture(id, payload),
+    onSuccess: () => {
+      toast.success('Facture mise à jour avec succès');
+      queryClient.invalidateQueries({ queryKey: ['commerce', 'factures'] });
+      setFactureForm({ clientId: '', lignes: [{ ...EMPTY_LINE }], type: 'FACTURE' });
+      setEditingFactureId(null);
+      setShowFactureDialog(false);
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Erreur lors de la mise à jour de la facture');
+    },
+  });
+
   const convertirDevis = useMutation({
     mutationFn: (id: string) => commerceApi.convertirDevisCommande(id),
     onSuccess: () => {
@@ -883,8 +823,45 @@ export function CommercePage() {
     },
   });
 
+  // Validation mutations
+  const validerDevis = useMutation({
+    mutationFn: (id: string) => commerceApi.validerDevis(id),
+    onSuccess: () => {
+      toast.success('Devis validé avec succès');
+      queryClient.invalidateQueries({ queryKey: ['commerce', 'devis'] });
+      setViewingDocument(null);
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Erreur lors de la validation');
+    },
+  });
+
+  const validerCommande = useMutation({
+    mutationFn: (id: string) => commerceApi.validerCommande(id),
+    onSuccess: () => {
+      toast.success('Commande validée avec succès');
+      queryClient.invalidateQueries({ queryKey: ['commerce', 'commandes'] });
+      setViewingDocument(null);
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Erreur lors de la validation');
+    },
+  });
+
+  const validerFacture = useMutation({
+    mutationFn: (id: string) => commerceApi.validerFacture(id),
+    onSuccess: () => {
+      toast.success('Facture validée avec succès');
+      queryClient.invalidateQueries({ queryKey: ['commerce', 'factures'] });
+      setViewingDocument(null);
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Erreur lors de la validation');
+    },
+  });
+
   const createRelanceMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: { canal: string; commentaire?: string; niveau: number } }) =>
+    mutationFn: ({ id, payload }: { id: string; payload: { canal: 'EMAIL' | 'SMS' | 'COURRIER' | 'APPEL'; commentaire?: string; niveau: number } }) =>
       commerceApi.createRelance(id, payload),
     onSuccess: () => {
       toast.success('Relance enregistrée');
@@ -895,21 +872,6 @@ export function CommercePage() {
     },
   });
 
-  const createCommandeFournisseurMutation = useMutation({
-    mutationFn: (payload: CreateCommandeFournisseurInput) => commandesFournisseursApi.create(payload),
-    onSuccess: (data) => {
-      toast.success('Commande fournisseur créée', {
-        description: `Référence: ${data.ref || 'N/A'}`,
-      });
-      queryClient.invalidateQueries({ queryKey: ['commerce', 'commandes-fournisseurs'] });
-      setCommandeFournisseurForm({ fournisseurId: '', lignes: [{ ...EMPTY_LINE }] });
-      setShowCmdFournisseurDialog(false);
-    },
-    onError: (error: any) => {
-      toast.error(error?.response?.data?.error || 'Erreur lors de la création');
-    },
-  });
-
   // ============ RENDER ============
 
   return (
@@ -917,13 +879,13 @@ export function CommercePage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Commerce</h1>
-          <p className="text-muted-foreground">Gestion des devis, commandes et factures</p>
+          <h1 className="text-2xl font-bold">Ventes</h1>
+          <p className="text-muted-foreground">Gestion des devis, commandes et factures clients</p>
         </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Devis</CardTitle>
@@ -948,19 +910,11 @@ export function CommercePage() {
             <p className="text-2xl font-bold">{facturesData?.factures?.length || 0}</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Cmd Fournisseurs</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{commandesFournisseursData?.commandes?.length || 0}</p>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Tabs */}
       <Tabs defaultValue="devis">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="devis" className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
             <span className="hidden sm:inline">Devis</span>
@@ -972,10 +926,6 @@ export function CommercePage() {
           <TabsTrigger value="factures" className="flex items-center gap-2">
             <Receipt className="h-4 w-4" />
             <span className="hidden sm:inline">Factures</span>
-          </TabsTrigger>
-          <TabsTrigger value="fournisseurs" className="flex items-center gap-2">
-            <Truck className="h-4 w-4" />
-            <span className="hidden sm:inline">Fournisseurs</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1056,7 +1006,50 @@ export function CommercePage() {
                                   <FileDown className="h-4 w-4" />
                                 </Button>
                               </Tooltip>
-                              {canManage && (
+                              {canManage && d.statut === 'BROUILLON' && (
+                                <Tooltip content="Modifier le devis">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                    onClick={() => {
+                                      setEditingDevisId(d.id);
+                                      setDevisForm({
+                                        clientId: d.clientId,
+                                        dateDevis: d.dateDevis?.split('T')[0],
+                                        dateValidite: d.dateValidite?.split('T')[0],
+                                        notes: d.notes || '',
+                                        conditions: d.conditions || '',
+                                        lignes: d.lignes?.map((l: any) => ({
+                                          produitServiceId: l.produitServiceId || '',
+                                          libelle: l.libelle || '',
+                                          description: l.description || '',
+                                          quantite: l.quantite || 1,
+                                          prixUnitaireHT: l.prixUnitaireHT || 0,
+                                          tauxTVA: l.tauxTVA || 20,
+                                          remisePct: l.remisePct || 0,
+                                        })) || [{ ...EMPTY_LINE }],
+                                      });
+                                      setShowDevisDialog(true);
+                                    }}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                </Tooltip>
+                              )}
+                              {canManage && d.statut === 'BROUILLON' && (
+                                <Tooltip content="Valider le devis">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                    onClick={() => validerDevis.mutate(d.id)}
+                                  >
+                                    <CheckCircle2 className="h-4 w-4" />
+                                  </Button>
+                                </Tooltip>
+                              )}
+                              {canManage && d.statut !== 'BROUILLON' && (
                                 <Tooltip content="Convertir en commande">
                                   <Button
                                     variant="ghost"
@@ -1156,7 +1149,50 @@ export function CommercePage() {
                                   <FileDown className="h-4 w-4" />
                                 </Button>
                               </Tooltip>
-                              {canManage && (
+                              {canManage && c.statut === 'BROUILLON' && (
+                                <Tooltip content="Modifier la commande">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                    onClick={() => {
+                                      setEditingCommandeId(c.id);
+                                      setCommandeForm({
+                                        clientId: c.clientId,
+                                        dateCommande: c.dateCommande?.split('T')[0],
+                                        dateLivraisonPrevue: c.dateLivraisonPrevue?.split('T')[0],
+                                        notes: c.notes || '',
+                                        conditions: c.conditions || '',
+                                        lignes: c.lignes?.map((l: any) => ({
+                                          produitServiceId: l.produitServiceId || '',
+                                          libelle: l.libelle || '',
+                                          description: l.description || '',
+                                          quantite: l.quantite || 1,
+                                          prixUnitaireHT: l.prixUnitaireHT || 0,
+                                          tauxTVA: l.tauxTVA || 20,
+                                          remisePct: l.remisePct || 0,
+                                        })) || [{ ...EMPTY_LINE }],
+                                      });
+                                      setShowCommandeDialog(true);
+                                    }}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                </Tooltip>
+                              )}
+                              {canManage && c.statut === 'BROUILLON' && (
+                                <Tooltip content="Valider la commande">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                    onClick={() => validerCommande.mutate(c.id)}
+                                  >
+                                    <CheckCircle2 className="h-4 w-4" />
+                                  </Button>
+                                </Tooltip>
+                              )}
+                              {canManage && c.statut !== 'BROUILLON' && (
                                 <Tooltip content="Convertir en facture">
                                   <Button
                                     variant="ghost"
@@ -1266,6 +1302,50 @@ export function CommercePage() {
                                   <FileDown className="h-4 w-4" />
                                 </Button>
                               </Tooltip>
+                              {canManage && f.statut === 'BROUILLON' && (
+                                <Tooltip content="Modifier la facture">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                    onClick={() => {
+                                      setEditingFactureId(f.id);
+                                      setFactureForm({
+                                        clientId: f.clientId,
+                                        dateFacture: f.dateFacture?.split('T')[0],
+                                        dateEcheance: f.dateEcheance?.split('T')[0],
+                                        notes: f.notes || '',
+                                        conditions: f.conditions || '',
+                                        type: f.type || 'FACTURE',
+                                        lignes: f.lignes?.map((l: any) => ({
+                                          produitServiceId: l.produitServiceId || '',
+                                          libelle: l.libelle || '',
+                                          description: l.description || '',
+                                          quantite: l.quantite || 1,
+                                          prixUnitaireHT: l.prixUnitaireHT || 0,
+                                          tauxTVA: l.tauxTVA || 20,
+                                          remisePct: l.remisePct || 0,
+                                        })) || [{ ...EMPTY_LINE }],
+                                      });
+                                      setShowFactureDialog(true);
+                                    }}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                </Tooltip>
+                              )}
+                              {canManage && f.statut === 'BROUILLON' && (
+                                <Tooltip content="Valider la facture">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                    onClick={() => validerFacture.mutate(f.id)}
+                                  >
+                                    <CheckCircle2 className="h-4 w-4" />
+                                  </Button>
+                                </Tooltip>
+                              )}
                               {canManage && f.statut !== 'PAYEE' && (
                                 <Tooltip content="Créer une relance">
                                   <Button
@@ -1289,105 +1369,25 @@ export function CommercePage() {
           </Card>
         </TabsContent>
 
-        {/* COMMANDES FOURNISSEURS TAB */}
-        <TabsContent value="fournisseurs">
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <CardTitle>Commandes Fournisseurs</CardTitle>
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1 sm:w-64">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Rechercher..."
-                      value={searchCmdFournisseurs}
-                      onChange={(e) => setSearchCmdFournisseurs(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                  {canManage && (
-                    <Button onClick={() => setShowCmdFournisseurDialog(true)}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      <span className="hidden sm:inline">Nouvelle commande</span>
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {commandesFournisseursLoading ? (
-                <p className="text-muted-foreground text-center py-8">Chargement...</p>
-              ) : filteredCmdFournisseurs.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">
-                  {searchCmdFournisseurs ? 'Aucune commande trouvée' : 'Aucune commande fournisseur'}
-                </p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Référence</TableHead>
-                        <TableHead>Fournisseur</TableHead>
-                        <TableHead className="hidden md:table-cell">Date</TableHead>
-                        <TableHead>Statut</TableHead>
-                        <TableHead className="text-right">Total TTC</TableHead>
-                        <TableHead></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredCmdFournisseurs.map((cf) => (
-                        <TableRow
-                          key={cf.id}
-                          className="cursor-pointer hover:bg-gray-50"
-                          onClick={() => setViewingDocument({ type: 'commandeFournisseur', document: cf })}
-                        >
-                          <TableCell className="font-medium">{cf.ref}</TableCell>
-                          <TableCell>{cf.fournisseur?.nomEntreprise || '-'}</TableCell>
-                          <TableCell className="hidden md:table-cell">{formatDate(cf.dateCommande)}</TableCell>
-                          <TableCell>{statusBadge(cf.statut)}</TableCell>
-                          <TableCell className="text-right font-medium">{formatMontant(cf.totalTTC)}</TableCell>
-                          <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex justify-end gap-1">
-                              <Tooltip content="Voir les détails">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => setViewingDocument({ type: 'commandeFournisseur', document: cf })}
-                                >
-                                  <Eye className="h-4 w-4" />
-                                </Button>
-                              </Tooltip>
-                              <Tooltip content="Télécharger PDF">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => commandesFournisseursApi.downloadPdf(cf.id).catch(() => toast.error('Erreur téléchargement'))}
-                                >
-                                  <FileDown className="h-4 w-4" />
-                                </Button>
-                              </Tooltip>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
       </Tabs>
 
       {/* ============ DIALOGS ============ */}
 
       {/* Devis Dialog */}
-      <Dialog open={showDevisDialog} onOpenChange={setShowDevisDialog}>
+      <Dialog open={showDevisDialog} onOpenChange={(open) => {
+        setShowDevisDialog(open);
+        if (!open) {
+          setEditingDevisId(null);
+          setDevisForm({ clientId: '', lignes: [{ ...EMPTY_LINE }] });
+        }
+      }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Créer un devis</DialogTitle>
+            <DialogTitle>{editingDevisId ? 'Modifier le devis' : 'Créer un devis'}</DialogTitle>
             <DialogDescription>
-              Remplissez les informations pour créer un nouveau devis client.
+              {editingDevisId
+                ? 'Modifiez les informations du devis en brouillon.'
+                : 'Remplissez les informations pour créer un nouveau devis client.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6">
@@ -1429,22 +1429,38 @@ export function CommercePage() {
               Annuler
             </Button>
             <Button
-              onClick={() => createDevisMutation.mutate(devisForm)}
-              disabled={!devisForm.clientId || devisForm.lignes.length === 0 || createDevisMutation.isPending}
+              onClick={() => {
+                if (editingDevisId) {
+                  updateDevisMutation.mutate({ id: editingDevisId, payload: devisForm });
+                } else {
+                  createDevisMutation.mutate(devisForm);
+                }
+              }}
+              disabled={!devisForm.clientId || devisForm.lignes.length === 0 || createDevisMutation.isPending || updateDevisMutation.isPending}
             >
-              {createDevisMutation.isPending ? 'Création...' : 'Créer le devis'}
+              {createDevisMutation.isPending || updateDevisMutation.isPending
+                ? (editingDevisId ? 'Mise à jour...' : 'Création...')
+                : (editingDevisId ? 'Enregistrer les modifications' : 'Créer le devis')}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Commande Dialog */}
-      <Dialog open={showCommandeDialog} onOpenChange={setShowCommandeDialog}>
+      <Dialog open={showCommandeDialog} onOpenChange={(open) => {
+        setShowCommandeDialog(open);
+        if (!open) {
+          setEditingCommandeId(null);
+          setCommandeForm({ clientId: '', lignes: [{ ...EMPTY_LINE }] });
+        }
+      }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Créer une commande</DialogTitle>
+            <DialogTitle>{editingCommandeId ? 'Modifier la commande' : 'Créer une commande'}</DialogTitle>
             <DialogDescription>
-              Remplissez les informations pour créer une nouvelle commande client.
+              {editingCommandeId
+                ? 'Modifiez les informations de la commande en brouillon.'
+                : 'Remplissez les informations pour créer une nouvelle commande client.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6">
@@ -1486,22 +1502,38 @@ export function CommercePage() {
               Annuler
             </Button>
             <Button
-              onClick={() => createCommandeMutation.mutate(commandeForm)}
-              disabled={!commandeForm.clientId || commandeForm.lignes.length === 0 || createCommandeMutation.isPending}
+              onClick={() => {
+                if (editingCommandeId) {
+                  updateCommandeMutation.mutate({ id: editingCommandeId, payload: commandeForm });
+                } else {
+                  createCommandeMutation.mutate(commandeForm);
+                }
+              }}
+              disabled={!commandeForm.clientId || commandeForm.lignes.length === 0 || createCommandeMutation.isPending || updateCommandeMutation.isPending}
             >
-              {createCommandeMutation.isPending ? 'Création...' : 'Créer la commande'}
+              {createCommandeMutation.isPending || updateCommandeMutation.isPending
+                ? (editingCommandeId ? 'Mise à jour...' : 'Création...')
+                : (editingCommandeId ? 'Enregistrer les modifications' : 'Créer la commande')}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Facture Dialog */}
-      <Dialog open={showFactureDialog} onOpenChange={setShowFactureDialog}>
+      <Dialog open={showFactureDialog} onOpenChange={(open) => {
+        setShowFactureDialog(open);
+        if (!open) {
+          setEditingFactureId(null);
+          setFactureForm({ clientId: '', lignes: [{ ...EMPTY_LINE }], type: 'FACTURE' });
+        }
+      }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Créer une facture</DialogTitle>
+            <DialogTitle>{editingFactureId ? 'Modifier la facture' : 'Créer une facture'}</DialogTitle>
             <DialogDescription>
-              Remplissez les informations pour créer une nouvelle facture client.
+              {editingFactureId
+                ? 'Modifiez les informations de la facture en brouillon.'
+                : 'Remplissez les informations pour créer une nouvelle facture client.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6">
@@ -1567,63 +1599,6 @@ export function CommercePage() {
         </DialogContent>
       </Dialog>
 
-      {/* Commande Fournisseur Dialog */}
-      <Dialog open={showCmdFournisseurDialog} onOpenChange={setShowCmdFournisseurDialog}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Créer une commande fournisseur</DialogTitle>
-            <DialogDescription>
-              Remplissez les informations pour créer une nouvelle commande auprès d'un fournisseur.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Fournisseur <span className="text-red-500">*</span></Label>
-                <Select
-                  value={commandeFournisseurForm.fournisseurId}
-                  onValueChange={(value) => setCommandeFournisseurForm({ ...commandeFournisseurForm, fournisseurId: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Sélectionner un fournisseur" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {fournisseurs.map((f: Tiers) => (
-                      <SelectItem key={f.id} value={f.id}>
-                        {f.nomEntreprise}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Date de livraison souhaitée</Label>
-                <Input
-                  type="date"
-                  value={commandeFournisseurForm.dateLivraisonSouhaitee || ''}
-                  onChange={(e) => setCommandeFournisseurForm({ ...commandeFournisseurForm, dateLivraisonSouhaitee: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <LignesForm lignes={commandeFournisseurForm.lignes} setForm={setCommandeFournisseurForm} produitsList={produitsAchat} />
-
-            <TotalsDisplay totals={totalsCommandeFournisseur} />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCmdFournisseurDialog(false)}>
-              Annuler
-            </Button>
-            <Button
-              onClick={() => createCommandeFournisseurMutation.mutate(commandeFournisseurForm)}
-              disabled={!commandeFournisseurForm.fournisseurId || commandeFournisseurForm.lignes.length === 0 || createCommandeFournisseurMutation.isPending}
-            >
-              {createCommandeFournisseurMutation.isPending ? 'Création...' : 'Créer la commande'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Document Detail Sheet */}
       <DocumentDetailSheet
         open={!!viewingDocument}
@@ -1634,11 +1609,10 @@ export function CommercePage() {
         onDownloadPdf={() => {
           if (!viewingDocument) return;
           const { type, document } = viewingDocument;
-          const downloadFn = {
+          const downloadFn: Record<string, () => Promise<void>> = {
             devis: () => commerceApi.downloadDevisPdf(document.id),
             commande: () => commerceApi.downloadCommandePdf(document.id),
             facture: () => commerceApi.downloadFacturePdf(document.id),
-            commandeFournisseur: () => commandesFournisseursApi.downloadPdf(document.id),
           };
           downloadFn[type]?.().catch(() => toast.error('Erreur téléchargement'));
         }}

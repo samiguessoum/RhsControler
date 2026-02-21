@@ -126,6 +126,7 @@ enum FactureStatut {
 enum FactureType {
   FACTURE
   AVOIR
+  ACOMPTE    // Facture d'acompte
 }
 
 enum PaiementStatut {
@@ -1130,11 +1131,17 @@ model Facture {
   paiements            Paiement[]
   relances             FactureRelance[]
 
+  // Relations pour les acomptes
+  factureFinaleId      String?              // Pour les acomptes: lien vers la facture finale
+  factureFinale        Facture?             @relation("AcomptesFacture", fields: [factureFinaleId], references: [id])
+  acomptes             Facture[]            @relation("AcomptesFacture")  // Pour la facture finale: liste des acomptes
+
   @@index([clientId])
   @@index([statut])
   @@index([type])
   @@index([ref])
   @@index([dateFacture])
+  @@index([factureFinaleId])
 }
 
 model FactureRelance {

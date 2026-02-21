@@ -2,6 +2,8 @@ import { Response } from 'express';
 import { prisma } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
+import { facturationEvents } from '../services/events.service.js';
+import { stockService } from '../services/stock.service.js';
 
 const REF_PREFIX: Record<'DEVIS' | 'COMMANDE' | 'FACTURE' | 'FACTURE_AVOIR', string> = {
   DEVIS: 'DV',
@@ -341,6 +343,40 @@ export const commerceController = {
     }
   },
 
+  async validerDevis(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const existing = await prisma.devis.findUnique({ where: { id } });
+
+      if (!existing) {
+        return res.status(404).json({ error: 'Devis non trouvé' });
+      }
+
+      if (existing.statut !== 'BROUILLON') {
+        return res.status(400).json({ error: 'Seul un devis en brouillon peut être validé' });
+      }
+
+      const devis = await prisma.devis.update({
+        where: { id },
+        data: {
+          statut: 'VALIDE',
+          updatedById: req.user?.id,
+        },
+        include: {
+          client: { select: { id: true, nomEntreprise: true } },
+          lignes: true,
+        },
+      });
+
+      await createAuditLog(req.user!.id, 'UPDATE', 'Devis', devis.id, { action: 'VALIDATION', after: devis });
+
+      res.json({ devis, message: 'Devis validé avec succès' });
+    } catch (error) {
+      console.error('Valider devis error:', error);
+      res.status(500).json({ error: 'Erreur lors de la validation du devis' });
+    }
+  },
+
   async convertirDevisCommande(req: AuthRequest, res: Response) {
     try {
       const { id } = req.params;
@@ -597,6 +633,40 @@ export const commerceController = {
     }
   },
 
+  async validerCommande(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const existing = await prisma.commande.findUnique({ where: { id } });
+
+      if (!existing) {
+        return res.status(404).json({ error: 'Commande non trouvée' });
+      }
+
+      if (existing.statut !== 'BROUILLON') {
+        return res.status(400).json({ error: 'Seule une commande en brouillon peut être validée' });
+      }
+
+      const commande = await prisma.commande.update({
+        where: { id },
+        data: {
+          statut: 'VALIDEE',
+          updatedById: req.user?.id,
+        },
+        include: {
+          client: { select: { id: true, nomEntreprise: true } },
+          lignes: true,
+        },
+      });
+
+      await createAuditLog(req.user!.id, 'UPDATE', 'Commande', commande.id, { action: 'VALIDATION', after: commande });
+
+      res.json({ commande, message: 'Commande validée avec succès' });
+    } catch (error) {
+      console.error('Valider commande error:', error);
+      res.status(500).json({ error: 'Erreur lors de la validation de la commande' });
+    }
+  },
+
   async convertirCommandeFacture(req: AuthRequest, res: Response) {
     try {
       const { id } = req.params;
@@ -761,40 +831,75 @@ export const commerceController = {
       const ref = data.ref || (await generateReference(refType, dateFacture));
       const statut = data.statut ?? (factureType === 'AVOIR' ? 'VALIDEE' : 'BROUILLON');
 
-      const facture = await prisma.facture.create({
-        data: {
-          ref,
-          clientId: data.clientId,
-          devisId: data.devisId,
-          commandeId: data.commandeId,
-          adresseFacturationId: data.adresseFacturationId,
-          adresseLivraisonId: data.adresseLivraisonId,
-          dateFacture,
-          dateEcheance: parseDate(data.dateEcheance),
-          type: factureType,
-          statut,
-          remiseGlobalPct: data.remiseGlobalPct,
-          remiseGlobalMontant: data.remiseGlobalMontant,
-          totalHT: totals.totalHT,
-          totalTVA: totals.totalTVA,
-          totalTTC: totals.totalTTC,
-          totalPaye: 0,
-          devise: data.devise,
-          notes: data.notes,
-          conditions: data.conditions,
-          createdById: req.user?.id,
-          updatedById: req.user?.id,
-          lignes: { create: lignes },
-        },
-        include: { client: { select: { id: true, nomEntreprise: true } }, lignes: true },
+      // Utiliser une transaction pour garantir l'atomicité
+      const facture = await prisma.$transaction(async (tx) => {
+        const newFacture = await tx.facture.create({
+          data: {
+            ref,
+            clientId: data.clientId,
+            devisId: data.devisId,
+            commandeId: data.commandeId,
+            adresseFacturationId: data.adresseFacturationId,
+            adresseLivraisonId: data.adresseLivraisonId,
+            dateFacture,
+            dateEcheance: parseDate(data.dateEcheance),
+            type: factureType,
+            statut,
+            remiseGlobalPct: data.remiseGlobalPct,
+            remiseGlobalMontant: data.remiseGlobalMontant,
+            totalHT: totals.totalHT,
+            totalTVA: totals.totalTVA,
+            totalTTC: totals.totalTTC,
+            totalPaye: 0,
+            devise: data.devise,
+            notes: data.notes,
+            conditions: data.conditions,
+            createdById: req.user?.id,
+            updatedById: req.user?.id,
+            lignes: { create: lignes },
+          },
+          include: { client: { select: { id: true, nomEntreprise: true } }, lignes: true },
+        });
+
+        // Si la facture est validée, mettre à jour le stock (sortie)
+        if (statut === 'VALIDEE' && factureType === 'FACTURE' && req.user?.id) {
+          const stockResult = await stockService.processFactureValidation(
+            newFacture.id,
+            newFacture.lignes,
+            req.user.id,
+            undefined, // entrepotId - peut être ajouté plus tard
+            tx
+          );
+          if (!stockResult.success) {
+            throw new Error(`Erreur stock: ${stockResult.errors.join(', ')}`);
+          }
+        }
+
+        return newFacture;
       });
 
       await createAuditLog(req.user!.id, 'CREATE', 'Facture', facture.id, { after: facture });
 
+      // Émettre l'événement de création
+      facturationEvents.emitEvent({
+        type: 'facture.created',
+        entityId: facture.id,
+        entityType: 'Facture',
+        data: {
+          ref: facture.ref,
+          clientNom: facture.client.nomEntreprise,
+          totalTTC: facture.totalTTC,
+          type: factureType,
+        },
+        userId: req.user?.id,
+        timestamp: new Date(),
+      });
+
       res.status(201).json({ facture });
     } catch (error) {
       console.error('Create facture error:', error);
-      res.status(500).json({ error: 'Erreur lors de la création de la facture' });
+      const message = error instanceof Error ? error.message : 'Erreur lors de la création de la facture';
+      res.status(500).json({ error: message });
     }
   },
 
@@ -805,7 +910,7 @@ export const commerceController = {
 
       const existing = await prisma.facture.findUnique({
         where: { id },
-        include: { lignes: true },
+        include: { lignes: true, client: { select: { nomEntreprise: true } } },
       });
       if (!existing) {
         return res.status(404).json({ error: 'Facture non trouvée' });
@@ -815,6 +920,8 @@ export const commerceController = {
       let totals = undefined;
       const nextType = data.type ?? existing.type;
       const sign = nextType === 'AVOIR' ? -1 : 1;
+      const newStatut = data.statut ?? existing.statut;
+      const wasValidated = existing.statut === 'BROUILLON' && newStatut === 'VALIDEE';
 
       if (data.lignes) {
         lignesData = await buildLignes(data.lignes, sign);
@@ -827,40 +934,87 @@ export const commerceController = {
         totals = computeTotals(baseLines, data.remiseGlobalPct ?? existing.remiseGlobalPct, data.remiseGlobalMontant ?? existing.remiseGlobalMontant, sign);
       }
 
-      const facture = await prisma.facture.update({
-        where: { id },
-        data: {
-          adresseFacturationId: data.adresseFacturationId,
-          adresseLivraisonId: data.adresseLivraisonId,
-          dateFacture: parseDate(data.dateFacture),
-          dateEcheance: parseDate(data.dateEcheance),
-          type: data.type,
-          statut: data.statut,
-          remiseGlobalPct: data.remiseGlobalPct,
-          remiseGlobalMontant: data.remiseGlobalMontant,
-          totalHT: totals?.totalHT,
-          totalTVA: totals?.totalTVA,
-          totalTTC: totals?.totalTTC,
-          devise: data.devise,
-          notes: data.notes,
-          conditions: data.conditions,
-          updatedById: req.user?.id,
-          lignes: lignesData
-            ? {
-                deleteMany: {},
-                create: lignesData,
-              }
-            : undefined,
-        },
-        include: { client: { select: { id: true, nomEntreprise: true } }, lignes: true },
+      // Utiliser une transaction pour garantir l'atomicité
+      const facture = await prisma.$transaction(async (tx) => {
+        const updatedFacture = await tx.facture.update({
+          where: { id },
+          data: {
+            adresseFacturationId: data.adresseFacturationId,
+            adresseLivraisonId: data.adresseLivraisonId,
+            dateFacture: parseDate(data.dateFacture),
+            dateEcheance: parseDate(data.dateEcheance),
+            type: data.type,
+            statut: data.statut,
+            remiseGlobalPct: data.remiseGlobalPct,
+            remiseGlobalMontant: data.remiseGlobalMontant,
+            totalHT: totals?.totalHT,
+            totalTVA: totals?.totalTVA,
+            totalTTC: totals?.totalTTC,
+            devise: data.devise,
+            notes: data.notes,
+            conditions: data.conditions,
+            updatedById: req.user?.id,
+            lignes: lignesData
+              ? {
+                  deleteMany: {},
+                  create: lignesData,
+                }
+              : undefined,
+          },
+          include: { client: { select: { id: true, nomEntreprise: true } }, lignes: true },
+        });
+
+        // Si passage en VALIDEE, mettre à jour le stock
+        if (wasValidated && nextType === 'FACTURE' && req.user?.id) {
+          const stockResult = await stockService.processFactureValidation(
+            updatedFacture.id,
+            updatedFacture.lignes,
+            req.user.id,
+            undefined, // entrepotId
+            tx
+          );
+          if (!stockResult.success) {
+            throw new Error(`Erreur stock: ${stockResult.errors.join(', ')}`);
+          }
+        }
+
+        // Si annulation d'une facture validée, reverser le stock
+        if (existing.statut === 'VALIDEE' && newStatut === 'ANNULEE' && existing.type === 'FACTURE' && req.user?.id) {
+          await stockService.reverseFactureMouvements(
+            existing.id,
+            existing.lignes,
+            req.user.id,
+            undefined, // entrepotId
+            tx
+          );
+        }
+
+        return updatedFacture;
       });
 
       await createAuditLog(req.user!.id, 'UPDATE', 'Facture', facture.id, { after: facture });
 
+      // Émettre des événements selon le changement de statut
+      if (wasValidated) {
+        facturationEvents.emitEvent({
+          type: 'facture.validated',
+          entityId: facture.id,
+          entityType: 'Facture',
+          data: {
+            ref: facture.ref,
+            clientNom: facture.client.nomEntreprise,
+            totalTTC: facture.totalTTC,
+          },
+          userId: req.user?.id,
+          timestamp: new Date(),
+        });
+      }
+
       res.json({ facture });
     } catch (error) {
       console.error('Update facture error:', error);
-      res.status(500).json({ error: 'Erreur lors de la mise à jour de la facture' });
+      const message = error instanceof Error ? error.message : 'Erreur lors de la mise à jour de la facture';
+      res.status(500).json({ error: message });
     }
   },
 
@@ -873,6 +1027,60 @@ export const commerceController = {
     } catch (error) {
       console.error('Delete facture error:', error);
       res.status(500).json({ error: 'Erreur lors de la suppression de la facture' });
+    }
+  },
+
+  async validerFacture(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const existing = await prisma.facture.findUnique({
+        where: { id },
+        include: { lignes: true },
+      });
+
+      if (!existing) {
+        return res.status(404).json({ error: 'Facture non trouvée' });
+      }
+
+      if (existing.statut !== 'BROUILLON') {
+        return res.status(400).json({ error: 'Seule une facture en brouillon peut être validée' });
+      }
+
+      const facture = await prisma.$transaction(async (tx) => {
+        const updated = await tx.facture.update({
+          where: { id },
+          data: {
+            statut: 'VALIDEE',
+            updatedById: req.user?.id,
+          },
+          include: {
+            client: { select: { id: true, nomEntreprise: true } },
+            lignes: { include: { produitService: true } },
+          },
+        });
+
+        // Gérer le stock si c'est une facture de vente
+        if (updated.type === 'FACTURE' && req.user?.id) {
+          await stockService.processFactureValidation(updated.id, req.user.id);
+        }
+
+        return updated;
+      });
+
+      await createAuditLog(req.user!.id, 'UPDATE', 'Facture', facture.id, { action: 'VALIDATION', after: facture });
+
+      // Émettre l'événement
+      facturationEvents.emit('facture.validated', {
+        factureId: facture.id,
+        clientId: facture.clientId,
+        ref: facture.ref,
+        montant: facture.totalTTC,
+      });
+
+      res.json({ facture, message: 'Facture validée avec succès' });
+    } catch (error) {
+      console.error('Valider facture error:', error);
+      res.status(500).json({ error: 'Erreur lors de la validation de la facture' });
     }
   },
 
@@ -926,27 +1134,92 @@ export const commerceController = {
     try {
       const data = req.body;
 
-      const facture = await prisma.facture.findUnique({ where: { id: data.factureId } });
+      const facture = await prisma.facture.findUnique({
+        where: { id: data.factureId },
+        include: { client: { select: { nomEntreprise: true } } },
+      });
       if (!facture) {
         return res.status(404).json({ error: 'Facture non trouvée' });
       }
 
-      const paiement = await prisma.paiement.create({
-        data: {
-          factureId: data.factureId,
-          modePaiementId: data.modePaiementId,
-          datePaiement: parseDate(data.datePaiement) ?? new Date(),
-          montant: data.montant,
-          reference: data.reference,
-          notes: data.notes,
-          createdById: req.user?.id,
-        },
+      if (facture.statut === 'BROUILLON') {
+        return res.status(400).json({ error: 'Impossible d\'ajouter un paiement à une facture en brouillon' });
+      }
+
+      const resteAPayer = facture.totalTTC - facture.totalPaye;
+      if (data.montant > resteAPayer) {
+        return res.status(400).json({ error: `Le montant dépasse le reste à payer (${resteAPayer.toFixed(2)})` });
+      }
+
+      // Utiliser une transaction pour garantir l'atomicité
+      const { paiement, nouveauStatut } = await prisma.$transaction(async (tx) => {
+        const newPaiement = await tx.paiement.create({
+          data: {
+            factureId: data.factureId,
+            modePaiementId: data.modePaiementId,
+            datePaiement: parseDate(data.datePaiement) ?? new Date(),
+            montant: data.montant,
+            reference: data.reference,
+            notes: data.notes,
+            createdById: req.user?.id,
+          },
+        });
+
+        // Calculer le nouveau statut
+        const totalPaye = facture.totalPaye + data.montant;
+        let statut = facture.statut;
+
+        if (facture.totalTTC <= 0) {
+          statut = 'PAYEE';
+        } else if (totalPaye <= 0) {
+          statut = 'VALIDEE';
+        } else if (totalPaye < facture.totalTTC) {
+          statut = 'PARTIELLEMENT_PAYEE';
+        } else {
+          statut = 'PAYEE';
+        }
+
+        await tx.facture.update({
+          where: { id: data.factureId },
+          data: { totalPaye, statut },
+        });
+
+        return { paiement: newPaiement, nouveauStatut: statut };
       });
 
-      await updateFacturePaiementStatus(data.factureId);
       await createAuditLog(req.user!.id, 'CREATE', 'Paiement', paiement.id, { after: paiement });
 
-      res.status(201).json({ paiement });
+      // Émettre des événements selon le statut
+      if (nouveauStatut === 'PAYEE') {
+        facturationEvents.emitEvent({
+          type: 'facture.paid',
+          entityId: facture.id,
+          entityType: 'Facture',
+          data: {
+            ref: facture.ref,
+            clientNom: facture.client.nomEntreprise,
+            totalTTC: facture.totalTTC,
+          },
+          userId: req.user?.id,
+          timestamp: new Date(),
+        });
+      } else if (nouveauStatut === 'PARTIELLEMENT_PAYEE') {
+        facturationEvents.emitEvent({
+          type: 'facture.partially_paid',
+          entityId: facture.id,
+          entityType: 'Facture',
+          data: {
+            ref: facture.ref,
+            clientNom: facture.client.nomEntreprise,
+            montantPaye: paiement.montant,
+            resteAPayer: facture.totalTTC - facture.totalPaye - paiement.montant,
+          },
+          userId: req.user?.id,
+          timestamp: new Date(),
+        });
+      }
+
+      res.status(201).json({ paiement, nouveauStatut });
     } catch (error) {
       console.error('Create paiement error:', error);
       res.status(500).json({ error: 'Erreur lors de la création du paiement' });
