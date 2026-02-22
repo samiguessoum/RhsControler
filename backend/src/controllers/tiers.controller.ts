@@ -378,6 +378,58 @@ export const tiersController = {
         return res.status(404).json({ error: 'Tiers non trouvé' });
       }
 
+      const contactsInput = Array.isArray(data.contacts)
+        ? data.contacts
+            .filter((c: any) => c?.nom && String(c.nom).trim())
+            .map((c: any, i: number) => ({
+              civilite: c.civilite,
+              nom: c.nom,
+              prenom: c.prenom,
+              fonction: c.fonction || '',
+              tel: c.tel,
+              telMobile: c.telMobile,
+              fax: c.fax,
+              email: c.email,
+              notes: c.notes,
+              estPrincipal: i === 0 || c.estPrincipal,
+            }))
+        : undefined;
+
+      const sitesInput = Array.isArray(data.sites)
+        ? data.sites
+            .filter((s: any) => s?.nom && String(s.nom).trim())
+            .map((s: any) => ({
+              code: s.code,
+              nom: s.nom,
+              adresse: s.adresse,
+              complement: s.complement,
+              codePostal: s.codePostal,
+              ville: s.ville,
+              pays: s.pays || 'Algérie',
+              latitude: s.latitude,
+              longitude: s.longitude,
+              tel: s.tel,
+              fax: s.fax,
+              email: s.email,
+              horairesOuverture: s.horairesOuverture,
+              accessibilite: s.accessibilite,
+              notes: s.notes,
+              contacts: {
+                create: s.contacts?.map((c: any, i: number) => ({
+                  civilite: c.civilite,
+                  nom: c.nom,
+                  prenom: c.prenom,
+                  fonction: c.fonction,
+                  tel: c.tel,
+                  telMobile: c.telMobile,
+                  email: c.email,
+                  notes: c.notes,
+                  estPrincipal: i === 0 || c.estPrincipal,
+                })) || [],
+              },
+            }))
+        : undefined;
+
       const tiers = await prisma.client.update({
         where: { id },
         data: {
@@ -434,6 +486,24 @@ export const tiersController = {
 
           // Statut
           actif: data.actif,
+
+          // Relations éditées depuis le formulaire Tiers
+          ...(Array.isArray(data.contacts)
+            ? {
+                siegeContacts: {
+                  deleteMany: {},
+                  create: contactsInput,
+                },
+              }
+            : {}),
+          ...(Array.isArray(data.sites)
+            ? {
+                sites: {
+                  deleteMany: {},
+                  create: sitesInput,
+                },
+              }
+            : {}),
         },
         include: {
           siegeContacts: true,

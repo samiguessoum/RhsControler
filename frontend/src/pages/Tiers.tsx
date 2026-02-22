@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import {
   Building2,
   Users,
@@ -105,10 +106,32 @@ const FORME_JURIDIQUE_OPTIONS: { value: FormeJuridique; label: string }[] = [
 ];
 
 const PROSPECT_NIVEAUX = [
-  { value: 3, label: 'Chaud', icon: Flame, color: 'text-red-600', bgColor: 'bg-red-100' },
-  { value: 2, label: 'Tiède', icon: Thermometer, color: 'text-yellow-600', bgColor: 'bg-yellow-100' },
-  { value: 1, label: 'Froid', icon: Snowflake, color: 'text-blue-600', bgColor: 'bg-blue-100' },
+  { value: 2, label: 'Chaud', icon: Flame, color: 'text-red-600', bgColor: 'bg-red-100' },
+  { value: 1, label: 'Tiède', icon: Thermometer, color: 'text-yellow-600', bgColor: 'bg-yellow-100' },
+  { value: 0, label: 'Froid', icon: Snowflake, color: 'text-blue-600', bgColor: 'bg-blue-100' },
 ];
+
+function normalizeProspectNiveau(value?: number | null): number | undefined {
+  if (typeof value !== 'number') return undefined;
+  // Legacy UI used 1..3 while API expects 0..2
+  const mapped = value > 2 ? value - 1 : value;
+  return Math.max(0, Math.min(2, mapped));
+}
+
+function normalizeNulls<T>(input: T): T {
+  if (input === null) return undefined as T;
+  if (Array.isArray(input)) {
+    return input.map((item) => normalizeNulls(item)) as T;
+  }
+  if (typeof input === 'object' && input !== null) {
+    const entries = Object.entries(input as Record<string, unknown>).map(([key, value]) => [
+      key,
+      normalizeNulls(value),
+    ]);
+    return Object.fromEntries(entries) as T;
+  }
+  return input;
+}
 
 // ============ COLLAPSIBLE SECTION ============
 function CollapsibleSection({
@@ -787,7 +810,7 @@ function TiersFormDialog({
           devise: tiers.devise || 'DZD',
           notePublique: tiers.notePublique,
           notePrivee: tiers.notePrivee,
-          prospectNiveau: tiers.prospectNiveau,
+          prospectNiveau: normalizeProspectNiveau(tiers.prospectNiveau),
           prospectStatut: tiers.prospectStatut,
         });
         setSites(tiers.sites?.map(s => ({
@@ -843,6 +866,11 @@ function TiersFormDialog({
       queryClient.invalidateQueries({ queryKey: ['tiers-stats'] });
       onOpenChange(false);
     },
+    onError: (error: any) => {
+      const details = error?.response?.data?.details;
+      const firstDetail = Array.isArray(details) && details.length > 0 ? details[0] : null;
+      toast.error(firstDetail ? `${firstDetail.field}: ${firstDetail.message}` : 'Erreur lors de la création du tiers');
+    },
   });
 
   const updateMutation = useMutation({
@@ -852,6 +880,11 @@ function TiersFormDialog({
       queryClient.invalidateQueries({ queryKey: ['tiers'] });
       queryClient.invalidateQueries({ queryKey: ['tiers-stats'] });
       onOpenChange(false);
+    },
+    onError: (error: any) => {
+      const details = error?.response?.data?.details;
+      const firstDetail = Array.isArray(details) && details.length > 0 ? details[0] : null;
+      toast.error(firstDetail ? `${firstDetail.field}: ${firstDetail.message}` : 'Erreur lors de la mise à jour du tiers');
     },
   });
 
@@ -870,17 +903,19 @@ function TiersFormDialog({
 
     const submitData: CreateTiersInput = {
       ...formData,
+      prospectNiveau: normalizeProspectNiveau(formData.prospectNiveau),
       siegeNom: formData.siegeNom || formData.nomEntreprise,
       contacts: contactsInput,
       sites: isClientLikeType
         ? sites.filter(s => s.nom?.trim())
         : undefined,
     };
+    const normalizedSubmitData = normalizeNulls(submitData);
 
     if (isEdit && tiers) {
-      updateMutation.mutate({ id: tiers.id, data: submitData });
+      updateMutation.mutate({ id: tiers.id, data: normalizedSubmitData });
     } else {
-      createMutation.mutate(submitData);
+      createMutation.mutate(normalizedSubmitData);
     }
   };
 
