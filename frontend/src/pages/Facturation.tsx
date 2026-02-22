@@ -11,6 +11,7 @@ import {
   FileDown,
   Trash2,
   CheckCircle2,
+  Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -381,6 +382,8 @@ export function FacturationPage() {
   const [showFactureDialog, setShowFactureDialog] = useState(false);
   const [showChargeDialog, setShowChargeDialog] = useState(false);
   const [showPaiementDiversDialog, setShowPaiementDiversDialog] = useState(false);
+  const [editingCommandeFournisseurId, setEditingCommandeFournisseurId] = useState<string | null>(null);
+  const [editingFactureFournisseurId, setEditingFactureFournisseurId] = useState<string | null>(null);
 
   const [paiementFacture, setPaiementFacture] = useState<{ id: string; montant: number; datePaiement?: string }>({ id: '', montant: 0 });
   const [paiementCharge, setPaiementCharge] = useState<{ id: string; montant: number; datePaiement?: string }>({ id: '', montant: 0 });
@@ -415,6 +418,36 @@ export function FacturationPage() {
     },
     onError: (error: any) => {
       toast.error(error?.response?.data?.error || 'Erreur lors de la création de la facture');
+    },
+  });
+
+  const updateCommandeFournisseurMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Partial<CreateCommandeFournisseurInput> }) =>
+      commandesFournisseursApi.update(id, payload),
+    onSuccess: () => {
+      toast.success('Commande fournisseur mise à jour');
+      queryClient.invalidateQueries({ queryKey: ['achats', 'commandes-fournisseurs'] });
+      setCommandeFournisseurForm({ fournisseurId: '', lignes: [{ ...EMPTY_LINE }] });
+      setEditingCommandeFournisseurId(null);
+      setShowCmdFournisseurDialog(false);
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Erreur lors de la mise à jour');
+    },
+  });
+
+  const updateFactureFournisseurMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: Partial<CreateFactureFournisseurInput> }) =>
+      facturesFournisseursApi.update(id, payload),
+    onSuccess: () => {
+      toast.success('Facture fournisseur mise à jour');
+      queryClient.invalidateQueries({ queryKey: ['factures-fournisseurs'] });
+      setFactureForm({ fournisseurId: '', lignes: [{ ...EMPTY_LINE }] });
+      setEditingFactureFournisseurId(null);
+      setShowFactureDialog(false);
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Erreur lors de la mise à jour de la facture');
     },
   });
 
@@ -615,6 +648,42 @@ export function FacturationPage() {
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-1">
                               {canManage && cf.statut === 'BROUILLON' && (
+                                <Tooltip content="Modifier la commande">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                    onClick={async () => {
+                                      try {
+                                        const fullCommande = await commandesFournisseursApi.get(cf.id);
+                                        setEditingCommandeFournisseurId(cf.id);
+                                        setCommandeFournisseurForm({
+                                          fournisseurId: fullCommande.fournisseurId,
+                                          dateCommande: fullCommande.dateCommande?.split('T')[0],
+                                          dateLivraisonSouhaitee: fullCommande.dateLivraisonSouhaitee?.split('T')[0],
+                                          notes: fullCommande.notes || '',
+                                          conditions: fullCommande.conditions || '',
+                                          lignes: fullCommande.lignes?.map((l: any) => ({
+                                            produitServiceId: l.produitServiceId || '',
+                                            libelle: l.libelle || '',
+                                            description: l.description || '',
+                                            quantite: l.quantite || 1,
+                                            prixUnitaireHT: l.prixUnitaireHT || 0,
+                                            tauxTVA: l.tauxTVA || 20,
+                                            remisePct: l.remisePct || 0,
+                                          })) || [{ ...EMPTY_LINE }],
+                                        });
+                                        setShowCmdFournisseurDialog(true);
+                                      } catch {
+                                        toast.error('Erreur lors du chargement de la commande');
+                                      }
+                                    }}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                </Tooltip>
+                              )}
+                              {canManage && cf.statut === 'BROUILLON' && (
                                 <Tooltip content="Valider la commande">
                                   <Button
                                     variant="ghost"
@@ -704,6 +773,43 @@ export function FacturationPage() {
                           <TableCell className="text-right hidden lg:table-cell">{formatMontant(f.totalPaye)}</TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-1">
+                              {canManage && f.statut === 'BROUILLON' && (
+                                <Tooltip content="Modifier la facture">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                    onClick={async () => {
+                                      try {
+                                        const fullFacture = await facturesFournisseursApi.get(f.id);
+                                        setEditingFactureFournisseurId(f.id);
+                                        setFactureForm({
+                                          fournisseurId: fullFacture.fournisseurId,
+                                          refFournisseur: fullFacture.refFournisseur || '',
+                                          dateFacture: fullFacture.dateFacture?.split('T')[0],
+                                          dateEcheance: fullFacture.dateEcheance?.split('T')[0],
+                                          notes: fullFacture.notes || '',
+                                          conditions: fullFacture.conditions || '',
+                                          lignes: fullFacture.lignes?.map((l: any) => ({
+                                            produitServiceId: l.produitServiceId || '',
+                                            libelle: l.libelle || '',
+                                            description: l.description || '',
+                                            quantite: l.quantite || 1,
+                                            prixUnitaireHT: l.prixUnitaireHT || 0,
+                                            tauxTVA: l.tauxTVA || 20,
+                                            remisePct: l.remisePct || 0,
+                                          })) || [{ ...EMPTY_LINE }],
+                                        });
+                                        setShowFactureDialog(true);
+                                      } catch {
+                                        toast.error('Erreur lors du chargement de la facture');
+                                      }
+                                    }}
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                </Tooltip>
+                              )}
                               {canManage && f.statut === 'BROUILLON' && (
                                 <Tooltip content="Valider la facture">
                                   <Button
@@ -950,12 +1056,20 @@ export function FacturationPage() {
       {/* ============ DIALOGS ============ */}
 
       {/* Commande Fournisseur Dialog */}
-      <Dialog open={showCmdFournisseurDialog} onOpenChange={setShowCmdFournisseurDialog}>
+      <Dialog open={showCmdFournisseurDialog} onOpenChange={(open) => {
+        setShowCmdFournisseurDialog(open);
+        if (!open) {
+          setEditingCommandeFournisseurId(null);
+          setCommandeFournisseurForm({ fournisseurId: '', lignes: [{ ...EMPTY_LINE }] });
+        }
+      }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Créer une commande fournisseur</DialogTitle>
+            <DialogTitle>{editingCommandeFournisseurId ? 'Modifier la commande fournisseur' : 'Créer une commande fournisseur'}</DialogTitle>
             <DialogDescription>
-              Remplissez les informations pour créer une nouvelle commande auprès d'un fournisseur.
+              {editingCommandeFournisseurId
+                ? "Modifiez les informations de la commande fournisseur en brouillon."
+                : "Remplissez les informations pour créer une nouvelle commande auprès d'un fournisseur."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6">
@@ -997,22 +1111,38 @@ export function FacturationPage() {
               Annuler
             </Button>
             <Button
-              onClick={() => createCommandeFournisseurMutation.mutate(commandeFournisseurForm)}
-              disabled={!commandeFournisseurForm.fournisseurId || commandeFournisseurForm.lignes.length === 0 || createCommandeFournisseurMutation.isPending}
+              onClick={() => {
+                if (editingCommandeFournisseurId) {
+                  updateCommandeFournisseurMutation.mutate({ id: editingCommandeFournisseurId, payload: commandeFournisseurForm });
+                } else {
+                  createCommandeFournisseurMutation.mutate(commandeFournisseurForm);
+                }
+              }}
+              disabled={!commandeFournisseurForm.fournisseurId || commandeFournisseurForm.lignes.length === 0 || createCommandeFournisseurMutation.isPending || updateCommandeFournisseurMutation.isPending}
             >
-              {createCommandeFournisseurMutation.isPending ? 'Création...' : 'Créer la commande'}
+              {createCommandeFournisseurMutation.isPending || updateCommandeFournisseurMutation.isPending
+                ? (editingCommandeFournisseurId ? 'Mise à jour...' : 'Création...')
+                : (editingCommandeFournisseurId ? 'Enregistrer les modifications' : 'Créer la commande')}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Facture Fournisseur Dialog */}
-      <Dialog open={showFactureDialog} onOpenChange={setShowFactureDialog}>
+      <Dialog open={showFactureDialog} onOpenChange={(open) => {
+        setShowFactureDialog(open);
+        if (!open) {
+          setEditingFactureFournisseurId(null);
+          setFactureForm({ fournisseurId: '', lignes: [{ ...EMPTY_LINE }] });
+        }
+      }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Créer une facture fournisseur</DialogTitle>
+            <DialogTitle>{editingFactureFournisseurId ? 'Modifier la facture fournisseur' : 'Créer une facture fournisseur'}</DialogTitle>
             <DialogDescription>
-              Remplissez les informations pour enregistrer une facture fournisseur.
+              {editingFactureFournisseurId
+                ? 'Modifiez les informations de la facture fournisseur en brouillon.'
+                : 'Remplissez les informations pour enregistrer une facture fournisseur.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6">
@@ -1054,10 +1184,18 @@ export function FacturationPage() {
               Annuler
             </Button>
             <Button
-              onClick={() => createFactureMutation.mutate(factureForm)}
-              disabled={!factureForm.fournisseurId || factureForm.lignes.length === 0 || createFactureMutation.isPending}
+              onClick={() => {
+                if (editingFactureFournisseurId) {
+                  updateFactureFournisseurMutation.mutate({ id: editingFactureFournisseurId, payload: factureForm });
+                } else {
+                  createFactureMutation.mutate(factureForm);
+                }
+              }}
+              disabled={!factureForm.fournisseurId || factureForm.lignes.length === 0 || createFactureMutation.isPending || updateFactureFournisseurMutation.isPending}
             >
-              {createFactureMutation.isPending ? 'Création...' : 'Créer la facture'}
+              {createFactureMutation.isPending || updateFactureFournisseurMutation.isPending
+                ? (editingFactureFournisseurId ? 'Mise à jour...' : 'Création...')
+                : (editingFactureFournisseurId ? 'Enregistrer les modifications' : 'Créer la facture')}
             </Button>
           </DialogFooter>
         </DialogContent>

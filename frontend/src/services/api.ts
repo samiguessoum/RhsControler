@@ -878,8 +878,8 @@ export const commerceApi = {
   deleteCommande: async (id: string): Promise<void> => {
     await api.delete(`/commerce/commandes/${id}`);
   },
-  validerCommande: async (id: string): Promise<{ commande: Commande; message: string }> => {
-    const { data } = await api.post(`/commerce/commandes/${id}/valider`);
+  validerCommande: async (id: string, payload: { refBonCommandeClient: string }): Promise<{ commande: Commande; message: string }> => {
+    const { data } = await api.post(`/commerce/commandes/${id}/valider`, payload);
     return data;
   },
   convertirCommandeFacture: async (id: string): Promise<{ facture: Facture; message: string }> => {
@@ -907,8 +907,8 @@ export const commerceApi = {
   deleteFacture: async (id: string): Promise<void> => {
     await api.delete(`/commerce/factures/${id}`);
   },
-  validerFacture: async (id: string): Promise<{ facture: Facture; message: string }> => {
-    const { data } = await api.post(`/commerce/factures/${id}/valider`);
+  validerFacture: async (id: string, payload?: { delaiPaiementJours?: number }): Promise<{ facture: Facture; message: string }> => {
+    const { data } = await api.post(`/commerce/factures/${id}/valider`, payload || {});
     return data;
   },
   listRelances: async (id: string): Promise<FactureRelance[]> => {
@@ -1115,27 +1115,27 @@ export const paiementsDiversApi = {
 export const facturationStatsApi = {
   getGlobal: async (annee?: number): Promise<any> => {
     const { data } = await api.get('/facturation/stats/global', { params: { annee } });
-    return data.stats;
+    return data; // Backend returns data directly, not wrapped in stats
   },
   getTva: async (annee?: number): Promise<any> => {
     const { data } = await api.get('/facturation/stats/tva', { params: { annee } });
-    return data.stats;
+    return data; // Backend returns data directly
   },
   getMarges: async (annee?: number): Promise<any> => {
     const { data } = await api.get('/facturation/stats/marges', { params: { annee } });
-    return data.stats;
+    return data; // Backend returns data directly
   },
   getCommandesFacturables: async (): Promise<any> => {
     const { data } = await api.get('/facturation/stats/commandes-facturables');
-    return data.data;
+    return data; // Backend returns data directly
   },
   getTresorerie: async (annee?: number): Promise<any> => {
     const { data } = await api.get('/facturation/stats/tresorerie', { params: { annee } });
-    return data.stats;
+    return data; // Backend returns data directly
   },
   getRetards: async (): Promise<any> => {
     const { data } = await api.get('/facturation/stats/retards');
-    return data.data;
+    return data; // Backend returns data directly
   },
 };
 

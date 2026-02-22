@@ -92,7 +92,6 @@ import {
   DollarSign,
   Boxes,
   ArrowRight,
-  Phone,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -370,6 +369,7 @@ export default function ProduitsServices() {
   const [activeTab, setActiveTab] = useState('produits');
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<TypeProduit | 'all'>('all');
+  const [usageFilter, setUsageFilter] = useState<'all' | 'vente' | 'prestation'>('all');
   const [categorieFilter, setCategorieFilter] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards');
 
@@ -414,7 +414,7 @@ export default function ProduitsServices() {
     queryFn: () => categoriesProduitsApi.list({ actif: true }),
   });
 
-  const { data: entrepots, isLoading: loadingEntrepots } = useQuery({
+  const { data: entrepots } = useQuery({
     queryKey: ['entrepots'],
     queryFn: () => entrepotsApi.list({ actif: true }),
   });
@@ -696,23 +696,6 @@ export default function ProduitsServices() {
     setShowCategorieModal(true);
   };
 
-  const handleEditEntrepot = (entrepot: Entrepot) => {
-    setEditingEntrepot(entrepot);
-    setEntrepotForm({
-      code: entrepot.code,
-      nom: entrepot.nom,
-      description: entrepot.description || undefined,
-      adresse: entrepot.adresse || undefined,
-      codePostal: entrepot.codePostal || undefined,
-      ville: entrepot.ville || undefined,
-      responsable: entrepot.responsable || undefined,
-      tel: entrepot.tel || undefined,
-      email: entrepot.email || undefined,
-      estDefaut: entrepot.estDefaut,
-    });
-    setShowEntrepotModal(true);
-  };
-
   const handleOpenMouvement = (produit: ProduitService) => {
     setSelectedProduit(produit);
     resetMouvementForm();
@@ -774,7 +757,24 @@ export default function ProduitsServices() {
     }
   };
 
-  const produits = produitsData?.produits || [];
+  const produitsAll = produitsData?.produits || [];
+
+  // Filtrage par usage (vente vs prestation)
+  const produits = useMemo(() => {
+    if (usageFilter === 'all') return produitsAll;
+    if (usageFilter === 'vente') {
+      // Produits destinés à la vente aux clients
+      return produitsAll.filter((p: ProduitService) => p.enVente === true);
+    }
+    // Produits pour prestations (consommables, EPI, matériel anti-nuisibles)
+    return produitsAll.filter((p: ProduitService) =>
+      p.nature === 'CONSOMMABLE' ||
+      p.nature === 'EPI' ||
+      p.nature === 'MATERIEL_ANTI_NUISIBLES' ||
+      p.enVente === false
+    );
+  }, [produitsAll, usageFilter]);
+
   const isProduitPending = createProduitMutation.isPending || updateProduitMutation.isPending;
   const fournisseursById = useMemo(() => {
     const map = new Map<string, { id: string; nomEntreprise: string }>();
@@ -910,10 +910,6 @@ export default function ProduitsServices() {
             <FolderTree className="h-4 w-4" />
             Catégories
           </TabsTrigger>
-          <TabsTrigger value="entrepots" className="flex items-center gap-2">
-            <Warehouse className="h-4 w-4" />
-            Entrepôts
-          </TabsTrigger>
         </TabsList>
 
         {/* TAB: Produits & Services */}
@@ -934,9 +930,19 @@ export default function ProduitsServices() {
                   <SelectValue placeholder="Type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Tous</SelectItem>
+                  <SelectItem value="all">Tous types</SelectItem>
                   <SelectItem value="PRODUIT">Produits</SelectItem>
                   <SelectItem value="SERVICE">Services</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={usageFilter} onValueChange={(v) => setUsageFilter(v as 'all' | 'vente' | 'prestation')}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Usage" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous usages</SelectItem>
+                  <SelectItem value="vente">À vendre (clients)</SelectItem>
+                  <SelectItem value="prestation">Pour prestations</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={categorieFilter} onValueChange={(v) => setCategorieFilter(v)}>
@@ -1254,83 +1260,6 @@ export default function ProduitsServices() {
           </Card>
         </TabsContent>
 
-        {/* TAB: Entrepôts */}
-        <TabsContent value="entrepots" className="space-y-4">
-          <div className="flex justify-end">
-            {canManage && (
-              <Button onClick={() => { resetEntrepotForm(); setEditingEntrepot(null); setShowEntrepotModal(true); }}>
-                <Plus className="h-4 w-4 mr-2" />
-                Nouvel entrepôt
-              </Button>
-            )}
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {loadingEntrepots ? (
-              <div className="col-span-full text-center py-8 text-muted-foreground">Chargement...</div>
-            ) : !entrepots || entrepots.length === 0 ? (
-              <div className="col-span-full text-center py-8 text-muted-foreground">Aucun entrepôt</div>
-            ) : (
-              entrepots.map((entrepot) => (
-                <Card key={entrepot.id} className="hover:shadow-md transition-shadow">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <CardTitle className="text-base flex items-center gap-2">
-                          <Warehouse className="h-4 w-4" />
-                          {entrepot.nom}
-                          {entrepot.estDefaut && (
-                            <Badge variant="secondary" className="text-xs">Défaut</Badge>
-                          )}
-                        </CardTitle>
-                        <p className="text-xs text-muted-foreground font-mono">{entrepot.code}</p>
-                      </div>
-                      {canManage && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleEditEntrepot(entrepot)}>
-                              <Edit className="h-4 w-4 mr-2" />
-                              Modifier
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              className="text-red-600"
-                              onClick={() => setDeleteTarget({ type: 'entrepot', item: entrepot })}
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Supprimer
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-2 text-sm">
-                    {entrepot.adresse && <p>{entrepot.adresse}</p>}
-                    {entrepot.ville && <p>{entrepot.codePostal} {entrepot.ville}</p>}
-                    {entrepot.responsable && (
-                      <p className="text-muted-foreground">Responsable: {entrepot.responsable}</p>
-                    )}
-                    {entrepot.tel && (
-                      <a href={`tel:${entrepot.tel}`} className="flex items-center gap-1 text-primary hover:underline">
-                        <Phone className="h-3 w-3" />
-                        {entrepot.tel}
-                      </a>
-                    )}
-                    <p className="text-muted-foreground pt-2 border-t">
-                      <Boxes className="h-3 w-3 inline mr-1" />
-                      {entrepot._count?.stocks || 0} produits stockés
-                    </p>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
-        </TabsContent>
       </Tabs>
 
       {/* ============ MODALS ============ */}

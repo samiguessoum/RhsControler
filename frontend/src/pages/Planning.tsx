@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   format,
   startOfWeek,
@@ -60,6 +60,7 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronUp,
+  Receipt,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -1011,7 +1012,9 @@ function InterventionDetailDialog({
   onRealiser,
   onUpdateHoraire,
   onUpdateEmployes,
+  onGenerateFacture,
   canRealiser,
+  canManage,
   employes,
   postes,
 }: {
@@ -1020,7 +1023,9 @@ function InterventionDetailDialog({
   onRealiser: () => void;
   onUpdateHoraire: (data: { heurePrevue?: string; duree?: number }) => void;
   onUpdateEmployes: (employes: InterventionEmployeInput[]) => void;
+  onGenerateFacture: () => void;
   canRealiser: boolean;
+  canManage: boolean;
   employes: Employe[];
   postes: Poste[];
 }) {
@@ -1581,6 +1586,16 @@ function InterventionDetailDialog({
           )}
 
           <DialogFooter className="gap-2">
+            {canManage && intervention.statut === 'REALISEE' && (
+              <Button
+                variant="secondary"
+                onClick={onGenerateFacture}
+                className="text-green-700 bg-green-100 hover:bg-green-200"
+              >
+                <Receipt className="h-4 w-4 mr-2" />
+                Générer facture
+              </Button>
+            )}
             {intervention.statut !== 'REALISEE' &&
               intervention.statut !== 'ANNULEE' &&
               canRealiser && (
@@ -2292,6 +2307,7 @@ function FiltersSheet({
 // ============ MAIN PLANNING PAGE ============
 export function PlanningPage() {
   const queryClient = useQueryClient();
+  const routerNavigate = useNavigate();
   const { canDo } = useAuthStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const interventionIdParam = searchParams.get('interventionId');
@@ -3012,7 +3028,28 @@ export function PlanningPage() {
               data: { employes: employesData },
             });
           }}
+          onGenerateFacture={() => {
+            const intervention = selectedInterventionDetail || selectedIntervention;
+            if (!intervention) return;
+            // Naviguer vers Commerce avec les données pré-remplies
+            const site = intervention.site || intervention.client?.sites?.[0];
+            routerNavigate('/commerce', {
+              state: {
+                generateFacture: true,
+                clientId: intervention.clientId,
+                clientNom: intervention.client?.nomEntreprise,
+                siteId: site?.id,
+                siteNom: site?.nom,
+                prestation: intervention.prestation,
+                interventionId: intervention.id,
+                interventionRef: intervention.type,
+                dateIntervention: intervention.dateRealisee || intervention.datePrevue,
+              },
+            });
+            setSelectedIntervention(null);
+          }}
           canRealiser={canDo('realiserIntervention')}
+          canManage={canDo('manageCommerce')}
           employes={employes as Employe[]}
           postes={postes as Poste[]}
         />

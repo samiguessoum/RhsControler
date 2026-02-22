@@ -235,7 +235,7 @@ function TiersCard({
 
         {/* Type-specific info */}
         <div className="pt-2 border-t">
-          {tiers.typeTiers === 'CLIENT' && (
+          {(tiers.typeTiers === 'CLIENT' || tiers.typeTiers === 'CLIENT_FOURNISSEUR') && (
             <div className="flex items-center gap-4 text-xs text-muted-foreground">
               {tiers.sites && tiers.sites.length > 0 && (
                 <span className="flex items-center gap-1">
@@ -250,7 +250,7 @@ function TiersCard({
             </div>
           )}
 
-          {tiers.typeTiers === 'FOURNISSEUR' && (
+          {(tiers.typeTiers === 'FOURNISSEUR' || tiers.typeTiers === 'CLIENT_FOURNISSEUR') && (
             <div className="text-xs text-muted-foreground">
               {tiers.siegeRC && <span>RC: {tiers.siegeRC}</span>}
             </div>
@@ -561,7 +561,11 @@ export default function TiersPage() {
               {tiersList.map((tiers) => {
                 const config = TYPE_TIERS_CONFIG[tiers.typeTiers];
                 return (
-                  <TableRow key={tiers.id} className="cursor-pointer hover:bg-gray-50">
+                  <TableRow
+                    key={tiers.id}
+                    className="cursor-pointer hover:bg-gray-50"
+                    onClick={() => setViewingTiers(tiers)}
+                  >
                     <TableCell>
                       <div>
                         <div className="font-medium">{tiers.nomEntreprise}</div>
@@ -598,17 +602,8 @@ export default function TiersPage() {
                         </a>
                       ) : '-'}
                     </TableCell>
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <div className="flex gap-1">
-                        <Tooltip content="Voir">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setViewingTiers(tiers)}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </Tooltip>
                         {canEdit && (
                           <Tooltip content="Modifier">
                             <Button
@@ -772,6 +767,7 @@ function TiersFormDialog({
           formeJuridique: tiers.formeJuridique,
           siegeRC: tiers.siegeRC,
           siegeNIF: tiers.siegeNIF,
+          siegeTIN: tiers.siegeTIN,
           siegeAI: tiers.siegeAI,
           siegeNIS: tiers.siegeNIS,
           tvaIntracom: tiers.tvaIntracom,
@@ -870,11 +866,13 @@ function TiersFormDialog({
         estPrincipal: index === 0,
       }));
 
+    const isClientLikeType = formData.typeTiers === 'CLIENT' || formData.typeTiers === 'CLIENT_FOURNISSEUR';
+
     const submitData: CreateTiersInput = {
       ...formData,
       siegeNom: formData.siegeNom || formData.nomEntreprise,
       contacts: contactsInput,
-      sites: formData.typeTiers === 'CLIENT'
+      sites: isClientLikeType
         ? sites.filter(s => s.nom?.trim())
         : undefined,
     };
@@ -887,8 +885,8 @@ function TiersFormDialog({
   };
 
   const isPending = createMutation.isPending || updateMutation.isPending;
-  const isClient = formData.typeTiers === 'CLIENT';
-  const isFournisseur = formData.typeTiers === 'FOURNISSEUR';
+  const isClient = formData.typeTiers === 'CLIENT' || formData.typeTiers === 'CLIENT_FOURNISSEUR';
+  const isFournisseur = formData.typeTiers === 'FOURNISSEUR' || formData.typeTiers === 'CLIENT_FOURNISSEUR';
   const isProspect = formData.typeTiers === 'PROSPECT';
 
   const addSite = () => {
@@ -932,8 +930,8 @@ function TiersFormDialog({
           {/* Type Selection */}
           <div className="space-y-3">
             <Label className="text-base font-semibold">Type de tiers</Label>
-            <div className="grid grid-cols-3 gap-3">
-              {(['CLIENT', 'FOURNISSEUR', 'PROSPECT'] as TypeTiers[]).map((type) => {
+            <div className="grid grid-cols-2 gap-3">
+              {(['CLIENT', 'FOURNISSEUR', 'CLIENT_FOURNISSEUR', 'PROSPECT'] as TypeTiers[]).map((type) => {
                 const config = TYPE_TIERS_CONFIG[type];
                 const Icon = config.icon;
                 const isSelected = formData.typeTiers === type;
@@ -1273,8 +1271,8 @@ function TiersFormDialog({
             </div>
           )}
 
-          {/* Legal Info (for Client & Fournisseur) */}
-          {(isClient || isFournisseur) && (
+          {/* Legal Info */}
+          {(isClient || isFournisseur || isProspect) && (
             <CollapsibleSection
               title="Informations légales"
               icon={<FileText className="h-4 w-4" />}
@@ -1333,6 +1331,21 @@ function TiersFormDialog({
                       Identifiant fiscal unique délivré par les impôts
                     </p>
                   </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Tax Identification Number (TIN)</Label>
+                    <Input
+                      value={formData.siegeTIN || ''}
+                      onChange={(e) => setFormData({ ...formData, siegeTIN: e.target.value })}
+                      placeholder="Ex: 123456789"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Identifiant fiscal utilisé pour les échanges internationaux
+                    </p>
+                  </div>
+                  <div />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -1550,7 +1563,7 @@ function TiersDetailSheet({
             </div>
 
             {/* Legal Info */}
-            {(tiers.siegeRC || tiers.siegeNIF || tiers.siegeAI || tiers.siegeNIS) && (
+            {(tiers.siegeRC || tiers.siegeNIF || tiers.siegeTIN || tiers.siegeAI || tiers.siegeNIS) && (
               <div className="space-y-3">
                 <h3 className="font-semibold border-b pb-2">Informations légales</h3>
                 <div className="grid grid-cols-2 gap-3 text-sm">
@@ -1567,6 +1580,11 @@ function TiersDetailSheet({
                   {tiers.siegeNIF && (
                     <div>
                       <span className="text-muted-foreground">NIF:</span> {tiers.siegeNIF}
+                    </div>
+                  )}
+                  {tiers.siegeTIN && (
+                    <div>
+                      <span className="text-muted-foreground">TIN:</span> {tiers.siegeTIN}
                     </div>
                   )}
                   {tiers.siegeAI && (

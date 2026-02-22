@@ -1047,6 +1047,7 @@ model Commande {
   adresseLivraison     Adresse?        @relation("CommandeAdresseLivraison", fields: [adresseLivraisonId], references: [id])
   dateCommande         DateTime        @default(now())
   dateLivraisonSouhaitee DateTime?
+  refBonCommandeClient String?         // Numéro du bon de commande client (obligatoire à la validation)
   statut               CommandeStatut  @default(BROUILLON)
   remiseGlobalPct      Float?          @default(0)
   remiseGlobalMontant  Float?          @default(0)
@@ -1109,6 +1110,7 @@ model Facture {
   adresseLivraison     Adresse?      @relation("FactureAdresseLivraison", fields: [adresseLivraisonId], references: [id])
   dateFacture          DateTime      @default(now())
   dateEcheance         DateTime?
+  delaiPaiementJours   Int?          @default(45)  // Délai de paiement en jours
   type                 FactureType   @default(FACTURE)
   statut               FactureStatut @default(BROUILLON)
   remiseGlobalPct      Float?        @default(0)

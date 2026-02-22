@@ -17,6 +17,10 @@ import {
   ChevronDown,
   ChevronRight,
   Store,
+  TrendingUp,
+  Warehouse,
+  Landmark,
+  ShoppingCart,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -53,13 +57,21 @@ export function Sidebar({ stats }: SidebarProps) {
 
   // Check which group should be open by default based on current path
   const getDefaultOpenGroups = () => {
-    const ventesPaths = ['/commerce', '/produits-services', '/stocks'];
-    const achatsPaths = ['/facturation'];
-    if (ventesPaths.some(path => location.pathname.startsWith(path))) {
-      return ['ventes'];
+    const ventePaths = ['/commerce', '/produits-services'];
+    const stockPaths = ['/stocks', '/entrepots'];
+    const achatPaths = ['/facturation'];
+    const financePaths = ['/finance'];
+    if (ventePaths.some(path => location.pathname.startsWith(path))) {
+      return ['vente'];
     }
-    if (achatsPaths.some(path => location.pathname.startsWith(path))) {
-      return ['achats'];
+    if (stockPaths.some(path => location.pathname.startsWith(path))) {
+      return ['stocks'];
+    }
+    if (achatPaths.some(path => location.pathname.startsWith(path))) {
+      return ['cycle-achat'];
+    }
+    if (financePaths.some(path => location.pathname.startsWith(path))) {
+      return ['finance'];
     }
     return [];
   };
@@ -104,18 +116,18 @@ export function Sidebar({ stats }: SidebarProps) {
     },
   ];
 
-  // Grouped navigation items
+  // Grouped navigation items - Structure ERP standard
   const navGroups: NavGroup[] = [
     {
-      id: 'ventes',
+      id: 'vente',
       icon: Store,
-      label: 'Ventes',
+      label: 'Vente',
       show: true,
       items: [
         {
           to: '/commerce',
-          icon: Receipt,
-          label: 'Devis & Factures',
+          icon: TrendingUp,
+          label: 'Cycle de vente',
           show: true,
         },
         {
@@ -124,24 +136,52 @@ export function Sidebar({ stats }: SidebarProps) {
           label: 'Produits & Services',
           show: true,
         },
+      ],
+    },
+    {
+      id: 'stocks',
+      icon: Package,
+      label: 'Gestion des stocks',
+      show: true,
+      items: [
         {
           to: '/stocks',
           icon: Package,
-          label: 'Stocks',
+          label: 'Stocks & Mouvements',
+          show: true,
+        },
+        {
+          to: '/entrepots',
+          icon: Warehouse,
+          label: 'Entrepôts',
           show: true,
         },
       ],
     },
     {
-      id: 'achats',
-      icon: Wallet,
-      label: 'Achats & Dépenses',
+      id: 'cycle-achat',
+      icon: ShoppingCart,
+      label: 'Cycle achat & dépenses',
       show: canDo('viewFacturation'),
       items: [
         {
           to: '/facturation',
+          icon: Wallet,
+          label: 'Fournisseurs & Charges',
+          show: true,
+        },
+      ],
+    },
+    {
+      id: 'finance',
+      icon: Landmark,
+      label: 'Finance & Trésorerie',
+      show: canDo('viewFacturation'),
+      items: [
+        {
+          to: '/finance',
           icon: Receipt,
-          label: 'Factures & Charges',
+          label: 'Tableau de bord',
           show: true,
         },
       ],

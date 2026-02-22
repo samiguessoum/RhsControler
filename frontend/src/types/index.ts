@@ -1242,6 +1242,7 @@ export interface Facture {
   commandeId?: string;
   dateFacture: string;
   dateEcheance?: string;
+  delaiPaiementJours?: number;
   type: FactureType;
   statut: FactureStatut;
   remiseGlobalPct?: number;
@@ -1306,6 +1307,7 @@ export type CreateFactureInput = Omit<CreateDevisInput, 'statut' | 'dateDevis' |
   commandeId?: string;
   dateFacture?: string;
   dateEcheance?: string;
+  delaiPaiementJours?: number;
   statut?: FactureStatut;
   type?: FactureType;
 };

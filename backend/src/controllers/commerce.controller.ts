@@ -198,13 +198,29 @@ export const commerceController = {
       const devis = await prisma.devis.findUnique({
         where: { id },
         include: {
-          client: { select: { id: true, nomEntreprise: true, code: true } },
+          client: {
+            select: {
+              id: true,
+              nomEntreprise: true,
+              code: true,
+              siegeNIF: true,
+              siegeNIS: true,
+              siegeRC: true,
+              siegeAdresse: true,
+              siegeVille: true,
+              siegeCodePostal: true,
+              siegeTel: true,
+              siegeEmail: true,
+            },
+          },
           lignes: {
             orderBy: { ordre: 'asc' },
             include: {
               produitService: { select: { id: true, nom: true, reference: true } },
             },
           },
+          createdBy: { select: { id: true, nom: true, prenom: true } },
+          updatedBy: { select: { id: true, nom: true, prenom: true } },
         },
       });
 
@@ -493,13 +509,30 @@ export const commerceController = {
       const commande = await prisma.commande.findUnique({
         where: { id },
         include: {
-          client: { select: { id: true, nomEntreprise: true, code: true } },
+          client: {
+            select: {
+              id: true,
+              nomEntreprise: true,
+              code: true,
+              siegeNIF: true,
+              siegeNIS: true,
+              siegeRC: true,
+              siegeAdresse: true,
+              siegeVille: true,
+              siegeCodePostal: true,
+              siegeTel: true,
+              siegeEmail: true,
+            },
+          },
+          devis: { select: { id: true, ref: true } },
           lignes: {
             orderBy: { ordre: 'asc' },
             include: {
               produitService: { select: { id: true, nom: true, reference: true } },
             },
           },
+          createdBy: { select: { id: true, nom: true, prenom: true } },
+          updatedBy: { select: { id: true, nom: true, prenom: true } },
         },
       });
 
@@ -636,6 +669,13 @@ export const commerceController = {
   async validerCommande(req: AuthRequest, res: Response) {
     try {
       const { id } = req.params;
+      const { refBonCommandeClient } = req.body;
+
+      // Vérifier que le numéro de BC client est fourni
+      if (!refBonCommandeClient || refBonCommandeClient.trim() === '') {
+        return res.status(400).json({ error: 'Le numéro de bon de commande client est obligatoire pour valider la commande' });
+      }
+
       const existing = await prisma.commande.findUnique({ where: { id } });
 
       if (!existing) {
@@ -650,6 +690,7 @@ export const commerceController = {
         where: { id },
         data: {
           statut: 'VALIDEE',
+          refBonCommandeClient: refBonCommandeClient.trim(),
           updatedById: req.user?.id,
         },
         include: {
@@ -785,7 +826,23 @@ export const commerceController = {
       const facture = await prisma.facture.findUnique({
         where: { id },
         include: {
-          client: { select: { id: true, nomEntreprise: true, code: true } },
+          client: {
+            select: {
+              id: true,
+              nomEntreprise: true,
+              code: true,
+              siegeNIF: true,
+              siegeNIS: true,
+              siegeRC: true,
+              siegeAdresse: true,
+              siegeVille: true,
+              siegeCodePostal: true,
+              siegeTel: true,
+              siegeEmail: true,
+            },
+          },
+          devis: { select: { id: true, ref: true } },
+          commande: { select: { id: true, ref: true } },
           lignes: {
             orderBy: { ordre: 'asc' },
             include: {
@@ -794,11 +851,16 @@ export const commerceController = {
           },
           paiements: {
             orderBy: { datePaiement: 'desc' },
+            include: {
+              modePaiement: { select: { id: true, libelle: true } },
+            },
           },
           relances: {
             orderBy: { dateRelance: 'desc' },
             include: { createdBy: { select: { id: true, nom: true, prenom: true } } },
           },
+          createdBy: { select: { id: true, nom: true, prenom: true } },
+          updatedBy: { select: { id: true, nom: true, prenom: true } },
         },
       });
 
@@ -831,6 +893,11 @@ export const commerceController = {
       const ref = data.ref || (await generateReference(refType, dateFacture));
       const statut = data.statut ?? (factureType === 'AVOIR' ? 'VALIDEE' : 'BROUILLON');
 
+      // Calculer le délai de paiement et la date d'échéance
+      const delaiPaiementJours = data.delaiPaiementJours !== undefined ? parseInt(data.delaiPaiementJours, 10) : 45;
+      const dateEcheance = new Date(dateFacture);
+      dateEcheance.setDate(dateEcheance.getDate() + delaiPaiementJours);
+
       // Utiliser une transaction pour garantir l'atomicité
       const facture = await prisma.$transaction(async (tx) => {
         const newFacture = await tx.facture.create({
@@ -842,7 +909,8 @@ export const commerceController = {
             adresseFacturationId: data.adresseFacturationId,
             adresseLivraisonId: data.adresseLivraisonId,
             dateFacture,
-            dateEcheance: parseDate(data.dateEcheance),
+            dateEcheance,
+            delaiPaiementJours,
             type: factureType,
             statut,
             remiseGlobalPct: data.remiseGlobalPct,
@@ -934,6 +1002,21 @@ export const commerceController = {
         totals = computeTotals(baseLines, data.remiseGlobalPct ?? existing.remiseGlobalPct, data.remiseGlobalMontant ?? existing.remiseGlobalMontant, sign);
       }
 
+      // Calculer le délai de paiement et la date d'échéance si modifiés
+      let dateEcheanceUpdate = undefined;
+      let delaiPaiementJoursUpdate = undefined;
+
+      if (data.delaiPaiementJours !== undefined || data.dateFacture !== undefined) {
+        const delai = data.delaiPaiementJours !== undefined
+          ? parseInt(data.delaiPaiementJours, 10)
+          : existing.delaiPaiementJours ?? 45;
+        const dateFactureBase = parseDate(data.dateFacture) || existing.dateFacture || new Date();
+        const newDateEcheance = new Date(dateFactureBase);
+        newDateEcheance.setDate(newDateEcheance.getDate() + delai);
+        dateEcheanceUpdate = newDateEcheance;
+        delaiPaiementJoursUpdate = delai;
+      }
+
       // Utiliser une transaction pour garantir l'atomicité
       const facture = await prisma.$transaction(async (tx) => {
         const updatedFacture = await tx.facture.update({
@@ -942,7 +1025,8 @@ export const commerceController = {
             adresseFacturationId: data.adresseFacturationId,
             adresseLivraisonId: data.adresseLivraisonId,
             dateFacture: parseDate(data.dateFacture),
-            dateEcheance: parseDate(data.dateEcheance),
+            dateEcheance: dateEcheanceUpdate,
+            delaiPaiementJours: delaiPaiementJoursUpdate,
             type: data.type,
             statut: data.statut,
             remiseGlobalPct: data.remiseGlobalPct,
@@ -1033,6 +1117,8 @@ export const commerceController = {
   async validerFacture(req: AuthRequest, res: Response) {
     try {
       const { id } = req.params;
+      const { delaiPaiementJours } = req.body;
+
       const existing = await prisma.facture.findUnique({
         where: { id },
         include: { lignes: true },
@@ -1046,11 +1132,23 @@ export const commerceController = {
         return res.status(400).json({ error: 'Seule une facture en brouillon peut être validée' });
       }
 
+      // Utiliser le délai de paiement: body > existant > défaut 45j
+      const delai = delaiPaiementJours !== undefined
+        ? parseInt(delaiPaiementJours, 10)
+        : (existing.delaiPaiementJours ?? 45);
+
+      // Calculer la date d'échéance à partir de la date de facture existante + délai
+      const dateFacture = existing.dateFacture || new Date();
+      const dateEcheance = new Date(dateFacture);
+      dateEcheance.setDate(dateEcheance.getDate() + delai);
+
       const facture = await prisma.$transaction(async (tx) => {
         const updated = await tx.facture.update({
           where: { id },
           data: {
             statut: 'VALIDEE',
+            delaiPaiementJours: delai,
+            dateEcheance,
             updatedById: req.user?.id,
           },
           include: {
@@ -1061,7 +1159,16 @@ export const commerceController = {
 
         // Gérer le stock si c'est une facture de vente
         if (updated.type === 'FACTURE' && req.user?.id) {
-          await stockService.processFactureValidation(updated.id, req.user.id);
+          const stockResult = await stockService.processFactureValidation(
+            updated.id,
+            updated.lignes,
+            req.user.id,
+            undefined,
+            tx
+          );
+          if (!stockResult.success) {
+            throw new Error(`Erreur stock: ${stockResult.errors.join(', ')}`);
+          }
         }
 
         return updated;
@@ -1070,11 +1177,17 @@ export const commerceController = {
       await createAuditLog(req.user!.id, 'UPDATE', 'Facture', facture.id, { action: 'VALIDATION', after: facture });
 
       // Émettre l'événement
-      facturationEvents.emit('facture.validated', {
-        factureId: facture.id,
-        clientId: facture.clientId,
-        ref: facture.ref,
-        montant: facture.totalTTC,
+      facturationEvents.emitEvent({
+        type: 'facture.validated',
+        entityId: facture.id,
+        entityType: 'Facture',
+        data: {
+          ref: facture.ref,
+          clientNom: facture.client.nomEntreprise,
+          totalTTC: facture.totalTTC,
+        },
+        userId: req.user?.id,
+        timestamp: new Date(),
       });
 
       res.json({ facture, message: 'Facture validée avec succès' });
