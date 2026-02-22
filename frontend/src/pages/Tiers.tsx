@@ -341,7 +341,7 @@ export default function TiersPage() {
 
   const [activeTab, setActiveTab] = useState<string>('all');
   const [search, setSearch] = useState('');
-  const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards');
+  const [viewMode, setViewMode] = useState<'cards' | 'list'>('list');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingTiers, setEditingTiers] = useState<Tiers | null>(null);
   const [viewingTiers, setViewingTiers] = useState<Tiers | null>(null);
@@ -1598,40 +1598,48 @@ function TiersDetailSheet({
             </div>
 
             {/* Legal Info */}
-            {(tiers.siegeRC || tiers.siegeNIF || tiers.siegeTIN || tiers.siegeAI || tiers.siegeNIS) && (
+            {(tiers.formeJuridique || tiers.siegeRC || tiers.siegeNIF || tiers.siegeTIN || tiers.siegeAI || tiers.siegeNIS) && (
               <div className="space-y-3">
                 <h3 className="font-semibold border-b pb-2">Informations légales</h3>
-                <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="rounded-lg border bg-white p-4 space-y-4">
                   {tiers.formeJuridique && (
-                    <div>
-                      <span className="text-muted-foreground">Forme:</span> {tiers.formeJuridique}
+                    <div className="flex items-center justify-between gap-3 pb-3 border-b">
+                      <span className="text-sm text-muted-foreground">Forme juridique</span>
+                      <span className="text-sm font-semibold">{tiers.formeJuridique}</span>
                     </div>
                   )}
-                  {tiers.siegeRC && (
-                    <div>
-                      <span className="text-muted-foreground">RC:</span> {tiers.siegeRC}
-                    </div>
-                  )}
-                  {tiers.siegeNIF && (
-                    <div>
-                      <span className="text-muted-foreground">NIF:</span> {tiers.siegeNIF}
-                    </div>
-                  )}
-                  {tiers.siegeTIN && (
-                    <div>
-                      <span className="text-muted-foreground">TIN:</span> {tiers.siegeTIN}
-                    </div>
-                  )}
-                  {tiers.siegeAI && (
-                    <div>
-                      <span className="text-muted-foreground">AI:</span> {tiers.siegeAI}
-                    </div>
-                  )}
-                  {tiers.siegeNIS && (
-                    <div>
-                      <span className="text-muted-foreground">NIS:</span> {tiers.siegeNIS}
-                    </div>
-                  )}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {tiers.siegeRC && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-bold text-foreground">RC</p>
+                        <p className="text-sm text-foreground break-all">{tiers.siegeRC}</p>
+                      </div>
+                    )}
+                    {tiers.siegeNIF && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-bold text-foreground">NIF</p>
+                        <p className="text-sm text-foreground break-all">{tiers.siegeNIF}</p>
+                      </div>
+                    )}
+                    {tiers.siegeTIN && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-bold text-foreground">TIN</p>
+                        <p className="text-sm text-foreground break-all">{tiers.siegeTIN}</p>
+                      </div>
+                    )}
+                    {tiers.siegeAI && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-bold text-foreground">AI</p>
+                        <p className="text-sm text-foreground break-all">{tiers.siegeAI}</p>
+                      </div>
+                    )}
+                    {tiers.siegeNIS && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-bold text-foreground">NIS</p>
+                        <p className="text-sm text-foreground break-all">{tiers.siegeNIS}</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
