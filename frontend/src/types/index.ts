@@ -1755,6 +1755,18 @@ export interface CompanySettings {
   inclureAnnee: boolean;
   separateur: string;
 
+  // Décalages de numérotation
+  offsetDevis: number;
+  offsetCommande: number;
+  offsetFacture: number;
+  offsetAvoir: number;
+  offsetCommandeFournisseur: number;
+  offsetFactureFournisseur: number;
+  offsetCharge: number;
+  offsetClient: number;
+  offsetFournisseur: number;
+  offsetProspect: number;
+
   createdAt: string;
   updatedAt: string;
 }
@@ -1813,4 +1825,16 @@ export interface UpdateCompanySettingsInput {
   longueurNumero?: number;
   inclureAnnee?: boolean;
   separateur?: string;
+
+  // Décalages de numérotation
+  offsetDevis?: number;
+  offsetCommande?: number;
+  offsetFacture?: number;
+  offsetAvoir?: number;
+  offsetCommandeFournisseur?: number;
+  offsetFactureFournisseur?: number;
+  offsetCharge?: number;
+  offsetClient?: number;
+  offsetFournisseur?: number;
+  offsetProspect?: number;
 }

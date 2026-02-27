@@ -52,7 +52,16 @@ export function ParametresPage() {
 
   // Settings state
   const [settingsForm, setSettingsForm] = useState<UpdateCompanySettingsInput>({});
-  const [activeTab, setActiveTab] = useState('entreprise');
+  // Restaurer l'onglet actif depuis localStorage (après un rechargement)
+  const [activeTab, setActiveTab] = useState(() => {
+    const savedTab = localStorage.getItem('parametres_active_tab');
+    if (savedTab) {
+      // Nettoyer après lecture pour ne pas persister indéfiniment
+      localStorage.removeItem('parametres_active_tab');
+      return savedTab;
+    }
+    return 'entreprise';
+  });
 
   // Query for settings
   const { data: settings, isLoading: isLoadingSettings } = useQuery({
@@ -99,6 +108,17 @@ export function ParametresPage() {
         longueurNumero: settings.longueurNumero,
         inclureAnnee: settings.inclureAnnee,
         separateur: settings.separateur,
+        // Décalages de numérotation
+        offsetDevis: settings.offsetDevis || 0,
+        offsetCommande: settings.offsetCommande || 0,
+        offsetFacture: settings.offsetFacture || 0,
+        offsetAvoir: settings.offsetAvoir || 0,
+        offsetCommandeFournisseur: settings.offsetCommandeFournisseur || 0,
+        offsetFactureFournisseur: settings.offsetFactureFournisseur || 0,
+        offsetCharge: settings.offsetCharge || 0,
+        offsetClient: settings.offsetClient || 0,
+        offsetFournisseur: settings.offsetFournisseur || 0,
+        offsetProspect: settings.offsetProspect || 0,
       });
     }
   }, [settings]);
@@ -107,8 +127,9 @@ export function ParametresPage() {
   const updateSettingsMutation = useMutation({
     mutationFn: (data: UpdateCompanySettingsInput) => settingsApi.updateSettings(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] });
       toast.success('Paramètres mis à jour avec succès');
+      // Recharger la page pour appliquer les changements
+      window.location.reload();
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Erreur lors de la mise à jour');
@@ -144,7 +165,17 @@ export function ParametresPage() {
   };
 
   const handleSaveSettings = () => {
+    // Sauvegarder l'onglet actif dans localStorage pour le restaurer après rechargement
+    localStorage.setItem('parametres_active_tab', activeTab);
     updateSettingsMutation.mutate(settingsForm);
+  };
+
+  // Gérer la touche Entrée pour sauvegarder
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSaveSettings();
+    }
   };
 
   const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -161,16 +192,16 @@ export function ParametresPage() {
     }
   };
 
-  // Generate preview reference
-  const generatePreviewRef = (prefix: string) => {
+  // Generate preview reference - Format: PRÉFIXE0000/2026
+  // Génère un aperçu de référence. Le paramètre `numeroBase` permet de montrer le prochain numéro attendu.
+  const generatePreviewRef = (prefix: string, numeroBase: number = 1) => {
     const annee = new Date().getFullYear();
-    const numero = '1'.padStart(settingsForm.longueurNumero || 5, '0');
-    // Utiliser le séparateur configuré, ou '-' par défaut si non défini
-    const sep = settingsForm.separateur !== undefined ? settingsForm.separateur : '-';
+    const numero = String(numeroBase).padStart(settingsForm.longueurNumero || 4, '0');
+    const sep = settingsForm.separateur !== undefined ? settingsForm.separateur : '/';
     if (settingsForm.inclureAnnee) {
-      return `${prefix}${sep}${annee}${sep}${numero}`;
+      return `${prefix}${numero}${sep}${annee}`;
     }
-    return `${prefix}${sep}${numero}`;
+    return `${prefix}${numero}`;
   };
 
   const { data: prestations = [] } = useQuery({
@@ -410,7 +441,7 @@ export function ParametresPage() {
 
         {/* Onglet Entreprise */}
         {canDo('manageSettings') && (
-          <TabsContent value="entreprise" className="space-y-6">
+          <TabsContent value="entreprise" className="space-y-6" onKeyDown={handleKeyDown}>
             {isLoadingSettings ? (
               <div className="text-center py-8 text-muted-foreground">Chargement...</div>
             ) : (
@@ -719,7 +750,7 @@ export function ParametresPage() {
 
         {/* Onglet Numérotation */}
         {canDo('manageSettings') && (
-          <TabsContent value="numerotation" className="space-y-6">
+          <TabsContent value="numerotation" className="space-y-6" onKeyDown={handleKeyDown}>
             {isLoadingSettings ? (
               <div className="text-center py-8 text-muted-foreground">Chargement...</div>
             ) : (
@@ -728,39 +759,39 @@ export function ParametresPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Options de numérotation</CardTitle>
-                    <CardDescription>Configurez le format des références</CardDescription>
+                    <CardDescription>Format : PRÉFIXE + numéro + séparateur + année (ex: DV0001/2026)</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="longueurNumero">Longueur du numéro</Label>
                         <Select
-                          value={String(settingsForm.longueurNumero || 5)}
+                          value={String(settingsForm.longueurNumero || 4)}
                           onValueChange={(v) => handleSettingsChange('longueurNumero', parseInt(v))}
                         >
                           <SelectTrigger>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="3">3 chiffres (001)</SelectItem>
-                            <SelectItem value="4">4 chiffres (0001)</SelectItem>
-                            <SelectItem value="5">5 chiffres (00001)</SelectItem>
-                            <SelectItem value="6">6 chiffres (000001)</SelectItem>
+                            <SelectItem value="3">3 chiffres (001/2026)</SelectItem>
+                            <SelectItem value="4">4 chiffres (0001/2026)</SelectItem>
+                            <SelectItem value="5">5 chiffres (00001/2026)</SelectItem>
+                            <SelectItem value="6">6 chiffres (000001/2026)</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="separateur">Séparateur</Label>
                         <Select
-                          value={settingsForm.separateur === '' ? 'NONE' : (settingsForm.separateur || '-')}
+                          value={settingsForm.separateur === '' ? 'NONE' : (settingsForm.separateur || '/')}
                           onValueChange={(v) => handleSettingsChange('separateur', v === 'NONE' ? '' : v)}
                         >
                           <SelectTrigger>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
+                            <SelectItem value="/">Slash (/) (Recommandé)</SelectItem>
                             <SelectItem value="-">Tiret (-)</SelectItem>
-                            <SelectItem value="/">Slash (/)</SelectItem>
                             <SelectItem value="NONE">Aucun</SelectItem>
                           </SelectContent>
                         </Select>
@@ -786,22 +817,23 @@ export function ParametresPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Documents de vente</CardTitle>
-                    <CardDescription>Préfixes pour les documents commerciaux sortants</CardDescription>
+                    <CardDescription>Préfixes et décalages pour les documents commerciaux sortants. Le décalage permet de reprendre une numérotation en cours (ex: +839 pour que la prochaine soit 840).</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      <div className="grid grid-cols-3 gap-4 text-sm font-medium text-muted-foreground border-b pb-2">
+                      <div className="grid grid-cols-4 gap-4 text-sm font-medium text-muted-foreground border-b pb-2">
                         <span>Document</span>
                         <span>Préfixe</span>
+                        <span>Décalage</span>
                         <span>Aperçu</span>
                       </div>
                       {[
-                        { label: 'Devis', field: 'prefixDevis' as const },
-                        { label: 'Commandes', field: 'prefixCommande' as const },
-                        { label: 'Factures', field: 'prefixFacture' as const },
-                        { label: 'Avoirs', field: 'prefixAvoir' as const },
+                        { label: 'Devis', field: 'prefixDevis' as const, offsetField: 'offsetDevis' as const },
+                        { label: 'Commandes', field: 'prefixCommande' as const, offsetField: 'offsetCommande' as const },
+                        { label: 'Factures', field: 'prefixFacture' as const, offsetField: 'offsetFacture' as const },
+                        { label: 'Avoirs', field: 'prefixAvoir' as const, offsetField: 'offsetAvoir' as const },
                       ].map((item) => (
-                        <div key={item.field} className="grid grid-cols-3 gap-4 items-center">
+                        <div key={item.field} className="grid grid-cols-4 gap-4 items-center">
                           <span className="text-sm">{item.label}</span>
                           <Input
                             value={settingsForm[item.field] || ''}
@@ -809,8 +841,16 @@ export function ParametresPage() {
                             className="w-24"
                             maxLength={5}
                           />
+                          <Input
+                            type="number"
+                            min={0}
+                            value={settingsForm[item.offsetField] || 0}
+                            onChange={(e) => handleSettingsChange(item.offsetField, parseInt(e.target.value) || 0)}
+                            className="w-24"
+                            placeholder="+0"
+                          />
                           <span className="text-sm text-muted-foreground font-mono">
-                            {generatePreviewRef(settingsForm[item.field] || '')}
+                            {generatePreviewRef(settingsForm[item.field] || '', (settingsForm[item.offsetField] || 0) + 1)}
                           </span>
                         </div>
                       ))}
@@ -822,21 +862,22 @@ export function ParametresPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Documents d'achat</CardTitle>
-                    <CardDescription>Préfixes pour les documents fournisseurs</CardDescription>
+                    <CardDescription>Préfixes et décalages pour les documents fournisseurs</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      <div className="grid grid-cols-3 gap-4 text-sm font-medium text-muted-foreground border-b pb-2">
+                      <div className="grid grid-cols-4 gap-4 text-sm font-medium text-muted-foreground border-b pb-2">
                         <span>Document</span>
                         <span>Préfixe</span>
+                        <span>Décalage</span>
                         <span>Aperçu</span>
                       </div>
                       {[
-                        { label: 'Commandes fournisseur', field: 'prefixCommandeFournisseur' as const },
-                        { label: 'Factures fournisseur', field: 'prefixFactureFournisseur' as const },
-                        { label: 'Charges', field: 'prefixCharge' as const },
+                        { label: 'Commandes fournisseur', field: 'prefixCommandeFournisseur' as const, offsetField: 'offsetCommandeFournisseur' as const },
+                        { label: 'Factures fournisseur', field: 'prefixFactureFournisseur' as const, offsetField: 'offsetFactureFournisseur' as const },
+                        { label: 'Charges', field: 'prefixCharge' as const, offsetField: 'offsetCharge' as const },
                       ].map((item) => (
-                        <div key={item.field} className="grid grid-cols-3 gap-4 items-center">
+                        <div key={item.field} className="grid grid-cols-4 gap-4 items-center">
                           <span className="text-sm">{item.label}</span>
                           <Input
                             value={settingsForm[item.field] || ''}
@@ -844,8 +885,16 @@ export function ParametresPage() {
                             className="w-24"
                             maxLength={5}
                           />
+                          <Input
+                            type="number"
+                            min={0}
+                            value={settingsForm[item.offsetField] || 0}
+                            onChange={(e) => handleSettingsChange(item.offsetField, parseInt(e.target.value) || 0)}
+                            className="w-24"
+                            placeholder="+0"
+                          />
                           <span className="text-sm text-muted-foreground font-mono">
-                            {generatePreviewRef(settingsForm[item.field] || '')}
+                            {generatePreviewRef(settingsForm[item.field] || '', (settingsForm[item.offsetField] || 0) + 1)}
                           </span>
                         </div>
                       ))}
@@ -857,21 +906,22 @@ export function ParametresPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Tiers</CardTitle>
-                    <CardDescription>Préfixes pour les codes clients et fournisseurs</CardDescription>
+                    <CardDescription>Préfixes et décalages pour les codes clients et fournisseurs</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      <div className="grid grid-cols-3 gap-4 text-sm font-medium text-muted-foreground border-b pb-2">
+                      <div className="grid grid-cols-4 gap-4 text-sm font-medium text-muted-foreground border-b pb-2">
                         <span>Type</span>
                         <span>Préfixe</span>
+                        <span>Décalage</span>
                         <span>Aperçu</span>
                       </div>
                       {[
-                        { label: 'Clients', field: 'prefixClient' as const },
-                        { label: 'Fournisseurs', field: 'prefixFournisseur' as const },
-                        { label: 'Prospects', field: 'prefixProspect' as const },
+                        { label: 'Clients', field: 'prefixClient' as const, offsetField: 'offsetClient' as const },
+                        { label: 'Fournisseurs', field: 'prefixFournisseur' as const, offsetField: 'offsetFournisseur' as const },
+                        { label: 'Prospects', field: 'prefixProspect' as const, offsetField: 'offsetProspect' as const },
                       ].map((item) => (
-                        <div key={item.field} className="grid grid-cols-3 gap-4 items-center">
+                        <div key={item.field} className="grid grid-cols-4 gap-4 items-center">
                           <span className="text-sm">{item.label}</span>
                           <Input
                             value={settingsForm[item.field] || ''}
@@ -879,8 +929,16 @@ export function ParametresPage() {
                             className="w-24"
                             maxLength={5}
                           />
+                          <Input
+                            type="number"
+                            min={0}
+                            value={settingsForm[item.offsetField] || 0}
+                            onChange={(e) => handleSettingsChange(item.offsetField, parseInt(e.target.value) || 0)}
+                            className="w-24"
+                            placeholder="+0"
+                          />
                           <span className="text-sm text-muted-foreground font-mono">
-                            {generatePreviewRef(settingsForm[item.field] || '')}
+                            {generatePreviewRef(settingsForm[item.field] || '', (settingsForm[item.offsetField] || 0) + 1)}
                           </span>
                         </div>
                       ))}

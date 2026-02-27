@@ -1,0 +1,11 @@
+-- AlterTable
+ALTER TABLE "CompanySettings" ADD COLUMN     "offsetAvoir" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "offsetCharge" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "offsetClient" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "offsetCommande" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "offsetCommandeFournisseur" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "offsetDevis" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "offsetFacture" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "offsetFactureFournisseur" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "offsetFournisseur" INTEGER NOT NULL DEFAULT 0,
+ADD COLUMN     "offsetProspect" INTEGER NOT NULL DEFAULT 0;

@@ -4,16 +4,54 @@ import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
 import { TypeTiers } from '@prisma/client';
 
-// Génération automatique du code tiers
+// Préfixes par défaut pour les tiers
+const DEFAULT_TIERS_PREFIX: Record<string, string> = {
+  CLIENT: 'CLI',
+  FOURNISSEUR: 'FOU',
+  PROSPECT: 'PRO',
+  CLIENT_FOURNISSEUR: 'CLI',
+};
+
+// Mapping entre type de tiers et champ de préfixe dans CompanySettings
+const PREFIX_TIERS_FIELD_MAP: Record<string, string> = {
+  CLIENT: 'prefixClient',
+  FOURNISSEUR: 'prefixFournisseur',
+  PROSPECT: 'prefixProspect',
+  CLIENT_FOURNISSEUR: 'prefixClient',
+};
+
+// Mapping entre type de tiers et champ de décalage dans CompanySettings
+const OFFSET_TIERS_FIELD_MAP: Record<string, string> = {
+  CLIENT: 'offsetClient',
+  FOURNISSEUR: 'offsetFournisseur',
+  PROSPECT: 'offsetProspect',
+  CLIENT_FOURNISSEUR: 'offsetClient',
+};
+
+// Génération automatique du code tiers au format: PRÉFIXE0000/2026
 async function generateCodeTiers(type: TypeTiers): Promise<string> {
-  const prefix = type === 'FOURNISSEUR' ? 'FOU' : type === 'PROSPECT' ? 'PRO' : 'CLI';
-  const year = new Date().getFullYear().toString().slice(-2);
+  const annee = new Date().getFullYear();
+
+  // Récupérer les paramètres de numérotation
+  const settings = await prisma.companySettings.findFirst();
+  const prefixField = PREFIX_TIERS_FIELD_MAP[type];
+  const prefixValue = settings ? (settings as Record<string, unknown>)[prefixField] : null;
+  const prefix = (typeof prefixValue === 'string' ? prefixValue : null) || DEFAULT_TIERS_PREFIX[type];
+  const longueur = settings?.longueurNumero || 4;
+  const separateur = settings?.separateur ?? '/';
+  const inclureAnnee = settings?.inclureAnnee ?? true;
+
+  // Récupérer le décalage (offset) pour ce type de tiers
+  const offsetField = OFFSET_TIERS_FIELD_MAP[type];
+  const offsetValue = settings ? (settings as Record<string, unknown>)[offsetField] : null;
+  const offset = (typeof offsetValue === 'number' ? offsetValue : 0);
 
   // Trouver le dernier code pour ce préfixe cette année
   const lastTiers = await prisma.client.findFirst({
     where: {
       code: {
-        startsWith: `${prefix}${year}`,
+        startsWith: prefix,
+        ...(inclureAnnee && { endsWith: `${separateur}${annee}` }),
       },
     },
     orderBy: { code: 'desc' },
@@ -21,11 +59,29 @@ async function generateCodeTiers(type: TypeTiers): Promise<string> {
 
   let sequence = 1;
   if (lastTiers?.code) {
-    const lastNum = parseInt(lastTiers.code.slice(-4), 10);
-    sequence = lastNum + 1;
+    // Extraire le numéro du code existant (entre le préfixe et le séparateur)
+    const codeWithoutPrefix = lastTiers.code.slice(prefix.length);
+    const numPart = inclureAnnee
+      ? codeWithoutPrefix.split(separateur)[0]
+      : codeWithoutPrefix;
+    const lastNum = parseInt(numPart, 10);
+    if (!isNaN(lastNum)) {
+      // Le prochain numéro est lastNum + 1, mais sans réappliquer l'offset
+      // car lastNum inclut déjà l'offset des enregistrements précédents
+      sequence = lastNum + 1;
+    }
+  } else {
+    // Premier tiers de ce type cette année: appliquer l'offset
+    sequence = 1 + offset;
   }
 
-  return `${prefix}${year}${sequence.toString().padStart(4, '0')}`;
+  const numeroFormate = sequence.toString().padStart(longueur, '0');
+
+  // Format: PRÉFIXE0000/2026 (préfixe + numéro + séparateur + année)
+  if (inclureAnnee) {
+    return `${prefix}${numeroFormate}${separateur}${annee}`;
+  }
+  return `${prefix}${numeroFormate}`;
 }
 
 export const tiersController = {

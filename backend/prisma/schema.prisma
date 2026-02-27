@@ -1632,9 +1632,22 @@ model CompanySettings {
   prefixService         String   @default("SRV")
 
   // Format numérotation
-  longueurNumero        Int      @default(5)  // Nombre de chiffres (00001)
+  longueurNumero        Int      @default(4)  // Nombre de chiffres (0001)
   inclureAnnee          Boolean  @default(true)
-  separateur            String   @default("-") // DV2025-00001 ou DV202500001
+  separateur            String   @default("/") // DV0001/2026
+
+  // Décalages de numérotation (pour reprendre une numérotation en cours)
+  // Ex: offsetFacture = 839 => prochaine facture sera 840
+  offsetDevis                 Int      @default(0)
+  offsetCommande              Int      @default(0)
+  offsetFacture               Int      @default(0)
+  offsetAvoir                 Int      @default(0)
+  offsetCommandeFournisseur   Int      @default(0)
+  offsetFactureFournisseur    Int      @default(0)
+  offsetCharge                Int      @default(0)
+  offsetClient                Int      @default(0)
+  offsetFournisseur           Int      @default(0)
+  offsetProspect              Int      @default(0)
 
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt

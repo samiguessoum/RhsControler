@@ -5,11 +5,28 @@ import { createAuditLog } from './audit.controller.js';
 import { facturationEvents } from '../services/events.service.js';
 import { stockService } from '../services/stock.service.js';
 
-const REF_PREFIX: Record<'DEVIS' | 'COMMANDE' | 'FACTURE' | 'FACTURE_AVOIR', string> = {
+// Préfixes par défaut (utilisés si aucun paramètre en base)
+const DEFAULT_PREFIX: Record<'DEVIS' | 'COMMANDE' | 'FACTURE' | 'FACTURE_AVOIR', string> = {
   DEVIS: 'DV',
   COMMANDE: 'CMD',
   FACTURE: 'FAC',
   FACTURE_AVOIR: 'AV',
+};
+
+// Mapping entre type de document et champ de préfixe dans CompanySettings
+const PREFIX_FIELD_MAP: Record<'DEVIS' | 'COMMANDE' | 'FACTURE' | 'FACTURE_AVOIR', string> = {
+  DEVIS: 'prefixDevis',
+  COMMANDE: 'prefixCommande',
+  FACTURE: 'prefixFacture',
+  FACTURE_AVOIR: 'prefixAvoir',
+};
+
+// Mapping entre type de document et champ de décalage dans CompanySettings
+const OFFSET_FIELD_MAP: Record<'DEVIS' | 'COMMANDE' | 'FACTURE' | 'FACTURE_AVOIR', string> = {
+  DEVIS: 'offsetDevis',
+  COMMANDE: 'offsetCommande',
+  FACTURE: 'offsetFacture',
+  FACTURE_AVOIR: 'offsetAvoir',
 };
 
 function parseDate(value?: string): Date | undefined {
@@ -18,16 +35,39 @@ function parseDate(value?: string): Date | undefined {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
+// Génère une référence au format: PRÉFIXE0000/2026
 async function generateReference(type: 'DEVIS' | 'COMMANDE' | 'FACTURE' | 'FACTURE_AVOIR', date: Date): Promise<string> {
   const annee = date.getFullYear();
+
+  // Récupérer les paramètres de numérotation
+  const settings = await prisma.companySettings.findFirst();
+  const prefixField = PREFIX_FIELD_MAP[type];
+  const prefixValue = settings ? (settings as Record<string, unknown>)[prefixField] : null;
+  const prefix = (typeof prefixValue === 'string' ? prefixValue : null) || DEFAULT_PREFIX[type];
+  const longueur = settings?.longueurNumero || 4;
+  const separateur = settings?.separateur ?? '/';
+  const inclureAnnee = settings?.inclureAnnee ?? true;
+
+  // Récupérer le décalage (offset) pour ce type de document
+  const offsetField = OFFSET_FIELD_MAP[type];
+  const offsetValue = settings ? (settings as Record<string, unknown>)[offsetField] : null;
+  const offset = (typeof offsetValue === 'number' ? offsetValue : 0);
+
   const counter = await prisma.compteurDocument.upsert({
     where: { type_annee: { type, annee } },
     update: { prochainNumero: { increment: 1 } },
     create: { type, annee, prochainNumero: 2 },
     select: { prochainNumero: true },
   });
-  const numero = counter.prochainNumero - 1;
-  return `${REF_PREFIX[type]}${annee}-${String(numero).padStart(5, '0')}`;
+  // Appliquer le décalage au numéro
+  const numero = (counter.prochainNumero - 1) + offset;
+  const numeroFormate = String(numero).padStart(longueur, '0');
+
+  // Format: PRÉFIXE0000/2026 (préfixe + numéro + séparateur + année)
+  if (inclureAnnee) {
+    return `${prefix}${numeroFormate}${separateur}${annee}`;
+  }
+  return `${prefix}${numeroFormate}`;
 }
 
 function computeTotals(

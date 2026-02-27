@@ -75,6 +75,17 @@ export const settingsController = {
         longueurNumero,
         inclureAnnee,
         separateur,
+        // Décalages de numérotation
+        offsetDevis,
+        offsetCommande,
+        offsetFacture,
+        offsetAvoir,
+        offsetCommandeFournisseur,
+        offsetFactureFournisseur,
+        offsetCharge,
+        offsetClient,
+        offsetFournisseur,
+        offsetProspect,
       } = req.body;
 
       // Récupérer ou créer les settings
@@ -117,6 +128,17 @@ export const settingsController = {
         longueurNumero: longueurNumero !== undefined ? parseInt(longueurNumero, 10) : undefined,
         inclureAnnee,
         separateur,
+        // Décalages de numérotation
+        offsetDevis: offsetDevis !== undefined ? parseInt(offsetDevis, 10) : undefined,
+        offsetCommande: offsetCommande !== undefined ? parseInt(offsetCommande, 10) : undefined,
+        offsetFacture: offsetFacture !== undefined ? parseInt(offsetFacture, 10) : undefined,
+        offsetAvoir: offsetAvoir !== undefined ? parseInt(offsetAvoir, 10) : undefined,
+        offsetCommandeFournisseur: offsetCommandeFournisseur !== undefined ? parseInt(offsetCommandeFournisseur, 10) : undefined,
+        offsetFactureFournisseur: offsetFactureFournisseur !== undefined ? parseInt(offsetFactureFournisseur, 10) : undefined,
+        offsetCharge: offsetCharge !== undefined ? parseInt(offsetCharge, 10) : undefined,
+        offsetClient: offsetClient !== undefined ? parseInt(offsetClient, 10) : undefined,
+        offsetFournisseur: offsetFournisseur !== undefined ? parseInt(offsetFournisseur, 10) : undefined,
+        offsetProspect: offsetProspect !== undefined ? parseInt(offsetProspect, 10) : undefined,
       };
 
       // Filtrer les valeurs undefined

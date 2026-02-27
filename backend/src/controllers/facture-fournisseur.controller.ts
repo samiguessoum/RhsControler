@@ -5,7 +5,7 @@ import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
 import { facturationEvents } from '../services/events.service.js';
 
-const REF_PREFIX = 'FF';
+const DEFAULT_PREFIX = 'FF';
 
 function parseDate(value?: string): Date | undefined {
   if (!value) return undefined;
@@ -13,16 +13,33 @@ function parseDate(value?: string): Date | undefined {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
+// Génère une référence au format: PRÉFIXE0000/2026
 async function generateReference(date: Date): Promise<string> {
   const annee = date.getFullYear();
+
+  // Récupérer les paramètres de numérotation
+  const settings = await prisma.companySettings.findFirst();
+  const prefix = settings?.prefixFactureFournisseur || DEFAULT_PREFIX;
+  const longueur = settings?.longueurNumero || 4;
+  const separateur = settings?.separateur ?? '/';
+  const inclureAnnee = settings?.inclureAnnee ?? true;
+  const offset = settings?.offsetFactureFournisseur || 0;
+
   const counter = await prisma.compteurDocument.upsert({
     where: { type_annee: { type: 'FACTURE_FOURNISSEUR', annee } },
     update: { prochainNumero: { increment: 1 } },
     create: { type: 'FACTURE_FOURNISSEUR', annee, prochainNumero: 2 },
     select: { prochainNumero: true },
   });
-  const numero = counter.prochainNumero - 1;
-  return `${REF_PREFIX}${annee}-${String(numero).padStart(5, '0')}`;
+  // Appliquer le décalage au numéro
+  const numero = (counter.prochainNumero - 1) + offset;
+  const numeroFormate = String(numero).padStart(longueur, '0');
+
+  // Format: PRÉFIXE0000/2026 (préfixe + numéro + séparateur + année)
+  if (inclureAnnee) {
+    return `${prefix}${numeroFormate}${separateur}${annee}`;
+  }
+  return `${prefix}${numeroFormate}`;
 }
 
 function computeTotals(
