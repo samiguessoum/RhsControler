@@ -2,6 +2,10 @@ import PDFDocument from 'pdfkit';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import fs from 'node:fs';
+import path from 'node:path';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 // Types pour les documents
 interface DocumentLigne {
@@ -46,6 +50,12 @@ interface DevisDocument extends DocumentBase {
   dateDevis: Date;
   dateValidite?: Date | null;
   statut: string;
+  typeDocument?: string | null;
+  site?: {
+    nom: string;
+    ville?: string | null;
+    adresse?: string | null;
+  } | null;
 }
 
 interface CommandeDocument extends DocumentBase {
@@ -95,8 +105,24 @@ interface CommandeFournisseurDocument extends DocumentBase {
   statut: string;
 }
 
-// Configuration de l'entreprise (à personnaliser)
-const COMPANY_INFO = {
+interface AttestationPassageDocument {
+  ville: string;
+  dateReferenceFr: string;
+  operationsLabel: string;
+  clientNom: string;
+  clientDisplayName: string;
+  prestataireNom: string;
+  garantieMois: number;
+  garantieMoisLabel: string;
+  dateProchaineOperationFr: string;
+  bodyText: string;
+  title: string;
+  showSignatures: boolean;
+  showGuaranteeSection: boolean;
+}
+
+// Configuration de l'entreprise (fallback si pas en DB)
+const COMPANY_INFO_DEFAULT = {
   name: process.env.PDF_COMPANY_NAME || 'Rayan Hygiene Services',
   address: process.env.PDF_COMPANY_ADDRESS || '',
   city: process.env.PDF_COMPANY_CITY || '',
@@ -112,6 +138,45 @@ const COMPANY_INFO = {
   logoPath: process.env.PDF_COMPANY_LOGO_PATH || process.env.COMPANY_LOGO_PATH || '',
 };
 
+// Variable mutable pour stocker les infos entreprise (mise à jour depuis la DB)
+let COMPANY_INFO = { ...COMPANY_INFO_DEFAULT };
+
+// Fonction pour récupérer les paramètres de l'entreprise depuis la DB
+export async function getCompanySettings() {
+  try {
+    const settings = await prisma.companySettings.findFirst();
+    if (settings) {
+      return {
+        name: settings.nomEntreprise || COMPANY_INFO_DEFAULT.name,
+        address: settings.adresse || COMPANY_INFO_DEFAULT.address,
+        city: [settings.codePostal, settings.ville].filter(Boolean).join(' ') || COMPANY_INFO_DEFAULT.city,
+        phone: settings.telephone || COMPANY_INFO_DEFAULT.phone,
+        email: settings.email || COMPANY_INFO_DEFAULT.email,
+        website: settings.siteWeb || COMPANY_INFO_DEFAULT.website,
+        nif: settings.nif || COMPANY_INFO_DEFAULT.nif,
+        nis: settings.nis || COMPANY_INFO_DEFAULT.nis,
+        rc: settings.rc || COMPANY_INFO_DEFAULT.rc,
+        ai: settings.ai || COMPANY_INFO_DEFAULT.ai,
+        rib: settings.rib || COMPANY_INFO_DEFAULT.rib,
+        compte: settings.compteBancaire || COMPANY_INFO_DEFAULT.compte,
+        logoPath: settings.logoPath || COMPANY_INFO_DEFAULT.logoPath,
+        banque: settings.banque || '',
+      };
+    }
+    return COMPANY_INFO_DEFAULT;
+  } catch (error) {
+    console.error('Erreur lors de la récupération des paramètres entreprise:', error);
+    return COMPANY_INFO_DEFAULT;
+  }
+}
+
+// Fonction pour mettre à jour COMPANY_INFO avec les données de la DB
+export async function refreshCompanyInfo() {
+  const settings = await getCompanySettings();
+  COMPANY_INFO = { ...settings };
+  return COMPANY_INFO;
+}
+
 // Couleurs
 const COLORS = {
   primary: '#1e40af',
@@ -122,6 +187,98 @@ const COLORS = {
   lightText: '#64748b',
 };
 
+function resolveAttestationLogoPath(): string | null {
+  const candidates = [
+    COMPANY_INFO.logoPath,
+    path.resolve(process.cwd(), 'logo-RHS.png'),
+    path.resolve(process.cwd(), '../logo-RHS.png'),
+  ].filter(Boolean) as string[];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function parseSimpleRichText(input: string): Array<{ text: string; bold: boolean; underline: boolean }> {
+  const segments: Array<{ text: string; bold: boolean; underline: boolean }> = [];
+  let bold = false;
+  let underline = false;
+  let buffer = '';
+
+  const pushBuffer = () => {
+    if (!buffer) return;
+    segments.push({ text: buffer, bold, underline });
+    buffer = '';
+  };
+
+  for (let i = 0; i < input.length; i += 1) {
+    const next2 = input.slice(i, i + 2);
+    if (next2 === '**') {
+      pushBuffer();
+      bold = !bold;
+      i += 1;
+      continue;
+    }
+    if (next2 === '__') {
+      pushBuffer();
+      underline = !underline;
+      i += 1;
+      continue;
+    }
+    buffer += input[i];
+  }
+  pushBuffer();
+  return segments;
+}
+
+function drawRichParagraph(
+  doc: PDFKit.PDFDocument,
+  text: string,
+  xStart: number,
+  yStart: number,
+  maxWidth: number,
+  fontSize: number
+): number {
+  const segments = parseSimpleRichText(text);
+  const styledWords: Array<{ text: string; bold: boolean; underline: boolean }> = [];
+
+  for (const seg of segments) {
+    const words = seg.text.split(/\s+/).filter(Boolean);
+    for (const word of words) {
+      styledWords.push({ text: word, bold: seg.bold, underline: seg.underline });
+    }
+  }
+
+  let x = xStart;
+  let y = yStart;
+  const lineHeight = fontSize + 5;
+  const maxX = xStart + maxWidth;
+
+  for (let i = 0; i < styledWords.length; i += 1) {
+    const part = styledWords[i];
+    const token = i < styledWords.length - 1 ? `${part.text} ` : part.text;
+    doc.font(part.bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(fontSize);
+    const tokenWidth = doc.widthOfString(token);
+
+    if (x + tokenWidth > maxX && x > xStart) {
+      x = xStart;
+      y += lineHeight;
+    }
+
+    doc.text(token, x, y, {
+      lineBreak: false,
+      underline: part.underline,
+    });
+    x += tokenWidth;
+  }
+
+  return y + lineHeight;
+}
+
 function formatDate(date: Date | null | undefined): string {
   if (!date) return '-';
   return format(new Date(date), 'dd/MM/yyyy', { locale: fr });
@@ -129,11 +286,24 @@ function formatDate(date: Date | null | undefined): string {
 
 function formatCurrency(amount: number, devise?: string | null): string {
   const currency = devise || 'DZD';
-  return new Intl.NumberFormat('fr-DZ', {
+  const formatted = new Intl.NumberFormat('fr-FR', {
     style: 'decimal',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(amount) + ' ' + currency;
+  }).format(amount);
+  // Remplacer les espaces insécables (U+202F, U+00A0) par des espaces normaux pour PDFKit
+  return formatted.replace(/[\u202F\u00A0]/g, ' ') + ' ' + currency;
+}
+
+// Format montant sans devise (pour devis où on indique déjà "Montants exprimés en Algérie Dinar")
+function formatMontant(amount: number): string {
+  const formatted = new Intl.NumberFormat('fr-FR', {
+    style: 'decimal',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+  // Remplacer les espaces insécables (U+202F, U+00A0) par des espaces normaux pour PDFKit
+  return formatted.replace(/[\u202F\u00A0]/g, ' ');
 }
 
 function getStatusLabel(statut: string, type: 'devis' | 'commande' | 'facture' | 'commande_fournisseur' | 'facture_fournisseur'): string {
@@ -549,7 +719,7 @@ function drawInvoiceHeader(doc: PDFKit.PDFDocument, facture: FactureDocument, ti
   const rightBoxX = pageWidth - margin - 190;
 
   if (COMPANY_INFO.logoPath && fs.existsSync(COMPANY_INFO.logoPath)) {
-    doc.image(COMPANY_INFO.logoPath, margin, 22, { fit: [logoBoxWidth, 58], align: 'left' });
+    doc.image(COMPANY_INFO.logoPath, margin, 22, { fit: [logoBoxWidth, 58] });
   } else {
     doc.font('Helvetica-Bold').fontSize(24).fillColor('#0f766e').text(COMPANY_INFO.name, margin, 30, { width: logoBoxWidth });
   }
@@ -758,49 +928,340 @@ function drawInvoiceFooter(doc: PDFKit.PDFDocument) {
 
 // ============ Fonctions publiques ============
 
-export function generateDevisPDF(devis: DevisDocument): Promise<Buffer> {
+// ============ Nouveau template professionnel pour Devis ============
+
+function drawDevisHeader(doc: PDFKit.PDFDocument, devis: DevisDocument) {
+  const pageWidth = doc.page.width;
+  const margin = 28;
+  const logoBoxWidth = 260;
+  const rightBoxX = pageWidth - margin - 190;
+
+  // Logo - chercher le logo à la racine ou dans le chemin configuré
+  const logoPath = resolveAttestationLogoPath();
+  if (logoPath) {
+    doc.image(logoPath, margin, 22, { fit: [logoBoxWidth, 58] });
+  }
+
+  // Titre et référence
+  doc.font('Helvetica-Bold')
+    .fontSize(20)
+    .fillColor('#0b1b55')
+    .text('Devis', rightBoxX, 28, { width: 190, align: 'right' });
+
+  doc.font('Helvetica-Bold')
+    .fontSize(12)
+    .fillColor('#0b1b55')
+    .text(`Réf. : ${devis.ref}`, rightBoxX, 52, { width: 190, align: 'right' });
+
+  doc.font('Helvetica')
+    .fontSize(9)
+    .fillColor('#111827')
+    .text(`Date : ${formatDate(devis.dateDevis)}`, rightBoxX, 70, { width: 190, align: 'right' });
+
+  if (devis.dateValidite) {
+    doc.text(`Date de fin de validité : ${formatDate(devis.dateValidite)}`, rightBoxX, 83, { width: 190, align: 'right' });
+  }
+}
+
+function drawDevisParties(doc: PDFKit.PDFDocument, devis: DevisDocument): number {
+  const margin = 28;
+  const y = 104;
+  const leftW = 230;
+  const rightW = doc.page.width - margin * 2 - leftW - 20;
+  const rightX = margin + leftW + 20;
+  const boxH = 150;
+
+  // Box Émetteur (fond gris)
+  doc.rect(margin, y, leftW, boxH).fillColor('#e5e7eb').fill();
+  // Box Client (bordure)
+  doc.rect(rightX, y, rightW, boxH).lineWidth(1).strokeColor('#6b7280').stroke();
+
+  // Labels
+  doc.font('Helvetica').fontSize(8).fillColor('#374151').text('Émetteur', margin + 8, y - 12);
+  doc.font('Helvetica').fontSize(8).fillColor('#374151').text('Adressé à', rightX + 8, y - 12);
+
+  // Infos émetteur
+  const leftLines = [
+    COMPANY_INFO.name,
+    COMPANY_INFO.address,
+    COMPANY_INFO.city,
+    '',
+    COMPANY_INFO.rc ? `RC : ${COMPANY_INFO.rc}` : '',
+    COMPANY_INFO.nif ? `NIF : ${COMPANY_INFO.nif}` : '',
+    COMPANY_INFO.ai ? `AI : ${COMPANY_INFO.ai}` : '',
+    COMPANY_INFO.nis ? `NIS : ${COMPANY_INFO.nis}` : '',
+    COMPANY_INFO.compte ? `Compte CCP/CPA : ${COMPANY_INFO.compte}` : '',
+    COMPANY_INFO.rib ? `RIB : ${COMPANY_INFO.rib}` : '',
+  ].filter(Boolean);
+
+  doc.font('Helvetica-Bold')
+    .fontSize(10)
+    .fillColor('#0b1b55')
+    .text(leftLines[0] || COMPANY_INFO.name, margin + 8, y + 10, { width: leftW - 16 });
+
+  doc.font('Helvetica')
+    .fontSize(8)
+    .fillColor('#111827')
+    .text(leftLines.slice(1).join('\n'), margin + 8, y + 25, { width: leftW - 16, lineGap: 1 });
+
+  // Infos client (tout en gras)
+  const client = devis.client;
+  const rightLines = [
+    client.nomEntreprise,
+    [client.siegeAdresse, client.siegeVille, client.siegePays].filter(Boolean).join(' - '),
+    '',
+    client.siegeRC ? `RC: ${client.siegeRC}` : '',
+    client.siegeNIF ? `NIF: ${client.siegeNIF}` : '',
+    client.siegeAI ? `AI: ${client.siegeAI}` : '',
+    client.siegeNIS ? `NIS: ${client.siegeNIS}` : '',
+  ].filter(Boolean);
+
+  doc.font('Helvetica-Bold')
+    .fontSize(11)
+    .fillColor('#111827')
+    .text(rightLines[0] || '-', rightX + 8, y + 10, { width: rightW - 16 });
+
+  doc.font('Helvetica-Bold')
+    .fontSize(9)
+    .fillColor('#111827')
+    .text(rightLines.slice(1).join('\n'), rightX + 8, y + 30, { width: rightW - 16, lineGap: 1 });
+
+  return y + boxH + 16;
+}
+
+function drawDevisLinesTable(doc: PDFKit.PDFDocument, devis: DevisDocument, startY: number): number {
+  const margin = 28;
+  const tableW = doc.page.width - margin * 2;
+  const cols = {
+    designation: 280,
+    tva: 35,
+    pu: 75,
+    qte: 40,
+    total: 85,
+  };
+
+  const x = {
+    designation: margin,
+    tva: margin + cols.designation,
+    pu: margin + cols.designation + cols.tva,
+    qte: margin + cols.designation + cols.tva + cols.pu,
+    total: margin + cols.designation + cols.tva + cols.pu + cols.qte,
+  };
+
+  let y = startY;
+
+  // "Montants exprimés en Algérie Dinar" au-dessus du tableau, aligné à droite
+  doc.font('Helvetica')
+    .fontSize(8)
+    .fillColor('#111827')
+    .text('Montants exprimés en Algérie Dinar', margin, y, { width: tableW, align: 'right' });
+  y += 14;
+
+  // En-tête du tableau
+  doc.rect(margin, y, tableW, 22).fillColor('#e5e7eb').fill();
+  doc.lineWidth(1).strokeColor('#6b7280').rect(margin, y, tableW, 22).stroke();
+  doc.moveTo(x.tva, y).lineTo(x.tva, y + 22).stroke();
+  doc.moveTo(x.pu, y).lineTo(x.pu, y + 22).stroke();
+  doc.moveTo(x.qte, y).lineTo(x.qte, y + 22).stroke();
+  doc.moveTo(x.total, y).lineTo(x.total, y + 22).stroke();
+
+  doc.font('Helvetica-Bold').fontSize(9).fillColor('#111827');
+  doc.text('Désignation', x.designation + 5, y + 7, { width: cols.designation - 10 });
+  doc.text('TVA', x.tva + 5, y + 7, { width: cols.tva - 10, align: 'center' });
+  doc.text('P.U. HT', x.pu + 5, y + 7, { width: cols.pu - 10, align: 'center' });
+  doc.text('Qté', x.qte + 5, y + 7, { width: cols.qte - 10, align: 'center' });
+  doc.text('Total HT', x.total + 5, y + 7, { width: cols.total - 10, align: 'right' });
+
+  y += 22;
+  const minHeight = 200;
+  const tableBodyStart = y;
+
+  // Lignes du tableau
+  for (const ligne of devis.lignes) {
+    // Calculer la hauteur nécessaire pour le libellé (gras) et la description (petit/gris)
+    doc.font('Helvetica-Bold').fontSize(9);
+    const libelleHeight = doc.heightOfString(ligne.libelle, { width: cols.designation - 10 });
+    let descHeight = 0;
+    if (ligne.description) {
+      doc.font('Helvetica').fontSize(8);
+      descHeight = doc.heightOfString(ligne.description, { width: cols.designation - 10 });
+    }
+    const rowHeight = Math.max(24, libelleHeight + descHeight + 10);
+
+    doc.rect(margin, y, tableW, rowHeight).lineWidth(0.8).strokeColor('#9ca3af').stroke();
+    doc.moveTo(x.tva, y).lineTo(x.tva, y + rowHeight).stroke();
+    doc.moveTo(x.pu, y).lineTo(x.pu, y + rowHeight).stroke();
+    doc.moveTo(x.qte, y).lineTo(x.qte, y + rowHeight).stroke();
+    doc.moveTo(x.total, y).lineTo(x.total, y + rowHeight).stroke();
+
+    // Libellé en gras
+    doc.font('Helvetica-Bold').fontSize(9).fillColor('#111827').text(ligne.libelle, x.designation + 5, y + 4, {
+      width: cols.designation - 10,
+    });
+    // Description en plus petit et gris (si présente)
+    if (ligne.description) {
+      doc.font('Helvetica').fontSize(8).fillColor('#6b7280').text(ligne.description, x.designation + 5, y + 4 + libelleHeight + 2, {
+        width: cols.designation - 10,
+        lineGap: 1,
+      });
+    }
+
+    doc.font('Helvetica').fontSize(9).fillColor('#111827');
+    doc.text(`${n(ligne.tauxTVA)}%`, x.tva + 5, y + 4, { width: cols.tva - 10, align: 'center' });
+    doc.text(formatMontant(n(ligne.prixUnitaireHT)), x.pu + 5, y + 4, { width: cols.pu - 10, align: 'right' });
+    doc.text(String(n(ligne.quantite)), x.qte + 5, y + 4, { width: cols.qte - 10, align: 'center' });
+    doc.text(formatMontant(n(ligne.totalHT)), x.total + 5, y + 4, { width: cols.total - 10, align: 'right' });
+
+    y += rowHeight;
+
+    // Nouvelle page si nécessaire
+    if (y > doc.page.height - 180) {
+      doc.addPage();
+      y = 50;
+    }
+  }
+
+  // Remplir l'espace minimum
+  if (y < tableBodyStart + minHeight) {
+    const remaining = tableBodyStart + minHeight - y;
+    doc.rect(margin, y, tableW, remaining).lineWidth(0.8).strokeColor('#9ca3af').stroke();
+    doc.moveTo(x.tva, y).lineTo(x.tva, y + remaining).stroke();
+    doc.moveTo(x.pu, y).lineTo(x.pu, y + remaining).stroke();
+    doc.moveTo(x.qte, y).lineTo(x.qte, y + remaining).stroke();
+    doc.moveTo(x.total, y).lineTo(x.total, y + remaining).stroke();
+    y += remaining;
+  }
+
+  return y;
+}
+
+function drawDevisTotals(doc: PDFKit.PDFDocument, devis: DevisDocument, y: number): number {
+  const margin = 28;
+  const rightW = 220;
+  const x = doc.page.width - margin - rightW;
+  let curY = y + 4;
+
+  // Calcul du taux TVA moyen pour affichage
+  const tvaRate = n(devis.totalHT) > 0 ? Math.round((n(devis.totalTVA) / n(devis.totalHT)) * 100) : 19;
+
+  const rows = [
+    { label: 'Total HT', value: formatMontant(n(devis.totalHT)), bold: false },
+    { label: `Total TVA ${tvaRate}%`, value: formatMontant(n(devis.totalTVA)), bold: false },
+    { label: 'Total TTC', value: formatMontant(n(devis.totalTTC)), bold: true },
+  ];
+
+  for (const row of rows) {
+    doc.rect(x, curY, rightW, 16).fillColor(row.bold ? '#dbeafe' : '#e5e7eb').fill();
+    doc.font(row.bold ? 'Helvetica-Bold' : 'Helvetica')
+      .fontSize(9)
+      .fillColor('#111827')
+      .text(row.label, x + 6, curY + 4, { width: 120 });
+    doc.text(row.value, x + 126, curY + 4, { width: rightW - 132, align: 'right' });
+    curY += 16;
+  }
+
+  return curY;
+}
+
+function drawDevisFooter(doc: PDFKit.PDFDocument) {
+  const margin = 28;
+  const pageY = doc.page.height - 36;
+  const legalLine = [
+    COMPANY_INFO.name,
+    COMPANY_INFO.phone ? `Tél : ${COMPANY_INFO.phone}` : '',
+    COMPANY_INFO.email ? `Email : ${COMPANY_INFO.email}` : '',
+    COMPANY_INFO.website ? `Web : ${COMPANY_INFO.website}` : '',
+  ].filter(Boolean).join('  |  ');
+
+  doc.moveTo(margin, pageY - 14).lineTo(doc.page.width - margin, pageY - 14).lineWidth(0.7).strokeColor('#d1d5db').stroke();
+  doc.font('Helvetica').fontSize(7).fillColor('#374151').text(legalLine, margin, pageY - 8, {
+    width: doc.page.width - margin * 2 - 50,
+    align: 'center',
+  });
+  doc.text('1/1', doc.page.width - margin - 24, pageY - 8, { width: 24, align: 'right' });
+}
+
+export async function generateDevisPDF(devis: DevisDocument): Promise<Buffer> {
+  // Rafraîchir les infos entreprise depuis la DB
+  await refreshCompanyInfo();
+
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ size: 'A4', margin: 50 });
+      const doc = new PDFDocument({ size: 'A4', margin: 28 });
       const chunks: Buffer[] = [];
 
       doc.on('data', (chunk) => chunks.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      // En-tête
-      drawHeader(doc, 'DEVIS', devis.ref, devis.dateDevis);
+      // En-tête avec logo et référence
+      drawDevisHeader(doc, devis);
 
-      // Infos client
-      drawClientInfo(doc, devis.client);
+      // Blocs Émetteur / Client
+      const afterPartiesY = drawDevisParties(doc, devis);
 
-      // Infos document
-      const infos = [
-        { label: 'Statut', value: getStatusLabel(devis.statut, 'devis') },
-        { label: 'Date devis', value: formatDate(devis.dateDevis) },
-      ];
-      if (devis.dateValidite) {
-        infos.push({ label: 'Valide jusqu\'au', value: formatDate(devis.dateValidite) });
+      // Info sur le site si disponible
+      let tableStartY = afterPartiesY;
+      if (devis.site) {
+        doc.font('Helvetica-Bold')
+          .fontSize(10)
+          .fillColor('#111827')
+          .text(`Site d'intervention : ${devis.site.nom}${devis.site.ville ? ` - ${devis.site.ville}` : ''}`, 28, afterPartiesY);
+        if (devis.site.adresse) {
+          doc.font('Helvetica')
+            .fontSize(9)
+            .text(devis.site.adresse, 28, afterPartiesY + 14);
+          tableStartY = afterPartiesY + 32;
+        } else {
+          tableStartY = afterPartiesY + 20;
+        }
       }
-      drawDocumentInfo(doc, infos);
+
+      // Type de document (SERVICE / PRODUIT)
+      if (devis.typeDocument) {
+        const typeLabel = devis.typeDocument === 'SERVICE' ? 'Prestation de service' : 'Vente de produits';
+        doc.font('Helvetica')
+          .fontSize(9)
+          .fillColor('#6b7280')
+          .text(`Type : ${typeLabel}`, 28, tableStartY);
+        tableStartY += 18;
+      }
 
       // Tableau des lignes
-      const tableEndY = drawLinesTable(doc, devis.lignes, devis.devise);
+      const tableEndY = drawDevisLinesTable(doc, devis, tableStartY);
 
       // Totaux
-      drawTotals(
-        doc,
-        tableEndY,
-        devis.totalHT,
-        devis.totalTVA,
-        devis.totalTTC,
-        devis.devise,
-        devis.remiseGlobalPct,
-        devis.remiseGlobalMontant
-      );
+      const totalsEndY = drawDevisTotals(doc, devis, tableEndY);
+
+      // Montant en lettres
+      const amountWords = amountToWordsDZD(n(devis.totalTTC));
+      doc.font('Helvetica')
+        .fontSize(9)
+        .fillColor('#111827')
+        .text('Arrêté le présent devis à la somme de :', 28, totalsEndY + 12, { width: 480 });
+      doc.font('Helvetica-Bold')
+        .fontSize(9)
+        .text(`${amountWords.charAt(0).toUpperCase() + amountWords.slice(1)} en toutes taxes comprises.`, 28, totalsEndY + 26, { width: 520 });
+
+      // Notes et conditions
+      let notesY = totalsEndY + 50;
+      if (devis.notes) {
+        doc.font('Helvetica')
+          .fontSize(8)
+          .fillColor('#374151')
+          .text(`Notes : ${devis.notes}`, 28, notesY, { width: 520 });
+        notesY = doc.y + 10;
+      }
+
+      if (devis.conditions) {
+        doc.font('Helvetica')
+          .fontSize(8)
+          .fillColor('#374151')
+          .text(`Conditions : ${devis.conditions}`, 28, notesY, { width: 520 });
+      }
 
       // Pied de page
-      drawFooter(doc, devis.notes, devis.conditions);
+      drawDevisFooter(doc);
 
       doc.end();
     } catch (error) {
@@ -809,7 +1270,10 @@ export function generateDevisPDF(devis: DevisDocument): Promise<Buffer> {
   });
 }
 
-export function generateCommandePDF(commande: CommandeDocument): Promise<Buffer> {
+export async function generateCommandePDF(commande: CommandeDocument): Promise<Buffer> {
+  // Rafraîchir les infos entreprise depuis la DB
+  await refreshCompanyInfo();
+
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({ size: 'A4', margin: 50 });
@@ -860,7 +1324,10 @@ export function generateCommandePDF(commande: CommandeDocument): Promise<Buffer>
   });
 }
 
-export function generateFacturePDF(facture: FactureDocument): Promise<Buffer> {
+export async function generateFacturePDF(facture: FactureDocument): Promise<Buffer> {
+  // Rafraîchir les infos entreprise depuis la DB
+  await refreshCompanyInfo();
+
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({ size: 'A4', margin: 28 });
@@ -911,7 +1378,10 @@ export function generateFacturePDF(facture: FactureDocument): Promise<Buffer> {
   });
 }
 
-export function generateCommandeFournisseurPDF(commande: CommandeFournisseurDocument): Promise<Buffer> {
+export async function generateCommandeFournisseurPDF(commande: CommandeFournisseurDocument): Promise<Buffer> {
+  // Rafraîchir les infos entreprise depuis la DB
+  await refreshCompanyInfo();
+
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({ size: 'A4', margin: 50 });
@@ -962,7 +1432,10 @@ export function generateCommandeFournisseurPDF(commande: CommandeFournisseurDocu
   });
 }
 
-export function generateFactureFournisseurPDF(facture: FactureFournisseurDocument): Promise<Buffer> {
+export async function generateFactureFournisseurPDF(facture: FactureFournisseurDocument): Promise<Buffer> {
+  // Rafraîchir les infos entreprise depuis la DB
+  await refreshCompanyInfo();
+
   return new Promise((resolve, reject) => {
     try {
       const doc = new PDFDocument({ size: 'A4', margin: 50 });
@@ -1012,6 +1485,123 @@ export function generateFactureFournisseurPDF(facture: FactureFournisseurDocumen
 
       // Pied de page
       drawFooter(doc, facture.notes, facture.conditions);
+
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+export async function generateAttestationPassagePDF(attestation: AttestationPassageDocument): Promise<Buffer> {
+  // Rafraîchir les infos entreprise depuis la DB
+  await refreshCompanyInfo();
+
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margin: 36 });
+      const chunks: Buffer[] = [];
+      const margin = 36;
+      const contentWidth = doc.page.width - margin * 2;
+
+      doc.on('data', (chunk) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      let y = 24;
+      const logoPath = resolveAttestationLogoPath();
+      if (logoPath) {
+        try {
+          doc.image(logoPath, margin, y, { fit: [contentWidth, 120], align: 'center' });
+          y += 120 + 14;
+        } catch {
+          doc.font('Helvetica-Bold')
+            .fontSize(24)
+            .fillColor('#0b1b55')
+            .text(attestation.prestataireNom, margin, y, { width: contentWidth, align: 'center' });
+          y += 44;
+        }
+      } else {
+        doc.font('Helvetica-Bold')
+          .fontSize(24)
+          .fillColor('#0b1b55')
+          .text(attestation.prestataireNom, margin, y, { width: contentWidth, align: 'center' });
+        y += 44;
+      }
+
+      doc.font('Helvetica')
+        .fontSize(12)
+        .fillColor('#111827')
+        .text(`${attestation.ville}, le ${attestation.dateReferenceFr}`, margin, y, {
+          width: contentWidth,
+          align: 'right',
+        });
+      y += 48;
+
+      doc.font('Helvetica-Bold')
+        .fontSize(20)
+        .fillColor('#111827')
+        .text(attestation.title || 'ATTESTATION DE PASSAGE', margin, y, {
+          width: contentWidth,
+          align: 'center',
+        });
+      y += 44;
+
+      doc.fontSize(13).fillColor('#111827');
+
+      const body = attestation.bodyText?.trim() || '';
+      if (!body) {
+        doc.font('Helvetica').text('-', margin, y, { width: contentWidth, align: 'left', lineGap: 3 });
+      } else {
+        const lines = body.split('\n');
+        for (const line of lines) {
+          if (!line.trim()) {
+            y += 14;
+            continue;
+          }
+          y = drawRichParagraph(doc, line, margin, y, contentWidth, 13);
+        }
+      }
+      y += 12;
+
+      if (attestation.showGuaranteeSection) {
+        doc.text(
+          `Les opérations citées ci-dessus sont garanties pour une période de ${attestation.garantieMoisLabel} mois à compter de la date d’exécution des opérations.`,
+          margin,
+          y,
+          { width: contentWidth, align: 'justify', lineGap: 3 }
+        );
+        y = doc.y + 20;
+
+        doc.text(
+          `La prochaine opération est recommandée pour le ${attestation.dateProchaineOperationFr}.`,
+          margin,
+          y,
+          { width: contentWidth, align: 'justify' }
+        );
+      }
+
+      if (attestation.showSignatures) {
+        const signatureTopGap = 36;
+        let signatureY = doc.y + signatureTopGap;
+        const signatureBlockHeight = 40;
+        const maxSignatureY = doc.page.height - 80 - signatureBlockHeight;
+
+        // Keep signatures visually close to text while avoiding overflow at page bottom.
+        if (signatureY > maxSignatureY) {
+          doc.addPage();
+          signatureY = 90;
+        }
+
+        const gap = 28;
+        const signWidth = (contentWidth - gap) / 2;
+
+        doc.font('Helvetica-Bold')
+          .fontSize(12)
+          .fillColor('#111827')
+          .text(attestation.prestataireNom, margin, signatureY, { width: signWidth, align: 'left' })
+          .text(attestation.clientDisplayName, margin + signWidth + gap, signatureY, { width: signWidth, align: 'right' });
+      }
 
       doc.end();
     } catch (error) {

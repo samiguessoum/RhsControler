@@ -89,6 +89,9 @@ import type {
   CreatePaiementChargeInput,
   PaiementDivers,
   CreatePaiementDiversInput,
+  // Settings
+  CompanySettings,
+  UpdateCompanySettingsInput,
 } from '@/types';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
@@ -355,8 +358,13 @@ export const interventionsApi = {
     return data;
   },
 
-  reporter: async (id: string, nouvelleDatePrevue: string, raison?: string) => {
+  reporter: async (id: string, nouvelleDatePrevue: string, raison: string) => {
     const { data } = await api.post(`/interventions/${id}/reporter`, { nouvelleDatePrevue, raison });
+    return data.intervention;
+  },
+
+  annuler: async (id: string, raison: string) => {
+    const { data } = await api.post(`/interventions/${id}/annuler`, { raison });
     return data.intervention;
   },
 
@@ -378,6 +386,99 @@ export const interventionsApi = {
     });
     return data;
   },
+
+  downloadAttestationPassage: async (
+    id: string,
+    options?: { garantieMois?: number; ville?: string }
+  ): Promise<Blob> => {
+    const response = await api.get(`/interventions/${id}/attestation-passage.pdf`, {
+      params: options,
+      responseType: 'blob',
+    });
+    return new Blob([response.data], {
+      type: 'application/pdf',
+    });
+  },
+
+  getAttestationBody: async (
+    id: string,
+    options?: { garantieMois?: number; ville?: string }
+  ): Promise<{ bodyText: string; hasCustomTemplate: boolean }> => {
+    const { data } = await api.get(`/interventions/${id}/attestation-passage/body`, {
+      params: options,
+    });
+    return data;
+  },
+
+  updateAttestationBody: async (
+    id: string,
+    payload: { bodyText: string; garantieMois?: number; ville?: string }
+  ): Promise<{ templateSaved: string }> => {
+    const { data } = await api.put(`/interventions/${id}/attestation-passage/body`, payload);
+    return data;
+  },
+
+  downloadAttestationGarantie: async (
+    id: string,
+    options?: { garantieMois?: number; ville?: string }
+  ): Promise<Blob> => {
+    const response = await api.get(`/interventions/${id}/attestation-garantie.pdf`, {
+      params: options,
+      responseType: 'blob',
+    });
+    return new Blob([response.data], {
+      type: 'application/pdf',
+    });
+  },
+
+  getAttestationGarantieBody: async (
+    id: string,
+    options?: { garantieMois?: number; ville?: string }
+  ): Promise<{ bodyText: string; hasCustomTemplate: boolean }> => {
+    const { data } = await api.get(`/interventions/${id}/attestation-garantie/body`, {
+      params: options,
+    });
+    return data;
+  },
+
+  updateAttestationGarantieBody: async (
+    id: string,
+    payload: { bodyText: string; garantieMois?: number; ville?: string }
+  ): Promise<{ templateSaved: string }> => {
+    const { data } = await api.put(`/interventions/${id}/attestation-garantie/body`, payload);
+    return data;
+  },
+
+  downloadAttestationControle: async (
+    id: string,
+    options?: { garantieMois?: number; ville?: string }
+  ): Promise<Blob> => {
+    const response = await api.get(`/interventions/${id}/attestation-controle.pdf`, {
+      params: options,
+      responseType: 'blob',
+    });
+    return new Blob([response.data], {
+      type: 'application/pdf',
+    });
+  },
+
+  getAttestationControleBody: async (
+    id: string,
+    options?: { garantieMois?: number; ville?: string }
+  ): Promise<{ bodyText: string; hasCustomTemplate: boolean }> => {
+    const { data } = await api.get(`/interventions/${id}/attestation-controle/body`, {
+      params: options,
+    });
+    return data;
+  },
+
+  updateAttestationControleBody: async (
+    id: string,
+    payload: { bodyText: string; garantieMois?: number; ville?: string }
+  ): Promise<{ templateSaved: string }> => {
+    const { data } = await api.put(`/interventions/${id}/attestation-controle/body`, payload);
+    return data;
+  },
 };
 
 // ============ DASHBOARD ============
@@ -387,8 +488,130 @@ export const dashboardApi = {
     return data.stats;
   },
 
+  statsExtended: async (): Promise<{
+    stats: {
+      aPlanifier: number;
+      enRetard: number;
+      controles30j: number;
+      contratsEnAlerte: number;
+      ponctuelAlerte: number;
+      contratsAnnuelsFinProche: number;
+      interventionsAujourdhui: number;
+      realiseeAujourdhui: number;
+      totalMois: number;
+      realiseeMois: number;
+      annuleeMois: number;
+      enAttenteMois: number;
+      tauxRealisationMois: number;
+      tendanceTaux: number;
+      tendanceVolume: number;
+      totalClients: number;
+      totalContrats: number;
+    };
+    prochains7Jours: {
+      date: string;
+      jour: string;
+      jourComplet: string;
+      count: number;
+      isToday: boolean;
+    }[];
+    moisCourant: string;
+  }> => {
+    const { data } = await api.get('/dashboard/stats-extended');
+    return data;
+  },
+
+  aujourdhui: async (): Promise<{ interventions: Intervention[]; count: number }> => {
+    const { data } = await api.get('/dashboard/aujourdhui');
+    return data;
+  },
+
   alertes: async (): Promise<{ alertes: Alerte[]; count: number }> => {
     const { data } = await api.get('/dashboard/alertes');
+    return data;
+  },
+
+  employesStats: async (): Promise<{
+    employes: {
+      id: string;
+      nom: string;
+      prenom: string;
+      postes: { id: string; nom: string }[];
+      totalMissionsSemaine: number;
+      missionsRealisees: number;
+      missionsAVenir: number;
+      dureeTotaleSemaine: number;
+      heuresTravaillees: number;
+      missionsSemaineDerniere: number;
+      tendance: number;
+      missionsParJour: Record<string, number>;
+      detailsMissions: {
+        id: string;
+        date: string;
+        heure: string | null;
+        client: string;
+        site: string | null;
+        adresse: string | null;
+        statut: string;
+        duree: number;
+      }[];
+    }[];
+    employesSansMission: {
+      id: string;
+      nom: string;
+      prenom: string;
+      postes: { id: string; nom: string }[];
+      totalMissionsSemaine: number;
+    }[];
+    topEmployes: {
+      id: string;
+      nom: string;
+      prenom: string;
+      totalMissionsSemaine: number;
+      heuresTravaillees: number;
+      tendance: number;
+    }[];
+    stats: {
+      totalEmployes: number;
+      employesAvecMission: number;
+      employesSansMissionCount: number;
+      totalMissionsSemaine: number;
+      totalMissionsAssignees: number;
+      totalMissionsNonAssignees: number;
+      moyenneMissionsParEmploye: number;
+    };
+    periode: {
+      debut: string;
+      fin: string;
+      debutFormate: string;
+      finFormate: string;
+    };
+  }> => {
+    const { data } = await api.get('/dashboard/employes-stats');
+    return data;
+  },
+
+  operationsStats: async (): Promise<{
+    parType: { type: string; count: number }[];
+    parStatut: { statut: string; count: number }[];
+    parPrestation: { prestation: string; count: number }[];
+    topClients: { clientId: string; nomEntreprise: string; count: number }[];
+    semaineParJour: {
+      date: string;
+      jour: string;
+      jourCourt: string;
+      count: number;
+      isToday: boolean;
+    }[];
+    durees: {
+      moyenne: number;
+      total: number;
+      totalHeures: number;
+      count: number;
+    };
+    moisCourant: string;
+  }> => {
+    const { data } = await api.get('/dashboard/operations-stats');
     return data;
   },
 };
@@ -411,6 +634,17 @@ export const importExportApi = {
     if (params?.statuts) searchParams.set('statuts', params.statuts.join(','));
     if (params?.clientId) searchParams.set('clientId', params.clientId);
     return `${API_URL}/export/google-calendar${searchParams.toString() ? '?' + searchParams.toString() : ''}`;
+  },
+  downloadGoogleCalendar: async (params?: { dateDebut?: string; dateFin?: string; statuts?: string[]; clientId?: string }): Promise<Blob> => {
+    const searchParams = new URLSearchParams();
+    if (params?.dateDebut) searchParams.set('dateDebut', params.dateDebut);
+    if (params?.dateFin) searchParams.set('dateFin', params.dateFin);
+    if (params?.statuts) searchParams.set('statuts', params.statuts.join(','));
+    if (params?.clientId) searchParams.set('clientId', params.clientId);
+    const { data } = await api.get(`/export/google-calendar${searchParams.toString() ? '?' + searchParams.toString() : ''}`, {
+      responseType: 'blob',
+    });
+    return data;
   },
 
   getTemplate: (type: 'clients' | 'contrats' | 'interventions' | 'employes') => `${API_URL}/import/templates/${type}`,
@@ -878,7 +1112,13 @@ export const commerceApi = {
   deleteCommande: async (id: string): Promise<void> => {
     await api.delete(`/commerce/commandes/${id}`);
   },
-  validerCommande: async (id: string, payload: { refBonCommandeClient: string }): Promise<{ commande: Commande; message: string }> => {
+  validerCommande: async (id: string, payload: {
+    refBonCommandeClient: string;
+    dateCommande?: string;
+    dateLivraisonSouhaitee?: string;
+    notes?: string;
+    conditions?: string;
+  }): Promise<{ commande: Commande; message: string }> => {
     const { data } = await api.post(`/commerce/commandes/${id}/valider`, payload);
     return data;
   },
@@ -907,7 +1147,12 @@ export const commerceApi = {
   deleteFacture: async (id: string): Promise<void> => {
     await api.delete(`/commerce/factures/${id}`);
   },
-  validerFacture: async (id: string, payload?: { delaiPaiementJours?: number }): Promise<{ facture: Facture; message: string }> => {
+  validerFacture: async (id: string, payload?: {
+    delaiPaiementJours?: number;
+    dateFacture?: string;
+    notes?: string;
+    conditions?: string;
+  }): Promise<{ facture: Facture; message: string }> => {
     const { data } = await api.post(`/commerce/factures/${id}/valider`, payload || {});
     return data;
   },
@@ -1136,6 +1381,41 @@ export const facturationStatsApi = {
   getRetards: async (): Promise<any> => {
     const { data } = await api.get('/facturation/stats/retards');
     return data; // Backend returns data directly
+  },
+};
+
+// ============ SETTINGS ============
+export const settingsApi = {
+  getSettings: async (): Promise<CompanySettings> => {
+    const { data } = await api.get('/settings');
+    return data.settings;
+  },
+
+  updateSettings: async (settingsData: UpdateCompanySettingsInput): Promise<{ settings: CompanySettings; message: string }> => {
+    const { data } = await api.put('/settings', settingsData);
+    return data;
+  },
+
+  uploadLogo: async (file: File): Promise<{ settings: CompanySettings; logoPath: string; message: string }> => {
+    const formData = new FormData();
+    formData.append('logo', file);
+    const { data } = await api.post('/settings/logo', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data;
+  },
+
+  uploadLogoCarre: async (file: File): Promise<{ settings: CompanySettings; logoCarrePath: string; message: string }> => {
+    const formData = new FormData();
+    formData.append('logo', file);
+    const { data } = await api.post('/settings/logo-carre', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data;
   },
 };
 

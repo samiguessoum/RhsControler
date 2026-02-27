@@ -42,6 +42,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog';
 import {
@@ -59,12 +60,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -685,8 +680,8 @@ export default function TiersPage() {
         initialType={createType}
       />
 
-      {/* View Sheet */}
-      <TiersDetailSheet
+      {/* View Dialog */}
+      <TiersDetailDialog
         open={!!viewingTiers}
         onOpenChange={(open) => {
           if (!open) {
@@ -696,11 +691,9 @@ export default function TiersPage() {
         }}
         tiersId={viewingTiers?.id}
         canEdit={canEdit}
-        onEdit={() => {
-          if (viewingTiers) {
-            setEditingTiers(viewingTiers);
-            setViewingTiers(null);
-          }
+        onEdit={(tiers) => {
+          setEditingTiers(tiers);
+          setViewingTiers(null);
         }}
       />
 
@@ -766,6 +759,13 @@ function TiersFormDialog({
   const queryClient = useQueryClient();
   const isEdit = !!tiers;
 
+  // Charger les données complètes du tiers (avec contacts et sites)
+  const { data: fullTiers, isLoading: isLoadingTiers } = useQuery({
+    queryKey: ['tiers', tiers?.id],
+    queryFn: () => tiersApi.get(tiers!.id),
+    enabled: !!tiers?.id && open,
+  });
+
   const [formData, setFormData] = useState<CreateTiersInput>({
     nomEntreprise: '',
     typeTiers: 'CLIENT',
@@ -777,43 +777,52 @@ function TiersFormDialog({
   });
   const [extraContacts, setExtraContacts] = useState<CreateContactInput[]>([]);
 
-  // Reset form when dialog opens
+  // Reset form when dialog opens or when full data is loaded
   useEffect(() => {
     if (open) {
-      if (tiers) {
-        const principalContact = tiers.siegeContacts?.find(c => c.estPrincipal) || tiers.siegeContacts?.[0];
-        const otherContacts = tiers.siegeContacts?.filter(c => c.id !== principalContact?.id) || [];
+      // En mode édition, attendre que fullTiers soit chargé pour avoir les contacts/sites
+      if (tiers && !fullTiers) {
+        // Attendre le chargement complet
+        return;
+      }
+
+      // Utiliser fullTiers si disponible (mode édition), sinon tiers
+      const tiersData = fullTiers || tiers;
+      if (tiersData) {
+        const principalContact = tiersData.siegeContacts?.find(c => c.estPrincipal) || tiersData.siegeContacts?.[0];
+        const otherContacts = tiersData.siegeContacts?.filter(c => c.id !== principalContact?.id) || [];
         setFormData({
-          nomEntreprise: tiers.nomEntreprise,
-          nomAlias: tiers.nomAlias,
-          typeTiers: tiers.typeTiers,
-          formeJuridique: tiers.formeJuridique,
-          siegeRC: tiers.siegeRC,
-          siegeNIF: tiers.siegeNIF,
-          siegeTIN: tiers.siegeTIN,
-          siegeAI: tiers.siegeAI,
-          siegeNIS: tiers.siegeNIS,
-          tvaIntracom: tiers.tvaIntracom,
-          capital: tiers.capital,
-          siegeNom: tiers.siegeNom,
-          siegeAdresse: tiers.siegeAdresse,
-          siegeCodePostal: tiers.siegeCodePostal,
-          siegeVille: tiers.siegeVille,
-          siegePays: tiers.siegePays || 'Algérie',
-          siegeTel: tiers.siegeTel,
-          siegeFax: tiers.siegeFax,
-          siegeEmail: tiers.siegeEmail,
-          siegeWebsite: tiers.siegeWebsite,
-          secteur: tiers.secteur,
-          remiseParDefaut: tiers.remiseParDefaut,
-          encoursMaximum: tiers.encoursMaximum,
-          devise: tiers.devise || 'DZD',
-          notePublique: tiers.notePublique,
-          notePrivee: tiers.notePrivee,
-          prospectNiveau: normalizeProspectNiveau(tiers.prospectNiveau),
-          prospectStatut: tiers.prospectStatut,
+          nomEntreprise: tiersData.nomEntreprise,
+          nomAlias: tiersData.nomAlias,
+          typeTiers: tiersData.typeTiers,
+          formeJuridique: tiersData.formeJuridique,
+          siegeRC: tiersData.siegeRC,
+          siegeNIF: tiersData.siegeNIF,
+          siegeTIN: tiersData.siegeTIN,
+          siegeAI: tiersData.siegeAI,
+          siegeNIS: tiersData.siegeNIS,
+          tvaIntracom: tiersData.tvaIntracom,
+          capital: tiersData.capital,
+          siegeNom: tiersData.siegeNom,
+          siegeAdresse: tiersData.siegeAdresse,
+          siegeCodePostal: tiersData.siegeCodePostal,
+          siegeVille: tiersData.siegeVille,
+          siegePays: tiersData.siegePays || 'Algérie',
+          siegeTel: tiersData.siegeTel,
+          siegeFax: tiersData.siegeFax,
+          siegeEmail: tiersData.siegeEmail,
+          siegeWebsite: tiersData.siegeWebsite,
+          secteur: tiersData.secteur,
+          remiseParDefaut: tiersData.remiseParDefaut,
+          encoursMaximum: tiersData.encoursMaximum,
+          devise: tiersData.devise || 'DZD',
+          notePublique: tiersData.notePublique,
+          notePrivee: tiersData.notePrivee,
+          prospectNiveau: normalizeProspectNiveau(tiersData.prospectNiveau),
+          prospectStatut: tiersData.prospectStatut,
         });
-        setSites(tiers.sites?.map(s => ({
+        setSites(tiersData.sites?.map(s => ({
+          id: s.id, // Inclure l'ID pour la mise à jour
           nom: s.nom,
           adresse: s.adresse,
           tel: s.tel,
@@ -845,7 +854,7 @@ function TiersFormDialog({
         setExtraContacts([]);
       }
     }
-  }, [open, tiers, initialType]);
+  }, [open, tiers, fullTiers, initialType]);
 
   const { data: modesPaiement } = useQuery({
     queryKey: ['modes-paiement'],
@@ -876,10 +885,22 @@ function TiersFormDialog({
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<CreateTiersInput> }) =>
       tiersApi.update(id, data),
-    onSuccess: () => {
+    onSuccess: (response: any) => {
       queryClient.invalidateQueries({ queryKey: ['tiers'] });
       queryClient.invalidateQueries({ queryKey: ['tiers-stats'] });
       onOpenChange(false);
+
+      // Afficher une notification si des sites n'ont pas pu être supprimés
+      const sitesNotDeleted = response?.sitesNotDeleted;
+      if (sitesNotDeleted && sitesNotDeleted.length > 0) {
+        const siteNames = sitesNotDeleted.map((s: { nom: string; reason: string }) =>
+          `"${s.nom}" (${s.reason})`
+        ).join(', ');
+        toast.warning(
+          `Site(s) non supprimé(s) : ${siteNames}`,
+          { duration: 6000 }
+        );
+      }
     },
     onError: (error: any) => {
       const details = error?.response?.data?.details;
@@ -901,14 +922,18 @@ function TiersFormDialog({
 
     const isClientLikeType = formData.typeTiers === 'CLIENT' || formData.typeTiers === 'CLIENT_FOURNISSEUR';
 
+    // Filtrer les sites avec un nom valide
+    const filteredSites = isClientLikeType
+      ? sites.filter(s => s.nom?.trim())
+      : [];
+
     const submitData: CreateTiersInput = {
       ...formData,
       prospectNiveau: normalizeProspectNiveau(formData.prospectNiveau),
       siegeNom: formData.siegeNom || formData.nomEntreprise,
       contacts: contactsInput,
-      sites: isClientLikeType
-        ? sites.filter(s => s.nom?.trim())
-        : undefined,
+      // Ne pas envoyer sites si le tableau est vide (pour éviter de supprimer les sites existants)
+      sites: filteredSites.length > 0 ? filteredSites : undefined,
     };
     const normalizedSubmitData = normalizeNulls(submitData);
 
@@ -919,7 +944,7 @@ function TiersFormDialog({
     }
   };
 
-  const isPending = createMutation.isPending || updateMutation.isPending;
+  const isPending = createMutation.isPending || updateMutation.isPending || (isEdit && isLoadingTiers);
   const isClient = formData.typeTiers === 'CLIENT' || formData.typeTiers === 'CLIENT_FOURNISSEUR';
   const isFournisseur = formData.typeTiers === 'FOURNISSEUR' || formData.typeTiers === 'CLIENT_FOURNISSEUR';
   const isProspect = formData.typeTiers === 'PROSPECT';
@@ -961,6 +986,12 @@ function TiersFormDialog({
           </DialogTitle>
         </DialogHeader>
 
+        {isEdit && isLoadingTiers ? (
+          <div className="py-12 text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-muted-foreground">Chargement des données...</p>
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Type Selection */}
           <div className="space-y-3">
@@ -1481,13 +1512,14 @@ function TiersFormDialog({
             </Button>
           </DialogFooter>
         </form>
+        )}
       </DialogContent>
     </Dialog>
   );
 }
 
 // ============ TIERS DETAIL SHEET ============
-function TiersDetailSheet({
+function TiersDetailDialog({
   open,
   onOpenChange,
   tiersId,
@@ -1498,7 +1530,7 @@ function TiersDetailSheet({
   onOpenChange: (open: boolean) => void;
   tiersId?: string;
   canEdit: boolean;
-  onEdit: () => void;
+  onEdit: (tiers: Tiers) => void;
 }) {
   const { data: tiers, isLoading } = useQuery({
     queryKey: ['tiers', tiersId],
@@ -1513,20 +1545,29 @@ function TiersDetailSheet({
     ? PROSPECT_NIVEAUX.find(n => n.value === tiers.prospectNiveau)
     : null;
 
+  const handleEdit = () => {
+    if (tiers) {
+      onEdit(tiers);
+    }
+  };
+
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-[600px] sm:max-w-[600px] overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="flex items-center justify-between">
-            <span>Fiche tiers</span>
-            {canEdit && (
-              <Button size="sm" variant="outline" onClick={onEdit}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader className="pr-10">
+          <div className="flex items-center justify-between">
+            <DialogTitle>Fiche tiers</DialogTitle>
+            {canEdit && tiers && (
+              <Button size="sm" variant="outline" onClick={handleEdit}>
                 <Edit className="h-4 w-4 mr-2" />
                 Modifier
               </Button>
             )}
-          </SheetTitle>
-        </SheetHeader>
+          </div>
+          <DialogDescription>
+            {tiers ? `Détails de ${tiers.nomEntreprise}` : 'Chargement...'}
+          </DialogDescription>
+        </DialogHeader>
 
         {isLoading ? (
           <div className="py-8 text-center">Chargement...</div>
@@ -1647,26 +1688,76 @@ function TiersDetailSheet({
             {/* Sites (for clients) */}
             {tiers.sites && tiers.sites.length > 0 && (
               <div className="space-y-3">
-                <h3 className="font-semibold border-b pb-2">Sites ({tiers.sites.length})</h3>
-                <div className="space-y-2">
+                <h3 className="font-semibold border-b pb-2 flex items-center gap-2">
+                  <Building2 className="h-4 w-4" />
+                  Sites ({tiers.sites.length})
+                </h3>
+                <div className="grid gap-3">
                   {tiers.sites.map((site) => (
-                    <div key={site.id} className="p-3 bg-gray-50 rounded-lg">
-                      <div className="font-medium">{site.nom}</div>
-                      {site.adresse && (
-                        <p className="text-sm text-muted-foreground">{site.adresse}</p>
-                      )}
-                      <div className="flex gap-4 mt-1 text-sm">
-                        {site.tel && (
-                          <a href={`tel:${site.tel}`} className="text-primary hover:underline">
-                            {site.tel}
-                          </a>
-                        )}
-                        {site.email && (
-                          <a href={`mailto:${site.email}`} className="text-primary hover:underline">
-                            {site.email}
-                          </a>
+                    <div key={site.id} className="p-4 bg-gradient-to-r from-blue-50 to-white rounded-lg border border-blue-100">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                            <Building2 className="h-4 w-4 text-blue-600" />
+                          </div>
+                          <div>
+                            <div className="font-semibold text-blue-900">{site.nom}</div>
+                            {site.adresse && (
+                              <p className="text-sm text-muted-foreground flex items-center gap-1">
+                                <MapPin className="h-3 w-3" />
+                                {site.adresse}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        {site._count && (
+                          <div className="flex gap-2">
+                            {site._count.contratSites > 0 && (
+                              <Badge variant="outline" className="text-xs bg-white">
+                                {site._count.contratSites} contrat(s)
+                              </Badge>
+                            )}
+                            {site._count.interventions > 0 && (
+                              <Badge variant="outline" className="text-xs bg-white">
+                                {site._count.interventions} interv.
+                              </Badge>
+                            )}
+                          </div>
                         )}
                       </div>
+                      {(site.tel || site.email) && (
+                        <div className="flex gap-4 mt-3 ml-10 text-sm">
+                          {site.tel && (
+                            <a href={`tel:${site.tel}`} className="flex items-center gap-1 text-blue-600 hover:underline">
+                              <Phone className="h-3 w-3" />
+                              {site.tel}
+                            </a>
+                          )}
+                          {site.email && (
+                            <a href={`mailto:${site.email}`} className="flex items-center gap-1 text-blue-600 hover:underline">
+                              <Mail className="h-3 w-3" />
+                              {site.email}
+                            </a>
+                          )}
+                        </div>
+                      )}
+                      {/* Site contacts */}
+                      {site.contacts && site.contacts.length > 0 && (
+                        <div className="mt-3 ml-10 pt-3 border-t border-blue-100">
+                          <p className="text-xs font-medium text-muted-foreground mb-2">Contacts du site:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {site.contacts.map((contact: any) => (
+                              <div key={contact.id} className="flex items-center gap-2 text-sm bg-white px-2 py-1 rounded border">
+                                <Users className="h-3 w-3 text-muted-foreground" />
+                                <span>{contact.prenom} {contact.nom}</span>
+                                {contact.fonction && (
+                                  <span className="text-muted-foreground">({contact.fonction})</span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1676,32 +1767,53 @@ function TiersDetailSheet({
             {/* Contacts */}
             {tiers.siegeContacts && tiers.siegeContacts.length > 0 && (
               <div className="space-y-3">
-                <h3 className="font-semibold border-b pb-2">Contacts</h3>
-                <div className="space-y-2">
+                <h3 className="font-semibold border-b pb-2 flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  Contacts ({tiers.siegeContacts.length})
+                </h3>
+                <div className="grid gap-3 sm:grid-cols-2">
                   {tiers.siegeContacts.map((contact) => (
-                    <div key={contact.id} className="p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium">
-                          {contact.prenom} {contact.nom}
-                        </span>
-                        {contact.estPrincipal && (
-                          <Badge variant="outline" className="text-xs">Principal</Badge>
-                        )}
-                      </div>
-                      {contact.fonction && (
-                        <p className="text-sm text-muted-foreground">{contact.fonction}</p>
-                      )}
-                      <div className="flex gap-4 mt-1 text-sm">
-                        {contact.tel && (
-                          <a href={`tel:${contact.tel}`} className="text-primary hover:underline">
-                            {contact.tel}
-                          </a>
-                        )}
-                        {contact.email && (
-                          <a href={`mailto:${contact.email}`} className="text-primary hover:underline">
-                            {contact.email}
-                          </a>
-                        )}
+                    <div key={contact.id} className="p-4 bg-gradient-to-r from-gray-50 to-white rounded-lg border">
+                      <div className="flex items-start gap-3">
+                        <div className={cn(
+                          "w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold",
+                          contact.estPrincipal ? "bg-primary" : "bg-gray-400"
+                        )}>
+                          {(contact.prenom?.[0] || contact.nom?.[0] || '?').toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold truncate">
+                              {contact.prenom} {contact.nom}
+                            </span>
+                            {contact.estPrincipal && (
+                              <Badge className="bg-primary/10 text-primary text-xs">Principal</Badge>
+                            )}
+                          </div>
+                          {contact.fonction && (
+                            <p className="text-sm text-muted-foreground">{contact.fonction}</p>
+                          )}
+                          <div className="flex flex-col gap-1 mt-2 text-sm">
+                            {contact.tel && (
+                              <a href={`tel:${contact.tel}`} className="flex items-center gap-1 text-primary hover:underline">
+                                <Phone className="h-3 w-3" />
+                                {contact.tel}
+                              </a>
+                            )}
+                            {contact.telMobile && contact.telMobile !== contact.tel && (
+                              <a href={`tel:${contact.telMobile}`} className="flex items-center gap-1 text-primary hover:underline">
+                                <Phone className="h-3 w-3" />
+                                {contact.telMobile} (mobile)
+                              </a>
+                            )}
+                            {contact.email && (
+                              <a href={`mailto:${contact.email}`} className="flex items-center gap-1 text-primary hover:underline truncate">
+                                <Mail className="h-3 w-3 flex-shrink-0" />
+                                <span className="truncate">{contact.email}</span>
+                              </a>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1712,22 +1824,34 @@ function TiersDetailSheet({
             {/* Bank Accounts */}
             {tiers.comptesBancaires && tiers.comptesBancaires.length > 0 && (
               <div className="space-y-3">
-                <h3 className="font-semibold border-b pb-2">Comptes bancaires</h3>
-                <div className="space-y-2">
+                <h3 className="font-semibold border-b pb-2 flex items-center gap-2">
+                  <CreditCard className="h-4 w-4" />
+                  Comptes bancaires ({tiers.comptesBancaires.length})
+                </h3>
+                <div className="grid gap-3">
                   {tiers.comptesBancaires.map((compte) => (
-                    <div key={compte.id} className="p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center gap-2">
-                        <CreditCard className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">{compte.libelle}</span>
+                    <div key={compte.id} className="p-4 bg-gradient-to-r from-purple-50 to-white rounded-lg border border-purple-100">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                            <CreditCard className="h-5 w-5 text-purple-600" />
+                          </div>
+                          <div>
+                            <div className="font-semibold text-purple-900">{compte.libelle}</div>
+                            <p className="text-sm text-muted-foreground">
+                              {compte.banque} {compte.agence && `- ${compte.agence}`}
+                            </p>
+                          </div>
+                        </div>
                         {compte.estDefaut && (
-                          <Badge variant="outline" className="text-xs">Par défaut</Badge>
+                          <Badge className="bg-purple-100 text-purple-700 text-xs">Par défaut</Badge>
                         )}
                       </div>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {compte.banque} {compte.agence && `- ${compte.agence}`}
-                      </p>
-                      {compte.iban && (
-                        <p className="text-sm font-mono mt-1">IBAN: {compte.iban}</p>
+                      {(compte.iban || compte.rib) && (
+                        <div className="mt-3 ml-13 space-y-1 text-sm font-mono bg-white p-2 rounded border">
+                          {compte.iban && <p><span className="text-muted-foreground">IBAN:</span> {compte.iban}</p>}
+                          {compte.rib && <p><span className="text-muted-foreground">RIB:</span> {compte.rib}</p>}
+                        </div>
                       )}
                     </div>
                   ))}
@@ -1737,15 +1861,18 @@ function TiersDetailSheet({
 
             {/* Stats */}
             <div className="space-y-3">
-              <h3 className="font-semibold border-b pb-2">Statistiques</h3>
+              <h3 className="font-semibold border-b pb-2 flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Activité
+              </h3>
               <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 bg-gray-50 rounded-lg text-center">
-                  <p className="text-2xl font-bold">{tiers._count?.contrats || 0}</p>
-                  <p className="text-sm text-muted-foreground">Contrats</p>
+                <div className="p-4 bg-gradient-to-br from-green-50 to-white rounded-lg border border-green-100 text-center">
+                  <p className="text-3xl font-bold text-green-700">{tiers.contrats?.length || 0}</p>
+                  <p className="text-sm text-green-600 font-medium">Contrats</p>
                 </div>
-                <div className="p-3 bg-gray-50 rounded-lg text-center">
-                  <p className="text-2xl font-bold">{tiers._count?.interventions || 0}</p>
-                  <p className="text-sm text-muted-foreground">Interventions</p>
+                <div className="p-4 bg-gradient-to-br from-orange-50 to-white rounded-lg border border-orange-100 text-center">
+                  <p className="text-3xl font-bold text-orange-700">{tiers.interventions?.length || 0}</p>
+                  <p className="text-sm text-orange-600 font-medium">Interventions</p>
                 </div>
               </div>
             </div>
@@ -1761,7 +1888,7 @@ function TiersDetailSheet({
             )}
           </div>
         ) : null}
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }

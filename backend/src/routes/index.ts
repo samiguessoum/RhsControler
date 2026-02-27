@@ -20,6 +20,7 @@ import {
   updateInterventionSchema,
   realiserInterventionSchema,
   reporterInterventionSchema,
+  annulerInterventionSchema,
   createProduitSchema,
   updateProduitSchema,
   createMouvementSchema,
@@ -100,8 +101,40 @@ import chargeController from '../controllers/charge.controller.js';
 import paiementDiversController from '../controllers/paiement-divers.controller.js';
 import facturationStatsController from '../controllers/facturation-stats.controller.js';
 import notificationsController from '../controllers/notifications.controller.js';
+import { settingsController } from '../controllers/settings.controller.js';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 
 const router = Router();
+
+// Configuration multer pour upload du logo
+const logoStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(process.cwd(), 'uploads', 'logos');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `logo-${Date.now()}${ext}`);
+  },
+});
+
+const logoUpload = multer({
+  storage: logoStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Type de fichier non autorisé. Utilisez JPG, PNG, GIF ou WebP.'));
+    }
+  },
+});
 
 // ============ AUTH (public) ============
 router.post('/auth/login', validate(loginSchema), authController.login);
@@ -158,16 +191,30 @@ router.get('/interventions/a-planifier', authMiddleware, interventionController.
 router.get('/interventions/en-retard', authMiddleware, interventionController.enRetard);
 router.get('/interventions/semaine', authMiddleware, interventionController.semaine);
 router.get('/interventions/last-notes/:clientId', authMiddleware, interventionController.getLastNotes);
+router.get('/interventions/:id/attestation-passage.pdf', authMiddleware, canDo('exportData'), interventionController.exportAttestationPassage);
+router.get('/interventions/:id/attestation-passage/body', authMiddleware, canDo('exportData'), interventionController.getAttestationBody);
+router.put('/interventions/:id/attestation-passage/body', authMiddleware, canDo('exportData'), interventionController.updateAttestationBody);
+router.get('/interventions/:id/attestation-garantie.pdf', authMiddleware, canDo('exportData'), interventionController.exportAttestationGarantie);
+router.get('/interventions/:id/attestation-garantie/body', authMiddleware, canDo('exportData'), interventionController.getAttestationGarantieBody);
+router.put('/interventions/:id/attestation-garantie/body', authMiddleware, canDo('exportData'), interventionController.updateAttestationGarantieBody);
+router.get('/interventions/:id/attestation-controle.pdf', authMiddleware, canDo('exportData'), interventionController.exportAttestationControle);
+router.get('/interventions/:id/attestation-controle/body', authMiddleware, canDo('exportData'), interventionController.getAttestationControleBody);
+router.put('/interventions/:id/attestation-controle/body', authMiddleware, canDo('exportData'), interventionController.updateAttestationControleBody);
 router.get('/interventions/:id', authMiddleware, interventionController.get);
 router.post('/interventions', authMiddleware, canDo('createIntervention'), validate(createInterventionSchema), interventionController.create);
 router.put('/interventions/:id', authMiddleware, canDo('editIntervention'), validate(updateInterventionSchema), interventionController.update);
 router.put('/interventions/:id/realiser', authMiddleware, canDo('realiserIntervention'), validate(realiserInterventionSchema), interventionController.realiser);
 router.post('/interventions/:id/reporter', authMiddleware, canDo('editIntervention'), validate(reporterInterventionSchema), interventionController.reporter);
+router.post('/interventions/:id/annuler', authMiddleware, canDo('editIntervention'), validate(annulerInterventionSchema), interventionController.annuler);
 router.delete('/interventions/:id', authMiddleware, canDo('deleteIntervention'), interventionController.delete);
 
 // ============ DASHBOARD ============
 router.get('/dashboard/stats', authMiddleware, dashboardController.stats);
+router.get('/dashboard/stats-extended', authMiddleware, dashboardController.statsExtended);
+router.get('/dashboard/aujourdhui', authMiddleware, dashboardController.aujourdhui);
 router.get('/dashboard/alertes', authMiddleware, dashboardController.alertes);
+router.get('/dashboard/employes-stats', authMiddleware, dashboardController.employesStats);
+router.get('/dashboard/operations-stats', authMiddleware, dashboardController.operationsStats);
 
 // ============ IMPORT/EXPORT ============
 router.get('/export/clients', authMiddleware, canDo('exportData'), importExportController.exportClients);
@@ -387,5 +434,11 @@ router.put('/notifications/:id/read', authMiddleware, notificationsController.ma
 router.put('/notifications/read-all', authMiddleware, notificationsController.markAllAsRead);
 router.post('/notifications/check-overdue', authMiddleware, canDo('viewFacturation'), notificationsController.checkOverdue);
 router.post('/notifications/check-stock', authMiddleware, canDo('manageStock'), notificationsController.checkStock);
+
+// ============ SETTINGS (DIRECTION only) ============
+router.get('/settings', authMiddleware, settingsController.getSettings);
+router.put('/settings', authMiddleware, canDo('manageSettings'), settingsController.updateSettings);
+router.post('/settings/logo', authMiddleware, canDo('manageSettings'), logoUpload.single('logo'), settingsController.uploadLogo);
+router.post('/settings/logo-carre', authMiddleware, canDo('manageSettings'), logoUpload.single('logo'), settingsController.uploadLogoCarre);
 
 export default router;

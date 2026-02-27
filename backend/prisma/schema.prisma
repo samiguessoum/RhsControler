@@ -458,6 +458,7 @@ model Site {
 
   // === Notes et statut ===
   notes           String?
+  noteServiceDefaut String?           // Note par défaut pour les devis service sur ce site
   actif           Boolean  @default(true)
 
   createdAt       DateTime @default(now())
@@ -467,6 +468,8 @@ model Site {
   contacts        SiteContact[]     // Contacts sur ce site
   contratSites    ContratSite[]
   interventions   Intervention[]
+  devis           Devis[]
+  commandes       Commande[]
 
   @@index([clientId])
   @@index([code])
@@ -521,6 +524,9 @@ model Contrat {
   responsablePlanning      User?         @relation("ResponsablePlanning", fields: [responsablePlanningId], references: [id])
   statut                   ContratStatut @default(ACTIF)
   notes                    String?
+  attestationMessageTemplate String?
+  attestationGarantieMessageTemplate String?
+  attestationControleMessageTemplate String?
   autoCreerProchaine       Boolean       @default(true)
   // Champs spécifiques au contrat ponctuel
   numeroBonCommande        String?
@@ -980,6 +986,9 @@ model Devis {
   ref                  String       @unique
   clientId             String
   client               Client       @relation(fields: [clientId], references: [id])
+  siteId               String?
+  site                 Site?        @relation(fields: [siteId], references: [id])
+  typeDocument         TypeProduit?
   adresseFacturationId String?
   adresseFacturation   Adresse?     @relation("DevisAdresseFacturation", fields: [adresseFacturationId], references: [id])
   adresseLivraisonId   String?
@@ -1007,6 +1016,7 @@ model Devis {
   factures             Facture[]
 
   @@index([clientId])
+  @@index([siteId])
   @@index([statut])
   @@index([ref])
   @@index([dateDevis])
@@ -1039,6 +1049,9 @@ model Commande {
   ref                  String          @unique
   clientId             String
   client               Client          @relation(fields: [clientId], references: [id])
+  siteId               String?
+  site                 Site?           @relation(fields: [siteId], references: [id])
+  typeDocument         TypeProduit?
   devisId              String?
   devis                Devis?          @relation(fields: [devisId], references: [id])
   adresseFacturationId String?
@@ -1068,6 +1081,7 @@ model Commande {
   factures             Facture[]
 
   @@index([clientId])
+  @@index([siteId])
   @@index([statut])
   @@index([ref])
   @@index([dateCommande])
@@ -1561,4 +1575,67 @@ model PaiementDivers {
   @@index([categorie])
   @@index([datePaiement])
   @@index([tiersId])
+}
+
+// ============ CONFIGURATION ENTREPRISE ============
+
+model CompanySettings {
+  id                    String   @id @default(uuid())
+
+  // Informations générales
+  nomEntreprise         String   @default("Mon Entreprise")
+  formeJuridique        String?  // SARL, EURL, SPA, etc.
+  logoPath              String?  // Logo principal (rectangulaire)
+  logoCarrePath         String?  // Logo carré (pour icônes, favicons)
+
+  // Coordonnées
+  adresse               String?
+  codePostal            String?
+  ville                 String?
+  pays                  String?  @default("Algérie")
+  telephone             String?
+  fax                   String?
+  email                 String?
+  siteWeb               String?
+
+  // Informations légales
+  rc                    String?  // Registre du commerce
+  nif                   String?  // Numéro d'identification fiscale
+  ai                    String?  // Article d'imposition
+  nis                   String?  // Numéro d'identification statistique
+  compteBancaire        String?  // Numéro de compte
+  rib                   String?  // RIB complet
+  banque                String?  // Nom de la banque
+
+  // Paramètres commerciaux
+  devisePrincipale      String   @default("DZD")
+  tauxTVADefaut         Float    @default(19)
+
+  // Préfixes de numérotation - Documents vente
+  prefixDevis           String   @default("DV")
+  prefixCommande        String   @default("CMD")
+  prefixFacture         String   @default("FAC")
+  prefixAvoir           String   @default("AV")
+
+  // Préfixes de numérotation - Documents achat
+  prefixCommandeFournisseur  String   @default("CF")
+  prefixFactureFournisseur   String   @default("FF")
+  prefixCharge               String   @default("CHG")
+
+  // Préfixes de numérotation - Tiers
+  prefixClient          String   @default("CLI")
+  prefixFournisseur     String   @default("FOU")
+  prefixProspect        String   @default("PRO")
+
+  // Préfixes de numérotation - Autres
+  prefixProduit         String   @default("PRD")
+  prefixService         String   @default("SRV")
+
+  // Format numérotation
+  longueurNumero        Int      @default(5)  // Nombre de chiffres (00001)
+  inclureAnnee          Boolean  @default(true)
+  separateur            String   @default("-") // DV2025-00001 ou DV202500001
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }

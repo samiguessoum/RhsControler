@@ -84,7 +84,7 @@ export const planningService = {
   },
 
   /**
-   * Récupère les contrats ponctuels avec 1 seule opération restante
+   * Récupère les contrats ponctuels avec 2 ou moins opérations restantes
    */
   async getContratsPonctuelAlerte() {
     const contrats = await prisma.contrat.findMany({
@@ -103,10 +103,58 @@ export const planningService = {
       },
     });
 
-    // Filtrer ceux avec exactement 1 opération restante
+    // Filtrer ceux avec 2 ou moins opérations restantes
     return contrats.filter((c) => {
       const remaining = c.interventions.filter((i) => i.type === 'OPERATION').length;
-      return remaining === 1;
+      return remaining > 0 && remaining <= 2;
+    }).map((c) => ({
+      ...c,
+      operationsRestantes: c.interventions.filter((i) => i.type === 'OPERATION').length,
+    }));
+  },
+
+  /**
+   * Récupère les contrats annuels proches de la fin (dans les 60 jours)
+   * pour faciliter la reconduction
+   */
+  async getContratsAnnuelsFinProche(joursAvantFin: number = 60) {
+    const today = startOfDay(new Date());
+    const dateLimit = endOfDay(addDays(today, joursAvantFin));
+
+    const contrats = await prisma.contrat.findMany({
+      where: {
+        statut: 'ACTIF',
+        type: 'ANNUEL',
+        dateFin: {
+          gte: today,
+          lte: dateLimit,
+        },
+      },
+      include: {
+        client: { select: { id: true, nomEntreprise: true } },
+        interventions: {
+          where: {
+            statut: { notIn: ['REALISEE', 'ANNULEE'] },
+          },
+          take: 5,
+        },
+        contratSites: {
+          include: {
+            site: { select: { id: true, nom: true } },
+          },
+        },
+      },
+      orderBy: { dateFin: 'asc' },
+    });
+
+    return contrats.map((c) => {
+      const joursRestants = c.dateFin
+        ? Math.ceil((new Date(c.dateFin).getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+        : null;
+      return {
+        ...c,
+        joursRestants,
+      };
     });
   },
 

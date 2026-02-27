@@ -171,6 +171,7 @@ export const commerceController = {
           orderBy: { dateDevis: 'desc' },
           include: {
             client: { select: { id: true, nomEntreprise: true } },
+            site: { select: { id: true, nom: true, ville: true } },
             _count: { select: { lignes: true } },
           },
         }),
@@ -213,6 +214,15 @@ export const commerceController = {
               siegeEmail: true,
             },
           },
+          site: {
+            select: {
+              id: true,
+              nom: true,
+              adresse: true,
+              ville: true,
+              codePostal: true,
+            },
+          },
           lignes: {
             orderBy: { ordre: 'asc' },
             include: {
@@ -253,6 +263,8 @@ export const commerceController = {
         data: {
           ref,
           clientId: data.clientId,
+          siteId: data.siteId || null,
+          typeDocument: data.typeDocument || null,
           adresseFacturationId: data.adresseFacturationId,
           adresseLivraisonId: data.adresseLivraisonId,
           dateDevis,
@@ -272,9 +284,22 @@ export const commerceController = {
         },
         include: {
           client: { select: { id: true, nomEntreprise: true } },
+          site: { select: { id: true, nom: true, ville: true } },
           lignes: true,
         },
       });
+
+      // Si c'est un devis SERVICE avec un site, sauvegarder la note par défaut du site
+      if (data.typeDocument === 'SERVICE' && data.siteId && lignes.length > 0) {
+        const firstLineDescription = lignes[0].description;
+        if (firstLineDescription && firstLineDescription.trim()) {
+          await prisma.site.update({
+            where: { id: data.siteId },
+            data: { noteServiceDefaut: firstLineDescription.trim() },
+          });
+          console.log(`[Devis SERVICE] Note sauvegardée pour site ${data.siteId}: "${firstLineDescription.trim().substring(0, 50)}..."`);
+        }
+      }
 
       await createAuditLog(req.user!.id, 'CREATE', 'Devis', devis.id, { after: devis });
 
@@ -311,6 +336,8 @@ export const commerceController = {
       const devis = await prisma.devis.update({
         where: { id },
         data: {
+          siteId: data.siteId !== undefined ? (data.siteId || null) : undefined,
+          typeDocument: data.typeDocument !== undefined ? (data.typeDocument || null) : undefined,
           adresseFacturationId: data.adresseFacturationId,
           adresseLivraisonId: data.adresseLivraisonId,
           dateDevis: parseDate(data.dateDevis),
@@ -334,6 +361,7 @@ export const commerceController = {
         },
         include: {
           client: { select: { id: true, nomEntreprise: true } },
+          site: { select: { id: true, nom: true, ville: true } },
           lignes: true,
         },
       });
@@ -411,6 +439,8 @@ export const commerceController = {
         data: {
           ref,
           clientId: devis.clientId,
+          siteId: devis.siteId,
+          typeDocument: devis.typeDocument,
           devisId: devis.id,
           adresseFacturationId: devis.adresseFacturationId ?? undefined,
           adresseLivraisonId: devis.adresseLivraisonId ?? undefined,
@@ -443,7 +473,7 @@ export const commerceController = {
             })),
           },
         },
-        include: { client: { select: { id: true, nomEntreprise: true } }, lignes: true },
+        include: { client: { select: { id: true, nomEntreprise: true } }, site: { select: { id: true, nom: true, ville: true } }, lignes: true },
       });
 
       await createAuditLog(req.user!.id, 'CREATE', 'Commande', commande.id, { after: commande });
@@ -480,8 +510,22 @@ export const commerceController = {
           skip,
           take: limitNum,
           orderBy: { dateCommande: 'desc' },
-          include: {
+          select: {
+            id: true,
+            ref: true,
+            clientId: true,
+            siteId: true,
+            typeDocument: true,
+            devisId: true,
+            dateCommande: true,
+            dateLivraisonSouhaitee: true,
+            refBonCommandeClient: true,
+            statut: true,
+            totalHT: true,
+            totalTVA: true,
+            totalTTC: true,
             client: { select: { id: true, nomEntreprise: true } },
+            site: { select: { id: true, nom: true, ville: true } },
             _count: { select: { lignes: true } },
           },
         }),
@@ -522,6 +566,15 @@ export const commerceController = {
               siegeCodePostal: true,
               siegeTel: true,
               siegeEmail: true,
+            },
+          },
+          site: {
+            select: {
+              id: true,
+              nom: true,
+              adresse: true,
+              ville: true,
+              codePostal: true,
             },
           },
           devis: { select: { id: true, ref: true } },
@@ -565,6 +618,8 @@ export const commerceController = {
         data: {
           ref,
           clientId: data.clientId,
+          siteId: data.siteId || null,
+          typeDocument: data.typeDocument || null,
           devisId: data.devisId,
           adresseFacturationId: data.adresseFacturationId,
           adresseLivraisonId: data.adresseLivraisonId,
@@ -583,8 +638,23 @@ export const commerceController = {
           updatedById: req.user?.id,
           lignes: { create: lignes },
         },
-        include: { client: { select: { id: true, nomEntreprise: true } }, lignes: true },
+        include: {
+          client: { select: { id: true, nomEntreprise: true } },
+          site: { select: { id: true, nom: true, ville: true } },
+          lignes: true,
+        },
       });
+
+      // Si c'est une commande SERVICE avec un site, sauvegarder la note par défaut du site
+      if (data.typeDocument === 'SERVICE' && data.siteId && lignes.length > 0) {
+        const firstLineDescription = lignes[0].description;
+        if (firstLineDescription && firstLineDescription.trim()) {
+          await prisma.site.update({
+            where: { id: data.siteId },
+            data: { noteServiceDefaut: firstLineDescription.trim() },
+          });
+        }
+      }
 
       await createAuditLog(req.user!.id, 'CREATE', 'Commande', commande.id, { after: commande });
 
@@ -621,6 +691,8 @@ export const commerceController = {
       const commande = await prisma.commande.update({
         where: { id },
         data: {
+          siteId: data.siteId !== undefined ? (data.siteId || null) : undefined,
+          typeDocument: data.typeDocument !== undefined ? (data.typeDocument || null) : undefined,
           adresseFacturationId: data.adresseFacturationId,
           adresseLivraisonId: data.adresseLivraisonId,
           dateCommande: parseDate(data.dateCommande),
@@ -642,7 +714,11 @@ export const commerceController = {
               }
             : undefined,
         },
-        include: { client: { select: { id: true, nomEntreprise: true } }, lignes: true },
+        include: {
+          client: { select: { id: true, nomEntreprise: true } },
+          site: { select: { id: true, nom: true, ville: true } },
+          lignes: true,
+        },
       });
 
       await createAuditLog(req.user!.id, 'UPDATE', 'Commande', commande.id, { after: commande });
@@ -669,7 +745,7 @@ export const commerceController = {
   async validerCommande(req: AuthRequest, res: Response) {
     try {
       const { id } = req.params;
-      const { refBonCommandeClient } = req.body;
+      const { refBonCommandeClient, dateCommande, dateLivraisonSouhaitee, notes, conditions } = req.body;
 
       // Vérifier que le numéro de BC client est fourni
       if (!refBonCommandeClient || refBonCommandeClient.trim() === '') {
@@ -691,6 +767,10 @@ export const commerceController = {
         data: {
           statut: 'VALIDEE',
           refBonCommandeClient: refBonCommandeClient.trim(),
+          dateCommande: parseDate(dateCommande) || existing.dateCommande,
+          dateLivraisonSouhaitee: parseDate(dateLivraisonSouhaitee),
+          notes: notes !== undefined ? notes : existing.notes,
+          conditions: conditions !== undefined ? conditions : existing.conditions,
           updatedById: req.user?.id,
         },
         include: {
@@ -1117,7 +1197,7 @@ export const commerceController = {
   async validerFacture(req: AuthRequest, res: Response) {
     try {
       const { id } = req.params;
-      const { delaiPaiementJours } = req.body;
+      const { delaiPaiementJours, dateFacture: dateFactureBody, notes, conditions } = req.body;
 
       const existing = await prisma.facture.findUnique({
         where: { id },
@@ -1137,8 +1217,8 @@ export const commerceController = {
         ? parseInt(delaiPaiementJours, 10)
         : (existing.delaiPaiementJours ?? 45);
 
-      // Calculer la date d'échéance à partir de la date de facture existante + délai
-      const dateFacture = existing.dateFacture || new Date();
+      // Utiliser la date de facture: body > existante > maintenant
+      const dateFacture = parseDate(dateFactureBody) || existing.dateFacture || new Date();
       const dateEcheance = new Date(dateFacture);
       dateEcheance.setDate(dateEcheance.getDate() + delai);
 
@@ -1147,8 +1227,11 @@ export const commerceController = {
           where: { id },
           data: {
             statut: 'VALIDEE',
+            dateFacture,
             delaiPaiementJours: delai,
             dateEcheance,
+            notes: notes !== undefined ? notes : existing.notes,
+            conditions: conditions !== undefined ? conditions : existing.conditions,
             updatedById: req.user?.id,
           },
           include: {
@@ -1369,7 +1452,27 @@ export const commerceController = {
       const devis = await prisma.devis.findUnique({
         where: { id },
         include: {
-          client: { select: { id: true, nomEntreprise: true, code: true } },
+          client: {
+            select: {
+              id: true,
+              nomEntreprise: true,
+              code: true,
+              siegeAdresse: true,
+              siegeVille: true,
+              siegePays: true,
+              siegeRC: true,
+              siegeNIF: true,
+              siegeAI: true,
+              siegeNIS: true,
+            },
+          },
+          site: {
+            select: {
+              nom: true,
+              ville: true,
+              adresse: true,
+            },
+          },
           lignes: { orderBy: { ordre: 'asc' } },
         },
       });

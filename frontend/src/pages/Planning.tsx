@@ -54,6 +54,7 @@ import {
   MapPin,
   Building2,
   User,
+  Users,
   Clock,
   FileText,
   CheckCircle,
@@ -61,6 +62,12 @@ import {
   ChevronDown,
   ChevronUp,
   Receipt,
+  CalendarDays,
+  XCircle,
+  AlertTriangle,
+  Calendar,
+  TrendingUp,
+  Search,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -92,6 +99,7 @@ import {
 } from '@/components/ui/sheet';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Progress } from '@/components/ui/progress';
 import {
   interventionsApi,
   clientsApi,
@@ -107,7 +115,75 @@ import type { Intervention, CreateInterventionInput, Client, Employe, Poste, Int
 
 // ============ TYPES ============
 type ViewMode = 'day' | 'week' | 'biweek' | 'month' | 'quarter' | 'year' | 'list';
-type FilterStatut = 'ALL' | 'A_PLANIFIER' | 'PLANIFIEE' | 'REALISEE' | 'REPORTEE' | 'ANNULEE';
+type FilterStatut = 'ALL' | 'A_PLANIFIER' | 'PLANIFIEE' | 'REALISEE' | 'REPORTEE' | 'ANNULEE' | 'EN_RETARD';
+
+// ============ PLANNING STAT CARD ============
+function PlanningStatCard({
+  title,
+  value,
+  icon: Icon,
+  variant = 'default',
+  onClick,
+  isActive,
+  showProgress,
+  progressValue,
+  subtitle,
+}: {
+  title: string;
+  value: number | string;
+  icon: React.ElementType;
+  variant?: 'default' | 'warning' | 'error' | 'success' | 'orange';
+  onClick?: () => void;
+  isActive?: boolean;
+  showProgress?: boolean;
+  progressValue?: number;
+  subtitle?: string;
+}) {
+  const colors = {
+    default: 'bg-blue-50 text-blue-600',
+    warning: 'bg-yellow-50 text-yellow-600',
+    error: 'bg-red-50 text-red-600',
+    success: 'bg-green-50 text-green-600',
+    orange: 'bg-orange-50 text-orange-600',
+  };
+
+  const borderColors = {
+    default: 'border-blue-200',
+    warning: 'border-yellow-200',
+    error: 'border-red-200',
+    success: 'border-green-200',
+    orange: 'border-orange-200',
+  };
+
+  return (
+    <Card
+      className={cn(
+        'cursor-pointer transition-all hover:shadow-md',
+        isActive && `ring-2 ring-offset-1 ${borderColors[variant]}`,
+        onClick && 'hover:scale-[1.02]'
+      )}
+      onClick={onClick}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium text-muted-foreground truncate">{title}</p>
+            <p className="text-2xl font-bold mt-0.5">{value}</p>
+            {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
+            {showProgress && progressValue !== undefined && (
+              <div className="mt-2">
+                <Progress value={progressValue} className="h-1.5" />
+              </div>
+            )}
+          </div>
+          <div className={cn('p-2.5 rounded-full ml-3', colors[variant])}>
+            <Icon className="h-5 w-5" />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 // ============ DRAGGABLE INTERVENTION CARD ============
 function getTimeRange(intervention: Intervention) {
@@ -181,6 +257,13 @@ function DraggableInterventionCard({
     const siteName = intervention.site?.nom || intervention.client?.sites?.[0]?.nom;
     const typeLabel = getInterventionTypeLabel(intervention.type);
     const typeBadgeClass = getInterventionTypeBadgeClass(intervention.type);
+    const hasTeam = intervention.interventionEmployes && intervention.interventionEmployes.length > 0;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const isOverdue = parseISO(intervention.datePrevue) < today &&
+      intervention.statut !== 'REALISEE' &&
+      intervention.statut !== 'ANNULEE';
+
     return (
       <div
         ref={setNodeRef}
@@ -194,10 +277,15 @@ function DraggableInterventionCard({
         className={cn(
           'w-full text-left p-1 rounded text-[10px] cursor-grab active:cursor-grabbing transition-all',
           getStatutColor(intervention.statut),
-          isDragging && 'opacity-50 shadow-lg'
+          isDragging && 'opacity-50 shadow-lg',
+          isOverdue && 'ring-2 ring-red-400',
+          hasTeam && 'border-l-2 border-l-green-500'
         )}
       >
-        <div className="font-medium truncate">{intervention.client?.nomEntreprise}</div>
+        <div className="flex items-center justify-between gap-0.5">
+          <div className="font-medium truncate flex-1">{intervention.client?.nomEntreprise}</div>
+          {hasTeam && <Users className="h-2.5 w-2.5 text-green-600 flex-shrink-0" />}
+        </div>
         {siteName && (
           <div className="text-[10px] opacity-80 truncate">{siteName}</div>
         )}
@@ -217,6 +305,14 @@ function DraggableInterventionCard({
   const typeLabel = getInterventionTypeLabel(intervention.type);
   const typeBadgeClass = getInterventionTypeBadgeClass(intervention.type);
 
+  // Vérifications pour les indicateurs visuels
+  const hasTeam = intervention.interventionEmployes && intervention.interventionEmployes.length > 0;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const isOverdue = parseISO(intervention.datePrevue) < today &&
+    intervention.statut !== 'REALISEE' &&
+    intervention.statut !== 'ANNULEE';
+
   return (
     <div
       ref={setNodeRef}
@@ -230,20 +326,36 @@ function DraggableInterventionCard({
       className={cn(
         'w-full text-left p-2 rounded text-xs cursor-grab active:cursor-grabbing transition-all',
         getStatutColor(intervention.statut),
-        isDragging && 'opacity-50 shadow-lg'
+        isDragging && 'opacity-50 shadow-lg',
+        isOverdue && 'ring-2 ring-red-400',
+        hasTeam && 'border-l-4 border-l-green-500'
       )}
     >
-      <div className="font-medium truncate">{intervention.client?.nomEntreprise}</div>
+      <div className="flex items-center justify-between gap-1">
+        <div className="font-medium truncate flex-1">{intervention.client?.nomEntreprise}</div>
+        {hasTeam && (
+          <Users className="h-3 w-3 text-green-600 flex-shrink-0" />
+        )}
+      </div>
       {siteName && (
-        <div className="text-[11px] text-muted-foreground truncate">{siteName}</div>
+        <div className="text-[11px] text-muted-foreground truncate flex items-center gap-1">
+          <MapPin className="h-3 w-3 flex-shrink-0" />
+          {siteName}
+        </div>
       )}
       <div className="flex items-center gap-1 mt-1 flex-wrap">
         {timeRange && (
-          <span className="opacity-75">{timeRange}</span>
+          <span className="opacity-75 flex items-center gap-0.5">
+            <Clock className="h-3 w-3" />
+            {timeRange}
+          </span>
         )}
         <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-semibold', typeBadgeClass)}>
           {typeLabel}
         </span>
+        {isOverdue && (
+          <span className="text-red-600 text-[9px] font-medium">En retard</span>
+        )}
       </div>
     </div>
   );
@@ -270,6 +382,14 @@ function DraggableInterventionBlock({
   const typeBadgeClass = getInterventionTypeBadgeClass(intervention.type);
   const timeRange = getTimeRange(intervention);
 
+  // Indicateurs visuels
+  const hasTeam = intervention.interventionEmployes && intervention.interventionEmployes.length > 0;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const isOverdue = parseISO(intervention.datePrevue) < today &&
+    intervention.statut !== 'REALISEE' &&
+    intervention.statut !== 'ANNULEE';
+
   const mergedStyle: React.CSSProperties = {
     ...style,
     transform: transform
@@ -292,18 +412,31 @@ function DraggableInterventionBlock({
         'absolute left-1 right-2 rounded p-2 cursor-grab active:cursor-grabbing transition-all shadow-sm overflow-hidden',
         getStatutColor(intervention.statut),
         compact ? 'text-xs' : 'text-sm',
-        isDragging && 'opacity-60 shadow-lg'
+        isDragging && 'opacity-60 shadow-lg',
+        isOverdue && 'ring-2 ring-red-400',
+        hasTeam && 'border-l-4 border-l-green-500'
       )}
     >
-      <div className={cn('font-semibold truncate', compact ? 'text-sm' : 'text-base')}>
-        {intervention.client?.nomEntreprise}
+      <div className="flex items-center justify-between gap-1">
+        <div className={cn('font-semibold truncate flex-1', compact ? 'text-sm' : 'text-base')}>
+          {intervention.client?.nomEntreprise}
+        </div>
+        {hasTeam && <Users className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />}
       </div>
-      {!compact && siteName && <div className="text-[12px] text-muted-foreground truncate">{siteName}</div>}
+      {!compact && siteName && (
+        <div className="text-[12px] text-muted-foreground truncate flex items-center gap-1">
+          <MapPin className="h-3 w-3 flex-shrink-0" />
+          {siteName}
+        </div>
+      )}
       <div className={cn('flex items-center gap-2 mt-1 flex-wrap', compact && 'mt-0.5')}>
         {timeRange && <span className={cn('opacity-75', compact ? 'text-[10px]' : 'text-xs')}>{timeRange}</span>}
         <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-semibold', typeBadgeClass)}>
           {typeLabel}
         </span>
+        {isOverdue && !compact && (
+          <span className="text-red-600 text-[10px] font-medium">En retard</span>
+        )}
       </div>
     </div>
   );
@@ -526,12 +659,50 @@ function DayView({
     data: { date, noTime: true },
   });
 
+  // Calcul stats du jour
+  const dayStats = useMemo(() => {
+    const realisees = interventions.filter((i) => i.statut === 'REALISEE').length;
+    const restantes = interventions.filter((i) => i.statut !== 'REALISEE' && i.statut !== 'ANNULEE').length;
+    const uniqueEmployes = new Set<string>();
+    interventions.forEach((i) => {
+      i.interventionEmployes?.forEach((ie) => {
+        if (ie.employeId) uniqueEmployes.add(ie.employeId);
+      });
+    });
+    return { total: interventions.length, realisees, restantes, equipes: uniqueEmployes.size };
+  }, [interventions]);
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
       {/* Main hour grid */}
       <Card>
         <CardHeader className="p-4 pb-2">
-          <CardTitle>{format(date, 'EEEE d MMMM yyyy', { locale: fr })}</CardTitle>
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle>{format(date, 'EEEE d MMMM yyyy', { locale: fr })}</CardTitle>
+            <div className="flex items-center gap-4 text-sm">
+              <span className="text-muted-foreground">
+                {dayStats.total} intervention{dayStats.total > 1 ? 's' : ''}
+              </span>
+              {dayStats.realisees > 0 && (
+                <span className="text-green-600 flex items-center gap-1">
+                  <CheckCircle className="h-3.5 w-3.5" />
+                  {dayStats.realisees} réalisée{dayStats.realisees > 1 ? 's' : ''}
+                </span>
+              )}
+              {dayStats.restantes > 0 && (
+                <span className="text-yellow-600 flex items-center gap-1">
+                  <Clock className="h-3.5 w-3.5" />
+                  {dayStats.restantes} restante{dayStats.restantes > 1 ? 's' : ''}
+                </span>
+              )}
+              {dayStats.equipes > 0 && (
+                <span className="text-blue-600 flex items-center gap-1">
+                  <Users className="h-3.5 w-3.5" />
+                  {dayStats.equipes} personne{dayStats.equipes > 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           <div className="grid grid-cols-[60px_1fr]">
@@ -1010,22 +1181,34 @@ function InterventionDetailDialog({
   intervention,
   onClose,
   onRealiser,
+  onReporter,
+  onAnnuler,
   onUpdateHoraire,
   onUpdateEmployes,
   onGenerateFacture,
+  onDownloadAttestation,
+  onDownloadAttestationGarantie,
+  onDownloadAttestationControle,
   canRealiser,
   canManage,
+  canExport,
   employes,
   postes,
 }: {
   intervention: Intervention | null;
   onClose: () => void;
   onRealiser: () => void;
+  onReporter: () => void;
+  onAnnuler: () => void;
   onUpdateHoraire: (data: { heurePrevue?: string; duree?: number }) => void;
   onUpdateEmployes: (employes: InterventionEmployeInput[]) => void;
   onGenerateFacture: () => void;
+  onDownloadAttestation: () => void;
+  onDownloadAttestationGarantie: () => void;
+  onDownloadAttestationControle: () => void;
   canRealiser: boolean;
   canManage: boolean;
+  canExport: boolean;
   employes: Employe[];
   postes: Poste[];
 }) {
@@ -1128,7 +1311,7 @@ function InterventionDetailDialog({
 
   return (
     <Dialog open={!!intervention} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="w-[98vw] max-w-[1200px] max-h-[90vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <span>{getInterventionTypeIcon(intervention.type)}</span>
@@ -1393,41 +1576,41 @@ function InterventionDetailDialog({
           <Separator />
 
           {/* Intervention Details */}
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+            <div className="min-w-0">
               <span className="text-muted-foreground">Date prévue:</span>
-              <p className="font-medium">
+              <p className="font-medium break-words">
                 {formatDate(intervention.datePrevue, 'EEEE d MMMM yyyy')}
               </p>
             </div>
             {intervention.heurePrevue && (
-              <div>
+              <div className="min-w-0">
                 <span className="text-muted-foreground">Heure:</span>
-                <p className="font-medium">{intervention.heurePrevue}</p>
+                <p className="font-medium break-words">{intervention.heurePrevue}</p>
               </div>
             )}
             {intervention.prestation && (
-              <div>
+              <div className="min-w-0">
                 <span className="text-muted-foreground">Prestation:</span>
-                <p className="font-medium">{intervention.prestation}</p>
+                <p className="font-medium break-words">{intervention.prestation}</p>
               </div>
             )}
             {intervention.responsable && (
-              <div>
+              <div className="min-w-0">
                 <span className="text-muted-foreground">Responsable:</span>
-                <p className="font-medium">{intervention.responsable}</p>
+                <p className="font-medium break-words">{intervention.responsable}</p>
               </div>
             )}
             {intervention.duree && (
-              <div>
+              <div className="min-w-0">
                 <span className="text-muted-foreground">Durée:</span>
-                <p className="font-medium">{intervention.duree} min</p>
+                <p className="font-medium break-words">{intervention.duree} min</p>
               </div>
             )}
             {intervention.dateRealisee && (
-              <div>
+              <div className="min-w-0">
                 <span className="text-muted-foreground">Date réalisée:</span>
-                <p className="font-medium">
+                <p className="font-medium break-words">
                   {formatDate(intervention.dateRealisee, 'd MMMM yyyy')}
                 </p>
               </div>
@@ -1510,7 +1693,7 @@ function InterventionDetailDialog({
           )}
 
           {/* Horaire */}
-          {(intervention.statut === 'A_PLANIFIER' || intervention.statut === 'PLANIFIEE') && (
+          {(intervention.statut === 'A_PLANIFIER' || intervention.statut === 'PLANIFIEE' || intervention.statut === 'REPORTEE') && (
             <>
               <Separator />
               <div className="space-y-3">
@@ -1586,7 +1769,34 @@ function InterventionDetailDialog({
           )}
 
           <DialogFooter className="gap-2">
-            {canManage && intervention.statut === 'REALISEE' && (
+            {canExport && intervention.type === 'OPERATION' && intervention.statut === 'REALISEE' && (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={onDownloadAttestation}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Attestation de passage
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={onDownloadAttestationGarantie}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Attestation de Garantie
+                </Button>
+              </>
+            )}
+            {canExport && intervention.type === 'CONTROLE' && intervention.statut === 'REALISEE' && (
+              <Button
+                variant="outline"
+                onClick={onDownloadAttestationControle}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Attestation de Visite de Contrôle
+              </Button>
+            )}
+            {canManage && intervention.statut !== 'ANNULEE' && intervention.type === 'OPERATION' && (
               <Button
                 variant="secondary"
                 onClick={onGenerateFacture}
@@ -1596,6 +1806,28 @@ function InterventionDetailDialog({
                 Générer facture
               </Button>
             )}
+            {intervention.statut !== 'REALISEE' &&
+              intervention.statut !== 'ANNULEE' &&
+              canManage && (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={onReporter}
+                    className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                  >
+                    <CalendarDays className="h-4 w-4 mr-2" />
+                    Reporter
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={onAnnuler}
+                    className="text-red-600 border-red-300 hover:bg-red-50"
+                  >
+                    <XCircle className="h-4 w-4 mr-2" />
+                    Annuler
+                  </Button>
+                </>
+              )}
             {intervention.statut !== 'REALISEE' &&
               intervention.statut !== 'ANNULEE' &&
               canRealiser && (
@@ -1722,6 +1954,264 @@ function RealiserDialog({
             disabled={isPending || !dateRealisee}
           >
             {isPending ? 'En cours...' : 'Confirmer'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============ REPORTER DIALOG ============
+function ReporterDialog({
+  intervention,
+  onClose,
+  onConfirm,
+  isPending,
+}: {
+  intervention: Intervention | null;
+  onClose: () => void;
+  onConfirm: (data: { nouvelleDatePrevue: string; raison: string }) => void;
+  isPending: boolean;
+}) {
+  const [nouvelleDatePrevue, setNouvelleDatePrevue] = useState('');
+  const [raison, setRaison] = useState('');
+
+  useEffect(() => {
+    if (intervention?.datePrevue) {
+      // Proposer par défaut une semaine plus tard
+      const dateActuelle = parseISO(intervention.datePrevue);
+      const dateSuggérée = new Date(dateActuelle);
+      dateSuggérée.setDate(dateSuggérée.getDate() + 7);
+      setNouvelleDatePrevue(format(dateSuggérée, 'yyyy-MM-dd'));
+    } else {
+      setNouvelleDatePrevue('');
+    }
+    setRaison('');
+  }, [intervention]);
+
+  if (!intervention) return null;
+
+  const canConfirm = nouvelleDatePrevue && raison.trim().length > 0;
+
+  return (
+    <Dialog open={!!intervention} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <CalendarDays className="h-5 w-5 text-orange-500" />
+            Reporter l'intervention
+          </DialogTitle>
+          <DialogDescription>
+            {intervention.client?.nomEntreprise} - {getStatutLabel(intervention.type)}
+            <br />
+            <span className="text-xs">
+              Date actuelle : {formatDate(intervention.datePrevue, 'd MMMM yyyy')}
+            </span>
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="nouvelleDatePrevue">Nouvelle date prévue *</Label>
+            <Input
+              id="nouvelleDatePrevue"
+              type="date"
+              value={nouvelleDatePrevue}
+              onChange={(e) => setNouvelleDatePrevue(e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="raison">Raison du report *</Label>
+            <Textarea
+              id="raison"
+              value={raison}
+              onChange={(e) => setRaison(e.target.value)}
+              placeholder="Indiquez la raison du report (client absent, météo, etc.)..."
+              rows={3}
+            />
+          </div>
+
+          <div className="rounded-md bg-orange-50 border border-orange-200 p-3">
+            <p className="text-xs text-orange-800 flex items-center gap-1">
+              <AlertCircle className="h-3 w-3" />
+              L'intervention passera au statut "Reportée". Vous pourrez la replanifier ultérieurement.
+            </p>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button
+            onClick={() => onConfirm({ nouvelleDatePrevue, raison })}
+            disabled={isPending || !canConfirm}
+            className="bg-orange-500 hover:bg-orange-600"
+          >
+            {isPending ? 'En cours...' : 'Confirmer le report'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============ ANNULER DIALOG ============
+function AnnulerDialog({
+  intervention,
+  onClose,
+  onConfirm,
+  isPending,
+}: {
+  intervention: Intervention | null;
+  onClose: () => void;
+  onConfirm: (data: { raison: string }) => void;
+  isPending: boolean;
+}) {
+  const [raison, setRaison] = useState('');
+
+  useEffect(() => {
+    setRaison('');
+  }, [intervention]);
+
+  if (!intervention) return null;
+
+  const canConfirm = raison.trim().length > 0;
+
+  return (
+    <Dialog open={!!intervention} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-red-600">
+            <XCircle className="h-5 w-5" />
+            Annuler l'intervention
+          </DialogTitle>
+          <DialogDescription>
+            {intervention.client?.nomEntreprise} - {getStatutLabel(intervention.type)}
+            <br />
+            <span className="text-xs">
+              Date prévue : {formatDate(intervention.datePrevue, 'd MMMM yyyy')}
+            </span>
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="rounded-md bg-red-50 border border-red-200 p-3">
+            <p className="text-sm text-red-800 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4" />
+              <strong>Attention :</strong> Cette action est irréversible.
+            </p>
+            <p className="text-xs text-red-700 mt-1">
+              Une intervention annulée ne pourra plus être modifiée ni déplacée.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="raison">Raison de l'annulation *</Label>
+            <Textarea
+              id="raison"
+              value={raison}
+              onChange={(e) => setRaison(e.target.value)}
+              placeholder="Indiquez la raison de l'annulation..."
+              rows={3}
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Retour
+          </Button>
+          <Button
+            onClick={() => onConfirm({ raison })}
+            disabled={isPending || !canConfirm}
+            variant="destructive"
+          >
+            {isPending ? 'En cours...' : 'Confirmer l\'annulation'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AttestationBodyDialog({
+  open,
+  bodyText,
+  title,
+  description,
+  isLoading,
+  isSaving,
+  onBodyChange,
+  onClose,
+  onGenerate,
+}: {
+  open: boolean;
+  bodyText: string;
+  title: string;
+  description: string;
+  isLoading: boolean;
+  isSaving: boolean;
+  onBodyChange: (value: string) => void;
+  onClose: () => void;
+  onGenerate: () => void;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const applyMarker = (marker: '**' | '__') => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart ?? 0;
+    const end = textarea.selectionEnd ?? 0;
+    const selected = bodyText.slice(start, end);
+    const wrapped = `${marker}${selected || 'texte'}${marker}`;
+    const next = bodyText.slice(0, start) + wrapped + bodyText.slice(end);
+    onBodyChange(next);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="w-[95vw] max-w-3xl sm:w-full">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>
+            {description}
+          </DialogDescription>
+        </DialogHeader>
+
+        {isLoading ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">Chargement du message...</div>
+        ) : (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => applyMarker('**')}>
+                Gras
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => applyMarker('__')}>
+                Souligné
+              </Button>
+              <span className="text-xs text-muted-foreground break-words">
+                Syntaxe: `**texte**` (gras), `__texte__` (souligné)
+              </span>
+            </div>
+            <Label htmlFor="attestation-body">Corps du message</Label>
+            <Textarea
+              id="attestation-body"
+              ref={textareaRef}
+              value={bodyText}
+              onChange={(e) => onBodyChange(e.target.value)}
+              rows={8}
+            />
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={isSaving}>
+            Annuler
+          </Button>
+          <Button onClick={onGenerate} disabled={isLoading || isSaving || !bodyText.trim()}>
+            {isSaving ? 'Génération...' : 'Générer PDF'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -2110,6 +2600,7 @@ function FiltersSheet({
     filters.type !== 'ALL' ? filters.type : '',
     filters.responsable,
     filters.employeId,
+    filters.searchClient,
   ].filter(Boolean).length;
 
   return (
@@ -2145,6 +2636,7 @@ function FiltersSheet({
                   <SelectItem value="ALL">Tous statuts</SelectItem>
                   <SelectItem value="A_PLANIFIER">À planifier</SelectItem>
                   <SelectItem value="PLANIFIEE">Planifiée</SelectItem>
+                  <SelectItem value="EN_RETARD">En retard</SelectItem>
                   <SelectItem value="REALISEE">Réalisée</SelectItem>
                   <SelectItem value="REPORTEE">Reportée</SelectItem>
                   <SelectItem value="ANNULEE">Annulée</SelectItem>
@@ -2166,6 +2658,8 @@ function FiltersSheet({
                   <SelectItem value="OPERATION">Opération</SelectItem>
                   <SelectItem value="CONTROLE">Contrôle</SelectItem>
                   <SelectItem value="RECLAMATION">Réclamation</SelectItem>
+                  <SelectItem value="PREMIERE_VISITE">Première visite</SelectItem>
+                  <SelectItem value="DEPLACEMENT_COMMERCIAL">Déplacement commercial</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -2291,6 +2785,7 @@ function FiltersSheet({
                   type: 'ALL',
                   responsable: '',
                   employeId: '',
+                  searchClient: '',
                 })
               }
             >
@@ -2301,6 +2796,164 @@ function FiltersSheet({
         </ScrollArea>
       </SheetContent>
     </Sheet>
+  );
+}
+
+// ============ EXPORT CALENDAR DIALOG ============
+type ExportPeriod = 'day' | 'week' | 'biweek' | 'month' | 'quarter' | 'year' | 'custom';
+
+function ExportCalendarDialog({
+  open,
+  onClose,
+  currentDate,
+  onExport,
+}: {
+  open: boolean;
+  onClose: () => void;
+  currentDate: Date;
+  onExport: (dateDebut: string, dateFin: string) => void;
+}) {
+  const [period, setPeriod] = useState<ExportPeriod>('month');
+  const [customStart, setCustomStart] = useState(format(startOfMonth(currentDate), 'yyyy-MM-dd'));
+  const [customEnd, setCustomEnd] = useState(format(endOfMonth(currentDate), 'yyyy-MM-dd'));
+
+  useEffect(() => {
+    // Mettre à jour les dates par défaut quand la période change
+    const now = currentDate;
+    switch (period) {
+      case 'day':
+        setCustomStart(format(startOfDay(now), 'yyyy-MM-dd'));
+        setCustomEnd(format(endOfDay(now), 'yyyy-MM-dd'));
+        break;
+      case 'week':
+        setCustomStart(format(startOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd'));
+        setCustomEnd(format(endOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd'));
+        break;
+      case 'biweek':
+        const biweekStart = startOfWeek(now, { weekStartsOn: 1 });
+        setCustomStart(format(biweekStart, 'yyyy-MM-dd'));
+        setCustomEnd(format(addDays(biweekStart, 13), 'yyyy-MM-dd'));
+        break;
+      case 'month':
+        setCustomStart(format(startOfMonth(now), 'yyyy-MM-dd'));
+        setCustomEnd(format(endOfMonth(now), 'yyyy-MM-dd'));
+        break;
+      case 'quarter':
+        setCustomStart(format(startOfQuarter(now), 'yyyy-MM-dd'));
+        setCustomEnd(format(endOfQuarter(now), 'yyyy-MM-dd'));
+        break;
+      case 'year':
+        setCustomStart(format(startOfYear(now), 'yyyy-MM-dd'));
+        setCustomEnd(format(endOfYear(now), 'yyyy-MM-dd'));
+        break;
+    }
+  }, [period, currentDate]);
+
+  const handleExport = () => {
+    onExport(customStart, customEnd);
+    onClose();
+  };
+
+  const getPeriodLabel = () => {
+    switch (period) {
+      case 'day':
+        return format(parseISO(customStart), 'EEEE d MMMM yyyy', { locale: fr });
+      case 'week':
+        return `Semaine du ${format(parseISO(customStart), 'd MMM', { locale: fr })} au ${format(parseISO(customEnd), 'd MMM yyyy', { locale: fr })}`;
+      case 'biweek':
+        return `Du ${format(parseISO(customStart), 'd MMM', { locale: fr })} au ${format(parseISO(customEnd), 'd MMM yyyy', { locale: fr })}`;
+      case 'month':
+        return format(parseISO(customStart), 'MMMM yyyy', { locale: fr });
+      case 'quarter':
+        return `${format(parseISO(customStart), 'MMM', { locale: fr })} - ${format(parseISO(customEnd), 'MMM yyyy', { locale: fr })}`;
+      case 'year':
+        return format(parseISO(customStart), 'yyyy', { locale: fr });
+      case 'custom':
+        return `Du ${format(parseISO(customStart), 'd MMM yyyy', { locale: fr })} au ${format(parseISO(customEnd), 'd MMM yyyy', { locale: fr })}`;
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5" />
+            Exporter le calendrier
+          </DialogTitle>
+          <DialogDescription>
+            Téléchargez le planning au format iCal compatible avec Google Calendar, Outlook, Apple Calendar, etc.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Période à exporter</Label>
+            <Select value={period} onValueChange={(v) => setPeriod(v as ExportPeriod)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="day">Jour</SelectItem>
+                <SelectItem value="week">Semaine</SelectItem>
+                <SelectItem value="biweek">2 semaines</SelectItem>
+                <SelectItem value="month">Mois</SelectItem>
+                <SelectItem value="quarter">Trimestre</SelectItem>
+                <SelectItem value="year">Année</SelectItem>
+                <SelectItem value="custom">Personnalisé</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {period === 'custom' ? (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Date de début</Label>
+                <Input
+                  type="date"
+                  value={customStart}
+                  onChange={(e) => setCustomStart(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Date de fin</Label>
+                <Input
+                  type="date"
+                  value={customEnd}
+                  onChange={(e) => setCustomEnd(e.target.value)}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="p-3 bg-muted rounded-md text-sm">
+              <span className="text-muted-foreground">Période sélectionnée : </span>
+              <span className="font-medium">{getPeriodLabel()}</span>
+            </div>
+          )}
+
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-700">
+            <p className="font-medium mb-1">Informations exportées :</p>
+            <ul className="list-disc list-inside space-y-0.5 text-xs">
+              <li>Client et site</li>
+              <li>Type d'intervention et prestation</li>
+              <li>Date, heure et durée</li>
+              <li>Équipe assignée</li>
+              <li>Notes et observations</li>
+            </ul>
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose}>
+            Annuler
+          </Button>
+          <Button onClick={handleExport}>
+            <Download className="h-4 w-4 mr-2" />
+            Télécharger (.ics)
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -2328,13 +2981,23 @@ export function PlanningPage() {
     type: 'ALL',
     responsable: '',
     employeId: '',
+    searchClient: '',
   });
 
   // Dialog states
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedIntervention, setSelectedIntervention] = useState<Intervention | null>(null);
   const [realiserIntervention, setRealiserIntervention] = useState<Intervention | null>(null);
+  const [reporterIntervention, setReporterIntervention] = useState<Intervention | null>(null);
+  const [annulerIntervention, setAnnulerIntervention] = useState<Intervention | null>(null);
+  const [attestationIntervention, setAttestationIntervention] = useState<Intervention | null>(null);
+  const [attestationKind, setAttestationKind] = useState<'passage' | 'garantie' | 'controle'>('passage');
+  const [attestationBody, setAttestationBody] = useState('');
+  const [attestationInitialBody, setAttestationInitialBody] = useState('');
+  const [attestationLoading, setAttestationLoading] = useState(false);
+  const [attestationSaving, setAttestationSaving] = useState(false);
   const [draggedIntervention, setDraggedIntervention] = useState<Intervention | null>(null);
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
 
   const handleDayDoubleClick = (day: Date) => {
     setCurrentDate(day);
@@ -2474,7 +3137,8 @@ export function PlanningPage() {
         dateDebut: format(dateRangeStart, 'yyyy-MM-dd'),
         dateFin: format(dateRangeEnd, 'yyyy-MM-dd'),
         clientId: filters.clientId || undefined,
-        statut: filters.statut !== 'ALL' ? filters.statut : undefined,
+        // EN_RETARD est un filtre virtuel géré côté client
+        statut: filters.statut !== 'ALL' && filters.statut !== 'EN_RETARD' ? filters.statut : undefined,
         type: filters.type !== 'ALL' ? filters.type : undefined,
         prestation: filters.prestation || undefined,
         limit: 500,
@@ -2514,6 +3178,17 @@ export function PlanningPage() {
     queryFn: () => postesApi.list(true),
   });
 
+  // Stats queries
+  const { data: interventionsEnRetard = [] } = useQuery({
+    queryKey: ['interventions-en-retard'],
+    queryFn: interventionsApi.enRetard,
+  });
+
+  const { data: interventionsAPlanifier7j = [] } = useQuery({
+    queryKey: ['interventions-a-planifier-7j'],
+    queryFn: () => interventionsApi.aPlanifier(7),
+  });
+
   const employeNames = useMemo(() => {
     const names = (employes as Employe[])
       .map((e) => `${e.prenom} ${e.nom}`.trim())
@@ -2541,13 +3216,80 @@ export function PlanningPage() {
       );
     }
 
+    // Filtre virtuel EN_RETARD (interventions passées non réalisées)
+    if (filters.statut === 'EN_RETARD') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      result = result.filter((i) => {
+        const datePrevue = parseISO(i.datePrevue);
+        return datePrevue < today && i.statut !== 'REALISEE' && i.statut !== 'ANNULEE';
+      });
+    }
+
+    // Recherche par nom de client
+    if (filters.searchClient) {
+      const search = filters.searchClient.toLowerCase();
+      result = result.filter((i) =>
+        i.client?.nomEntreprise?.toLowerCase().includes(search)
+      );
+    }
+
     return result;
   }, [
     interventionsData?.interventions,
     filters.siteId,
     filters.responsable,
     filters.employeId,
+    filters.statut,
+    filters.searchClient,
   ]);
+
+  // Calculate planning stats
+  const planningStats = useMemo(() => {
+    const allInterventions = interventionsData?.interventions || [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Interventions d'aujourd'hui
+    const todayInterventions = allInterventions.filter((i) =>
+      isSameDay(parseISO(i.datePrevue), today)
+    );
+
+    // Interventions de la semaine courante
+    const weekStart = startOfWeek(today, { weekStartsOn: 0 });
+    const weekEnd = endOfWeek(today, { weekStartsOn: 0 });
+    const weekInterventions = allInterventions.filter((i) => {
+      const date = parseISO(i.datePrevue);
+      return date >= weekStart && date <= weekEnd;
+    });
+
+    // Par statut (sur la période affichée)
+    const aPlanifier = allInterventions.filter((i) => i.statut === 'A_PLANIFIER').length;
+    const planifiees = allInterventions.filter((i) => i.statut === 'PLANIFIEE').length;
+    const realisees = allInterventions.filter((i) => i.statut === 'REALISEE').length;
+    const reportees = allInterventions.filter((i) => i.statut === 'REPORTEE').length;
+
+    // Réclamations actives
+    const reclamationsActives = allInterventions.filter((i) =>
+      i.type === 'RECLAMATION' && i.statut !== 'REALISEE' && i.statut !== 'ANNULEE'
+    ).length;
+
+    // Taux de réalisation
+    const total = allInterventions.filter((i) => i.statut !== 'ANNULEE').length;
+    const tauxRealisation = total > 0 ? Math.round((realisees / total) * 100) : 0;
+
+    return {
+      aujourdhui: todayInterventions.length,
+      cetteSemaine: weekInterventions.length,
+      aPlanifier,
+      planifiees,
+      realisees,
+      reportees,
+      reclamationsActives,
+      tauxRealisation,
+      enRetard: interventionsEnRetard.length,
+    };
+  }, [interventionsData?.interventions, interventionsEnRetard]);
 
   const dayPreviewInterventions = useMemo(() => {
     if (!dayPreviewDate) return [];
@@ -2657,6 +3399,126 @@ export function PlanningPage() {
     },
   });
 
+  const reporterMutation = useMutation({
+    mutationFn: ({
+      id,
+      nouvelleDatePrevue,
+      raison,
+    }: {
+      id: string;
+      nouvelleDatePrevue: string;
+      raison: string;
+    }) => interventionsApi.reporter(id, nouvelleDatePrevue, raison),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['interventions'] });
+      queryClient.refetchQueries({ queryKey: ['interventions'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      toast.success('Intervention reportée avec succès');
+      setReporterIntervention(null);
+      setSelectedIntervention(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors du report');
+    },
+  });
+
+  const annulerMutation = useMutation({
+    mutationFn: ({
+      id,
+      raison,
+    }: {
+      id: string;
+      raison: string;
+    }) => interventionsApi.annuler(id, raison),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['interventions'] });
+      queryClient.refetchQueries({ queryKey: ['interventions'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      toast.success('Intervention annulée');
+      setAnnulerIntervention(null);
+      setSelectedIntervention(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de l\'annulation');
+    },
+  });
+
+  const closeAttestationDialog = () => {
+    setAttestationIntervention(null);
+    setAttestationKind('passage');
+    setAttestationBody('');
+    setAttestationInitialBody('');
+    setAttestationLoading(false);
+    setAttestationSaving(false);
+  };
+
+  const openAttestationDialog = async (intervention: Intervention, kind: 'passage' | 'garantie' | 'controle') => {
+    setAttestationIntervention(intervention);
+    setAttestationKind(kind);
+    setAttestationLoading(true);
+    setAttestationBody('');
+    setAttestationInitialBody('');
+    try {
+      const data = kind === 'garantie'
+        ? await interventionsApi.getAttestationGarantieBody(intervention.id)
+        : kind === 'controle'
+          ? await interventionsApi.getAttestationControleBody(intervention.id)
+          : await interventionsApi.getAttestationBody(intervention.id);
+      setAttestationBody(data.bodyText || '');
+      setAttestationInitialBody(data.bodyText || '');
+    } catch (error: any) {
+      const message = error?.response?.data?.error || 'Erreur lors du chargement du message de l’attestation';
+      toast.error(message);
+      setAttestationIntervention(null);
+    } finally {
+      setAttestationLoading(false);
+    }
+  };
+
+  const generateAttestationWithBody = async () => {
+    if (!attestationIntervention) return;
+    try {
+      setAttestationSaving(true);
+
+      if (attestationBody.trim() !== attestationInitialBody.trim()) {
+        if (attestationKind === 'garantie') {
+          await interventionsApi.updateAttestationGarantieBody(attestationIntervention.id, {
+            bodyText: attestationBody.trim(),
+          });
+        } else if (attestationKind === 'controle') {
+          await interventionsApi.updateAttestationControleBody(attestationIntervention.id, {
+            bodyText: attestationBody.trim(),
+          });
+        } else {
+          await interventionsApi.updateAttestationBody(attestationIntervention.id, {
+            bodyText: attestationBody.trim(),
+          });
+        }
+      }
+
+      const blob = attestationKind === 'garantie'
+        ? await interventionsApi.downloadAttestationGarantie(attestationIntervention.id)
+        : attestationKind === 'controle'
+          ? await interventionsApi.downloadAttestationControle(attestationIntervention.id)
+        : await interventionsApi.downloadAttestationPassage(attestationIntervention.id);
+      const url = window.URL.createObjectURL(blob);
+      const link = window.document.createElement('a');
+      link.href = url;
+      link.download = `attestation-${attestationKind}-${attestationIntervention.id}.pdf`;
+      window.document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Attestation générée avec succès');
+      closeAttestationDialog();
+    } catch (error: any) {
+      const message = error?.response?.data?.error || 'Erreur lors de la génération de l’attestation';
+      toast.error(message);
+    } finally {
+      setAttestationSaving(false);
+    }
+  };
+
   // Drag and drop handlers
   const handleDragStart = (event: DragStartEvent) => {
     const intervention = event.active.data.current?.intervention as Intervention;
@@ -2708,13 +3570,35 @@ export function PlanningPage() {
     }
   };
 
-  const handleExportGCal = () => {
-    const url = importExportApi.exportGoogleCalendar({
-      dateDebut: format(dateRangeStart, 'yyyy-MM-dd'),
-      dateFin: format(dateRangeEnd, 'yyyy-MM-dd'),
-      statuts: ['A_PLANIFIER', 'PLANIFIEE'],
-    });
-    window.open(url, '_blank');
+  const handleExportCalendar = () => {
+    // Pour les vues jour et liste, ouvrir le dialogue pour choisir la période
+    if (viewMode === 'day' || viewMode === 'list') {
+      setIsExportDialogOpen(true);
+    } else {
+      // Pour les autres vues, exporter directement la période actuelle
+      downloadCalendar(format(dateRangeStart, 'yyyy-MM-dd'), format(dateRangeEnd, 'yyyy-MM-dd'));
+    }
+  };
+
+  const downloadCalendar = async (dateDebut: string, dateFin: string) => {
+    try {
+      const blob = await importExportApi.downloadGoogleCalendar({
+        dateDebut,
+        dateFin,
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `planning-${dateDebut}-${dateFin}.ics`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Calendrier téléchargé avec succès');
+    } catch (error: any) {
+      const message = error?.response?.data?.error || 'Erreur lors du téléchargement';
+      toast.error(message);
+    }
   };
 
   return (
@@ -2738,9 +3622,9 @@ export function PlanningPage() {
             <p className="text-muted-foreground">Gestion des interventions et du calendrier</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleExportGCal}>
-              <Download className="h-4 w-4 mr-2" />
-              Google Calendar
+            <Button variant="outline" size="sm" onClick={handleExportCalendar}>
+              <Calendar className="h-4 w-4 mr-2" />
+              Exporter
             </Button>
             {canDo('createIntervention') && (
               <Button onClick={() => setIsCreateOpen(true)}>
@@ -2749,6 +3633,67 @@ export function PlanningPage() {
               </Button>
             )}
           </div>
+        </div>
+
+        {/* Stats Section */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <PlanningStatCard
+            title="Aujourd'hui"
+            value={planningStats.aujourdhui}
+            icon={Calendar}
+            variant="default"
+            onClick={() => {
+              setCurrentDate(new Date());
+              setViewMode('day');
+            }}
+            isActive={viewMode === 'day' && isSameDay(currentDate, new Date())}
+          />
+          <PlanningStatCard
+            title="Cette semaine"
+            value={planningStats.cetteSemaine}
+            icon={CalendarDays}
+            variant="default"
+            onClick={() => {
+              setCurrentDate(new Date());
+              setViewMode('week');
+            }}
+            isActive={viewMode === 'week'}
+          />
+          <PlanningStatCard
+            title="À planifier"
+            value={interventionsAPlanifier7j.length}
+            icon={Clock}
+            variant="warning"
+            subtitle="prochains 7 jours"
+            onClick={() => setFilters({ ...filters, statut: 'A_PLANIFIER' })}
+            isActive={filters.statut === 'A_PLANIFIER'}
+          />
+          <PlanningStatCard
+            title="En retard"
+            value={planningStats.enRetard}
+            icon={AlertTriangle}
+            variant={planningStats.enRetard > 0 ? 'error' : 'default'}
+            onClick={() => setFilters({ ...filters, statut: 'EN_RETARD' })}
+            isActive={filters.statut === 'EN_RETARD'}
+          />
+          <PlanningStatCard
+            title="Réclamations"
+            value={planningStats.reclamationsActives}
+            icon={AlertCircle}
+            variant={planningStats.reclamationsActives > 0 ? 'orange' : 'default'}
+            subtitle="actives"
+            onClick={() => setFilters({ ...filters, type: 'RECLAMATION', statut: 'ALL' })}
+            isActive={filters.type === 'RECLAMATION'}
+          />
+          <PlanningStatCard
+            title="Taux réalisation"
+            value={`${planningStats.tauxRealisation}%`}
+            icon={TrendingUp}
+            variant="success"
+            showProgress
+            progressValue={planningStats.tauxRealisation}
+            subtitle="sur la période"
+          />
         </div>
 
         {/* Controls */}
@@ -2773,38 +3718,65 @@ export function PlanningPage() {
 
               {/* View selector and filters */}
               <div className="flex items-center gap-2 flex-wrap">
-                {/* Quick filters */}
-                <Select
-                  value={filters.statut}
-                  onValueChange={(v) => setFilters({ ...filters, statut: v as FilterStatut })}
-                >
-                  <SelectTrigger className="w-[130px]">
-                    <SelectValue placeholder="Statut" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">Tous statuts</SelectItem>
-                    <SelectItem value="A_PLANIFIER">À planifier</SelectItem>
-                    <SelectItem value="PLANIFIEE">Planifiée</SelectItem>
-                    <SelectItem value="REALISEE">Réalisée</SelectItem>
-                    <SelectItem value="REPORTEE">Reportée</SelectItem>
-                    <SelectItem value="ANNULEE">Annulée</SelectItem>
-                  </SelectContent>
-                </Select>
+                {/* Search client */}
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Rechercher client..."
+                    className="pl-9 w-[180px] h-9"
+                    value={filters.searchClient || ''}
+                    onChange={(e) => setFilters({ ...filters, searchClient: e.target.value })}
+                  />
+                </div>
+
+                {/* Quick status filters with badges */}
+                <div className="flex items-center gap-1 border rounded-lg p-1 bg-muted/30">
+                  {[
+                    { value: 'ALL', label: 'Tous', count: interventions.length },
+                    { value: 'A_PLANIFIER', label: 'À planifier', count: planningStats.aPlanifier },
+                    { value: 'PLANIFIEE', label: 'Planifiées', count: planningStats.planifiees },
+                    { value: 'EN_RETARD', label: 'En retard', count: planningStats.enRetard },
+                    { value: 'REALISEE', label: 'Réalisées', count: planningStats.realisees },
+                  ].map((item) => (
+                    <Button
+                      key={item.value}
+                      variant={filters.statut === item.value ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => setFilters({ ...filters, statut: item.value as FilterStatut })}
+                      className={cn(
+                        'h-7 px-2 text-xs',
+                        filters.statut === item.value && 'shadow-sm'
+                      )}
+                    >
+                      {item.label}
+                      {item.value !== 'ALL' && (
+                        <Badge
+                          variant={filters.statut === item.value ? 'secondary' : 'outline'}
+                          className="ml-1.5 h-5 min-w-5 px-1.5 text-[10px]"
+                        >
+                          {item.count}
+                        </Badge>
+                      )}
+                    </Button>
+                  ))}
+                </div>
 
                 <Select
                   value={filters.type}
                   onValueChange={(v) => setFilters({ ...filters, type: v })}
                 >
-                  <SelectTrigger className="w-[120px]">
+                  <SelectTrigger className="w-[140px]">
                     <SelectValue placeholder="Type" />
                   </SelectTrigger>
                   <SelectContent>
-                  <SelectItem value="ALL">Tous types</SelectItem>
-                  <SelectItem value="OPERATION">Opération</SelectItem>
-                  <SelectItem value="CONTROLE">Contrôle</SelectItem>
-                  <SelectItem value="RECLAMATION">Réclamation</SelectItem>
-                </SelectContent>
-              </Select>
+                    <SelectItem value="ALL">Tous types</SelectItem>
+                    <SelectItem value="OPERATION">Opération</SelectItem>
+                    <SelectItem value="CONTROLE">Contrôle</SelectItem>
+                    <SelectItem value="RECLAMATION">Réclamation</SelectItem>
+                    <SelectItem value="PREMIERE_VISITE">Première visite</SelectItem>
+                    <SelectItem value="DEPLACEMENT_COMMERCIAL">Dépl. commercial</SelectItem>
+                  </SelectContent>
+                </Select>
 
                 {/* Advanced filters */}
                 <FiltersSheet
@@ -2852,22 +3824,52 @@ export function PlanningPage() {
               />
             )}
             {viewMode === 'week' && (
-              <WeekView
-                weekStart={dateRangeStart}
-                interventions={interventions}
-                onInterventionClick={setSelectedIntervention}
-                onDayDoubleClick={handleDayDoubleClick}
-                onDayClick={setDayPreviewDate}
-              />
+              <div className="space-y-3">
+                <div className="flex items-center gap-4 text-sm px-1">
+                  <span className="font-medium text-muted-foreground">
+                    {interventions.length} intervention{interventions.length > 1 ? 's' : ''} cette semaine
+                  </span>
+                  <span className="text-green-600 flex items-center gap-1">
+                    <CheckCircle className="h-3.5 w-3.5" />
+                    {interventions.filter((i) => i.statut === 'REALISEE').length} réalisée{interventions.filter((i) => i.statut === 'REALISEE').length > 1 ? 's' : ''}
+                  </span>
+                  <span className="text-yellow-600 flex items-center gap-1">
+                    <Clock className="h-3.5 w-3.5" />
+                    {interventions.filter((i) => i.statut !== 'REALISEE' && i.statut !== 'ANNULEE').length} en cours
+                  </span>
+                </div>
+                <WeekView
+                  weekStart={dateRangeStart}
+                  interventions={interventions}
+                  onInterventionClick={setSelectedIntervention}
+                  onDayDoubleClick={handleDayDoubleClick}
+                  onDayClick={setDayPreviewDate}
+                />
+              </div>
             )}
             {viewMode === 'biweek' && (
-              <BiWeekView
-                startDate={dateRangeStart}
-                interventions={interventions}
-                onInterventionClick={setSelectedIntervention}
-                onDayDoubleClick={handleDayDoubleClick}
-                onDayClick={setDayPreviewDate}
-              />
+              <div className="space-y-3">
+                <div className="flex items-center gap-4 text-sm px-1">
+                  <span className="font-medium text-muted-foreground">
+                    {interventions.length} intervention{interventions.length > 1 ? 's' : ''} sur 2 semaines
+                  </span>
+                  <span className="text-green-600 flex items-center gap-1">
+                    <CheckCircle className="h-3.5 w-3.5" />
+                    {interventions.filter((i) => i.statut === 'REALISEE').length} réalisée{interventions.filter((i) => i.statut === 'REALISEE').length > 1 ? 's' : ''}
+                  </span>
+                  <span className="text-yellow-600 flex items-center gap-1">
+                    <Clock className="h-3.5 w-3.5" />
+                    {interventions.filter((i) => i.statut !== 'REALISEE' && i.statut !== 'ANNULEE').length} en cours
+                  </span>
+                </div>
+                <BiWeekView
+                  startDate={dateRangeStart}
+                  interventions={interventions}
+                  onInterventionClick={setSelectedIntervention}
+                  onDayDoubleClick={handleDayDoubleClick}
+                  onDayClick={setDayPreviewDate}
+                />
+              </div>
             )}
             {viewMode === 'month' && (
               <MonthView
@@ -3014,6 +4016,12 @@ export function PlanningPage() {
           onRealiser={() => {
             setRealiserIntervention(selectedInterventionDetail || selectedIntervention);
           }}
+          onReporter={() => {
+            setReporterIntervention(selectedInterventionDetail || selectedIntervention);
+          }}
+          onAnnuler={() => {
+            setAnnulerIntervention(selectedInterventionDetail || selectedIntervention);
+          }}
           onUpdateHoraire={(data) => {
             if (!selectedIntervention) return;
             updateMutation.mutate({
@@ -3048,10 +4056,46 @@ export function PlanningPage() {
             });
             setSelectedIntervention(null);
           }}
+          onDownloadAttestation={async () => {
+            const intervention = selectedInterventionDetail || selectedIntervention;
+            if (!intervention) return;
+            if (intervention.type !== 'OPERATION') {
+              toast.error("Ce document est disponible uniquement pour les interventions de type OPERATION");
+              return;
+            }
+            await openAttestationDialog(intervention, 'passage');
+          }}
+          onDownloadAttestationGarantie={async () => {
+            const intervention = selectedInterventionDetail || selectedIntervention;
+            if (!intervention) return;
+            if (intervention.type !== 'OPERATION') {
+              toast.error("Ce document est disponible uniquement pour les interventions de type OPERATION");
+              return;
+            }
+            await openAttestationDialog(intervention, 'garantie');
+          }}
+          onDownloadAttestationControle={async () => {
+            const intervention = selectedInterventionDetail || selectedIntervention;
+            if (!intervention) return;
+            if (intervention.type !== 'CONTROLE') {
+              toast.error("Ce document est disponible uniquement pour les visites de contrôle");
+              return;
+            }
+            await openAttestationDialog(intervention, 'controle');
+          }}
           canRealiser={canDo('realiserIntervention')}
           canManage={canDo('manageCommerce')}
+          canExport={canDo('exportData')}
           employes={employes as Employe[]}
           postes={postes as Poste[]}
+        />
+
+        {/* Export Calendar Dialog */}
+        <ExportCalendarDialog
+          open={isExportDialogOpen}
+          onClose={() => setIsExportDialogOpen(false)}
+          currentDate={currentDate}
+          onExport={downloadCalendar}
         />
 
         {/* Realiser Dialog */}
@@ -3067,6 +4111,61 @@ export function PlanningPage() {
             }
           }}
           isPending={realiserMutation.isPending}
+        />
+
+        {/* Reporter Dialog */}
+        <ReporterDialog
+          intervention={reporterIntervention}
+          onClose={() => setReporterIntervention(null)}
+          onConfirm={(data) => {
+            if (reporterIntervention) {
+              reporterMutation.mutate({
+                id: reporterIntervention.id,
+                nouvelleDatePrevue: data.nouvelleDatePrevue,
+                raison: data.raison,
+              });
+            }
+          }}
+          isPending={reporterMutation.isPending}
+        />
+
+        {/* Annuler Dialog */}
+        <AnnulerDialog
+          intervention={annulerIntervention}
+          onClose={() => setAnnulerIntervention(null)}
+          onConfirm={(data) => {
+            if (annulerIntervention) {
+              annulerMutation.mutate({
+                id: annulerIntervention.id,
+                raison: data.raison,
+              });
+            }
+          }}
+          isPending={annulerMutation.isPending}
+        />
+
+        <AttestationBodyDialog
+          open={!!attestationIntervention}
+          bodyText={attestationBody}
+          title={
+            attestationKind === 'garantie'
+              ? 'Attestation de Garantie'
+              : attestationKind === 'controle'
+                ? 'Attestation de Visite de Controle'
+                : 'Attestation de passage'
+          }
+          description={
+            attestationKind === 'garantie'
+              ? 'Modifiez le corps du message. Cette version sera mémorisée pour ce contrat (attestation de garantie).'
+              : attestationKind === 'controle'
+                ? 'Modifiez le corps du message. Cette version est partagée et mémorisée pour ce contrat.'
+              : 'Modifiez le corps du message. Cette version sera mémorisée pour ce contrat.'
+          }
+          isLoading={attestationLoading}
+          isSaving={attestationSaving}
+          onBodyChange={setAttestationBody}
+          onClose={closeAttestationDialog}
+          onGenerate={generateAttestationWithBody}
         />
 
         {/* Create Intervention Dialog */}

@@ -4,6 +4,7 @@ import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
 import planningService from '../services/planning.service.js';
 import { startOfDay, endOfDay, parseISO } from 'date-fns';
+import attestationService from '../services/attestation.service.js';
 
 export const interventionController = {
   /**
@@ -461,6 +462,24 @@ export const interventionController = {
         }
       }
 
+      // Déterminer le statut final
+      let finalStatut = data.statut ?? existing.statut;
+      const finalHeurePrevue = data.heurePrevue !== undefined ? data.heurePrevue : existing.heurePrevue;
+
+      // Compter les employés assignés après mise à jour
+      const employesCount = data.employes !== undefined
+        ? (data.employes?.length || 0)
+        : await prisma.interventionEmploye.count({ where: { interventionId: id } });
+
+      // Auto-PLANIFIEE : si heurePrevue + employés assignés et statut = A_PLANIFIER ou REPORTEE
+      if (
+        finalHeurePrevue &&
+        employesCount > 0 &&
+        (finalStatut === 'A_PLANIFIER' || finalStatut === 'REPORTEE')
+      ) {
+        finalStatut = 'PLANIFIEE';
+      }
+
       const intervention = await prisma.intervention.update({
         where: { id },
         data: {
@@ -470,9 +489,9 @@ export const interventionController = {
           type: data.type ?? existing.type,
           prestation: data.prestation ?? existing.prestation,
           datePrevue: data.datePrevue ?? existing.datePrevue,
-          heurePrevue: data.heurePrevue !== undefined ? data.heurePrevue : existing.heurePrevue,
+          heurePrevue: finalHeurePrevue,
           duree: data.duree !== undefined ? data.duree : existing.duree,
-          statut: data.statut ?? existing.statut,
+          statut: finalStatut,
           notesTerrain: data.notesTerrain ?? existing.notesTerrain,
           responsable: data.responsable !== undefined ? data.responsable : existing.responsable,
           updatedById: req.user!.id,
@@ -545,6 +564,10 @@ export const interventionController = {
         return res.status(400).json({ error: 'Nouvelle date requise' });
       }
 
+      if (!raison) {
+        return res.status(400).json({ error: 'Raison du report requise' });
+      }
+
       const intervention = await planningService.reporter(
         id,
         req.user!.id,
@@ -556,6 +579,77 @@ export const interventionController = {
     } catch (error: any) {
       console.error('Reporter error:', error);
       res.status(400).json({ error: error.message || 'Erreur lors du report' });
+    }
+  },
+
+  /**
+   * POST /api/interventions/:id/annuler
+   */
+  async annuler(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const { raison } = req.body;
+
+      if (!raison) {
+        return res.status(400).json({ error: 'Raison de l\'annulation requise' });
+      }
+
+      const existing = await prisma.intervention.findUnique({ where: { id } });
+
+      if (!existing) {
+        return res.status(404).json({ error: 'Intervention non trouvée' });
+      }
+
+      if (existing.statut === 'REALISEE') {
+        return res.status(400).json({ error: 'Impossible d\'annuler une intervention déjà réalisée' });
+      }
+
+      if (existing.statut === 'ANNULEE') {
+        return res.status(400).json({ error: 'Cette intervention est déjà annulée' });
+      }
+
+      // Ajouter la raison aux notes existantes
+      const notesFinales = existing.notesTerrain
+        ? `${existing.notesTerrain}\n\n[ANNULÉE] ${raison}`
+        : `[ANNULÉE] ${raison}`;
+
+      const intervention = await prisma.intervention.update({
+        where: { id },
+        data: {
+          statut: 'ANNULEE',
+          notesTerrain: notesFinales,
+          updatedById: req.user!.id,
+        },
+        include: {
+          client: {
+            select: { id: true, nomEntreprise: true },
+          },
+          site: {
+            select: { id: true, nom: true, adresse: true },
+          },
+          interventionEmployes: {
+            include: {
+              employe: {
+                include: { postes: true },
+              },
+              poste: true,
+            },
+          },
+        },
+      });
+
+      // Audit log
+      await createAuditLog(req.user!.id, 'UPDATE', 'Intervention', intervention.id, {
+        before: existing,
+        after: intervention,
+        action: 'ANNULEE',
+        raison,
+      });
+
+      res.json({ intervention });
+    } catch (error: any) {
+      console.error('Annuler error:', error);
+      res.status(400).json({ error: error.message || 'Erreur lors de l\'annulation' });
     }
   },
 
@@ -587,6 +681,235 @@ export const interventionController = {
     } catch (error) {
       console.error('Delete intervention error:', error);
       res.status(500).json({ error: 'Erreur serveur' });
+    }
+  },
+
+  /**
+   * GET /api/interventions/:id/attestation-passage.pdf
+   */
+  async exportAttestationPassage(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const { garantieMois, ville } = req.query;
+
+      const data = await attestationService.buildAttestationData(id, {
+        garantieMois: garantieMois ? Number(garantieMois) : undefined,
+        ville: typeof ville === 'string' ? ville : undefined,
+        kind: 'passage',
+      });
+
+      const { generateAttestationPassagePDF } = await import('../services/pdf.service.js');
+      const pdfBuffer = await generateAttestationPassagePDF(data.values);
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${data.fileName}"`);
+      res.setHeader('Content-Length', pdfBuffer.length);
+      res.send(pdfBuffer);
+    } catch (error: any) {
+      console.error('Export attestation passage error:', error);
+
+      const message = error?.message || 'Erreur lors de la génération de l\'attestation';
+      const status = message.includes('non trouvée') ? 404 : message.includes('uniquement') ? 400 : 500;
+      res.status(status).json({ error: message });
+    }
+  },
+
+  /**
+   * GET /api/interventions/:id/attestation-passage/body
+   */
+  async getAttestationBody(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const { garantieMois, ville } = req.query;
+      const result = await attestationService.getBodyConfig(id, {
+        garantieMois: garantieMois ? Number(garantieMois) : undefined,
+        ville: typeof ville === 'string' ? ville : undefined,
+        kind: 'passage',
+      });
+      res.json(result);
+    } catch (error: any) {
+      console.error('Get attestation body error:', error);
+      const message = error?.message || 'Erreur lors du chargement du message d’attestation';
+      const status = message.includes('non trouvée') ? 404 : message.includes('uniquement') || message.includes('contrat') ? 400 : 500;
+      res.status(status).json({ error: message });
+    }
+  },
+
+  /**
+   * PUT /api/interventions/:id/attestation-passage/body
+   */
+  async updateAttestationBody(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const { bodyText, garantieMois, ville } = req.body;
+
+      if (!bodyText || typeof bodyText !== 'string') {
+        return res.status(400).json({ error: 'Le corps du message est requis' });
+      }
+
+      const result = await attestationService.saveBodyTemplate(id, bodyText, {
+        garantieMois: garantieMois ? Number(garantieMois) : undefined,
+        ville: typeof ville === 'string' ? ville : undefined,
+        kind: 'passage',
+      });
+      res.json(result);
+    } catch (error: any) {
+      console.error('Update attestation body error:', error);
+      const message = error?.message || 'Erreur lors de la sauvegarde du message d’attestation';
+      const status = message.includes('non trouvée') ? 404 : message.includes('contrat') ? 400 : 500;
+      res.status(status).json({ error: message });
+    }
+  },
+
+  /**
+   * GET /api/interventions/:id/attestation-garantie.pdf
+   */
+  async exportAttestationGarantie(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const { garantieMois, ville } = req.query;
+
+      const data = await attestationService.buildAttestationData(id, {
+        garantieMois: garantieMois ? Number(garantieMois) : undefined,
+        ville: typeof ville === 'string' ? ville : undefined,
+        kind: 'garantie',
+      });
+
+      const { generateAttestationPassagePDF } = await import('../services/pdf.service.js');
+      const pdfBuffer = await generateAttestationPassagePDF(data.values);
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${data.fileName}"`);
+      res.setHeader('Content-Length', pdfBuffer.length);
+      res.send(pdfBuffer);
+    } catch (error: any) {
+      console.error('Export attestation garantie error:', error);
+      const message = error?.message || 'Erreur lors de la génération de l\'attestation de garantie';
+      const status = message.includes('non trouvée') ? 404 : message.includes('uniquement') ? 400 : 500;
+      res.status(status).json({ error: message });
+    }
+  },
+
+  /**
+   * GET /api/interventions/:id/attestation-garantie/body
+   */
+  async getAttestationGarantieBody(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const { garantieMois, ville } = req.query;
+      const result = await attestationService.getBodyConfig(id, {
+        garantieMois: garantieMois ? Number(garantieMois) : undefined,
+        ville: typeof ville === 'string' ? ville : undefined,
+        kind: 'garantie',
+      });
+      res.json(result);
+    } catch (error: any) {
+      console.error('Get attestation garantie body error:', error);
+      const message = error?.message || 'Erreur lors du chargement du message d’attestation de garantie';
+      const status = message.includes('non trouvée') ? 404 : message.includes('uniquement') || message.includes('contrat') ? 400 : 500;
+      res.status(status).json({ error: message });
+    }
+  },
+
+  /**
+   * PUT /api/interventions/:id/attestation-garantie/body
+   */
+  async updateAttestationGarantieBody(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const { bodyText, garantieMois, ville } = req.body;
+
+      if (!bodyText || typeof bodyText !== 'string') {
+        return res.status(400).json({ error: 'Le corps du message est requis' });
+      }
+
+      const result = await attestationService.saveBodyTemplate(id, bodyText, {
+        garantieMois: garantieMois ? Number(garantieMois) : undefined,
+        ville: typeof ville === 'string' ? ville : undefined,
+        kind: 'garantie',
+      });
+      res.json(result);
+    } catch (error: any) {
+      console.error('Update attestation garantie body error:', error);
+      const message = error?.message || 'Erreur lors de la sauvegarde du message d’attestation de garantie';
+      const status = message.includes('non trouvée') ? 404 : message.includes('contrat') ? 400 : 500;
+      res.status(status).json({ error: message });
+    }
+  },
+
+  /**
+   * GET /api/interventions/:id/attestation-controle.pdf
+   */
+  async exportAttestationControle(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const { garantieMois, ville } = req.query;
+
+      const data = await attestationService.buildAttestationData(id, {
+        garantieMois: garantieMois ? Number(garantieMois) : undefined,
+        ville: typeof ville === 'string' ? ville : undefined,
+        kind: 'controle',
+      });
+
+      const { generateAttestationPassagePDF } = await import('../services/pdf.service.js');
+      const pdfBuffer = await generateAttestationPassagePDF(data.values);
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${data.fileName}"`);
+      res.setHeader('Content-Length', pdfBuffer.length);
+      res.send(pdfBuffer);
+    } catch (error: any) {
+      console.error('Export attestation controle error:', error);
+      const message = error?.message || 'Erreur lors de la génération de l\'attestation de visite de contrôle';
+      const status = message.includes('non trouvée') ? 404 : message.includes('uniquement') ? 400 : 500;
+      res.status(status).json({ error: message });
+    }
+  },
+
+  /**
+   * GET /api/interventions/:id/attestation-controle/body
+   */
+  async getAttestationControleBody(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const { garantieMois, ville } = req.query;
+      const result = await attestationService.getBodyConfig(id, {
+        garantieMois: garantieMois ? Number(garantieMois) : undefined,
+        ville: typeof ville === 'string' ? ville : undefined,
+        kind: 'controle',
+      });
+      res.json(result);
+    } catch (error: any) {
+      console.error('Get attestation controle body error:', error);
+      const message = error?.message || 'Erreur lors du chargement du message d’attestation de visite de contrôle';
+      const status = message.includes('non trouvée') ? 404 : message.includes('uniquement') || message.includes('contrat') ? 400 : 500;
+      res.status(status).json({ error: message });
+    }
+  },
+
+  /**
+   * PUT /api/interventions/:id/attestation-controle/body
+   */
+  async updateAttestationControleBody(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const { bodyText, garantieMois, ville } = req.body;
+
+      if (!bodyText || typeof bodyText !== 'string') {
+        return res.status(400).json({ error: 'Le corps du message est requis' });
+      }
+
+      const result = await attestationService.saveBodyTemplate(id, bodyText, {
+        garantieMois: garantieMois ? Number(garantieMois) : undefined,
+        ville: typeof ville === 'string' ? ville : undefined,
+        kind: 'controle',
+      });
+      res.json(result);
+    } catch (error: any) {
+      console.error('Update attestation controle body error:', error);
+      const message = error?.message || 'Erreur lors de la sauvegarde du message d’attestation de visite de contrôle';
+      const status = message.includes('non trouvée') ? 404 : message.includes('contrat') ? 400 : 500;
+      res.status(status).json({ error: message });
     }
   },
 

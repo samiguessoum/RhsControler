@@ -27,6 +27,8 @@ import {
   Link,
   ClipboardList,
   Package,
+  Timer,
+  ArrowUpDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -68,6 +70,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
+import { Separator } from '@/components/ui/separator';
 import { commerceApi, produitsServicesApi, tiersApi } from '@/services/api';
 import type { CreateCommandeInput, CreateDevisInput, CreateFactureInput, ProduitService, Tiers, FactureType } from '@/types';
 import { useAuthStore } from '@/store/auth.store';
@@ -109,17 +112,33 @@ function LignesForm({
   lignes,
   setForm,
   produitsList,
+  typeDocument,
+  noteServiceDefaut,
 }: {
   lignes: CreateDevisInput['lignes'];
   setForm: (updater: (prev: any) => any) => void;
   produitsList: ProduitService[];
+  typeDocument?: 'PRODUIT' | 'SERVICE';
+  noteServiceDefaut?: string | null;
 }) {
+  // Filtrer les produits/services selon le type de document
+  const filteredProduits = typeDocument
+    ? produitsList.filter((p) => p.type === typeDocument)
+    : produitsList;
+
+  const typeLabel = typeDocument === 'SERVICE' ? 'Service' : typeDocument === 'PRODUIT' ? 'Produit' : 'Produit / Service';
+
   return (
     <div className="space-y-4">
       <div className="text-sm font-medium text-gray-700">Lignes du document</div>
 
       {lignes.map((ligne, index) => (
-        <div key={index} className="p-4 bg-gray-50 rounded-lg border space-y-3">
+        <div key={index} className={cn(
+          "p-4 rounded-lg border space-y-3",
+          typeDocument === 'SERVICE' ? "bg-purple-50/30 border-purple-100" :
+          typeDocument === 'PRODUIT' ? "bg-emerald-50/30 border-emerald-100" :
+          "bg-gray-50"
+        )}>
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-gray-600">Ligne {index + 1}</span>
             <Button
@@ -143,7 +162,7 @@ function LignesForm({
           {/* Ligne 1: Produit et Libellé */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label className="text-xs">Produit / Service</Label>
+              <Label className="text-xs">{typeLabel}</Label>
               <Select
                 value={ligne.produitServiceId || 'custom'}
                 onValueChange={(value) => {
@@ -155,7 +174,7 @@ function LignesForm({
                     });
                     return;
                   }
-                  const produit = produitsList.find((p) => p.id === value);
+                  const produit = filteredProduits.find((p) => p.id === value);
                   setForm((prev: any) => {
                     const next = { ...prev };
                     next.lignes[index] = {
@@ -171,11 +190,11 @@ function LignesForm({
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Choisir un produit ou saisie libre" />
+                  <SelectValue placeholder={`Choisir un ${typeLabel.toLowerCase()} ou saisie libre`} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="custom">Saisie libre</SelectItem>
-                  {produitsList.map((p) => (
+                  {filteredProduits.filter((p) => p.id && p.id !== '').map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.nom} {p.prixVenteHT ? `- ${formatMontant(p.prixVenteHT)}` : ''}
                     </SelectItem>
@@ -188,7 +207,7 @@ function LignesForm({
               <Label className="text-xs">Désignation</Label>
               <Input
                 value={ligne.libelle || ''}
-                placeholder="Description de la ligne"
+                placeholder="Nom de la prestation / produit"
                 onChange={(e) => {
                   const value = e.target.value;
                   setForm((prev: any) => {
@@ -199,6 +218,27 @@ function LignesForm({
                 }}
               />
             </div>
+          </div>
+
+          {/* Spécificités / Détails */}
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">
+              Spécificités <span className="italic">(optionnel - ex: zones traitées, détails techniques...)</span>
+            </Label>
+            <Textarea
+              value={ligne.description || ''}
+              placeholder="Détails supplémentaires, zones concernées, conditions particulières..."
+              rows={2}
+              className="text-sm resize-none"
+              onChange={(e) => {
+                const value = e.target.value;
+                setForm((prev: any) => {
+                  const next = { ...prev };
+                  next.lignes[index] = { ...next.lignes[index], description: value };
+                  return next;
+                });
+              }}
+            />
           </div>
 
           {/* Ligne 2: Quantité, Prix unitaire, TVA */}
@@ -281,7 +321,12 @@ function LignesForm({
         onClick={() =>
           setForm((prev: any) => ({
             ...prev,
-            lignes: [...prev.lignes, { ...EMPTY_LINE, ordre: prev.lignes.length + 1 }],
+            lignes: [...prev.lignes, {
+              ...EMPTY_LINE,
+              ordre: prev.lignes.length + 1,
+              // Si SERVICE et noteServiceDefaut existe, pré-remplir la description
+              description: typeDocument === 'SERVICE' && noteServiceDefaut ? noteServiceDefaut : undefined,
+            }],
           }))
         }
       >
@@ -699,6 +744,1021 @@ function DocumentDetailSheet({
   );
 }
 
+// ============ DEVIS DETAIL DIALOG - STYLE PLANNING ============
+
+function DevisDetailDialog({
+  open,
+  devis,
+  onClose,
+  onValidate,
+  onConvert,
+  onEdit,
+  onDelete,
+  onDownloadPdf,
+  canManage,
+  canDelete,
+  isValidating,
+  isConverting,
+}: {
+  open: boolean;
+  devis: any;
+  onClose: () => void;
+  onValidate: () => void;
+  onConvert: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onDownloadPdf: () => void;
+  canManage: boolean;
+  canDelete: boolean;
+  isValidating: boolean;
+  isConverting: boolean;
+}) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showConvertConfirm, setShowConvertConfirm] = useState(false);
+  const [showValidateConfirm, setShowValidateConfirm] = useState(false);
+
+  if (!devis) return null;
+
+  const client = devis.client;
+  const lignes = devis.lignes || [];
+  const isBrouillon = devis.statut === 'BROUILLON';
+  const isValide = devis.statut === 'VALIDE';
+  const isSigne = devis.statut === 'SIGNE';
+
+  // Calcul validité
+  const dateValidite = devis.dateValidite ? new Date(devis.dateValidite) : null;
+  const today = new Date();
+  const joursRestants = dateValidite ? Math.ceil((dateValidite.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) : null;
+  const isExpire = joursRestants !== null && joursRestants < 0;
+  const isExpireBientot = joursRestants !== null && joursRestants >= 0 && joursRestants <= 7;
+
+  const getStatutBadge = (statut: string) => {
+    switch (statut) {
+      case 'BROUILLON':
+        return { label: 'Brouillon', className: 'bg-slate-100 text-slate-800' };
+      case 'VALIDE':
+        return { label: 'Validé', className: 'bg-blue-100 text-blue-800' };
+      case 'SIGNE':
+        return { label: 'Signé', className: 'bg-emerald-100 text-emerald-800' };
+      case 'REFUSE':
+        return { label: 'Refusé', className: 'bg-red-100 text-red-800' };
+      case 'EXPIRE':
+        return { label: 'Expiré', className: 'bg-orange-100 text-orange-800' };
+      case 'ANNULE':
+        return { label: 'Annulé', className: 'bg-red-100 text-red-800' };
+      default:
+        return { label: statut, className: 'bg-gray-100 text-gray-800' };
+    }
+  };
+
+  const statutBadge = getStatutBadge(devis.statut);
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onClose}>
+        <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Détail du devis
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Status et Référence */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Badge className={statutBadge.className}>
+                  {statutBadge.label}
+                </Badge>
+                {/* Badge type document */}
+                {devis.typeDocument && (
+                  <Badge className={devis.typeDocument === 'SERVICE'
+                    ? 'bg-purple-100 text-purple-800'
+                    : 'bg-emerald-100 text-emerald-800'
+                  }>
+                    {devis.typeDocument === 'SERVICE' ? 'Services' : 'Produits'}
+                  </Badge>
+                )}
+                <span className="font-semibold text-lg">{devis.ref}</span>
+                {isBrouillon && (
+                  <span className="text-xs text-slate-500 italic">(non comptabilisé)</span>
+                )}
+              </div>
+              {dateValidite && (
+                <Badge className={cn(
+                  isExpire ? "bg-red-100 text-red-800" :
+                  isExpireBientot ? "bg-orange-100 text-orange-800" :
+                  "bg-gray-100 text-gray-800"
+                )}>
+                  <Timer className="h-3 w-3 mr-1" />
+                  {isExpire ? 'Expiré' : `${joursRestants}j restants`}
+                </Badge>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* Client Info */}
+            <div className="space-y-2">
+              <h4 className="font-semibold flex items-center gap-2">
+                <Building2 className="h-4 w-4" />
+                Client
+              </h4>
+              <div className="pl-6 space-y-1 text-sm">
+                <p className="font-medium">{client?.nomEntreprise || 'Client non défini'}</p>
+                {client?.siegeAdresse && (
+                  <p className="flex items-center gap-2 text-muted-foreground">
+                    <MapPin className="h-3 w-3" />
+                    {client.siegeAdresse}{client.siegeVille && `, ${client.siegeVille}`}
+                  </p>
+                )}
+                {client?.siegeTel && (
+                  <p className="flex items-center gap-2 text-muted-foreground">
+                    <Phone className="h-3 w-3" />
+                    <a href={`tel:${client.siegeTel}`} className="hover:underline">{client.siegeTel}</a>
+                  </p>
+                )}
+                {client?.siegeEmail && (
+                  <p className="flex items-center gap-2 text-muted-foreground">
+                    <Mail className="h-3 w-3" />
+                    <a href={`mailto:${client.siegeEmail}`} className="hover:underline">{client.siegeEmail}</a>
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Informations du devis */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div className="min-w-0">
+                <span className="text-muted-foreground">Date du devis:</span>
+                <p className="font-medium">{formatDate(devis.dateDevis)}</p>
+              </div>
+              {dateValidite && (
+                <div className="min-w-0">
+                  <span className="text-muted-foreground">Validité:</span>
+                  <p className={cn(
+                    "font-medium",
+                    isExpire && "text-red-600",
+                    isExpireBientot && "text-orange-600"
+                  )}>
+                    {formatDate(devis.dateValidite)}
+                  </p>
+                </div>
+              )}
+              {devis.site && (
+                <div className="min-w-0">
+                  <span className="text-muted-foreground">Site:</span>
+                  <p className="font-medium flex items-center gap-1">
+                    <MapPin className="h-3 w-3 text-muted-foreground" />
+                    {devis.site.nom}
+                    {devis.site.ville && <span className="text-muted-foreground">({devis.site.ville})</span>}
+                  </p>
+                </div>
+              )}
+              {devis.createdBy && (
+                <div className="min-w-0">
+                  <span className="text-muted-foreground">Créé par:</span>
+                  <p className="font-medium">{devis.createdBy.prenom} {devis.createdBy.nom}</p>
+                </div>
+              )}
+              {(devis.remiseGlobalPct > 0 || devis.remiseGlobalMontant > 0) && (
+                <div className="min-w-0">
+                  <span className="text-muted-foreground">Remise globale:</span>
+                  <p className="font-medium text-orange-600">
+                    {devis.remiseGlobalPct > 0 && `${devis.remiseGlobalPct}%`}
+                    {devis.remiseGlobalPct > 0 && devis.remiseGlobalMontant > 0 && ' + '}
+                    {devis.remiseGlobalMontant > 0 && formatMontant(devis.remiseGlobalMontant)}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* Articles - Tableau ERP classique */}
+            <div className="space-y-3">
+              <h4 className="font-semibold flex items-center gap-2">
+                <Package className="h-4 w-4" />
+                Articles
+                <Badge variant="secondary" className="ml-2">{lignes.length}</Badge>
+              </h4>
+
+              {lignes.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground border rounded-md">
+                  <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>Aucun article dans ce devis</p>
+                </div>
+              ) : (
+                <div className="border rounded-md overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-gray-50">
+                        <TableHead className="w-12 text-center">#</TableHead>
+                        <TableHead>Désignation</TableHead>
+                        <TableHead className="w-20 text-right">Qté</TableHead>
+                        <TableHead className="w-24 text-right">P.U. HT</TableHead>
+                        <TableHead className="w-20 text-right">Remise</TableHead>
+                        <TableHead className="w-16 text-right">TVA</TableHead>
+                        <TableHead className="w-28 text-right">Total HT</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {lignes.map((ligne: any, index: number) => {
+                        const ligneTotal = ligne.totalHT || (ligne.quantite * ligne.prixUnitaireHT * (1 - (ligne.remisePct || 0) / 100));
+                        const isService = ligne.produitService?.type === 'SERVICE';
+                        const isProduit = ligne.produitService?.type === 'PRODUIT';
+
+                        return (
+                          <TableRow key={index} className="hover:bg-gray-50/50">
+                            <TableCell className="text-center text-muted-foreground font-mono text-xs">
+                              {index + 1}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                {isService && <span className="w-2 h-2 rounded-full bg-purple-400 flex-shrink-0" />}
+                                {isProduit && <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />}
+                                {!isService && !isProduit && <span className="w-2 h-2 rounded-full bg-gray-300 flex-shrink-0" />}
+                                <div className="min-w-0">
+                                  <p className="font-medium">
+                                    {ligne.libelle || ligne.produitService?.nom || 'Article sans nom'}
+                                  </p>
+                                  {ligne.description && (
+                                    <p className="text-xs text-muted-foreground whitespace-pre-wrap">{ligne.description}</p>
+                                  )}
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right font-medium align-top">
+                              {ligne.quantite}
+                              {ligne.unite && <span className="text-xs text-muted-foreground ml-1">{ligne.unite}</span>}
+                            </TableCell>
+                            <TableCell className="text-right whitespace-nowrap align-top">{formatMontant(ligne.prixUnitaireHT)}</TableCell>
+                            <TableCell className="text-right align-top">
+                              {ligne.remisePct > 0 ? (
+                                <span className="text-orange-600 font-medium">-{ligne.remisePct}%</span>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right text-muted-foreground align-top">{ligne.tauxTVA}%</TableCell>
+                            <TableCell className="text-right font-semibold whitespace-nowrap align-top">{formatMontant(ligneTotal)}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+
+              {/* Totaux - Style formulaire création */}
+              {lignes.length > 0 && (
+                <div className="mt-4 pt-4 border-t space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Total Hors Taxes</span>
+                    <span className="font-medium">{formatMontant(devis.totalHT)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">TVA</span>
+                    <span className="font-medium">{formatMontant(devis.totalTVA)}</span>
+                  </div>
+                  <div className="flex justify-between text-lg pt-2">
+                    <span className="font-semibold text-emerald-600">Total TTC</span>
+                    <span className="font-bold text-emerald-600">{formatMontant(devis.totalTTC)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Notes */}
+            {devis.notes && (
+              <>
+                <Separator />
+                <div className="rounded-md border border-amber-200 bg-amber-50">
+                  <div className="px-3 py-2 border-b border-amber-200 bg-amber-100/50">
+                    <span className="text-sm font-medium text-amber-800 flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Notes
+                    </span>
+                  </div>
+                  <div className="px-3 py-2">
+                    <p className="text-sm text-amber-900 whitespace-pre-wrap">{devis.notes}</p>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Conditions */}
+            {devis.conditions && (
+              <div className="rounded-md border border-blue-200 bg-blue-50">
+                <div className="px-3 py-2 border-b border-blue-200 bg-blue-100/50">
+                  <span className="text-sm font-medium text-blue-800 flex items-center gap-2">
+                    <ClipboardList className="h-4 w-4" />
+                    Conditions
+                  </span>
+                </div>
+                <div className="px-3 py-2">
+                  <p className="text-sm text-blue-900 whitespace-pre-wrap">{devis.conditions}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <DialogFooter className="gap-2 flex-wrap">
+              {/* Actions de modification/suppression à gauche */}
+              <div className="flex items-center gap-2 mr-auto">
+                {canManage && canDelete && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="text-red-600 border-red-300 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Supprimer
+                  </Button>
+                )}
+                {canManage && isBrouillon && (
+                  <Button
+                    variant="outline"
+                    onClick={onEdit}
+                  >
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Modifier
+                  </Button>
+                )}
+              </div>
+
+              {/* Actions principales à droite */}
+              <Button
+                variant="outline"
+                onClick={onDownloadPdf}
+              >
+                <FileDown className="h-4 w-4 mr-2" />
+                Devis
+              </Button>
+
+              {canManage && isBrouillon && (
+                <Button
+                  onClick={() => setShowValidateConfirm(true)}
+                  disabled={isValidating}
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                >
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  {isValidating ? 'Validation...' : 'Valider'}
+                </Button>
+              )}
+
+              {canManage && (isValide || isSigne) && (
+                <Button
+                  onClick={() => setShowConvertConfirm(true)}
+                  disabled={isConverting}
+                >
+                  <ArrowRightLeft className="h-4 w-4 mr-2" />
+                  {isConverting ? 'Conversion...' : 'Convertir en commande'}
+                </Button>
+              )}
+
+              <Button variant="outline" onClick={onClose}>
+                Fermer
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de confirmation de validation */}
+      <AlertDialog open={showValidateConfirm} onOpenChange={setShowValidateConfirm}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-emerald-600">
+              <CheckCircle2 className="h-5 w-5" />
+              Valider le devis ?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>Vous allez valider ce devis. Une fois validé, il ne pourra plus être modifié.</p>
+
+                <div className="bg-gray-50 rounded-lg p-3 space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Devis</span>
+                    <span className="font-medium text-foreground">{devis.ref}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Client</span>
+                    <span className="font-medium text-foreground">{client?.nomEntreprise || '-'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Articles</span>
+                    <span className="font-medium text-foreground">{lignes.length} ligne{lignes.length > 1 ? 's' : ''}</span>
+                  </div>
+                  <Separator />
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total TTC</span>
+                    <span className="font-bold text-emerald-600">{formatMontant(devis.totalTTC)}</span>
+                  </div>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-emerald-600 hover:bg-emerald-700"
+              onClick={() => {
+                setShowValidateConfirm(false);
+                onValidate();
+              }}
+            >
+              Valider le devis
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Dialog de confirmation de suppression */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="h-5 w-5" />
+              Supprimer le devis ?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir supprimer le devis <strong>{devis.ref}</strong> ?
+              Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                setShowDeleteConfirm(false);
+                onDelete();
+              }}
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Dialog de confirmation de conversion en commande */}
+      <AlertDialog open={showConvertConfirm} onOpenChange={setShowConvertConfirm}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <ArrowRightLeft className="h-5 w-5 text-blue-600" />
+              Convertir en commande ?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>Vous allez convertir ce devis en commande client.</p>
+
+                <div className="bg-gray-50 rounded-lg p-3 space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Devis</span>
+                    <span className="font-medium text-foreground">{devis.ref}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Client</span>
+                    <span className="font-medium text-foreground">{client?.nomEntreprise || '-'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Articles</span>
+                    <span className="font-medium text-foreground">{lignes.length} ligne{lignes.length > 1 ? 's' : ''}</span>
+                  </div>
+                  <Separator />
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total TTC</span>
+                    <span className="font-bold text-emerald-600">{formatMontant(devis.totalTTC)}</span>
+                  </div>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowConvertConfirm(false);
+                onConvert();
+              }}
+            >
+              <ShoppingCart className="h-4 w-4 mr-2" />
+              Confirmer la conversion
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+// ============ COMMANDE DETAIL DIALOG ============
+
+function CommandeDetailDialog({
+  open,
+  commande,
+  onClose,
+  onValidate,
+  onConvert,
+  onEdit,
+  onDelete,
+  onDownloadPdf,
+  canManage,
+  canDelete,
+  isValidating,
+  isConverting,
+}: {
+  open: boolean;
+  commande: any;
+  onClose: () => void;
+  onValidate: () => void;
+  onConvert: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onDownloadPdf: () => void;
+  canManage: boolean;
+  canDelete: boolean;
+  isValidating: boolean;
+  isConverting: boolean;
+}) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showConvertConfirm, setShowConvertConfirm] = useState(false);
+  const [showValidateConfirm, setShowValidateConfirm] = useState(false);
+
+  if (!commande) return null;
+
+  const client = commande.client;
+  const lignes = commande.lignes || [];
+  const isBrouillon = commande.statut === 'BROUILLON';
+  const isValidee = commande.statut === 'VALIDEE';
+
+  const getStatutBadge = (statut: string) => {
+    switch (statut) {
+      case 'BROUILLON':
+        return { label: 'Brouillon', className: 'bg-slate-100 text-slate-800' };
+      case 'VALIDEE':
+        return { label: 'Validée', className: 'bg-green-100 text-green-800' };
+      case 'EN_COURS':
+        return { label: 'En cours', className: 'bg-amber-100 text-amber-800' };
+      case 'LIVREE':
+        return { label: 'Livrée', className: 'bg-emerald-100 text-emerald-800' };
+      case 'ANNULEE':
+        return { label: 'Annulée', className: 'bg-red-100 text-red-800' };
+      default:
+        return { label: statut, className: 'bg-gray-100 text-gray-800' };
+    }
+  };
+
+  const statutBadge = getStatutBadge(commande.statut);
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onClose}>
+        <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShoppingCart className="h-5 w-5" />
+              Détail de la commande
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Status et Référence */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Badge className={statutBadge.className}>
+                  {statutBadge.label}
+                </Badge>
+                {/* Badge type document */}
+                {commande.typeDocument && (
+                  <Badge className={commande.typeDocument === 'SERVICE'
+                    ? 'bg-purple-100 text-purple-800'
+                    : 'bg-emerald-100 text-emerald-800'
+                  }>
+                    {commande.typeDocument === 'SERVICE' ? 'Services' : 'Produits'}
+                  </Badge>
+                )}
+                <span className="font-semibold text-lg">{commande.ref}</span>
+                {isBrouillon && (
+                  <span className="text-xs text-slate-500 italic">(non comptabilisé)</span>
+                )}
+              </div>
+              {commande.refBonCommandeClient && (
+                <Badge variant="outline" className="text-sm">
+                  BC: {commande.refBonCommandeClient}
+                </Badge>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* Client Info */}
+            <div className="space-y-2">
+              <h4 className="font-semibold flex items-center gap-2">
+                <Building2 className="h-4 w-4" />
+                Client
+              </h4>
+              <div className="pl-6 space-y-1 text-sm">
+                <p className="font-medium">{client?.nomEntreprise || 'Client non défini'}</p>
+                {client?.siegeAdresse && (
+                  <p className="flex items-center gap-2 text-muted-foreground">
+                    <MapPin className="h-3 w-3" />
+                    {client.siegeAdresse}{client.siegeVille && `, ${client.siegeVille}`}
+                  </p>
+                )}
+                {client?.siegeTel && (
+                  <p className="flex items-center gap-2 text-muted-foreground">
+                    <Phone className="h-3 w-3" />
+                    <a href={`tel:${client.siegeTel}`} className="hover:underline">{client.siegeTel}</a>
+                  </p>
+                )}
+                {client?.siegeEmail && (
+                  <p className="flex items-center gap-2 text-muted-foreground">
+                    <Mail className="h-3 w-3" />
+                    <a href={`mailto:${client.siegeEmail}`} className="hover:underline">{client.siegeEmail}</a>
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Informations de la commande */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div className="min-w-0">
+                <span className="text-muted-foreground">Date de commande:</span>
+                <p className="font-medium">{formatDate(commande.dateCommande)}</p>
+              </div>
+              {commande.dateLivraisonSouhaitee && (
+                <div className="min-w-0">
+                  <span className="text-muted-foreground">Livraison souhaitée:</span>
+                  <p className="font-medium">{formatDate(commande.dateLivraisonSouhaitee)}</p>
+                </div>
+              )}
+              {commande.site && (
+                <div className="min-w-0">
+                  <span className="text-muted-foreground">Site:</span>
+                  <p className="font-medium flex items-center gap-1">
+                    <MapPin className="h-3 w-3 text-muted-foreground" />
+                    {commande.site.nom}
+                    {commande.site.ville && <span className="text-muted-foreground">({commande.site.ville})</span>}
+                  </p>
+                </div>
+              )}
+              {commande.devis && (
+                <div className="min-w-0">
+                  <span className="text-muted-foreground">Devis source:</span>
+                  <p className="font-medium flex items-center gap-1">
+                    <Link className="h-3 w-3 text-muted-foreground" />
+                    {commande.devis.ref}
+                  </p>
+                </div>
+              )}
+              {commande.createdBy && (
+                <div className="min-w-0">
+                  <span className="text-muted-foreground">Créé par:</span>
+                  <p className="font-medium">{commande.createdBy.prenom} {commande.createdBy.nom}</p>
+                </div>
+              )}
+              {(commande.remiseGlobalPct > 0 || commande.remiseGlobalMontant > 0) && (
+                <div className="min-w-0">
+                  <span className="text-muted-foreground">Remise globale:</span>
+                  <p className="font-medium text-orange-600">
+                    {commande.remiseGlobalPct > 0 && `${commande.remiseGlobalPct}%`}
+                    {commande.remiseGlobalPct > 0 && commande.remiseGlobalMontant > 0 && ' + '}
+                    {commande.remiseGlobalMontant > 0 && formatMontant(commande.remiseGlobalMontant)}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* Articles - Tableau ERP classique */}
+            <div className="space-y-3">
+              <h4 className="font-semibold flex items-center gap-2">
+                <Package className="h-4 w-4" />
+                Articles
+                <Badge variant="secondary" className="ml-2">{lignes.length}</Badge>
+              </h4>
+
+              {lignes.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground border rounded-md">
+                  <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>Aucun article dans cette commande</p>
+                </div>
+              ) : (
+                <div className="border rounded-md overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-gray-50">
+                        <TableHead className="w-12 text-center">#</TableHead>
+                        <TableHead>Désignation</TableHead>
+                        <TableHead className="w-20 text-right">Qté</TableHead>
+                        <TableHead className="w-24 text-right">P.U. HT</TableHead>
+                        <TableHead className="w-20 text-right">Remise</TableHead>
+                        <TableHead className="w-16 text-right">TVA</TableHead>
+                        <TableHead className="w-28 text-right">Total HT</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {lignes.map((ligne: any, index: number) => {
+                        const ligneTotal = ligne.totalHT || (ligne.quantite * ligne.prixUnitaireHT * (1 - (ligne.remisePct || 0) / 100));
+                        const isService = ligne.produitService?.type === 'SERVICE';
+                        const isProduit = ligne.produitService?.type === 'PRODUIT';
+
+                        return (
+                          <TableRow key={index} className="hover:bg-gray-50/50">
+                            <TableCell className="text-center text-muted-foreground font-mono text-xs">
+                              {index + 1}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                {isService && <span className="w-2 h-2 rounded-full bg-purple-400 flex-shrink-0" />}
+                                {isProduit && <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />}
+                                {!isService && !isProduit && <span className="w-2 h-2 rounded-full bg-gray-300 flex-shrink-0" />}
+                                <div className="min-w-0">
+                                  <p className="font-medium">
+                                    {ligne.libelle || ligne.produitService?.nom || 'Article sans nom'}
+                                  </p>
+                                  {ligne.description && (
+                                    <p className="text-xs text-muted-foreground whitespace-pre-wrap">{ligne.description}</p>
+                                  )}
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right font-medium align-top">
+                              {ligne.quantite}
+                              {ligne.unite && <span className="text-xs text-muted-foreground ml-1">{ligne.unite}</span>}
+                            </TableCell>
+                            <TableCell className="text-right whitespace-nowrap align-top">{formatMontant(ligne.prixUnitaireHT)}</TableCell>
+                            <TableCell className="text-right align-top">
+                              {ligne.remisePct > 0 ? (
+                                <span className="text-orange-600 font-medium">-{ligne.remisePct}%</span>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right text-muted-foreground align-top">{ligne.tauxTVA}%</TableCell>
+                            <TableCell className="text-right font-semibold whitespace-nowrap align-top">{formatMontant(ligneTotal)}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+
+              {/* Totaux */}
+              {lignes.length > 0 && (
+                <div className="mt-4 pt-4 border-t space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Total Hors Taxes</span>
+                    <span className="font-medium">{formatMontant(commande.totalHT)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">TVA</span>
+                    <span className="font-medium">{formatMontant(commande.totalTVA)}</span>
+                  </div>
+                  <div className="flex justify-between text-lg pt-2">
+                    <span className="font-semibold text-green-700">Total TTC</span>
+                    <span className="font-bold text-green-700">{formatMontant(commande.totalTTC)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Notes */}
+            {commande.notes && (
+              <>
+                <Separator />
+                <div className="rounded-md border border-amber-200 bg-amber-50">
+                  <div className="px-3 py-2 border-b border-amber-200 bg-amber-100/50">
+                    <span className="text-sm font-medium text-amber-800 flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Notes
+                    </span>
+                  </div>
+                  <div className="px-3 py-2">
+                    <p className="text-sm text-amber-900 whitespace-pre-wrap">{commande.notes}</p>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Conditions */}
+            {commande.conditions && (
+              <div className="rounded-md border border-green-200 bg-green-50">
+                <div className="px-3 py-2 border-b border-green-200 bg-green-100/50">
+                  <span className="text-sm font-medium text-green-800 flex items-center gap-2">
+                    <ClipboardList className="h-4 w-4" />
+                    Conditions
+                  </span>
+                </div>
+                <div className="px-3 py-2">
+                  <p className="text-sm text-green-900 whitespace-pre-wrap">{commande.conditions}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <DialogFooter className="gap-2 flex-wrap">
+              {/* Actions de modification/suppression à gauche */}
+              <div className="flex items-center gap-2 mr-auto">
+                {canManage && canDelete && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="text-red-600 border-red-300 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Supprimer
+                  </Button>
+                )}
+                {canManage && isBrouillon && (
+                  <Button
+                    variant="outline"
+                    onClick={onEdit}
+                  >
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Modifier
+                  </Button>
+                )}
+              </div>
+
+              {/* Actions principales à droite */}
+              <Button
+                variant="outline"
+                onClick={onDownloadPdf}
+              >
+                <FileDown className="h-4 w-4 mr-2" />
+                Bon de commande
+              </Button>
+
+              {canManage && isBrouillon && (
+                <Button
+                  onClick={() => setShowValidateConfirm(true)}
+                  disabled={isValidating}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  {isValidating ? 'Validation...' : 'Valider'}
+                </Button>
+              )}
+
+              {canManage && isValidee && (
+                <Button
+                  onClick={() => setShowConvertConfirm(true)}
+                  disabled={isConverting}
+                >
+                  <Receipt className="h-4 w-4 mr-2" />
+                  {isConverting ? 'Conversion...' : 'Convertir en facture'}
+                </Button>
+              )}
+
+              <Button variant="outline" onClick={onClose}>
+                Fermer
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de confirmation de validation */}
+      <AlertDialog open={showValidateConfirm} onOpenChange={setShowValidateConfirm}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-green-700">
+              <CheckCircle2 className="h-5 w-5" />
+              Valider la commande ?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>Vous allez valider cette commande. Une fois validée, elle ne pourra plus être modifiée.</p>
+
+                <div className="bg-gray-50 rounded-lg p-3 space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Commande</span>
+                    <span className="font-medium text-foreground">{commande.ref}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Client</span>
+                    <span className="font-medium text-foreground">{client?.nomEntreprise || '-'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Articles</span>
+                    <span className="font-medium text-foreground">{lignes.length} ligne{lignes.length > 1 ? 's' : ''}</span>
+                  </div>
+                  <Separator />
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total TTC</span>
+                    <span className="font-bold text-green-700">{formatMontant(commande.totalTTC)}</span>
+                  </div>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-green-600 hover:bg-green-700"
+              onClick={() => {
+                setShowValidateConfirm(false);
+                onValidate();
+              }}
+            >
+              Valider la commande
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Dialog de confirmation de suppression */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="h-5 w-5" />
+              Supprimer la commande ?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir supprimer la commande <strong>{commande.ref}</strong> ?
+              Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                setShowDeleteConfirm(false);
+                onDelete();
+              }}
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Dialog de confirmation de conversion en facture */}
+      <AlertDialog open={showConvertConfirm} onOpenChange={setShowConvertConfirm}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <Receipt className="h-5 w-5 text-green-700" />
+              Convertir en facture ?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>Vous allez convertir cette commande en facture client.</p>
+
+                <div className="bg-gray-50 rounded-lg p-3 space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Commande</span>
+                    <span className="font-medium text-foreground">{commande.ref}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Client</span>
+                    <span className="font-medium text-foreground">{client?.nomEntreprise || '-'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Articles</span>
+                    <span className="font-medium text-foreground">{lignes.length} ligne{lignes.length > 1 ? 's' : ''}</span>
+                  </div>
+                  <Separator />
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total TTC</span>
+                    <span className="font-bold text-green-700">{formatMontant(commande.totalTTC)}</span>
+                  </div>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-green-600 hover:bg-green-700"
+              onClick={() => {
+                setShowConvertConfirm(false);
+                onConvert();
+              }}
+            >
+              <Receipt className="h-4 w-4 mr-2" />
+              Confirmer la conversion
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
 // ============ RELANCE DIALOG ============
 
 function RelanceDialog({
@@ -850,6 +1910,10 @@ export function CommercePage() {
   const [searchCommandes, setSearchCommandes] = useState('');
   const [searchFactures, setSearchFactures] = useState('');
 
+  // Sort states
+  const [sortDevis, setSortDevis] = useState<string>('recent');
+  const [sortCommandes, setSortCommandes] = useState<string>('recent');
+
   // Detail sheet state
   const [viewingDocument, setViewingDocument] = useState<{
     type: 'devis' | 'commande' | 'facture';
@@ -864,6 +1928,12 @@ export function CommercePage() {
     type: 'devis' | 'commande' | 'facture';
     item: any;
   } | null>(null);
+
+  // Devis validation confirmation state
+  const [validationTarget, setValidationTarget] = useState<any>(null);
+
+  // Devis conversion confirmation state
+  const [conversionTarget, setConversionTarget] = useState<any>(null);
 
   // Payment dialog state
   const [paiementFacture, setPaiementFacture] = useState<any>(null);
@@ -911,6 +1981,38 @@ export function CommercePage() {
   const tiers = tiersData?.tiers || [];
   const clients = tiers.filter((t) => t.typeTiers === 'CLIENT' || t.typeTiers === 'CLIENT_FOURNISSEUR');
   const produits = produitsData?.produits || [];
+
+  // Sort function for documents
+  const sortDocuments = <T extends {
+    ref: string;
+    dateDevis?: string;
+    dateCommande?: string;
+    totalTTC: number;
+    client?: { nomEntreprise: string };
+  }>(documents: T[], sortBy: string): T[] => {
+    return [...documents].sort((a, b) => {
+      switch (sortBy) {
+        case 'recent':
+          return new Date(b.dateDevis || b.dateCommande || 0).getTime() -
+                 new Date(a.dateDevis || a.dateCommande || 0).getTime();
+        case 'oldest':
+          return new Date(a.dateDevis || a.dateCommande || 0).getTime() -
+                 new Date(b.dateDevis || b.dateCommande || 0).getTime();
+        case 'client-az':
+          return (a.client?.nomEntreprise || '').localeCompare(b.client?.nomEntreprise || '');
+        case 'client-za':
+          return (b.client?.nomEntreprise || '').localeCompare(a.client?.nomEntreprise || '');
+        case 'montant-asc':
+          return a.totalTTC - b.totalTTC;
+        case 'montant-desc':
+          return b.totalTTC - a.totalTTC;
+        case 'ref-az':
+          return a.ref.localeCompare(b.ref);
+        default:
+          return 0;
+      }
+    });
+  };
 
   // Filter lists based on search
   const filteredDevis = useMemo(() => {
@@ -964,11 +2066,15 @@ export function CommercePage() {
 
   const [devisForm, setDevisForm] = useState<CreateDevisInput & { dureeValiditeJours?: number }>({
     clientId: '',
+    siteId: undefined,
+    typeDocument: 'PRODUIT',
     lignes: [{ ...EMPTY_LINE }],
     dureeValiditeJours: 7,
   });
   const [commandeForm, setCommandeForm] = useState<CreateCommandeInput>({
     clientId: '',
+    siteId: undefined,
+    typeDocument: 'PRODUIT',
     lignes: [{ ...EMPTY_LINE }],
   });
   const [factureForm, setFactureForm] = useState<CreateFactureInput>({
@@ -1054,7 +2160,7 @@ export function CommercePage() {
 
   const createDevisMutation = useMutation({
     mutationFn: (payload: CreateDevisInput) => commerceApi.createDevis(payload),
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       toast.success('Devis créé avec succès', {
         description: `Référence: ${data.ref || 'N/A'}`,
         action: {
@@ -1063,7 +2169,11 @@ export function CommercePage() {
         },
       });
       queryClient.invalidateQueries({ queryKey: ['commerce', 'devis'] });
-      setDevisForm({ clientId: '', lignes: [{ ...EMPTY_LINE }], dureeValiditeJours: 7 });
+      // Si c'est un devis SERVICE avec un site, rafraîchir les tiers pour mettre à jour noteServiceDefaut
+      if (variables.typeDocument === 'SERVICE' && variables.siteId) {
+        queryClient.invalidateQueries({ queryKey: ['tiers', 'commerce'] });
+      }
+      setDevisForm({ clientId: '', siteId: undefined, typeDocument: 'PRODUIT', lignes: [{ ...EMPTY_LINE }], dureeValiditeJours: 7 });
       setShowDevisDialog(false);
     },
     onError: (error: any) => {
@@ -1078,7 +2188,7 @@ export function CommercePage() {
         description: `Référence: ${data.ref || 'N/A'}`,
       });
       queryClient.invalidateQueries({ queryKey: ['commerce', 'commandes'] });
-      setCommandeForm({ clientId: '', lignes: [{ ...EMPTY_LINE }] });
+      setCommandeForm({ clientId: '', siteId: undefined, typeDocument: 'PRODUIT', lignes: [{ ...EMPTY_LINE }] });
       setShowCommandeDialog(false);
     },
     onError: (error: any) => {
@@ -1108,7 +2218,7 @@ export function CommercePage() {
     onSuccess: () => {
       toast.success('Devis mis à jour avec succès');
       queryClient.invalidateQueries({ queryKey: ['commerce', 'devis'] });
-      setDevisForm({ clientId: '', lignes: [{ ...EMPTY_LINE }], dureeValiditeJours: 7 });
+      setDevisForm({ clientId: '', siteId: undefined, typeDocument: 'PRODUIT', lignes: [{ ...EMPTY_LINE }], dureeValiditeJours: 7 });
       setEditingDevisId(null);
       setShowDevisDialog(false);
     },
@@ -1123,7 +2233,7 @@ export function CommercePage() {
     onSuccess: () => {
       toast.success('Commande mise à jour avec succès');
       queryClient.invalidateQueries({ queryKey: ['commerce', 'commandes'] });
-      setCommandeForm({ clientId: '', lignes: [{ ...EMPTY_LINE }] });
+      setCommandeForm({ clientId: '', siteId: undefined, typeDocument: 'PRODUIT', lignes: [{ ...EMPTY_LINE }] });
       setEditingCommandeId(null);
       setShowCommandeDialog(false);
     },
@@ -1185,8 +2295,15 @@ export function CommercePage() {
   });
 
   const validerCommande = useMutation({
-    mutationFn: ({ id, refBonCommandeClient }: { id: string; refBonCommandeClient: string }) =>
-      commerceApi.validerCommande(id, { refBonCommandeClient }),
+    mutationFn: ({ id, refBonCommandeClient, dateCommande, dateLivraisonSouhaitee, notes, conditions }: {
+      id: string;
+      refBonCommandeClient: string;
+      dateCommande?: string;
+      dateLivraisonSouhaitee?: string;
+      notes?: string;
+      conditions?: string;
+    }) =>
+      commerceApi.validerCommande(id, { refBonCommandeClient, dateCommande, dateLivraisonSouhaitee, notes, conditions }),
     onSuccess: () => {
       toast.success('Commande validée avec succès');
       queryClient.invalidateQueries({ queryKey: ['commerce', 'commandes'] });
@@ -1200,8 +2317,14 @@ export function CommercePage() {
   });
 
   const validerFacture = useMutation({
-    mutationFn: ({ id, delaiPaiementJours }: { id: string; delaiPaiementJours?: number }) =>
-      commerceApi.validerFacture(id, { delaiPaiementJours }),
+    mutationFn: ({ id, delaiPaiementJours, dateFacture, notes, conditions }: {
+      id: string;
+      delaiPaiementJours?: number;
+      dateFacture?: string;
+      notes?: string;
+      conditions?: string;
+    }) =>
+      commerceApi.validerFacture(id, { delaiPaiementJours, dateFacture, notes, conditions }),
     onSuccess: () => {
       toast.success('Facture validée avec succès');
       queryClient.invalidateQueries({ queryKey: ['commerce', 'factures'] });
@@ -1335,7 +2458,7 @@ export function CommercePage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Devis</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{devisData?.devis?.length || 0}</p>
+            <p className="text-2xl font-bold">{devisData?.devis?.filter((d: any) => d.statut !== 'BROUILLON').length || 0}</p>
           </CardContent>
         </Card>
         <Card>
@@ -1343,7 +2466,7 @@ export function CommercePage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Commandes</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{commandesData?.commandes?.length || 0}</p>
+            <p className="text-2xl font-bold">{commandesData?.commandes?.filter((c: any) => c.statut !== 'BROUILLON').length || 0}</p>
           </CardContent>
         </Card>
         <Card>
@@ -1389,6 +2512,21 @@ export function CommercePage() {
                       className="pl-10"
                     />
                   </div>
+                  <Select value={sortDevis} onValueChange={setSortDevis}>
+                    <SelectTrigger className="w-[160px]">
+                      <ArrowUpDown className="h-4 w-4 mr-2" />
+                      <SelectValue placeholder="Trier par..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="recent">Plus récent</SelectItem>
+                      <SelectItem value="oldest">Plus ancien</SelectItem>
+                      <SelectItem value="client-az">Client A-Z</SelectItem>
+                      <SelectItem value="client-za">Client Z-A</SelectItem>
+                      <SelectItem value="montant-desc">Montant ↓</SelectItem>
+                      <SelectItem value="montant-asc">Montant ↑</SelectItem>
+                      <SelectItem value="ref-az">Référence A-Z</SelectItem>
+                    </SelectContent>
+                  </Select>
                   {canManage && (
                     <Button onClick={() => setShowDevisDialog(true)}>
                       <Plus className="h-4 w-4 mr-2" />
@@ -1411,7 +2549,9 @@ export function CommercePage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Référence</TableHead>
+                        <TableHead className="hidden sm:table-cell">Type</TableHead>
                         <TableHead>Client</TableHead>
+                        <TableHead className="hidden lg:table-cell">Site</TableHead>
                         <TableHead className="hidden md:table-cell">Date</TableHead>
                         <TableHead>Statut</TableHead>
                         <TableHead className="text-right">Total TTC</TableHead>
@@ -1419,14 +2559,43 @@ export function CommercePage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredDevis.map((d) => (
+                      {sortDocuments(filteredDevis, sortDevis).map((d) => (
                         <TableRow
                           key={d.id}
                           className="cursor-pointer hover:bg-gray-50"
-                          onClick={() => setViewingDocument({ type: 'devis', document: d })}
+                          onClick={async () => {
+                            try {
+                              const fullDevis = await commerceApi.getDevis(d.id);
+                              setViewingDocument({ type: 'devis', document: fullDevis });
+                            } catch {
+                              toast.error('Erreur lors du chargement du devis');
+                            }
+                          }}
                         >
                           <TableCell className="font-medium">{d.ref}</TableCell>
+                          <TableCell className="hidden sm:table-cell">
+                            {d.typeDocument ? (
+                              <Badge className={d.typeDocument === 'SERVICE'
+                                ? 'bg-purple-100 text-purple-800'
+                                : 'bg-emerald-100 text-emerald-800'
+                              }>
+                                {d.typeDocument === 'SERVICE' ? 'Service' : 'Produit'}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">-</span>
+                            )}
+                          </TableCell>
                           <TableCell>{d.client?.nomEntreprise || '-'}</TableCell>
+                          <TableCell className="hidden lg:table-cell">
+                            {d.site ? (
+                              <span className="text-sm flex items-center gap-1">
+                                <MapPin className="h-3 w-3 text-muted-foreground" />
+                                {d.site.nom}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">-</span>
+                            )}
+                          </TableCell>
                           <TableCell className="hidden md:table-cell">{formatDate(d.dateDevis)}</TableCell>
                           <TableCell>{statusBadge(d.statut)}</TableCell>
                           <TableCell className="text-right font-medium">{formatMontant(d.totalTTC)}</TableCell>
@@ -1436,7 +2605,14 @@ export function CommercePage() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => setViewingDocument({ type: 'devis', document: d })}
+                                  onClick={async () => {
+                                    try {
+                                      const fullDevis = await commerceApi.getDevis(d.id);
+                                      setViewingDocument({ type: 'devis', document: fullDevis });
+                                    } catch {
+                                      toast.error('Erreur lors du chargement du devis');
+                                    }
+                                  }}
                                 >
                                   <Eye className="h-4 w-4" />
                                 </Button>
@@ -1502,7 +2678,7 @@ export function CommercePage() {
                                     variant="ghost"
                                     size="sm"
                                     className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                                    onClick={() => validerDevis.mutate(d.id)}
+                                    onClick={() => setValidationTarget(d)}
                                   >
                                     <CheckCircle2 className="h-4 w-4" />
                                   </Button>
@@ -1513,7 +2689,7 @@ export function CommercePage() {
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() => convertirDevis.mutate(d.id)}
+                                    onClick={() => setConversionTarget(d)}
                                   >
                                     <ArrowRightLeft className="h-4 w-4" />
                                   </Button>
@@ -1559,6 +2735,21 @@ export function CommercePage() {
                       className="pl-10"
                     />
                   </div>
+                  <Select value={sortCommandes} onValueChange={setSortCommandes}>
+                    <SelectTrigger className="w-[160px]">
+                      <ArrowUpDown className="h-4 w-4 mr-2" />
+                      <SelectValue placeholder="Trier par..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="recent">Plus récent</SelectItem>
+                      <SelectItem value="oldest">Plus ancien</SelectItem>
+                      <SelectItem value="client-az">Client A-Z</SelectItem>
+                      <SelectItem value="client-za">Client Z-A</SelectItem>
+                      <SelectItem value="montant-desc">Montant ↓</SelectItem>
+                      <SelectItem value="montant-asc">Montant ↑</SelectItem>
+                      <SelectItem value="ref-az">Référence A-Z</SelectItem>
+                    </SelectContent>
+                  </Select>
                   {canManage && (
                     <Button onClick={() => setShowCommandeDialog(true)}>
                       <Plus className="h-4 w-4 mr-2" />
@@ -1581,7 +2772,9 @@ export function CommercePage() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>Référence</TableHead>
+                        <TableHead className="hidden sm:table-cell">Type</TableHead>
                         <TableHead>Client</TableHead>
+                        <TableHead className="hidden lg:table-cell">Site</TableHead>
                         <TableHead className="hidden md:table-cell">Date</TableHead>
                         <TableHead>Statut</TableHead>
                         <TableHead className="text-right">Total TTC</TableHead>
@@ -1589,14 +2782,43 @@ export function CommercePage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredCommandes.map((c) => (
+                      {sortDocuments(filteredCommandes, sortCommandes).map((c) => (
                         <TableRow
                           key={c.id}
                           className="cursor-pointer hover:bg-gray-50"
-                          onClick={() => setViewingDocument({ type: 'commande', document: c })}
+                          onClick={async () => {
+                            try {
+                              const fullCommande = await commerceApi.getCommande(c.id);
+                              setViewingDocument({ type: 'commande', document: fullCommande });
+                            } catch {
+                              toast.error('Erreur lors du chargement de la commande');
+                            }
+                          }}
                         >
                           <TableCell className="font-medium">{c.ref}</TableCell>
+                          <TableCell className="hidden sm:table-cell">
+                            {c.typeDocument ? (
+                              <Badge className={c.typeDocument === 'SERVICE'
+                                ? 'bg-purple-100 text-purple-800'
+                                : 'bg-emerald-100 text-emerald-800'
+                              }>
+                                {c.typeDocument === 'SERVICE' ? 'Service' : 'Produit'}
+                              </Badge>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">-</span>
+                            )}
+                          </TableCell>
                           <TableCell>{c.client?.nomEntreprise || '-'}</TableCell>
+                          <TableCell className="hidden lg:table-cell">
+                            {c.site ? (
+                              <span className="text-sm flex items-center gap-1">
+                                <MapPin className="h-3 w-3 text-muted-foreground" />
+                                {c.site.nom}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">-</span>
+                            )}
+                          </TableCell>
                           <TableCell className="hidden md:table-cell">{formatDate(c.dateCommande)}</TableCell>
                           <TableCell>{statusBadge(c.statut)}</TableCell>
                           <TableCell className="text-right font-medium">{formatMontant(c.totalTTC)}</TableCell>
@@ -1606,7 +2828,14 @@ export function CommercePage() {
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => setViewingDocument({ type: 'commande', document: c })}
+                                  onClick={async () => {
+                                    try {
+                                      const fullCommande = await commerceApi.getCommande(c.id);
+                                      setViewingDocument({ type: 'commande', document: fullCommande });
+                                    } catch {
+                                      toast.error('Erreur lors du chargement de la commande');
+                                    }
+                                  }}
                                 >
                                   <Eye className="h-4 w-4" />
                                 </Button>
@@ -1632,6 +2861,8 @@ export function CommercePage() {
                                         setEditingCommandeId(c.id);
                                         setCommandeForm({
                                           clientId: fullCommande.clientId,
+                                          siteId: fullCommande.siteId || undefined,
+                                          typeDocument: fullCommande.typeDocument || 'PRODUIT',
                                           devisId: fullCommande.devisId || undefined,
                                           dateCommande: fullCommande.dateCommande?.split('T')[0],
                                           dateLivraisonSouhaitee: fullCommande.dateLivraisonSouhaitee?.split('T')[0],
@@ -1928,7 +3159,7 @@ export function CommercePage() {
         setShowDevisDialog(open);
         if (!open) {
           setEditingDevisId(null);
-          setDevisForm({ clientId: '', lignes: [{ ...EMPTY_LINE }], dureeValiditeJours: 7 });
+          setDevisForm({ clientId: '', siteId: undefined, typeDocument: 'PRODUIT', lignes: [{ ...EMPTY_LINE }], dureeValiditeJours: 7 });
         }
       }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -1941,18 +3172,94 @@ export function CommercePage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Type de document - obligatoire pour nouveau devis */}
+            {!editingDevisId && (
+              <div className="space-y-2">
+                <Label>Type de devis <span className="text-red-500">*</span></Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Si un site est sélectionné, charger la noteServiceDefaut
+                      let newLignes = [{ ...EMPTY_LINE }];
+                      if (devisForm.siteId && devisForm.clientId) {
+                        const selectedClient = clients.find((c: Tiers) => c.id === devisForm.clientId);
+                        const selectedSite = selectedClient?.sites?.find((s: any) => s.id === devisForm.siteId);
+                        if (selectedSite?.noteServiceDefaut) {
+                          newLignes = [{ ...EMPTY_LINE, description: selectedSite.noteServiceDefaut }];
+                        }
+                      }
+                      setDevisForm({ ...devisForm, typeDocument: 'SERVICE', lignes: newLignes });
+                    }}
+                    className={cn(
+                      "p-4 rounded-lg border-2 text-left transition-all",
+                      devisForm.typeDocument === 'SERVICE'
+                        ? "border-purple-500 bg-purple-50"
+                        : "border-gray-200 hover:border-gray-300"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-3 h-3 rounded-full",
+                        devisForm.typeDocument === 'SERVICE' ? "bg-purple-500" : "bg-gray-300"
+                      )} />
+                      <div>
+                        <p className={cn("font-semibold", devisForm.typeDocument === 'SERVICE' && "text-purple-700")}>
+                          Services
+                        </p>
+                        <p className="text-xs text-muted-foreground">Prestations, interventions, maintenance...</p>
+                      </div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDevisForm({ ...devisForm, typeDocument: 'PRODUIT', lignes: [{ ...EMPTY_LINE }] })}
+                    className={cn(
+                      "p-4 rounded-lg border-2 text-left transition-all",
+                      devisForm.typeDocument === 'PRODUIT'
+                        ? "border-emerald-500 bg-emerald-50"
+                        : "border-gray-200 hover:border-gray-300"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-3 h-3 rounded-full",
+                        devisForm.typeDocument === 'PRODUIT' ? "bg-emerald-500" : "bg-gray-300"
+                      )} />
+                      <div>
+                        <p className={cn("font-semibold", devisForm.typeDocument === 'PRODUIT' && "text-emerald-700")}>
+                          Produits
+                        </p>
+                        <p className="text-xs text-muted-foreground">Matériel, équipements, consommables...</p>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Afficher le type pour un devis en modification */}
+            {editingDevisId && devisForm.typeDocument && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Type:</span>
+                <Badge className={devisForm.typeDocument === 'SERVICE' ? "bg-purple-100 text-purple-800" : "bg-emerald-100 text-emerald-800"}>
+                  {devisForm.typeDocument === 'SERVICE' ? 'Services' : 'Produits'}
+                </Badge>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Client <span className="text-red-500">*</span></Label>
                 <Select
                   value={devisForm.clientId}
-                  onValueChange={(value) => setDevisForm({ ...devisForm, clientId: value })}
+                  onValueChange={(value) => setDevisForm({ ...devisForm, clientId: value, siteId: undefined })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Sélectionner un client" />
                   </SelectTrigger>
                   <SelectContent>
-                    {clients.map((t: Tiers) => (
+                    {clients.filter((t: Tiers) => t.id && t.id !== '').map((t: Tiers) => (
                       <SelectItem key={t.id} value={t.id}>
                         {t.nomEntreprise}
                       </SelectItem>
@@ -1960,6 +3267,49 @@ export function CommercePage() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-2">
+                <Label>Site concerné <span className="text-muted-foreground text-xs">(optionnel)</span></Label>
+                <Select
+                  value={devisForm.siteId || '__none__'}
+                  onValueChange={(value) => {
+                    const newSiteId = value === '__none__' ? undefined : value;
+                    // Si c'est un devis SERVICE et qu'on sélectionne un site, pré-remplir les descriptions
+                    if (devisForm.typeDocument === 'SERVICE' && newSiteId) {
+                      const selectedClient = clients.find((c: Tiers) => c.id === devisForm.clientId);
+                      const selectedSite = selectedClient?.sites?.find((s: any) => s.id === newSiteId);
+                      if (selectedSite?.noteServiceDefaut) {
+                        // Appliquer la note par défaut à toutes les lignes
+                        const updatedLignes = devisForm.lignes.map(ligne => ({
+                          ...ligne,
+                          description: ligne.description || selectedSite.noteServiceDefaut,
+                        }));
+                        setDevisForm({ ...devisForm, siteId: newSiteId, lignes: updatedLignes });
+                        return;
+                      }
+                    }
+                    setDevisForm({ ...devisForm, siteId: newSiteId });
+                  }}
+                  disabled={!devisForm.clientId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={devisForm.clientId ? "Sélectionner un site" : "Sélectionnez d'abord un client"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Aucun site spécifique</SelectItem>
+                    {(() => {
+                      const selectedClient = clients.find((c: Tiers) => c.id === devisForm.clientId);
+                      return selectedClient?.sites?.filter((site: any) => site.id && site.id !== '').map((site: any) => (
+                        <SelectItem key={site.id} value={site.id}>
+                          {site.nom} {site.ville && `- ${site.ville}`}
+                        </SelectItem>
+                      )) || [];
+                    })()}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Date du devis</Label>
                 <Input
@@ -1979,7 +3329,18 @@ export function CommercePage() {
               </div>
             </div>
 
-            <LignesForm lignes={devisForm.lignes} setForm={setDevisForm} produitsList={produits} />
+            <LignesForm
+              lignes={devisForm.lignes}
+              setForm={setDevisForm}
+              produitsList={produits}
+              typeDocument={devisForm.typeDocument}
+              noteServiceDefaut={(() => {
+                if (devisForm.typeDocument !== 'SERVICE' || !devisForm.siteId || !devisForm.clientId) return null;
+                const selectedClient = clients.find((c: Tiers) => c.id === devisForm.clientId);
+                const selectedSite = selectedClient?.sites?.find((s: any) => s.id === devisForm.siteId);
+                return selectedSite?.noteServiceDefaut || null;
+              })()}
+            />
 
             <TotalsDisplay totals={totalsDevis} />
           </div>
@@ -2008,7 +3369,7 @@ export function CommercePage() {
                   createDevisMutation.mutate(payload);
                 }
               }}
-              disabled={!devisForm.clientId || devisForm.lignes.length === 0 || createDevisMutation.isPending || updateDevisMutation.isPending}
+              disabled={!devisForm.clientId || devisForm.lignes.length === 0 || (!editingDevisId && !devisForm.typeDocument) || createDevisMutation.isPending || updateDevisMutation.isPending}
             >
               {createDevisMutation.isPending || updateDevisMutation.isPending
                 ? (editingDevisId ? 'Mise à jour...' : 'Création...')
@@ -2023,7 +3384,7 @@ export function CommercePage() {
         setShowCommandeDialog(open);
         if (!open) {
           setEditingCommandeId(null);
-          setCommandeForm({ clientId: '', lignes: [{ ...EMPTY_LINE }] });
+          setCommandeForm({ clientId: '', siteId: undefined, typeDocument: 'PRODUIT', lignes: [{ ...EMPTY_LINE }] });
         }
       }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -2036,18 +3397,94 @@ export function CommercePage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6">
+            {/* Type de document - obligatoire pour nouvelle commande */}
+            {!editingCommandeId && (
+              <div className="space-y-2">
+                <Label>Type de commande <span className="text-red-500">*</span></Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Si un site est sélectionné, charger la noteServiceDefaut
+                      let newLignes = [{ ...EMPTY_LINE }];
+                      if (commandeForm.siteId && commandeForm.clientId) {
+                        const selectedClient = clients.find((c: Tiers) => c.id === commandeForm.clientId);
+                        const selectedSite = selectedClient?.sites?.find((s: any) => s.id === commandeForm.siteId);
+                        if (selectedSite?.noteServiceDefaut) {
+                          newLignes = [{ ...EMPTY_LINE, description: selectedSite.noteServiceDefaut }];
+                        }
+                      }
+                      setCommandeForm({ ...commandeForm, typeDocument: 'SERVICE', lignes: newLignes });
+                    }}
+                    className={cn(
+                      "p-4 rounded-lg border-2 text-left transition-all",
+                      commandeForm.typeDocument === 'SERVICE'
+                        ? "border-purple-500 bg-purple-50"
+                        : "border-gray-200 hover:border-gray-300"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-3 h-3 rounded-full",
+                        commandeForm.typeDocument === 'SERVICE' ? "bg-purple-500" : "bg-gray-300"
+                      )} />
+                      <div>
+                        <p className={cn("font-semibold", commandeForm.typeDocument === 'SERVICE' && "text-purple-700")}>
+                          Services
+                        </p>
+                        <p className="text-xs text-muted-foreground">Prestations, interventions, maintenance...</p>
+                      </div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCommandeForm({ ...commandeForm, typeDocument: 'PRODUIT', lignes: [{ ...EMPTY_LINE }] })}
+                    className={cn(
+                      "p-4 rounded-lg border-2 text-left transition-all",
+                      commandeForm.typeDocument === 'PRODUIT'
+                        ? "border-emerald-500 bg-emerald-50"
+                        : "border-gray-200 hover:border-gray-300"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-3 h-3 rounded-full",
+                        commandeForm.typeDocument === 'PRODUIT' ? "bg-emerald-500" : "bg-gray-300"
+                      )} />
+                      <div>
+                        <p className={cn("font-semibold", commandeForm.typeDocument === 'PRODUIT' && "text-emerald-700")}>
+                          Produits
+                        </p>
+                        <p className="text-xs text-muted-foreground">Matériel, équipements, consommables...</p>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Afficher le type pour une commande en modification */}
+            {editingCommandeId && commandeForm.typeDocument && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Type:</span>
+                <Badge className={commandeForm.typeDocument === 'SERVICE' ? "bg-purple-100 text-purple-800" : "bg-emerald-100 text-emerald-800"}>
+                  {commandeForm.typeDocument === 'SERVICE' ? 'Services' : 'Produits'}
+                </Badge>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Client <span className="text-red-500">*</span></Label>
                 <Select
                   value={commandeForm.clientId}
-                  onValueChange={(value) => setCommandeForm({ ...commandeForm, clientId: value })}
+                  onValueChange={(value) => setCommandeForm({ ...commandeForm, clientId: value, siteId: undefined })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Sélectionner un client" />
                   </SelectTrigger>
                   <SelectContent>
-                    {clients.map((t: Tiers) => (
+                    {clients.filter((t: Tiers) => t.id && t.id !== '').map((t: Tiers) => (
                       <SelectItem key={t.id} value={t.id}>
                         {t.nomEntreprise}
                       </SelectItem>
@@ -2055,6 +3492,49 @@ export function CommercePage() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-2">
+                <Label>Site concerné <span className="text-muted-foreground text-xs">(optionnel)</span></Label>
+                <Select
+                  value={commandeForm.siteId || '__none__'}
+                  onValueChange={(value) => {
+                    const newSiteId = value === '__none__' ? undefined : value;
+                    // Si c'est une commande SERVICE et qu'on sélectionne un site, pré-remplir les descriptions
+                    if (commandeForm.typeDocument === 'SERVICE' && newSiteId) {
+                      const selectedClient = clients.find((c: Tiers) => c.id === commandeForm.clientId);
+                      const selectedSite = selectedClient?.sites?.find((s: any) => s.id === newSiteId);
+                      if (selectedSite?.noteServiceDefaut) {
+                        // Appliquer la note par défaut à toutes les lignes
+                        const updatedLignes = commandeForm.lignes.map(ligne => ({
+                          ...ligne,
+                          description: ligne.description || selectedSite.noteServiceDefaut,
+                        }));
+                        setCommandeForm({ ...commandeForm, siteId: newSiteId, lignes: updatedLignes });
+                        return;
+                      }
+                    }
+                    setCommandeForm({ ...commandeForm, siteId: newSiteId });
+                  }}
+                  disabled={!commandeForm.clientId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={commandeForm.clientId ? "Sélectionner un site" : "Sélectionnez d'abord un client"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Aucun site spécifique</SelectItem>
+                    {(() => {
+                      const selectedClient = clients.find((c: Tiers) => c.id === commandeForm.clientId);
+                      return selectedClient?.sites?.filter((site: any) => site.id && site.id !== '').map((site: any) => (
+                        <SelectItem key={site.id} value={site.id}>
+                          {site.nom} {site.ville && `- ${site.ville}`}
+                        </SelectItem>
+                      )) || [];
+                    })()}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Date de livraison souhaitée</Label>
                 <Input
@@ -2065,7 +3545,20 @@ export function CommercePage() {
               </div>
             </div>
 
-            <LignesForm lignes={commandeForm.lignes} setForm={setCommandeForm} produitsList={produits} />
+            <LignesForm
+              lignes={commandeForm.lignes}
+              setForm={setCommandeForm}
+              produitsList={produits}
+              typeDocument={commandeForm.typeDocument}
+              noteServiceDefaut={(() => {
+                if (commandeForm.typeDocument === 'SERVICE' && commandeForm.siteId && commandeForm.clientId) {
+                  const selectedClient = clients.find((c: Tiers) => c.id === commandeForm.clientId);
+                  const selectedSite = selectedClient?.sites?.find((s: any) => s.id === commandeForm.siteId);
+                  return selectedSite?.noteServiceDefaut || null;
+                }
+                return null;
+              })()}
+            />
 
             <TotalsDisplay totals={totalsCommande} />
           </div>
@@ -2120,7 +3613,7 @@ export function CommercePage() {
                     <SelectValue placeholder="Sélectionner un client" />
                   </SelectTrigger>
                   <SelectContent>
-                    {clients.map((t: Tiers) => (
+                    {clients.filter((t: Tiers) => t.id && t.id !== '').map((t: Tiers) => (
                       <SelectItem key={t.id} value={t.id}>
                         {t.nomEntreprise}
                       </SelectItem>
@@ -2192,84 +3685,189 @@ export function CommercePage() {
         </DialogContent>
       </Dialog>
 
-      {/* Document Detail Sheet */}
+      {/* Devis Detail Dialog - Nouveau design premium */}
+      <DevisDetailDialog
+        open={viewingDocument?.type === 'devis'}
+        devis={viewingDocument?.type === 'devis' ? viewingDocument.document : null}
+        onClose={() => setViewingDocument(null)}
+        canManage={canManage}
+        canDelete={viewingDocument?.type === 'devis' ? canDeleteDevis(viewingDocument.document.id) : false}
+        onValidate={() => {
+          if (viewingDocument?.type === 'devis') {
+            validerDevis.mutate(viewingDocument.document.id);
+          }
+        }}
+        onConvert={() => {
+          if (viewingDocument?.type === 'devis') {
+            convertirDevis.mutate(viewingDocument.document.id);
+          }
+        }}
+        onEdit={async () => {
+          if (viewingDocument?.type !== 'devis') return;
+          try {
+            const fullDevis = await commerceApi.getDevis(viewingDocument.document.id);
+            let dureeValiditeJours = 7;
+            if (fullDevis.dateDevis && fullDevis.dateValidite) {
+              const dateDevis = new Date(fullDevis.dateDevis);
+              const dateValidite = new Date(fullDevis.dateValidite);
+              dureeValiditeJours = Math.round((dateValidite.getTime() - dateDevis.getTime()) / (1000 * 60 * 60 * 24));
+            }
+            setEditingDevisId(viewingDocument.document.id);
+            setDevisForm({
+              clientId: fullDevis.clientId,
+              dateDevis: fullDevis.dateDevis?.split('T')[0],
+              dureeValiditeJours,
+              notes: fullDevis.notes || '',
+              conditions: fullDevis.conditions || '',
+              remiseGlobalPct: fullDevis.remiseGlobalPct || 0,
+              remiseGlobalMontant: fullDevis.remiseGlobalMontant || 0,
+              lignes: fullDevis.lignes?.map((l: any) => ({
+                produitServiceId: l.produitServiceId || undefined,
+                libelle: l.libelle || '',
+                description: l.description || '',
+                quantite: l.quantite || 1,
+                unite: l.unite || '',
+                prixUnitaireHT: l.prixUnitaireHT || 0,
+                tauxTVA: l.tauxTVA ?? 19,
+                remisePct: l.remisePct || 0,
+              })) || [{ ...EMPTY_LINE }],
+            });
+            setViewingDocument(null);
+            setShowDevisDialog(true);
+          } catch {
+            toast.error('Erreur lors du chargement du devis');
+          }
+        }}
+        onDelete={() => {
+          if (viewingDocument?.type === 'devis') {
+            deleteDevisMutation.mutate(viewingDocument.document.id);
+          }
+        }}
+        onDownloadPdf={() => {
+          if (viewingDocument?.type === 'devis') {
+            commerceApi.downloadDevisPdf(viewingDocument.document.id).catch(() => toast.error('Erreur téléchargement'));
+          }
+        }}
+        isValidating={validerDevis.isPending}
+        isConverting={convertirDevis.isPending}
+      />
+
+      {/* Commande Detail Dialog - Design premium similaire à Devis */}
+      <CommandeDetailDialog
+        open={viewingDocument?.type === 'commande'}
+        commande={viewingDocument?.type === 'commande' ? viewingDocument.document : null}
+        onClose={() => setViewingDocument(null)}
+        canManage={canManage}
+        canDelete={viewingDocument?.type === 'commande' ? canDeleteCommande(viewingDocument.document.id) : false}
+        onValidate={() => {
+          if (viewingDocument?.type === 'commande') {
+            const doc = viewingDocument.document;
+            setValidationCommandeForm({
+              refBonCommandeClient: doc.refBonCommandeClient || '',
+              dateCommande: doc.dateCommande?.split('T')[0] || new Date().toISOString().split('T')[0],
+              dateLivraisonSouhaitee: doc.dateLivraisonSouhaitee?.split('T')[0] || '',
+              notes: doc.notes || '',
+              conditions: doc.conditions || '',
+            });
+            setValidationCommandeDialog(doc);
+          }
+        }}
+        onConvert={() => {
+          if (viewingDocument?.type === 'commande' && !convertedCommandeIds.has(viewingDocument.document.id)) {
+            convertirCommande.mutate(viewingDocument.document.id);
+          }
+        }}
+        onEdit={async () => {
+          if (viewingDocument?.type !== 'commande') return;
+          try {
+            const fullCommande = await commerceApi.getCommande(viewingDocument.document.id);
+            setEditingCommandeId(viewingDocument.document.id);
+            setCommandeForm({
+              clientId: fullCommande.clientId,
+              siteId: fullCommande.siteId || undefined,
+              typeDocument: fullCommande.typeDocument || 'PRODUIT',
+              devisId: fullCommande.devisId || undefined,
+              dateCommande: fullCommande.dateCommande?.split('T')[0],
+              dateLivraisonSouhaitee: fullCommande.dateLivraisonSouhaitee?.split('T')[0],
+              notes: fullCommande.notes || '',
+              conditions: fullCommande.conditions || '',
+              remiseGlobalPct: fullCommande.remiseGlobalPct || 0,
+              remiseGlobalMontant: fullCommande.remiseGlobalMontant || 0,
+              lignes: fullCommande.lignes?.map((l: any) => ({
+                produitServiceId: l.produitServiceId || undefined,
+                libelle: l.libelle || '',
+                description: l.description || '',
+                quantite: l.quantite || 1,
+                unite: l.unite || '',
+                prixUnitaireHT: l.prixUnitaireHT || 0,
+                tauxTVA: l.tauxTVA ?? 19,
+                remisePct: l.remisePct || 0,
+              })) || [{ ...EMPTY_LINE }],
+            });
+            setViewingDocument(null);
+            setShowCommandeDialog(true);
+          } catch {
+            toast.error('Erreur lors du chargement de la commande');
+          }
+        }}
+        onDelete={() => {
+          if (viewingDocument?.type === 'commande') {
+            deleteCommandeMutation.mutate(viewingDocument.document.id);
+          }
+        }}
+        onDownloadPdf={() => {
+          if (viewingDocument?.type === 'commande') {
+            commerceApi.downloadCommandePdf(viewingDocument.document.id).catch(() => toast.error('Erreur téléchargement'));
+          }
+        }}
+        isValidating={validerCommande.isPending}
+        isConverting={convertirCommande.isPending}
+      />
+
+      {/* Document Detail Sheet - Pour factures uniquement */}
       <DocumentDetailSheet
-        open={!!viewingDocument}
+        open={viewingDocument?.type === 'facture'}
         onOpenChange={(open) => !open && setViewingDocument(null)}
-        type={viewingDocument?.type || 'devis'}
+        type="facture"
         document={viewingDocument?.document}
         canManage={canManage}
         onDownloadPdf={() => {
-          if (!viewingDocument) return;
-          const { type, document } = viewingDocument;
-          const downloadFn: Record<string, () => Promise<void>> = {
-            devis: () => commerceApi.downloadDevisPdf(document.id),
-            commande: () => commerceApi.downloadCommandePdf(document.id),
-            facture: () => commerceApi.downloadFacturePdf(document.id),
-          };
-          downloadFn[type]?.().catch(() => toast.error('Erreur téléchargement'));
+          if (viewingDocument?.type === 'facture') {
+            commerceApi.downloadFacturePdf(viewingDocument.document.id).catch(() => toast.error('Erreur téléchargement'));
+          }
         }}
-        onValidate={
-          viewingDocument?.type === 'devis'
-            ? () => validerDevis.mutate(viewingDocument.document.id)
-            : viewingDocument?.type === 'commande'
-            ? () => {
-                const doc = viewingDocument.document;
-                setValidationCommandeForm({
-                  refBonCommandeClient: doc.refBonCommandeClient || '',
-                  dateCommande: doc.dateCommande?.split('T')[0] || new Date().toISOString().split('T')[0],
-                  dateLivraisonSouhaitee: doc.dateLivraisonSouhaitee?.split('T')[0] || '',
-                  notes: doc.notes || '',
-                  conditions: doc.conditions || '',
-                });
-                setValidationCommandeDialog(doc);
-              }
-            : viewingDocument?.type === 'facture'
-            ? () => {
-                const doc = viewingDocument.document;
-                setValidationFactureForm({
-                  delaiPaiementJours: doc.delaiPaiementJours ?? 45,
-                  dateFacture: doc.dateFacture?.split('T')[0] || new Date().toISOString().split('T')[0],
-                  notes: doc.notes || '',
-                  conditions: doc.conditions || '',
-                });
-                setValidationFactureDialog(doc);
-              }
-            : undefined
-        }
-        onConvert={
-          viewingDocument?.type === 'devis' && !convertedDevisIds.has(viewingDocument.document.id)
-            ? () => convertirDevis.mutate(viewingDocument.document.id)
-            : viewingDocument?.type === 'commande' && !convertedCommandeIds.has(viewingDocument.document.id)
-            ? () => convertirCommande.mutate(viewingDocument.document.id)
-            : undefined
-        }
-        onDelete={
-          viewingDocument
-            ? () => setDeleteTarget({ type: viewingDocument.type, item: viewingDocument.document })
-            : undefined
-        }
+        onValidate={() => {
+          if (viewingDocument?.type === 'facture') {
+            const doc = viewingDocument.document;
+            setValidationFactureForm({
+              delaiPaiementJours: doc.delaiPaiementJours ?? 45,
+              dateFacture: doc.dateFacture?.split('T')[0] || new Date().toISOString().split('T')[0],
+              notes: doc.notes || '',
+              conditions: doc.conditions || '',
+            });
+            setValidationFactureDialog(doc);
+          }
+        }}
+        onDelete={() => {
+          if (viewingDocument?.type === 'facture') {
+            setDeleteTarget({ type: 'facture', item: viewingDocument.document });
+          }
+        }}
         canDelete={
-          viewingDocument?.type === 'devis'
-            ? canDeleteDevis(viewingDocument.document.id)
-            : viewingDocument?.type === 'commande'
-            ? canDeleteCommande(viewingDocument.document.id)
-            : viewingDocument?.type === 'facture'
+          viewingDocument?.type === 'facture'
             ? (viewingDocument.document.statut === 'BROUILLON' || viewingDocument.document.statut === 'VALIDEE')
             : false
         }
-        onPayment={
-          viewingDocument?.type === 'facture'
-            ? () => {
-                setPaiementFacture(viewingDocument.document);
-                setPaiementForm({
-                  ...paiementForm,
-                  montant: viewingDocument.document.totalTTC - (viewingDocument.document.totalPaye || 0),
-                  emetteur: viewingDocument.document.client?.nomEntreprise || '',
-                });
-              }
-            : undefined
-        }
+        onPayment={() => {
+          if (viewingDocument?.type === 'facture') {
+            setPaiementFacture(viewingDocument.document);
+            setPaiementForm({
+              ...paiementForm,
+              montant: viewingDocument.document.totalTTC - (viewingDocument.document.totalPaye || 0),
+              emetteur: viewingDocument.document.client?.nomEntreprise || '',
+            });
+          }
+        }}
         onNavigateToDocument={async (docType, docId) => {
           try {
             let doc: any;
@@ -2330,6 +3928,103 @@ export function CommercePage() {
               {(deleteDevisMutation.isPending || deleteCommandeMutation.isPending || deleteFactureMutation.isPending)
                 ? 'Suppression...'
                 : 'Supprimer'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Validation Devis Confirmation Dialog */}
+      <AlertDialog open={!!validationTarget} onOpenChange={(open) => !open && setValidationTarget(null)}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-emerald-600">
+              <CheckCircle2 className="h-5 w-5" />
+              Valider le devis ?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>Vous allez valider ce devis. Une fois validé, il ne pourra plus être modifié.</p>
+                {validationTarget && (
+                  <div className="bg-gray-50 rounded-lg p-3 space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Devis</span>
+                      <span className="font-medium text-foreground">{validationTarget.ref}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Client</span>
+                      <span className="font-medium text-foreground">{validationTarget.client?.nomEntreprise || '-'}</span>
+                    </div>
+                    <Separator />
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Total TTC</span>
+                      <span className="font-bold text-emerald-600">{formatMontant(validationTarget.totalTTC)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-emerald-600 hover:bg-emerald-700"
+              onClick={() => {
+                if (validationTarget) {
+                  validerDevis.mutate(validationTarget.id);
+                  setValidationTarget(null);
+                }
+              }}
+              disabled={validerDevis.isPending}
+            >
+              {validerDevis.isPending ? 'Validation...' : 'Valider le devis'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Conversion Devis Confirmation Dialog */}
+      <AlertDialog open={!!conversionTarget} onOpenChange={(open) => !open && setConversionTarget(null)}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-blue-600">
+              <ArrowRightLeft className="h-5 w-5" />
+              Convertir en commande ?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>Vous allez convertir ce devis en commande client.</p>
+                {conversionTarget && (
+                  <div className="bg-gray-50 rounded-lg p-3 space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Devis</span>
+                      <span className="font-medium text-foreground">{conversionTarget.ref}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Client</span>
+                      <span className="font-medium text-foreground">{conversionTarget.client?.nomEntreprise || '-'}</span>
+                    </div>
+                    <Separator />
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Total TTC</span>
+                      <span className="font-bold text-emerald-600">{formatMontant(conversionTarget.totalTTC)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (conversionTarget) {
+                  convertirDevis.mutate(conversionTarget.id);
+                  setConversionTarget(null);
+                }
+              }}
+              disabled={convertirDevis.isPending}
+            >
+              {convertirDevis.isPending ? 'Conversion...' : 'Convertir en commande'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

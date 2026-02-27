@@ -201,9 +201,51 @@ export interface DashboardStats {
   ponctuelAlerte: number;
 }
 
+export interface DashboardStatsExtended {
+  // Stats de base
+  aPlanifier: number;
+  enRetard: number;
+  controles30j: number;
+  contratsEnAlerte: number;
+  ponctuelAlerte: number;
+  contratsAnnuelsFinProche: number;
+  // Stats aujourd'hui
+  interventionsAujourdhui: number;
+  realiseeAujourdhui: number;
+  // Stats mois
+  totalMois: number;
+  realiseeMois: number;
+  annuleeMois: number;
+  enAttenteMois: number;
+  tauxRealisationMois: number;
+  // Tendances
+  tendanceTaux: number;
+  tendanceVolume: number;
+  // Totaux
+  totalClients: number;
+  totalContrats: number;
+}
+
+export interface JourCalendrier {
+  date: string;
+  jour: string;
+  jourComplet: string;
+  count: number;
+  isToday: boolean;
+}
+
+export interface DashboardStatsExtendedResponse {
+  stats: DashboardStatsExtended;
+  prochains7Jours: JourCalendrier[];
+  moisCourant: string;
+}
+
+// Interface pour les interventions d'aujourd'hui avec employés simplifiés
+// Note: utilisée par le dashboard, les employés sont inclus via la relation standard
+
 export interface Alerte {
   id: string;
-  type: string;
+  type: 'CONTRAT_SANS_INTERVENTION' | 'PONCTUEL_FIN_PROCHE' | 'CONTRAT_HORS_VALIDITE' | 'ANNUEL_FIN_PROCHE' | string;
   message: string;
   client: { id: string; nomEntreprise: string };
   contratId: string;
@@ -213,6 +255,9 @@ export interface Alerte {
   numeroBonCommande?: string;
   nextDate?: string | Date;
   count?: number;
+  operationsRestantes?: number;
+  joursRestants?: number;
+  reconductionAuto?: boolean;
 }
 
 // ============ PAGINATION ============
@@ -330,6 +375,7 @@ export interface Site {
   horairesOuverture?: string;
   accessibilite?: string;
   notes?: string;
+  noteServiceDefaut?: string;
   actif: boolean;
   createdAt: string;
   updatedAt: string;
@@ -341,6 +387,7 @@ export interface Site {
 }
 
 export interface SiteInput {
+  id?: string; // Pour la mise à jour de sites existants
   code?: string;
   nom: string;
   adresse?: string;
@@ -1194,11 +1241,16 @@ export interface CommerceLigne {
   ordre?: number;
 }
 
+export type TypeDocument = 'PRODUIT' | 'SERVICE';
+
 export interface Devis {
   id: string;
   ref: string;
   clientId: string;
   client?: { id: string; nomEntreprise: string; code?: string };
+  siteId?: string;
+  site?: { id: string; nom: string; ville?: string };
+  typeDocument?: TypeDocument;
   dateDevis: string;
   dateValidite?: string;
   statut: DevisStatut;
@@ -1217,10 +1269,15 @@ export interface Commande {
   id: string;
   ref: string;
   clientId: string;
-  client?: { id: string; nomEntreprise: string; code?: string };
+  client?: { id: string; nomEntreprise: string; code?: string; siegeAdresse?: string; siegeVille?: string; siegeTel?: string; siegeEmail?: string };
+  siteId?: string;
+  site?: { id: string; nom: string; ville?: string };
+  typeDocument?: TypeDocument;
   devisId?: string;
+  devis?: { id: string; ref: string };
   dateCommande: string;
   dateLivraisonSouhaitee?: string;
+  refBonCommandeClient?: string;
   statut: CommandeStatut;
   remiseGlobalPct?: number;
   remiseGlobalMontant?: number;
@@ -1231,6 +1288,7 @@ export interface Commande {
   notes?: string;
   conditions?: string;
   lignes?: CommerceLigne[];
+  createdBy?: { id: string; nom: string; prenom: string };
 }
 
 export interface Facture {
@@ -1272,6 +1330,8 @@ export interface Paiement {
 
 export interface CreateDevisInput {
   clientId: string;
+  siteId?: string;
+  typeDocument?: TypeDocument;
   adresseFacturationId?: string;
   adresseLivraisonId?: string;
   dateDevis?: string;
@@ -1634,4 +1694,123 @@ export interface CreatePaiementDiversInput {
   reference?: string;
   banque?: string;
   notes?: string;
+}
+
+// ============ SETTINGS (Company Configuration) ============
+
+export interface CompanySettings {
+  id: string;
+
+  // Informations générales
+  nomEntreprise: string;
+  formeJuridique?: string;
+  logoPath?: string;
+  logoCarrePath?: string;
+
+  // Coordonnées
+  adresse?: string;
+  codePostal?: string;
+  ville?: string;
+  pays?: string;
+  telephone?: string;
+  fax?: string;
+  email?: string;
+  siteWeb?: string;
+
+  // Informations légales
+  rc?: string;
+  nif?: string;
+  ai?: string;
+  nis?: string;
+  compteBancaire?: string;
+  rib?: string;
+  banque?: string;
+
+  // Paramètres commerciaux
+  devisePrincipale: string;
+  tauxTVADefaut: number;
+
+  // Préfixes de numérotation - Documents vente
+  prefixDevis: string;
+  prefixCommande: string;
+  prefixFacture: string;
+  prefixAvoir: string;
+
+  // Préfixes de numérotation - Documents achat
+  prefixCommandeFournisseur: string;
+  prefixFactureFournisseur: string;
+  prefixCharge: string;
+
+  // Préfixes de numérotation - Tiers
+  prefixClient: string;
+  prefixFournisseur: string;
+  prefixProspect: string;
+
+  // Préfixes de numérotation - Autres
+  prefixProduit: string;
+  prefixService: string;
+
+  // Format numérotation
+  longueurNumero: number;
+  inclureAnnee: boolean;
+  separateur: string;
+
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpdateCompanySettingsInput {
+  // Informations générales
+  nomEntreprise?: string;
+  formeJuridique?: string;
+  logoPath?: string;
+  logoCarrePath?: string;
+
+  // Coordonnées
+  adresse?: string;
+  codePostal?: string;
+  ville?: string;
+  pays?: string;
+  telephone?: string;
+  fax?: string;
+  email?: string;
+  siteWeb?: string;
+
+  // Informations légales
+  rc?: string;
+  nif?: string;
+  ai?: string;
+  nis?: string;
+  compteBancaire?: string;
+  rib?: string;
+  banque?: string;
+
+  // Paramètres commerciaux
+  devisePrincipale?: string;
+  tauxTVADefaut?: number;
+
+  // Préfixes de numérotation - Documents vente
+  prefixDevis?: string;
+  prefixCommande?: string;
+  prefixFacture?: string;
+  prefixAvoir?: string;
+
+  // Préfixes de numérotation - Documents achat
+  prefixCommandeFournisseur?: string;
+  prefixFactureFournisseur?: string;
+  prefixCharge?: string;
+
+  // Préfixes de numérotation - Tiers
+  prefixClient?: string;
+  prefixFournisseur?: string;
+  prefixProspect?: string;
+
+  // Préfixes de numérotation - Autres
+  prefixProduit?: string;
+  prefixService?: string;
+
+  // Format numérotation
+  longueurNumero?: number;
+  inclureAnnee?: boolean;
+  separateur?: string;
 }

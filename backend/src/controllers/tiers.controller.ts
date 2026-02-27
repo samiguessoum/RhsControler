@@ -108,6 +108,17 @@ export const tiersController = {
               where: { estPrincipal: true },
               take: 1,
             },
+            sites: {
+              where: { actif: true },
+              orderBy: { nom: 'asc' },
+              select: {
+                id: true,
+                nom: true,
+                ville: true,
+                adresse: true,
+                noteServiceDefaut: true,
+              },
+            },
             modePaiement: true,
             conditionPaiement: true,
             _count: {
@@ -395,40 +406,8 @@ export const tiersController = {
             }))
         : undefined;
 
-      const sitesInput = Array.isArray(data.sites)
-        ? data.sites
-            .filter((s: any) => s?.nom && String(s.nom).trim())
-            .map((s: any) => ({
-              code: s.code,
-              nom: s.nom,
-              adresse: s.adresse,
-              complement: s.complement,
-              codePostal: s.codePostal,
-              ville: s.ville,
-              pays: s.pays || 'Algérie',
-              latitude: s.latitude,
-              longitude: s.longitude,
-              tel: s.tel,
-              fax: s.fax,
-              email: s.email,
-              horairesOuverture: s.horairesOuverture,
-              accessibilite: s.accessibilite,
-              notes: s.notes,
-              contacts: {
-                create: s.contacts?.map((c: any, i: number) => ({
-                  civilite: c.civilite,
-                  nom: c.nom,
-                  prenom: c.prenom,
-                  fonction: c.fonction,
-                  tel: c.tel,
-                  telMobile: c.telMobile,
-                  email: c.email,
-                  notes: c.notes,
-                  estPrincipal: i === 0 || c.estPrincipal,
-                })) || [],
-              },
-            }))
-        : undefined;
+      // Gérer les sites séparément pour éviter de supprimer ceux qui ont des données liées
+      const hasSitesData = Array.isArray(data.sites) && data.sites.some((s: any) => s?.nom && String(s.nom).trim());
 
       const tiers = await prisma.client.update({
         where: { id },
@@ -496,14 +475,7 @@ export const tiersController = {
                 },
               }
             : {}),
-          ...(Array.isArray(data.sites)
-            ? {
-                sites: {
-                  deleteMany: {},
-                  create: sitesInput,
-                },
-              }
-            : {}),
+          // Les sites sont gérés séparément après l'update principal
         },
         include: {
           siegeContacts: true,
@@ -517,12 +489,152 @@ export const tiersController = {
         },
       });
 
-      await createAuditLog(req.user!.id, 'UPDATE', 'Tiers', tiers.id, {
-        before: existing,
-        after: tiers,
+      // Gérer les sites séparément pour ne pas supprimer ceux avec des données liées
+      if (hasSitesData) {
+        const sitesFromInput = data.sites
+          .filter((s: any) => s?.nom && String(s.nom).trim())
+          .map((s: any) => ({
+            id: s.id || null, // ID du site existant (null si nouveau)
+            nom: s.nom,
+            adresse: s.adresse || null,
+            complement: s.complement || null,
+            codePostal: s.codePostal || null,
+            ville: s.ville || null,
+            pays: s.pays || 'Algérie',
+            tel: s.tel || null,
+            fax: s.fax || null,
+            email: s.email || null,
+            notes: s.notes || null,
+          }));
+
+        // Récupérer les sites existants
+        const existingSites = await prisma.site.findMany({
+          where: { clientId: id },
+          select: { id: true, nom: true },
+        });
+
+        const existingSiteIds = existingSites.map(s => s.id);
+
+        // Mettre à jour ou créer les sites
+        for (const siteData of sitesFromInput) {
+          // Correspondance par ID (prioritaire) ou par nom (fallback pour compatibilité)
+          const existingSiteById = siteData.id ? existingSites.find(s => s.id === siteData.id) : null;
+          const existingSiteByName = !existingSiteById
+            ? existingSites.find(s => s.nom.toLowerCase().trim() === siteData.nom.toLowerCase().trim())
+            : null;
+          const existingSite = existingSiteById || existingSiteByName;
+
+          if (existingSite) {
+            // Mettre à jour le site existant (y compris le nom)
+            await prisma.site.update({
+              where: { id: existingSite.id },
+              data: {
+                nom: siteData.nom, // Permettre la modification du nom
+                adresse: siteData.adresse,
+                complement: siteData.complement,
+                codePostal: siteData.codePostal,
+                ville: siteData.ville,
+                pays: siteData.pays,
+                tel: siteData.tel,
+                fax: siteData.fax,
+                email: siteData.email,
+                notes: siteData.notes,
+              },
+            });
+          } else {
+            // Créer un nouveau site
+            await prisma.site.create({
+              data: {
+                clientId: id,
+                nom: siteData.nom,
+                adresse: siteData.adresse,
+                complement: siteData.complement,
+                codePostal: siteData.codePostal,
+                ville: siteData.ville,
+                pays: siteData.pays,
+                tel: siteData.tel,
+                fax: siteData.fax,
+                email: siteData.email,
+                notes: siteData.notes,
+              },
+            });
+          }
+        }
+
+        // Supprimer les sites qui ne sont plus dans la liste
+        const siteIdsFromInput = sitesFromInput
+          .filter((s: any) => s.id)
+          .map((s: any) => s.id);
+
+        const sitesToDelete = existingSites.filter(s => !siteIdsFromInput.includes(s.id));
+        const sitesNotDeleted: { nom: string; reason: string }[] = [];
+
+        for (const siteToDelete of sitesToDelete) {
+          try {
+            // Vérifier si le site a des contrats ou interventions liés
+            const hasRelatedData = await prisma.contratSite.findFirst({
+              where: { siteId: siteToDelete.id },
+            });
+            const hasInterventions = await prisma.intervention.findFirst({
+              where: { siteId: siteToDelete.id },
+            });
+
+            if (!hasRelatedData && !hasInterventions) {
+              // Supprimer les contacts du site d'abord
+              await prisma.siteContact.deleteMany({
+                where: { siteId: siteToDelete.id },
+              });
+              // Puis supprimer le site
+              await prisma.site.delete({
+                where: { id: siteToDelete.id },
+              });
+            } else {
+              // Collecter les sites non supprimés avec la raison
+              const reasons: string[] = [];
+              if (hasRelatedData) reasons.push('contrat en cours');
+              if (hasInterventions) reasons.push('interventions liées');
+              sitesNotDeleted.push({
+                nom: siteToDelete.nom,
+                reason: reasons.join(' et '),
+              });
+            }
+          } catch (deleteError) {
+            // En cas d'erreur de contrainte, ajouter à la liste
+            sitesNotDeleted.push({
+              nom: siteToDelete.nom,
+              reason: 'données liées',
+            });
+          }
+        }
+
+        // Stocker les sites non supprimés pour la réponse
+        (req as any).sitesNotDeleted = sitesNotDeleted;
+      }
+
+      // Recharger le tiers avec toutes les relations
+      const updatedTiers = await prisma.client.findUnique({
+        where: { id },
+        include: {
+          siegeContacts: true,
+          sites: { include: { contacts: true } },
+          adresses: true,
+          comptesBancaires: true,
+          modePaiement: true,
+          conditionPaiement: true,
+        },
       });
 
-      res.json({ tiers });
+      await createAuditLog(req.user!.id, 'UPDATE', 'Tiers', tiers.id, {
+        before: existing,
+        after: updatedTiers,
+      });
+
+      // Inclure les sites non supprimés dans la réponse
+      const sitesNotDeleted = (req as any).sitesNotDeleted || [];
+      res.json({
+        tiers: updatedTiers,
+        ...(sitesNotDeleted.length > 0 && { sitesNotDeleted }),
+      });
     } catch (error) {
       console.error('Update tiers error:', error);
       res.status(500).json({ error: 'Erreur serveur' });

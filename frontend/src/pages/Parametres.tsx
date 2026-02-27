@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, MoreVertical } from 'lucide-react';
+import { Plus, MoreVertical, Building2, Hash, Users, Briefcase, Wrench, Save, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import {
   AlertDialog,
@@ -21,9 +22,9 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { prestationsApi, usersApi, employesApi, postesApi } from '@/services/api';
+import { prestationsApi, usersApi, employesApi, postesApi, settingsApi } from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
-import type { Prestation, User, Role, Employe, Poste } from '@/types';
+import type { Prestation, User, Role, Employe, Poste, CompanySettings, UpdateCompanySettingsInput } from '@/types';
 
 export function ParametresPage() {
   const queryClient = useQueryClient();
@@ -48,6 +49,129 @@ export function ParametresPage() {
   const [isCreatePosteOpen, setIsCreatePosteOpen] = useState(false);
   const [editingPoste, setEditingPoste] = useState<Poste | null>(null);
   const [deletePosteTarget, setDeletePosteTarget] = useState<Poste | null>(null);
+
+  // Settings state
+  const [settingsForm, setSettingsForm] = useState<UpdateCompanySettingsInput>({});
+  const [activeTab, setActiveTab] = useState('entreprise');
+
+  // Query for settings
+  const { data: settings, isLoading: isLoadingSettings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: settingsApi.getSettings,
+    enabled: canDo('manageSettings'),
+  });
+
+  // Update settingsForm when settings are loaded
+  useEffect(() => {
+    if (settings) {
+      setSettingsForm({
+        nomEntreprise: settings.nomEntreprise,
+        formeJuridique: settings.formeJuridique || '',
+        adresse: settings.adresse || '',
+        codePostal: settings.codePostal || '',
+        ville: settings.ville || '',
+        pays: settings.pays || '',
+        telephone: settings.telephone || '',
+        fax: settings.fax || '',
+        email: settings.email || '',
+        siteWeb: settings.siteWeb || '',
+        rc: settings.rc || '',
+        nif: settings.nif || '',
+        ai: settings.ai || '',
+        nis: settings.nis || '',
+        compteBancaire: settings.compteBancaire || '',
+        rib: settings.rib || '',
+        banque: settings.banque || '',
+        devisePrincipale: settings.devisePrincipale,
+        tauxTVADefaut: settings.tauxTVADefaut,
+        prefixDevis: settings.prefixDevis,
+        prefixCommande: settings.prefixCommande,
+        prefixFacture: settings.prefixFacture,
+        prefixAvoir: settings.prefixAvoir,
+        prefixCommandeFournisseur: settings.prefixCommandeFournisseur,
+        prefixFactureFournisseur: settings.prefixFactureFournisseur,
+        prefixCharge: settings.prefixCharge,
+        prefixClient: settings.prefixClient,
+        prefixFournisseur: settings.prefixFournisseur,
+        prefixProspect: settings.prefixProspect,
+        prefixProduit: settings.prefixProduit,
+        prefixService: settings.prefixService,
+        longueurNumero: settings.longueurNumero,
+        inclureAnnee: settings.inclureAnnee,
+        separateur: settings.separateur,
+      });
+    }
+  }, [settings]);
+
+  // Mutation for updating settings
+  const updateSettingsMutation = useMutation({
+    mutationFn: (data: UpdateCompanySettingsInput) => settingsApi.updateSettings(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      toast.success('Paramètres mis à jour avec succès');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de la mise à jour');
+    },
+  });
+
+  // Mutation for uploading logo
+  const uploadLogoMutation = useMutation({
+    mutationFn: (file: File) => settingsApi.uploadLogo(file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      toast.success('Logo mis à jour avec succès');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de l\'upload du logo');
+    },
+  });
+
+  // Mutation for uploading logo carré
+  const uploadLogoCarreMutation = useMutation({
+    mutationFn: (file: File) => settingsApi.uploadLogoCarre(file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      toast.success('Logo carré mis à jour avec succès');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de l\'upload du logo carré');
+    },
+  });
+
+  const handleSettingsChange = (field: keyof UpdateCompanySettingsInput, value: any) => {
+    setSettingsForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveSettings = () => {
+    updateSettingsMutation.mutate(settingsForm);
+  };
+
+  const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      uploadLogoMutation.mutate(file);
+    }
+  };
+
+  const handleLogoCarreUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      uploadLogoCarreMutation.mutate(file);
+    }
+  };
+
+  // Generate preview reference
+  const generatePreviewRef = (prefix: string) => {
+    const annee = new Date().getFullYear();
+    const numero = '1'.padStart(settingsForm.longueurNumero || 5, '0');
+    // Utiliser le séparateur configuré, ou '-' par défaut si non défini
+    const sep = settingsForm.separateur !== undefined ? settingsForm.separateur : '-';
+    if (settingsForm.inclureAnnee) {
+      return `${prefix}${sep}${annee}${sep}${numero}`;
+    }
+    return `${prefix}${sep}${numero}`;
+  };
 
   const { data: prestations = [] } = useQuery({
     queryKey: ['prestations'],
@@ -236,219 +360,798 @@ export function ParametresPage() {
     : employes;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Paramètres</h1>
         <p className="text-muted-foreground">
-          Gestion des utilisateurs, employés et prestations
+          Configuration de l'entreprise et gestion des utilisateurs
         </p>
       </div>
 
-      {canDo('managePrestations') && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Prestations</CardTitle>
-            <Button onClick={() => setIsCreatePrestationOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Nouvelle prestation
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {prestations.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Aucune prestation</p>
-            ) : (
-              prestations.map((p) => (
-                <div
-                  key={p.id}
-                  className="flex items-center justify-between p-3 border rounded-lg"
-                >
-                  <div className="space-y-1">
-                    <p className="font-medium">{p.nom}</p>
-                    {p.description && (
-                      <p className="text-xs text-muted-foreground">{p.description}</p>
-                    )}
-                    <p className="text-xs text-muted-foreground">Ordre: {p.ordre}</p>
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => setEditingPrestation(p)}>
-                        Modifier
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setDeletePrestationTarget(p)}>
-                        Supprimer
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      )}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-6 lg:w-auto lg:inline-flex">
+          {canDo('manageSettings') && (
+            <TabsTrigger value="entreprise" className="flex items-center gap-2">
+              <Building2 className="h-4 w-4" />
+              <span className="hidden sm:inline">Entreprise</span>
+            </TabsTrigger>
+          )}
+          {canDo('manageSettings') && (
+            <TabsTrigger value="numerotation" className="flex items-center gap-2">
+              <Hash className="h-4 w-4" />
+              <span className="hidden sm:inline">Numérotation</span>
+            </TabsTrigger>
+          )}
+          {canDo('manageUsers') && (
+            <TabsTrigger value="utilisateurs" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              <span className="hidden sm:inline">Utilisateurs</span>
+            </TabsTrigger>
+          )}
+          {canDo('manageEmployes') && (
+            <TabsTrigger value="employes" className="flex items-center gap-2">
+              <Briefcase className="h-4 w-4" />
+              <span className="hidden sm:inline">Employés</span>
+            </TabsTrigger>
+          )}
+          {canDo('managePostes') && (
+            <TabsTrigger value="postes" className="flex items-center gap-2">
+              <Briefcase className="h-4 w-4" />
+              <span className="hidden sm:inline">Postes</span>
+            </TabsTrigger>
+          )}
+          {canDo('managePrestations') && (
+            <TabsTrigger value="prestations" className="flex items-center gap-2">
+              <Wrench className="h-4 w-4" />
+              <span className="hidden sm:inline">Prestations</span>
+            </TabsTrigger>
+          )}
+        </TabsList>
 
-      {canDo('managePostes') && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Postes</CardTitle>
-            <Button onClick={() => setIsCreatePosteOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Nouveau poste
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {postes.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Aucun poste</p>
+        {/* Onglet Entreprise */}
+        {canDo('manageSettings') && (
+          <TabsContent value="entreprise" className="space-y-6">
+            {isLoadingSettings ? (
+              <div className="text-center py-8 text-muted-foreground">Chargement...</div>
             ) : (
-              postes.map((p) => (
-                <div
-                  key={p.id}
-                  className="flex items-center justify-between p-3 border rounded-lg"
-                >
-                  <div>
-                    <p className="font-medium">{p.nom}</p>
-                    <p className="text-xs text-muted-foreground">{p.actif ? 'Actif' : 'Inactif'}</p>
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => setEditingPoste(p)}>
-                        Modifier
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setDeletePosteTarget(p)}>
-                        Supprimer
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {canDo('manageEmployes') && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Employés</CardTitle>
-            <Button onClick={() => setIsCreateEmployeOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Nouvel employé
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {employes.length > 0 && (
-              <div className="space-y-2">
-                <Label htmlFor="employeSearch">Recherche</Label>
-                <Input
-                  id="employeSearch"
-                  value={employeSearch}
-                  onChange={(e) => setEmployeSearch(e.target.value)}
-                  placeholder="Rechercher par nom ou poste"
-                />
-              </div>
-            )}
-            {filteredEmployes.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Aucun employé</p>
-            ) : (
-              filteredEmployes.map((e) => (
-                <div
-                  key={e.id}
-                  className="flex items-center justify-between p-3 border rounded-lg"
-                >
-                  <div>
-                    <p className="font-medium">
-                      {e.prenom} {e.nom}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {e.postes.map((p) => p.nom).join(' • ')}
-                    </p>
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => setViewingEmploye(e)}>
-                        Voir détails
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setEditingEmploye(e)}>
-                        Modifier
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => setDeleteEmployeTarget(e)}>
-                        Supprimer
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {canDo('manageUsers') && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Utilisateurs</CardTitle>
-            <Button onClick={() => setIsCreateUserOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Nouvel utilisateur
-            </Button>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {users.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Aucun utilisateur</p>
-            ) : (
-              users.map((u) => (
-                <div
-                  key={u.id}
-                  className="flex items-center justify-between p-3 border rounded-lg"
-                >
-                  <div>
-                    <p className="font-medium">
-                      {u.prenom} {u.nom}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {u.email} • {u.role} • {u.actif ? 'Actif' : 'Inactif'}
-                    </p>
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => setEditingUser(u)}>
-                        Modifier
-                      </DropdownMenuItem>
-                      {u.actif && (
-                        <DropdownMenuItem
-                          onClick={() => updateUserMutation.mutate({ id: u.id, data: { actif: false } })}
+              <>
+                {/* Identité */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Identité de l'entreprise</CardTitle>
+                    <CardDescription>Informations générales de votre société</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="nomEntreprise">Nom de l'entreprise *</Label>
+                        <Input
+                          id="nomEntreprise"
+                          value={settingsForm.nomEntreprise || ''}
+                          onChange={(e) => handleSettingsChange('nomEntreprise', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="formeJuridique">Forme juridique</Label>
+                        <Select
+                          value={settingsForm.formeJuridique || ''}
+                          onValueChange={(v) => handleSettingsChange('formeJuridique', v)}
                         >
-                          Désactiver
-                        </DropdownMenuItem>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      )}
+                          <SelectTrigger>
+                            <SelectValue placeholder="Sélectionner" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="SARL">SARL</SelectItem>
+                            <SelectItem value="EURL">EURL</SelectItem>
+                            <SelectItem value="SPA">SPA</SelectItem>
+                            <SelectItem value="SNC">SNC</SelectItem>
+                            <SelectItem value="AUTO_ENTREPRENEUR">Auto-entrepreneur</SelectItem>
+                            <SelectItem value="ASSOCIATION">Association</SelectItem>
+                            <SelectItem value="AUTRE">Autre</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <Label>Logo principal (rectangulaire)</Label>
+                        <p className="text-xs text-muted-foreground">Utilisé sur les documents PDF</p>
+                        <div className="flex items-center gap-4">
+                          {settings?.logoPath && (
+                            <img
+                              src={`${import.meta.env.VITE_API_URL?.replace('/api', '')}/${settings.logoPath}`}
+                              alt="Logo"
+                              className="h-16 w-auto object-contain border rounded"
+                            />
+                          )}
+                          <div>
+                            <Input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleLogoUpload}
+                              className="max-w-xs"
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">
+                              JPG, PNG ou WebP. Max 5 Mo.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Logo carré</Label>
+                        <p className="text-xs text-muted-foreground">Utilisé pour les icônes et favicons</p>
+                        <div className="flex items-center gap-4">
+                          {settings?.logoCarrePath && (
+                            <img
+                              src={`${import.meta.env.VITE_API_URL?.replace('/api', '')}/${settings.logoCarrePath}`}
+                              alt="Logo carré"
+                              className="h-16 w-16 object-contain border rounded"
+                            />
+                          )}
+                          <div>
+                            <Input
+                              type="file"
+                              accept="image/*"
+                              onChange={handleLogoCarreUpload}
+                              className="max-w-xs"
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Format carré recommandé. Max 5 Mo.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
 
+                {/* Coordonnées */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Coordonnées</CardTitle>
+                    <CardDescription>Adresse et moyens de contact</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="adresse">Adresse</Label>
+                      <Input
+                        id="adresse"
+                        value={settingsForm.adresse || ''}
+                        onChange={(e) => handleSettingsChange('adresse', e.target.value)}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="codePostal">Code postal</Label>
+                        <Input
+                          id="codePostal"
+                          value={settingsForm.codePostal || ''}
+                          onChange={(e) => handleSettingsChange('codePostal', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="ville">Ville</Label>
+                        <Input
+                          id="ville"
+                          value={settingsForm.ville || ''}
+                          onChange={(e) => handleSettingsChange('ville', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="pays">Pays</Label>
+                        <Input
+                          id="pays"
+                          value={settingsForm.pays || ''}
+                          onChange={(e) => handleSettingsChange('pays', e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="telephone">Téléphone</Label>
+                        <Input
+                          id="telephone"
+                          value={settingsForm.telephone || ''}
+                          onChange={(e) => handleSettingsChange('telephone', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="fax">Fax</Label>
+                        <Input
+                          id="fax"
+                          value={settingsForm.fax || ''}
+                          onChange={(e) => handleSettingsChange('fax', e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="email">Email</Label>
+                        <Input
+                          id="email"
+                          type="email"
+                          value={settingsForm.email || ''}
+                          onChange={(e) => handleSettingsChange('email', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="siteWeb">Site web</Label>
+                        <Input
+                          id="siteWeb"
+                          value={settingsForm.siteWeb || ''}
+                          onChange={(e) => handleSettingsChange('siteWeb', e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Informations légales */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Informations légales</CardTitle>
+                    <CardDescription>Numéros d'identification officiels</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="rc">Registre du commerce (RC)</Label>
+                        <Input
+                          id="rc"
+                          value={settingsForm.rc || ''}
+                          onChange={(e) => handleSettingsChange('rc', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="nif">NIF</Label>
+                        <Input
+                          id="nif"
+                          value={settingsForm.nif || ''}
+                          onChange={(e) => handleSettingsChange('nif', e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="ai">Article d'imposition (AI)</Label>
+                        <Input
+                          id="ai"
+                          value={settingsForm.ai || ''}
+                          onChange={(e) => handleSettingsChange('ai', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="nis">NIS</Label>
+                        <Input
+                          id="nis"
+                          value={settingsForm.nis || ''}
+                          onChange={(e) => handleSettingsChange('nis', e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Coordonnées bancaires */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Coordonnées bancaires</CardTitle>
+                    <CardDescription>Informations de compte pour les paiements</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="banque">Banque</Label>
+                      <Input
+                        id="banque"
+                        value={settingsForm.banque || ''}
+                        onChange={(e) => handleSettingsChange('banque', e.target.value)}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="compteBancaire">N° de compte</Label>
+                        <Input
+                          id="compteBancaire"
+                          value={settingsForm.compteBancaire || ''}
+                          onChange={(e) => handleSettingsChange('compteBancaire', e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="rib">RIB</Label>
+                        <Input
+                          id="rib"
+                          value={settingsForm.rib || ''}
+                          onChange={(e) => handleSettingsChange('rib', e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Paramètres commerciaux */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Paramètres commerciaux</CardTitle>
+                    <CardDescription>Devise et TVA par défaut</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="devisePrincipale">Devise principale</Label>
+                        <Select
+                          value={settingsForm.devisePrincipale || 'DZD'}
+                          onValueChange={(v) => handleSettingsChange('devisePrincipale', v)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="DZD">DZD - Dinar algérien</SelectItem>
+                            <SelectItem value="EUR">EUR - Euro</SelectItem>
+                            <SelectItem value="USD">USD - Dollar américain</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="tauxTVADefaut">Taux TVA par défaut (%)</Label>
+                        <Input
+                          id="tauxTVADefaut"
+                          type="number"
+                          step="0.01"
+                          value={settingsForm.tauxTVADefaut || 19}
+                          onChange={(e) => handleSettingsChange('tauxTVADefaut', parseFloat(e.target.value))}
+                        />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <div className="flex justify-end">
+                  <Button onClick={handleSaveSettings} disabled={updateSettingsMutation.isPending}>
+                    <Save className="h-4 w-4 mr-2" />
+                    Enregistrer les paramètres
+                  </Button>
+                </div>
+              </>
+            )}
+          </TabsContent>
+        )}
+
+        {/* Onglet Numérotation */}
+        {canDo('manageSettings') && (
+          <TabsContent value="numerotation" className="space-y-6">
+            {isLoadingSettings ? (
+              <div className="text-center py-8 text-muted-foreground">Chargement...</div>
+            ) : (
+              <>
+                {/* Options générales */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Options de numérotation</CardTitle>
+                    <CardDescription>Configurez le format des références</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="longueurNumero">Longueur du numéro</Label>
+                        <Select
+                          value={String(settingsForm.longueurNumero || 5)}
+                          onValueChange={(v) => handleSettingsChange('longueurNumero', parseInt(v))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="3">3 chiffres (001)</SelectItem>
+                            <SelectItem value="4">4 chiffres (0001)</SelectItem>
+                            <SelectItem value="5">5 chiffres (00001)</SelectItem>
+                            <SelectItem value="6">6 chiffres (000001)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="separateur">Séparateur</Label>
+                        <Select
+                          value={settingsForm.separateur === '' ? 'NONE' : (settingsForm.separateur || '-')}
+                          onValueChange={(v) => handleSettingsChange('separateur', v === 'NONE' ? '' : v)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="-">Tiret (-)</SelectItem>
+                            <SelectItem value="/">Slash (/)</SelectItem>
+                            <SelectItem value="NONE">Aucun</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Inclure l'année</Label>
+                        <div className="flex items-center space-x-2 pt-2">
+                          <Checkbox
+                            id="inclureAnnee"
+                            checked={settingsForm.inclureAnnee ?? true}
+                            onCheckedChange={(checked) => handleSettingsChange('inclureAnnee', checked)}
+                          />
+                          <label htmlFor="inclureAnnee" className="text-sm">
+                            Ajouter l'année dans la référence
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Documents de vente */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Documents de vente</CardTitle>
+                    <CardDescription>Préfixes pour les documents commerciaux sortants</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-3 gap-4 text-sm font-medium text-muted-foreground border-b pb-2">
+                        <span>Document</span>
+                        <span>Préfixe</span>
+                        <span>Aperçu</span>
+                      </div>
+                      {[
+                        { label: 'Devis', field: 'prefixDevis' as const },
+                        { label: 'Commandes', field: 'prefixCommande' as const },
+                        { label: 'Factures', field: 'prefixFacture' as const },
+                        { label: 'Avoirs', field: 'prefixAvoir' as const },
+                      ].map((item) => (
+                        <div key={item.field} className="grid grid-cols-3 gap-4 items-center">
+                          <span className="text-sm">{item.label}</span>
+                          <Input
+                            value={settingsForm[item.field] || ''}
+                            onChange={(e) => handleSettingsChange(item.field, e.target.value.toUpperCase())}
+                            className="w-24"
+                            maxLength={5}
+                          />
+                          <span className="text-sm text-muted-foreground font-mono">
+                            {generatePreviewRef(settingsForm[item.field] || '')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Documents d'achat */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Documents d'achat</CardTitle>
+                    <CardDescription>Préfixes pour les documents fournisseurs</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-3 gap-4 text-sm font-medium text-muted-foreground border-b pb-2">
+                        <span>Document</span>
+                        <span>Préfixe</span>
+                        <span>Aperçu</span>
+                      </div>
+                      {[
+                        { label: 'Commandes fournisseur', field: 'prefixCommandeFournisseur' as const },
+                        { label: 'Factures fournisseur', field: 'prefixFactureFournisseur' as const },
+                        { label: 'Charges', field: 'prefixCharge' as const },
+                      ].map((item) => (
+                        <div key={item.field} className="grid grid-cols-3 gap-4 items-center">
+                          <span className="text-sm">{item.label}</span>
+                          <Input
+                            value={settingsForm[item.field] || ''}
+                            onChange={(e) => handleSettingsChange(item.field, e.target.value.toUpperCase())}
+                            className="w-24"
+                            maxLength={5}
+                          />
+                          <span className="text-sm text-muted-foreground font-mono">
+                            {generatePreviewRef(settingsForm[item.field] || '')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Tiers */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Tiers</CardTitle>
+                    <CardDescription>Préfixes pour les codes clients et fournisseurs</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-3 gap-4 text-sm font-medium text-muted-foreground border-b pb-2">
+                        <span>Type</span>
+                        <span>Préfixe</span>
+                        <span>Aperçu</span>
+                      </div>
+                      {[
+                        { label: 'Clients', field: 'prefixClient' as const },
+                        { label: 'Fournisseurs', field: 'prefixFournisseur' as const },
+                        { label: 'Prospects', field: 'prefixProspect' as const },
+                      ].map((item) => (
+                        <div key={item.field} className="grid grid-cols-3 gap-4 items-center">
+                          <span className="text-sm">{item.label}</span>
+                          <Input
+                            value={settingsForm[item.field] || ''}
+                            onChange={(e) => handleSettingsChange(item.field, e.target.value.toUpperCase())}
+                            className="w-24"
+                            maxLength={5}
+                          />
+                          <span className="text-sm text-muted-foreground font-mono">
+                            {generatePreviewRef(settingsForm[item.field] || '')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Produits/Services */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Produits & Services</CardTitle>
+                    <CardDescription>Préfixes pour les références produits</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-3 gap-4 text-sm font-medium text-muted-foreground border-b pb-2">
+                        <span>Type</span>
+                        <span>Préfixe</span>
+                        <span>Aperçu</span>
+                      </div>
+                      {[
+                        { label: 'Produits', field: 'prefixProduit' as const },
+                        { label: 'Services', field: 'prefixService' as const },
+                      ].map((item) => (
+                        <div key={item.field} className="grid grid-cols-3 gap-4 items-center">
+                          <span className="text-sm">{item.label}</span>
+                          <Input
+                            value={settingsForm[item.field] || ''}
+                            onChange={(e) => handleSettingsChange(item.field, e.target.value.toUpperCase())}
+                            className="w-24"
+                            maxLength={5}
+                          />
+                          <span className="text-sm text-muted-foreground font-mono">
+                            {generatePreviewRef(settingsForm[item.field] || '')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <div className="flex justify-end">
+                  <Button onClick={handleSaveSettings} disabled={updateSettingsMutation.isPending}>
+                    <Save className="h-4 w-4 mr-2" />
+                    Enregistrer les paramètres
+                  </Button>
+                </div>
+              </>
+            )}
+          </TabsContent>
+        )}
+
+        {/* Onglet Utilisateurs */}
+        {canDo('manageUsers') && (
+          <TabsContent value="utilisateurs">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>Utilisateurs</CardTitle>
+                <Button onClick={() => setIsCreateUserOpen(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nouvel utilisateur
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {users.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Aucun utilisateur</p>
+                ) : (
+                  users.map((u) => (
+                    <div
+                      key={u.id}
+                      className="flex items-center justify-between p-3 border rounded-lg"
+                    >
+                      <div>
+                        <p className="font-medium">
+                          {u.prenom} {u.nom}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {u.email} • {u.role} • {u.actif ? 'Actif' : 'Inactif'}
+                        </p>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setEditingUser(u)}>
+                            Modifier
+                          </DropdownMenuItem>
+                          {u.actif && (
+                            <DropdownMenuItem
+                              onClick={() => updateUserMutation.mutate({ id: u.id, data: { actif: false } })}
+                            >
+                              Désactiver
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
+        {/* Onglet Employés */}
+        {canDo('manageEmployes') && (
+          <TabsContent value="employes">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>Employés</CardTitle>
+                <Button onClick={() => setIsCreateEmployeOpen(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nouvel employé
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {employes.length > 0 && (
+                  <div className="space-y-2">
+                    <Label htmlFor="employeSearch">Recherche</Label>
+                    <Input
+                      id="employeSearch"
+                      value={employeSearch}
+                      onChange={(e) => setEmployeSearch(e.target.value)}
+                      placeholder="Rechercher par nom ou poste"
+                    />
+                  </div>
+                )}
+                {filteredEmployes.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Aucun employé</p>
+                ) : (
+                  filteredEmployes.map((e) => (
+                    <div
+                      key={e.id}
+                      className="flex items-center justify-between p-3 border rounded-lg"
+                    >
+                      <div>
+                        <p className="font-medium">
+                          {e.prenom} {e.nom}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {e.postes.map((p) => p.nom).join(' • ')}
+                        </p>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setViewingEmploye(e)}>
+                            Voir détails
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setEditingEmploye(e)}>
+                            Modifier
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setDeleteEmployeTarget(e)}>
+                            Supprimer
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
+        {/* Onglet Postes */}
+        {canDo('managePostes') && (
+          <TabsContent value="postes">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>Postes</CardTitle>
+                <Button onClick={() => setIsCreatePosteOpen(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nouveau poste
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {postes.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Aucun poste</p>
+                ) : (
+                  postes.map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between p-3 border rounded-lg"
+                    >
+                      <div>
+                        <p className="font-medium">{p.nom}</p>
+                        <p className="text-xs text-muted-foreground">{p.actif ? 'Actif' : 'Inactif'}</p>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setEditingPoste(p)}>
+                            Modifier
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setDeletePosteTarget(p)}>
+                            Supprimer
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
+        {/* Onglet Prestations */}
+        {canDo('managePrestations') && (
+          <TabsContent value="prestations">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>Prestations</CardTitle>
+                <Button onClick={() => setIsCreatePrestationOpen(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Nouvelle prestation
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {prestations.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Aucune prestation</p>
+                ) : (
+                  prestations.map((p) => (
+                    <div
+                      key={p.id}
+                      className="flex items-center justify-between p-3 border rounded-lg"
+                    >
+                      <div className="space-y-1">
+                        <p className="font-medium">{p.nom}</p>
+                        {p.description && (
+                          <p className="text-xs text-muted-foreground">{p.description}</p>
+                        )}
+                        <p className="text-xs text-muted-foreground">Ordre: {p.ordre}</p>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setEditingPrestation(p)}>
+                            Modifier
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setDeletePrestationTarget(p)}>
+                            Supprimer
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+      </Tabs>
+
+      {/* Dialogs */}
       <Dialog open={isCreatePrestationOpen} onOpenChange={setIsCreatePrestationOpen}>
         <DialogContent>
           <DialogHeader>

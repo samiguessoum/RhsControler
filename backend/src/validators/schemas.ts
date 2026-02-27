@@ -247,7 +247,11 @@ export const realiserInterventionSchema = z.object({
 
 export const reporterInterventionSchema = z.object({
   nouvelleDatePrevue: z.string().or(z.date()).transform((val) => new Date(val)),
-  raison: z.string().optional(),
+  raison: z.string().min(1, 'Raison du report requise'),
+});
+
+export const annulerInterventionSchema = z.object({
+  raison: z.string().min(1, 'Raison de l\'annulation requise'),
 });
 
 // ============ QUERY PARAMS ============
@@ -459,6 +463,7 @@ const siteContactSchema = z.object({
 
 // Site d'intervention
 const siteSchema = z.object({
+  id: z.string().uuid().optional(), // ID pour la mise à jour de sites existants
   code: z.string().optional(),
   nom: z.string().min(1, 'Nom du site requis'),
   adresse: z.string().optional(),
@@ -474,6 +479,7 @@ const siteSchema = z.object({
   horairesOuverture: z.string().optional(),
   accessibilite: z.string().optional(),
   notes: z.string().optional(),
+  noteServiceDefaut: z.string().optional().nullable(),
   contacts: z.array(siteContactSchema).optional(),
 });
 
@@ -855,6 +861,8 @@ const commerceLigneSchema = z.object({
 
 export const createDevisSchema = z.object({
   clientId: z.string().uuid('ID client invalide'),
+  siteId: z.string().uuid().optional().nullable(),
+  typeDocument: z.enum(['PRODUIT', 'SERVICE']).optional().nullable(),
   adresseFacturationId: z.string().uuid().optional(),
   adresseLivraisonId: z.string().uuid().optional(),
   dateDevis: z.string().optional(),
@@ -874,6 +882,8 @@ export const updateDevisSchema = createDevisSchema.partial().extend({
 
 export const createCommandeSchema = z.object({
   clientId: z.string().uuid('ID client invalide'),
+  siteId: z.string().uuid().optional().nullable(),
+  typeDocument: z.enum(['PRODUIT', 'SERVICE']).optional().nullable(),
   devisId: z.string().uuid().optional(),
   adresseFacturationId: z.string().uuid().optional(),
   adresseLivraisonId: z.string().uuid().optional(),

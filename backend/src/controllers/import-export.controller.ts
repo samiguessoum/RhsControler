@@ -2,7 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import csvService from '../services/csv-import.service.js';
 import icsService from '../services/ics-export.service.js';
-import { parseISO } from 'date-fns';
+import { parseISO, endOfDay } from 'date-fns';
 
 export const importExportController = {
   // ============ EXPORT CSV ============
@@ -86,7 +86,7 @@ export const importExportController = {
 
       const options: any = {};
       if (dateDebut) options.dateDebut = parseISO(dateDebut as string);
-      if (dateFin) options.dateFin = parseISO(dateFin as string);
+      if (dateFin) options.dateFin = endOfDay(parseISO(dateFin as string));
       if (statuts) options.statuts = (statuts as string).split(',');
       if (clientId) options.clientId = clientId;
 
