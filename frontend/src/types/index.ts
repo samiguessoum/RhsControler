@@ -1296,6 +1296,9 @@ export interface Facture {
   ref: string;
   clientId: string;
   client?: { id: string; nomEntreprise: string; code?: string };
+  siteId?: string;
+  site?: { id: string; nom: string; ville?: string };
+  typeDocument?: TypeDocument;
   devisId?: string;
   commandeId?: string;
   dateFacture: string;

@@ -52,16 +52,7 @@ export function ParametresPage() {
 
   // Settings state
   const [settingsForm, setSettingsForm] = useState<UpdateCompanySettingsInput>({});
-  // Restaurer l'onglet actif depuis localStorage (après un rechargement)
-  const [activeTab, setActiveTab] = useState(() => {
-    const savedTab = localStorage.getItem('parametres_active_tab');
-    if (savedTab) {
-      // Nettoyer après lecture pour ne pas persister indéfiniment
-      localStorage.removeItem('parametres_active_tab');
-      return savedTab;
-    }
-    return 'entreprise';
-  });
+  const [activeTab, setActiveTab] = useState('entreprise');
 
   // Query for settings
   const { data: settings, isLoading: isLoadingSettings } = useQuery({
@@ -127,9 +118,8 @@ export function ParametresPage() {
   const updateSettingsMutation = useMutation({
     mutationFn: (data: UpdateCompanySettingsInput) => settingsApi.updateSettings(data),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
       toast.success('Paramètres mis à jour avec succès');
-      // Recharger la page pour appliquer les changements
-      window.location.reload();
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Erreur lors de la mise à jour');
@@ -165,8 +155,6 @@ export function ParametresPage() {
   };
 
   const handleSaveSettings = () => {
-    // Sauvegarder l'onglet actif dans localStorage pour le restaurer après rechargement
-    localStorage.setItem('parametres_active_tab', activeTab);
     updateSettingsMutation.mutate(settingsForm);
   };
 

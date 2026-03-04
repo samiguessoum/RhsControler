@@ -470,6 +470,7 @@ model Site {
   interventions   Intervention[]
   devis           Devis[]
   commandes       Commande[]
+  factures        Facture[]
 
   @@index([clientId])
   @@index([code])
@@ -1114,6 +1115,9 @@ model Facture {
   ref                  String        @unique
   clientId             String
   client               Client        @relation(fields: [clientId], references: [id])
+  siteId               String?
+  site                 Site?         @relation(fields: [siteId], references: [id])
+  typeDocument         TypeProduit?
   devisId              String?
   devis                Devis?        @relation(fields: [devisId], references: [id])
   commandeId           String?
@@ -1153,6 +1157,7 @@ model Facture {
   acomptes             Facture[]            @relation("AcomptesFacture")  // Pour la facture finale: liste des acomptes
 
   @@index([clientId])
+  @@index([siteId])
   @@index([statut])
   @@index([type])
   @@index([ref])

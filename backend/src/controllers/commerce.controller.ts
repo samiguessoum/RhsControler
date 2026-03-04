@@ -43,7 +43,7 @@ async function generateReference(type: 'DEVIS' | 'COMMANDE' | 'FACTURE' | 'FACTU
   const settings = await prisma.companySettings.findFirst();
   const prefixField = PREFIX_FIELD_MAP[type];
   const prefixValue = settings ? (settings as Record<string, unknown>)[prefixField] : null;
-  const prefix = (typeof prefixValue === 'string' ? prefixValue : null) || DEFAULT_PREFIX[type];
+  const prefix = (typeof prefixValue === 'string') ? prefixValue : DEFAULT_PREFIX[type];
   const longueur = settings?.longueurNumero || 4;
   const separateur = settings?.separateur ?? '/';
   const inclureAnnee = settings?.inclureAnnee ?? true;
@@ -917,8 +917,27 @@ export const commerceController = {
           skip,
           take: limitNum,
           orderBy: { dateFacture: 'desc' },
-          include: {
+          select: {
+            id: true,
+            ref: true,
+            clientId: true,
+            siteId: true,
+            typeDocument: true,
+            devisId: true,
+            commandeId: true,
+            dateFacture: true,
+            dateEcheance: true,
+            delaiPaiementJours: true,
+            type: true,
+            statut: true,
+            totalHT: true,
+            totalTVA: true,
+            totalTTC: true,
+            totalPaye: true,
+            remiseGlobalPct: true,
+            remiseGlobalMontant: true,
             client: { select: { id: true, nomEntreprise: true } },
+            site: { select: { id: true, nom: true, ville: true } },
             _count: { select: { lignes: true, paiements: true } },
           },
         }),
@@ -961,6 +980,7 @@ export const commerceController = {
               siegeEmail: true,
             },
           },
+          site: { select: { id: true, nom: true, ville: true } },
           devis: { select: { id: true, ref: true } },
           commande: { select: { id: true, ref: true } },
           lignes: {
@@ -1024,6 +1044,8 @@ export const commerceController = {
           data: {
             ref,
             clientId: data.clientId,
+            siteId: data.siteId || null,
+            typeDocument: data.typeDocument || null,
             devisId: data.devisId,
             commandeId: data.commandeId,
             adresseFacturationId: data.adresseFacturationId,
@@ -1046,8 +1068,24 @@ export const commerceController = {
             updatedById: req.user?.id,
             lignes: { create: lignes },
           },
-          include: { client: { select: { id: true, nomEntreprise: true } }, lignes: true },
+          include: {
+            client: { select: { id: true, nomEntreprise: true } },
+            site: { select: { id: true, nom: true, ville: true } },
+            lignes: true
+          },
         });
+
+        // Si c'est une facture SERVICE avec un site, sauvegarder la note par défaut du site
+        if (data.typeDocument === 'SERVICE' && data.siteId && lignes.length > 0) {
+          const firstLineDescription = lignes[0].description;
+          if (firstLineDescription && firstLineDescription.trim()) {
+            await tx.site.update({
+              where: { id: data.siteId },
+              data: { noteServiceDefaut: firstLineDescription.trim() },
+            });
+            console.log(`[Facture SERVICE] Note sauvegardée pour site ${data.siteId}: "${firstLineDescription.trim().substring(0, 50)}..."`);
+          }
+        }
 
         // Si la facture est validée, mettre à jour le stock (sortie)
         if (statut === 'VALIDEE' && factureType === 'FACTURE' && req.user?.id) {
@@ -1142,6 +1180,8 @@ export const commerceController = {
         const updatedFacture = await tx.facture.update({
           where: { id },
           data: {
+            siteId: data.siteId !== undefined ? (data.siteId || null) : undefined,
+            typeDocument: data.typeDocument !== undefined ? (data.typeDocument || null) : undefined,
             adresseFacturationId: data.adresseFacturationId,
             adresseLivraisonId: data.adresseLivraisonId,
             dateFacture: parseDate(data.dateFacture),
@@ -1165,7 +1205,11 @@ export const commerceController = {
                 }
               : undefined,
           },
-          include: { client: { select: { id: true, nomEntreprise: true } }, lignes: true },
+          include: {
+            client: { select: { id: true, nomEntreprise: true } },
+            site: { select: { id: true, nom: true, ville: true } },
+            lignes: true
+          },
         });
 
         // Si passage en VALIDEE, mettre à jour le stock
