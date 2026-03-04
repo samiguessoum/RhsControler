@@ -2079,6 +2079,8 @@ export function CommercePage() {
   });
   const [factureForm, setFactureForm] = useState<CreateFactureInput>({
     clientId: '',
+    siteId: undefined,
+    typeDocument: 'PRODUIT',
     lignes: [{ ...EMPTY_LINE }],
     type: 'FACTURE',
     dateFacture: new Date().toISOString().split('T')[0],
@@ -2203,7 +2205,7 @@ export function CommercePage() {
         description: `Référence: ${data.ref || 'N/A'}`,
       });
       queryClient.invalidateQueries({ queryKey: ['commerce', 'factures'] });
-      setFactureForm({ clientId: '', lignes: [{ ...EMPTY_LINE }], type: 'FACTURE', dateFacture: new Date().toISOString().split('T')[0], delaiPaiementJours: 45 });
+      setFactureForm({ clientId: '', siteId: undefined, typeDocument: 'PRODUIT', lignes: [{ ...EMPTY_LINE }], type: 'FACTURE', dateFacture: new Date().toISOString().split('T')[0], delaiPaiementJours: 45 });
       setShowFactureDialog(false);
     },
     onError: (error: any) => {
@@ -2248,7 +2250,7 @@ export function CommercePage() {
     onSuccess: () => {
       toast.success('Facture mise à jour avec succès');
       queryClient.invalidateQueries({ queryKey: ['commerce', 'factures'] });
-      setFactureForm({ clientId: '', lignes: [{ ...EMPTY_LINE }], type: 'FACTURE', dateFacture: new Date().toISOString().split('T')[0], delaiPaiementJours: 45 });
+      setFactureForm({ clientId: '', siteId: undefined, typeDocument: 'PRODUIT', lignes: [{ ...EMPTY_LINE }], type: 'FACTURE', dateFacture: new Date().toISOString().split('T')[0], delaiPaiementJours: 45 });
       setEditingFactureId(null);
       setShowFactureDialog(false);
     },
@@ -3046,6 +3048,8 @@ export function CommercePage() {
                                         setEditingFactureId(f.id);
                                         setFactureForm({
                                           clientId: fullFacture.clientId,
+                                          siteId: fullFacture.siteId || undefined,
+                                          typeDocument: fullFacture.typeDocument || 'PRODUIT',
                                           devisId: fullFacture.devisId || undefined,
                                           commandeId: fullFacture.commandeId || undefined,
                                           dateFacture: fullFacture.dateFacture?.split('T')[0] || new Date().toISOString().split('T')[0],
@@ -3589,7 +3593,7 @@ export function CommercePage() {
         setShowFactureDialog(open);
         if (!open) {
           setEditingFactureId(null);
-          setFactureForm({ clientId: '', lignes: [{ ...EMPTY_LINE }], type: 'FACTURE', dateFacture: new Date().toISOString().split('T')[0], delaiPaiementJours: 45 });
+          setFactureForm({ clientId: '', siteId: undefined, typeDocument: 'PRODUIT', lignes: [{ ...EMPTY_LINE }], type: 'FACTURE', dateFacture: new Date().toISOString().split('T')[0], delaiPaiementJours: 45 });
         }
       }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -3602,12 +3606,87 @@ export function CommercePage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6">
+            {/* Type de vente - obligatoire pour nouvelle facture */}
+            {!editingFactureId && (
+              <div className="space-y-2">
+                <Label>Type de vente <span className="text-red-500">*</span></Label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      let newLignes = [{ ...EMPTY_LINE }];
+                      if (factureForm.siteId && factureForm.clientId) {
+                        const selectedClient = clients.find((c: Tiers) => c.id === factureForm.clientId);
+                        const selectedSite = selectedClient?.sites?.find((s: any) => s.id === factureForm.siteId);
+                        if (selectedSite?.noteServiceDefaut) {
+                          newLignes = [{ ...EMPTY_LINE, description: selectedSite.noteServiceDefaut }];
+                        }
+                      }
+                      setFactureForm({ ...factureForm, typeDocument: 'SERVICE', lignes: newLignes });
+                    }}
+                    className={cn(
+                      "p-4 rounded-lg border-2 text-left transition-all",
+                      factureForm.typeDocument === 'SERVICE'
+                        ? "border-purple-500 bg-purple-50"
+                        : "border-gray-200 hover:border-gray-300"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-3 h-3 rounded-full",
+                        factureForm.typeDocument === 'SERVICE' ? "bg-purple-500" : "bg-gray-300"
+                      )} />
+                      <div>
+                        <p className={cn("font-semibold", factureForm.typeDocument === 'SERVICE' && "text-purple-700")}>
+                          Services
+                        </p>
+                        <p className="text-xs text-muted-foreground">Prestations, interventions, maintenance...</p>
+                      </div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFactureForm({ ...factureForm, typeDocument: 'PRODUIT', lignes: [{ ...EMPTY_LINE }] })}
+                    className={cn(
+                      "p-4 rounded-lg border-2 text-left transition-all",
+                      factureForm.typeDocument === 'PRODUIT'
+                        ? "border-emerald-500 bg-emerald-50"
+                        : "border-gray-200 hover:border-gray-300"
+                    )}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={cn(
+                        "w-3 h-3 rounded-full",
+                        factureForm.typeDocument === 'PRODUIT' ? "bg-emerald-500" : "bg-gray-300"
+                      )} />
+                      <div>
+                        <p className={cn("font-semibold", factureForm.typeDocument === 'PRODUIT' && "text-emerald-700")}>
+                          Produits
+                        </p>
+                        <p className="text-xs text-muted-foreground">Matériel, équipements, consommables...</p>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Afficher le type pour une facture en modification */}
+            {editingFactureId && factureForm.typeDocument && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Type:</span>
+                <Badge className={factureForm.typeDocument === 'SERVICE' ? "bg-purple-100 text-purple-800" : "bg-emerald-100 text-emerald-800"}>
+                  {factureForm.typeDocument === 'SERVICE' ? 'Services' : 'Produits'}
+                </Badge>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Client <span className="text-red-500">*</span></Label>
                 <Select
                   value={factureForm.clientId}
-                  onValueChange={(value) => setFactureForm({ ...factureForm, clientId: value })}
+                  onValueChange={(value) => setFactureForm({ ...factureForm, clientId: value, siteId: undefined })}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Sélectionner un client" />
@@ -3622,7 +3701,47 @@ export function CommercePage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Type de document</Label>
+                <Label>Site concerné <span className="text-muted-foreground text-xs">(optionnel)</span></Label>
+                <Select
+                  value={factureForm.siteId || '__none__'}
+                  onValueChange={(value) => {
+                    const newSiteId = value === '__none__' ? undefined : value;
+                    if (factureForm.typeDocument === 'SERVICE' && newSiteId) {
+                      const selectedClient = clients.find((c: Tiers) => c.id === factureForm.clientId);
+                      const selectedSite = selectedClient?.sites?.find((s: any) => s.id === newSiteId);
+                      if (selectedSite?.noteServiceDefaut) {
+                        const updatedLignes = factureForm.lignes.map(ligne => ({
+                          ...ligne,
+                          description: ligne.description || selectedSite.noteServiceDefaut,
+                        }));
+                        setFactureForm({ ...factureForm, siteId: newSiteId, lignes: updatedLignes });
+                        return;
+                      }
+                    }
+                    setFactureForm({ ...factureForm, siteId: newSiteId });
+                  }}
+                  disabled={!factureForm.clientId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={factureForm.clientId ? "Sélectionner un site" : "Sélectionnez d'abord un client"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Aucun site spécifique</SelectItem>
+                    {(() => {
+                      const selectedClient = clients.find((c: Tiers) => c.id === factureForm.clientId);
+                      return selectedClient?.sites?.filter((site: any) => site.id && site.id !== '').map((site: any) => (
+                        <SelectItem key={site.id} value={site.id}>
+                          {site.nom} {site.ville && `- ${site.ville}`}
+                        </SelectItem>
+                      )) || [];
+                    })()}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Type de facture</Label>
                 <Select
                   value={factureForm.type || 'FACTURE'}
                   onValueChange={(value) => setFactureForm({ ...factureForm, type: value as FactureType })}
@@ -3636,8 +3755,6 @@ export function CommercePage() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Date de facturation</Label>
                 <Input
@@ -3647,6 +3764,8 @@ export function CommercePage() {
                 />
                 <p className="text-xs text-muted-foreground">Date d'émission de la facture</p>
               </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Délai de paiement (jours)</Label>
                 <Input
@@ -3659,7 +3778,18 @@ export function CommercePage() {
               </div>
             </div>
 
-            <LignesForm lignes={factureForm.lignes} setForm={setFactureForm} produitsList={produits} />
+            <LignesForm
+              lignes={factureForm.lignes}
+              setForm={setFactureForm}
+              produitsList={produits}
+              typeDocument={factureForm.typeDocument}
+              noteServiceDefaut={(() => {
+                if (factureForm.typeDocument !== 'SERVICE' || !factureForm.siteId || !factureForm.clientId) return null;
+                const selectedClient = clients.find((c: Tiers) => c.id === factureForm.clientId);
+                const selectedSite = selectedClient?.sites?.find((s: any) => s.id === factureForm.siteId);
+                return selectedSite?.noteServiceDefaut || null;
+              })()}
+            />
 
             <TotalsDisplay totals={totalsFacture} />
           </div>

@@ -846,6 +846,8 @@ export const commerceController = {
         data: {
           ref,
           clientId: commande.clientId,
+          siteId: commande.siteId ?? undefined,
+          typeDocument: commande.typeDocument ?? undefined,
           devisId: commande.devisId,
           commandeId: commande.id,
           adresseFacturationId: commande.adresseFacturationId ?? undefined,
@@ -879,7 +881,11 @@ export const commerceController = {
             })),
           },
         },
-        include: { client: { select: { id: true, nomEntreprise: true } }, lignes: true },
+        include: {
+          client: { select: { id: true, nomEntreprise: true } },
+          site: { select: { id: true, nom: true, ville: true } },
+          lignes: true
+        },
       });
 
       await createAuditLog(req.user!.id, 'CREATE', 'Facture', facture.id, { after: facture });
