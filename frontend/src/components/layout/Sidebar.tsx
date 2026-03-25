@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -9,18 +8,14 @@ import {
   Settings,
   LogOut,
   AlertTriangle,
-  Package,
   UserCog,
   Building2,
   ShoppingBag,
   Wallet,
-  ChevronDown,
-  ChevronRight,
   Store,
   TrendingUp,
   Warehouse,
   Landmark,
-  ShoppingCart,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -43,172 +38,9 @@ interface NavItem {
   badgeVariant?: 'default' | 'secondary' | 'destructive' | 'outline' | 'warning';
 }
 
-interface NavGroup {
-  id: string;
-  icon: React.ElementType;
-  label: string;
-  show: boolean;
-  items: NavItem[];
-}
-
 export function Sidebar({ stats }: SidebarProps) {
   const { user, logout, canDo } = useAuthStore();
   const location = useLocation();
-
-  // Check which group should be open by default based on current path
-  const getDefaultOpenGroups = () => {
-    const ventePaths = ['/commerce', '/produits-services'];
-    const stockPaths = ['/stocks', '/entrepots'];
-    const achatPaths = ['/facturation'];
-    const financePaths = ['/finance'];
-    if (ventePaths.some(path => location.pathname.startsWith(path))) {
-      return ['vente'];
-    }
-    if (stockPaths.some(path => location.pathname.startsWith(path))) {
-      return ['stocks'];
-    }
-    if (achatPaths.some(path => location.pathname.startsWith(path))) {
-      return ['cycle-achat'];
-    }
-    if (financePaths.some(path => location.pathname.startsWith(path))) {
-      return ['finance'];
-    }
-    return [];
-  };
-
-  const [openGroups, setOpenGroups] = useState<string[]>(getDefaultOpenGroups);
-
-  const toggleGroup = (groupId: string) => {
-    setOpenGroups(prev =>
-      prev.includes(groupId)
-        ? prev.filter(id => id !== groupId)
-        : [...prev, groupId]
-    );
-  };
-
-  // Main navigation items (not grouped)
-  const mainNavItems: NavItem[] = [
-    {
-      to: '/',
-      icon: LayoutDashboard,
-      label: 'Dashboard',
-      show: true,
-    },
-    {
-      to: '/planning',
-      icon: Calendar,
-      label: 'Planning',
-      badge: stats?.aPlanifier ? stats.aPlanifier : undefined,
-      badgeVariant: 'warning' as const,
-      show: true,
-    },
-    {
-      to: '/tiers',
-      icon: Building2,
-      label: 'Tiers',
-      show: true,
-    },
-    {
-      to: '/contrats',
-      icon: FileText,
-      label: 'Contrats',
-      show: true,
-    },
-  ];
-
-  // Grouped navigation items - Structure ERP standard
-  const navGroups: NavGroup[] = [
-    {
-      id: 'vente',
-      icon: Store,
-      label: 'Vente',
-      show: true,
-      items: [
-        {
-          to: '/commerce',
-          icon: TrendingUp,
-          label: 'Cycle de vente',
-          show: true,
-        },
-        {
-          to: '/produits-services',
-          icon: ShoppingBag,
-          label: 'Produits & Services',
-          show: true,
-        },
-      ],
-    },
-    {
-      id: 'stocks',
-      icon: Package,
-      label: 'Gestion des stocks',
-      show: true,
-      items: [
-        {
-          to: '/stocks',
-          icon: Package,
-          label: 'Stocks & Mouvements',
-          show: true,
-        },
-        {
-          to: '/entrepots',
-          icon: Warehouse,
-          label: 'Entrepôts',
-          show: true,
-        },
-      ],
-    },
-    {
-      id: 'cycle-achat',
-      icon: ShoppingCart,
-      label: 'Cycle achat & dépenses',
-      show: canDo('viewFacturation'),
-      items: [
-        {
-          to: '/facturation',
-          icon: Wallet,
-          label: 'Fournisseurs & Charges',
-          show: true,
-        },
-      ],
-    },
-    {
-      id: 'finance',
-      icon: Landmark,
-      label: 'Finance & Trésorerie',
-      show: canDo('viewFacturation'),
-      items: [
-        {
-          to: '/finance',
-          icon: Receipt,
-          label: 'Tableau de bord',
-          show: true,
-        },
-      ],
-    },
-  ];
-
-  // Bottom navigation items
-  const bottomNavItems: NavItem[] = [
-    {
-      to: '/rh',
-      icon: UserCog,
-      label: 'Ressources Humaines',
-      show: canDo('viewRH'),
-    },
-    {
-      to: '/import-export',
-      icon: Upload,
-      label: 'Import / Export',
-      show: canDo('importData') || canDo('exportData'),
-    },
-    {
-      to: '/parametres',
-      icon: Settings,
-      label: 'Paramètres',
-      show: canDo('manageSettings') || canDo('managePrestations'),
-    },
-  ];
 
   const renderNavItem = (item: NavItem) => (
     <NavLink
@@ -233,57 +65,33 @@ export function Sidebar({ stats }: SidebarProps) {
     </NavLink>
   );
 
-  const renderNavGroup = (group: NavGroup) => {
-    const isOpen = openGroups.includes(group.id);
-    const hasActiveChild = group.items.some(item => location.pathname === item.to);
-    const visibleItems = group.items.filter(item => item.show);
+  const topItems: NavItem[] = [
+    { to: '/', icon: LayoutDashboard, label: 'Dashboard', show: true },
+    {
+      to: '/planning',
+      icon: Calendar,
+      label: 'Planning',
+      badge: stats?.aPlanifier || undefined,
+      badgeVariant: 'warning' as const,
+      show: true,
+    },
+    { to: '/tiers', icon: Building2, label: 'Tiers', show: true },
+    { to: '/contrats', icon: FileText, label: 'Contrats', show: true },
+  ];
 
-    if (visibleItems.length === 0) return null;
+  const moduleItems: NavItem[] = [
+    { to: '/commerce', icon: TrendingUp, label: 'Cycle de vente', show: true },
+    { to: '/produits-services', icon: ShoppingBag, label: 'Produits & Services', show: true },
+    { to: '/entrepots', icon: Warehouse, label: 'Entrepôts', show: true },
+    { to: '/facturation', icon: Wallet, label: 'Fournisseurs & Charges', show: canDo('viewFacturation') },
+    { to: '/finance', icon: Landmark, label: 'Finance & Trésorerie', show: canDo('viewFacturation') },
+  ];
 
-    return (
-      <div key={group.id} className="space-y-1">
-        <button
-          onClick={() => toggleGroup(group.id)}
-          className={cn(
-            'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors w-full text-left',
-            hasActiveChild && !isOpen
-              ? 'bg-primary/10 text-primary'
-              : 'text-gray-700 hover:bg-gray-100'
-          )}
-        >
-          <group.icon className="h-5 w-5 flex-shrink-0" />
-          <span className="flex-1 truncate">{group.label}</span>
-          {isOpen ? (
-            <ChevronDown className="h-4 w-4 text-gray-400" />
-          ) : (
-            <ChevronRight className="h-4 w-4 text-gray-400" />
-          )}
-        </button>
-
-        {isOpen && (
-          <div className="ml-4 pl-4 border-l border-gray-200 space-y-1">
-            {visibleItems.map(item => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors',
-                    isActive
-                      ? 'bg-primary text-primary-foreground font-medium'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  )
-                }
-              >
-                <item.icon className="h-4 w-4 flex-shrink-0" />
-                <span className="truncate">{item.label}</span>
-              </NavLink>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
+  const bottomItems: NavItem[] = [
+    { to: '/rh', icon: UserCog, label: 'Ressources Humaines', show: canDo('viewRH') },
+    { to: '/import-export', icon: Upload, label: 'Import / Export', show: canDo('importData') || canDo('exportData') },
+    { to: '/parametres', icon: Settings, label: 'Paramètres', show: canDo('manageSettings') || canDo('managePrestations') },
+  ];
 
   return (
     <aside className="flex flex-col w-64 bg-white border-r border-gray-200 h-screen fixed left-0 top-0">
@@ -305,24 +113,15 @@ export function Sidebar({ stats }: SidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-        {/* Main items */}
-        {mainNavItems.filter(item => item.show).map(renderNavItem)}
+        {topItems.filter(i => i.show).map(renderNavItem)}
 
-        {/* Separator */}
-        <div className="py-2">
-          <div className="h-px bg-gray-200" />
-        </div>
+        <div className="py-2"><div className="h-px bg-gray-200" /></div>
 
-        {/* Grouped items */}
-        {navGroups.filter(group => group.show).map(renderNavGroup)}
+        {moduleItems.filter(i => i.show).map(renderNavItem)}
 
-        {/* Separator */}
-        <div className="py-2">
-          <div className="h-px bg-gray-200" />
-        </div>
+        <div className="py-2"><div className="h-px bg-gray-200" /></div>
 
-        {/* Bottom items */}
-        {bottomNavItems.filter(item => item.show).map(renderNavItem)}
+        {bottomItems.filter(i => i.show).map(renderNavItem)}
       </nav>
 
       {/* User info */}
@@ -334,12 +133,8 @@ export function Sidebar({ stats }: SidebarProps) {
             </span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">
-              {user?.prenom} {user?.nom}
-            </p>
-            <p className="text-xs text-muted-foreground truncate">
-              {user?.role}
-            </p>
+            <p className="text-sm font-medium truncate">{user?.prenom} {user?.nom}</p>
+            <p className="text-xs text-muted-foreground truncate">{user?.role}</p>
           </div>
         </div>
         <Button

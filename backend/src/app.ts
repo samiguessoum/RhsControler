@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import path from 'path';
 import { prisma } from './config/database.js';
 import routes from './routes/index.js';
 
@@ -19,7 +20,7 @@ app.use(cors({
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  max: 2000, // limit each IP to 2000 requests per windowMs
   message: { error: 'Trop de requêtes, veuillez réessayer plus tard.' }
 });
 app.use('/api', limiter);
@@ -32,6 +33,9 @@ app.use(express.urlencoded({ extended: true }));
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Fichiers statiques (logos, fiches techniques, etc.)
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // API routes
 app.use('/api', routes);

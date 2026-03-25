@@ -29,6 +29,7 @@ import {
   Package,
   Timer,
   ArrowUpDown,
+  AlertTriangle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -420,7 +421,7 @@ function DocumentDetailSheet({
                   Valider
                 </Button>
               )}
-              {canManage && onPayment && type === 'facture' && document.statut !== 'BROUILLON' && document.statut !== 'PAYEE' && (
+              {canManage && onPayment && type === 'facture' && document.statut !== 'BROUILLON' && document.statut !== 'PAYEE' && document.statut !== 'EN_ATTENTE_ENCAISSEMENT' && (
                 <Button size="sm" variant="secondary" className="text-green-700 bg-green-100 hover:bg-green-200" onClick={onPayment}>
                   <Banknote className="h-4 w-4 mr-2" />
                   Paiement
@@ -1896,6 +1897,724 @@ function RelanceDialog({
   );
 }
 
+// ============ FACTURE DETAIL DIALOG ============
+
+function FactureDetailDialog({
+  open,
+  facture,
+  onClose,
+  onValidate,
+  onEdit,
+  onDelete,
+  onDownloadPdf,
+  onPayment,
+  onRelance,
+  onChequeAction,
+  canManage,
+  canDelete,
+  isValidating,
+}: {
+  open: boolean;
+  facture: any;
+  onClose: () => void;
+  onValidate: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onDownloadPdf: () => void;
+  onPayment: () => void;
+  onRelance: () => void;
+  onChequeAction: (paiementId: string, newStatut: 'DEPOSE' | 'ENCAISSE' | 'REJETE', label: string) => void;
+  canManage: boolean;
+  canDelete: boolean;
+  isValidating: boolean;
+}) {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showValidateConfirm, setShowValidateConfirm] = useState(false);
+
+  if (!facture) return null;
+
+  const client = facture.client;
+  const lignes = facture.lignes || [];
+  const isBrouillon = facture.statut === 'BROUILLON';
+  const isAvoir = facture.type === 'AVOIR';
+  const totalEnAttente = facture.totalEnAttente || 0;
+  const resteAPayer = (facture.totalTTC || 0) - (facture.totalPaye || 0) - totalEnAttente;
+  const pctPaye = facture.totalTTC > 0 ? ((facture.totalPaye || 0) / facture.totalTTC) * 100 : 0;
+  const pctEnAttente = facture.totalTTC > 0 ? (totalEnAttente / facture.totalTTC) * 100 : 0;
+
+  // Échéance
+  const dateEcheance = facture.dateEcheance ? new Date(facture.dateEcheance) : null;
+  const today = new Date();
+  const joursRestants = dateEcheance ? Math.ceil((dateEcheance.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) : null;
+  const isEnRetard = joursRestants !== null && joursRestants < 0 && facture.statut !== 'PAYEE';
+  const isEcheanceBientot = joursRestants !== null && joursRestants >= 0 && joursRestants <= 7 && facture.statut !== 'PAYEE';
+
+  const getStatutBadge = (statut: string) => {
+    switch (statut) {
+      case 'BROUILLON':
+        return { label: 'Brouillon', className: 'bg-slate-100 text-slate-800' };
+      case 'VALIDEE':
+        return { label: 'Validée', className: 'bg-blue-100 text-blue-800' };
+      case 'EN_RETARD':
+        return { label: 'En retard', className: 'bg-red-100 text-red-800' };
+      case 'PARTIELLEMENT_PAYEE':
+        return { label: 'Part. payée', className: 'bg-amber-100 text-amber-800' };
+      case 'EN_ATTENTE_ENCAISSEMENT':
+        return { label: 'En att. encaissement', className: 'bg-amber-100 text-amber-700 border border-amber-300' };
+      case 'PAYEE':
+        return { label: 'Payée', className: 'bg-emerald-100 text-emerald-800' };
+      case 'ANNULEE':
+        return { label: 'Annulée', className: 'bg-red-100 text-red-800' };
+      default:
+        return { label: statut, className: 'bg-gray-100 text-gray-800' };
+    }
+  };
+
+  const statutBadge = getStatutBadge(facture.statut);
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onClose}>
+        <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Receipt className="h-5 w-5" />
+              Détail de la {isAvoir ? 'note de crédit (avoir)' : 'facture'}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Status et Référence */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Badge className={statutBadge.className}>
+                  {statutBadge.label}
+                </Badge>
+                {isAvoir && (
+                  <Badge className="bg-purple-100 text-purple-800">
+                    Avoir
+                  </Badge>
+                )}
+                {facture.typeDocument && (
+                  <Badge className={facture.typeDocument === 'SERVICE'
+                    ? 'bg-purple-100 text-purple-800'
+                    : 'bg-emerald-100 text-emerald-800'
+                  }>
+                    {facture.typeDocument === 'SERVICE' ? 'Services' : 'Produits'}
+                  </Badge>
+                )}
+                <span className="font-semibold text-lg">{facture.ref}</span>
+                {isBrouillon ? (
+                  <span className="text-xs text-slate-500 italic">(non comptabilisé)</span>
+                ) : (
+                  <span className="text-xs text-emerald-600 italic">(comptabilisée)</span>
+                )}
+              </div>
+              {dateEcheance && facture.statut !== 'PAYEE' && (
+                <Badge className={cn(
+                  isEnRetard ? "bg-red-100 text-red-800" :
+                  isEcheanceBientot ? "bg-orange-100 text-orange-800" :
+                  "bg-gray-100 text-gray-800"
+                )}>
+                  <Timer className="h-3 w-3 mr-1" />
+                  {isEnRetard ? `En retard (${Math.abs(joursRestants!)}j)` : `${joursRestants}j avant échéance`}
+                </Badge>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* Documents liés */}
+            {(facture.devis || facture.devisId || facture.commande || facture.commandeId) && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <h4 className="font-semibold text-sm text-amber-800 mb-2 flex items-center gap-2">
+                  <Link className="h-4 w-4" />
+                  Documents source
+                </h4>
+                <div className="flex flex-wrap gap-3 text-sm">
+                  {(facture.devis || facture.devisId) && (
+                    <div className="flex items-center gap-2 bg-white px-3 py-2 rounded border">
+                      <FileText className="h-4 w-4 text-amber-600" />
+                      <span className="text-muted-foreground">Devis:</span>
+                      <span className="font-medium text-amber-700">
+                        {facture.devis?.ref || facture.devisId}
+                      </span>
+                    </div>
+                  )}
+                  {(facture.commande || facture.commandeId) && (
+                    <div className="flex items-center gap-2 bg-white px-3 py-2 rounded border">
+                      <ShoppingCart className="h-4 w-4 text-amber-600" />
+                      <span className="text-muted-foreground">Commande:</span>
+                      <span className="font-medium text-amber-700">
+                        {facture.commande?.ref || facture.commandeId}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Client Info */}
+            <div className="space-y-2">
+              <h4 className="font-semibold flex items-center gap-2">
+                <Building2 className="h-4 w-4" />
+                Client
+              </h4>
+              <div className="pl-6 space-y-1 text-sm">
+                <p className="font-medium">{client?.nomEntreprise || 'Client non défini'}</p>
+                {client?.siegeNIF && (
+                  <p className="text-muted-foreground">NIF: {client.siegeNIF}</p>
+                )}
+                {client?.siegeNIS && (
+                  <p className="text-muted-foreground">NIS: {client.siegeNIS}</p>
+                )}
+                {client?.siegeRC && (
+                  <p className="text-muted-foreground">RC: {client.siegeRC}</p>
+                )}
+                {client?.siegeAdresse && (
+                  <p className="flex items-center gap-2 text-muted-foreground">
+                    <MapPin className="h-3 w-3" />
+                    {client.siegeAdresse}{client.siegeVille && `, ${client.siegeVille}`}
+                  </p>
+                )}
+                {client?.siegeTel && (
+                  <p className="flex items-center gap-2 text-muted-foreground">
+                    <Phone className="h-3 w-3" />
+                    <a href={`tel:${client.siegeTel}`} className="hover:underline">{client.siegeTel}</a>
+                  </p>
+                )}
+                {client?.siegeEmail && (
+                  <p className="flex items-center gap-2 text-muted-foreground">
+                    <Mail className="h-3 w-3" />
+                    <a href={`mailto:${client.siegeEmail}`} className="hover:underline">{client.siegeEmail}</a>
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Informations de la facture */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div className="min-w-0">
+                <span className="text-muted-foreground">Date de facture:</span>
+                <p className="font-medium">{formatDate(facture.dateFacture)}</p>
+              </div>
+              {dateEcheance && (
+                <div className="min-w-0">
+                  <span className="text-muted-foreground">Date d'échéance:</span>
+                  <p className={cn(
+                    "font-medium",
+                    isEnRetard && "text-red-600",
+                    isEcheanceBientot && "text-orange-600"
+                  )}>
+                    {formatDate(facture.dateEcheance)}
+                    {facture.delaiPaiementJours && (
+                      <span className="text-xs text-muted-foreground ml-2">({facture.delaiPaiementJours} jours)</span>
+                    )}
+                  </p>
+                </div>
+              )}
+              {facture.site && (
+                <div className="min-w-0">
+                  <span className="text-muted-foreground">Site:</span>
+                  <p className="font-medium flex items-center gap-1">
+                    <MapPin className="h-3 w-3 text-muted-foreground" />
+                    {facture.site.nom}
+                    {facture.site.ville && <span className="text-muted-foreground">({facture.site.ville})</span>}
+                  </p>
+                </div>
+              )}
+              {facture.createdBy && (
+                <div className="min-w-0">
+                  <span className="text-muted-foreground">Créé par:</span>
+                  <p className="font-medium">{facture.createdBy.prenom} {facture.createdBy.nom}</p>
+                </div>
+              )}
+              {(facture.remiseGlobalPct > 0 || facture.remiseGlobalMontant > 0) && (
+                <div className="min-w-0">
+                  <span className="text-muted-foreground">Remise globale:</span>
+                  <p className="font-medium text-orange-600">
+                    {facture.remiseGlobalPct > 0 && `${facture.remiseGlobalPct}%`}
+                    {facture.remiseGlobalPct > 0 && facture.remiseGlobalMontant > 0 && ' + '}
+                    {facture.remiseGlobalMontant > 0 && formatMontant(facture.remiseGlobalMontant)}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* Paiement - spécifique facture */}
+            {!isBrouillon && (
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
+                <h4 className="font-semibold text-sm text-blue-700 flex items-center gap-2">
+                  <Banknote className="h-4 w-4" />
+                  Suivi de paiement
+                </h4>
+                <div className={cn("grid gap-4 text-sm", totalEnAttente > 0 ? "grid-cols-4" : "grid-cols-3")}>
+                  <div>
+                    <span className="text-muted-foreground">Total TTC</span>
+                    <p className="font-bold text-lg">{formatMontant(facture.totalTTC)}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Encaissé</span>
+                    <p className="font-bold text-lg text-green-600">{formatMontant(facture.totalPaye || 0)}</p>
+                  </div>
+                  {totalEnAttente > 0 && (
+                    <div>
+                      <span className="text-muted-foreground">En attente bancaire</span>
+                      <p className="font-bold text-lg text-amber-600">{formatMontant(totalEnAttente)}</p>
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-muted-foreground">Reste à payer</span>
+                    <p className={cn("font-bold text-lg", resteAPayer > 0.01 ? "text-orange-600" : "text-green-600")}>
+                      {formatMontant(Math.max(0, resteAPayer))}
+                    </p>
+                  </div>
+                </div>
+                {/* Barre de progression composite */}
+                <div className="w-full bg-blue-200 rounded-full h-2 overflow-hidden">
+                  <div className="h-2 flex">
+                    <div
+                      className="bg-green-500 transition-all"
+                      style={{ width: `${Math.min(pctPaye, 100)}%` }}
+                    />
+                    <div
+                      className="bg-amber-400 transition-all"
+                      style={{ width: `${Math.min(pctEnAttente, 100 - pctPaye)}%` }}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-blue-600 text-right">
+                  {Math.round(pctPaye)}% encaissé
+                  {pctEnAttente > 0 && <span className="text-amber-600 ml-2">+ {Math.round(pctEnAttente)}% en attente</span>}
+                </p>
+
+                {/* Historique des paiements */}
+                {facture.paiements && facture.paiements.length > 0 && (
+                  <div className="mt-2 pt-3 border-t border-blue-200">
+                    <p className="text-xs font-medium text-blue-700 mb-2">Historique des paiements</p>
+                    <div className="space-y-2">
+                      {facture.paiements.filter((p: any) => p.statut !== 'ANNULE').map((paiement: any, index: number) => {
+                        const statutBadge: Record<string, { label: string; className: string }> = {
+                          RECU:    { label: 'Chèque reçu',       className: 'bg-orange-100 text-orange-700 border-orange-200' },
+                          DEPOSE:  { label: 'Déposé en banque',  className: 'bg-blue-100 text-blue-700 border-blue-200' },
+                          ENCAISSE:{ label: 'Encaissé',          className: 'bg-green-100 text-green-700 border-green-200' },
+                          REJETE:  { label: 'Rejeté',            className: 'bg-red-100 text-red-700 border-red-200' },
+                        };
+                        const badge = statutBadge[paiement.statut];
+                        const showChequeTracking = paiement.statut === 'RECU' || paiement.statut === 'DEPOSE';
+                        return (
+                          <div key={index} className="bg-white p-2 rounded text-sm border border-gray-100">
+                            <div className="flex justify-between items-start">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-muted-foreground">{formatDate(paiement.datePaiement)}</span>
+                                {paiement.modePaiement && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {paiement.modePaiement.libelle}
+                                  </Badge>
+                                )}
+                                {badge && (
+                                  <Badge className={cn("text-xs border", badge.className)}>
+                                    {badge.label}
+                                  </Badge>
+                                )}
+                                {paiement.reference && (
+                                  <span className="text-xs text-muted-foreground">N°{paiement.reference}</span>
+                                )}
+                                {paiement.banque && (
+                                  <span className="text-xs text-muted-foreground">{paiement.banque}</span>
+                                )}
+                              </div>
+                              <span className={cn("font-medium ml-2", paiement.statut === 'REJETE' ? 'text-red-600 line-through' : 'text-green-700')}>
+                                +{formatMontant(paiement.montant)}
+                              </span>
+                            </div>
+                            {/* Dates de suivi */}
+                            {(paiement.dateDepot || paiement.dateEncaissement) && (
+                              <div className="mt-1 flex gap-4 text-xs text-muted-foreground">
+                                {paiement.dateDepot && <span>Déposé le {formatDate(paiement.dateDepot)}</span>}
+                                {paiement.dateEncaissement && <span>Encaissé le {formatDate(paiement.dateEncaissement)}</span>}
+                              </div>
+                            )}
+                            {/* Boutons d'action chèque */}
+                            {canManage && showChequeTracking && (
+                              <div className="mt-2 flex gap-2">
+                                {paiement.statut === 'RECU' && (
+                                  <Button
+                                    size="sm" variant="outline"
+                                    className="h-7 text-xs text-blue-700 border-blue-300 hover:bg-blue-50"
+                                    onClick={() => onChequeAction(paiement.id, 'DEPOSE', 'Date de dépôt en banque')}
+                                  >
+                                    Déposer en banque
+                                  </Button>
+                                )}
+                                {paiement.statut === 'DEPOSE' && (
+                                  <Button
+                                    size="sm" variant="outline"
+                                    className="h-7 text-xs text-green-700 border-green-300 hover:bg-green-50"
+                                    onClick={() => onChequeAction(paiement.id, 'ENCAISSE', 'Date d\'encaissement')}
+                                  >
+                                    Confirmer encaissement
+                                  </Button>
+                                )}
+                                {(paiement.statut === 'RECU' || paiement.statut === 'DEPOSE') && (
+                                  <Button
+                                    size="sm" variant="outline"
+                                    className="h-7 text-xs text-red-600 border-red-300 hover:bg-red-50"
+                                    onClick={() => onChequeAction(paiement.id, 'REJETE', 'Chèque rejeté — date de rejet')}
+                                  >
+                                    Marquer rejeté
+                                  </Button>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Relances */}
+                {facture.relances && facture.relances.length > 0 && (
+                  <div className="mt-2 pt-3 border-t border-blue-200">
+                    <p className="text-xs font-medium text-blue-700 mb-2">Relances envoyées</p>
+                    <div className="space-y-1">
+                      {facture.relances.map((relance: any, index: number) => (
+                        <div key={index} className="flex justify-between items-center bg-white p-2 rounded text-sm">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs">
+                              Niveau {relance.niveau}
+                            </Badge>
+                            <span className="text-muted-foreground">{relance.canal}</span>
+                            {relance.commentaire && (
+                              <span className="text-xs text-muted-foreground truncate max-w-[200px]">{relance.commentaire}</span>
+                            )}
+                          </div>
+                          <span className="text-xs text-muted-foreground">{formatDate(relance.dateRelance)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Articles - Tableau ERP classique */}
+            <div className="space-y-3">
+              <h4 className="font-semibold flex items-center gap-2">
+                <Package className="h-4 w-4" />
+                Articles
+                <Badge variant="secondary" className="ml-2">{lignes.length}</Badge>
+              </h4>
+
+              {lignes.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground border rounded-md">
+                  <Package className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>Aucun article dans cette facture</p>
+                </div>
+              ) : (
+                <div className="border rounded-md overflow-hidden">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-gray-50">
+                        <TableHead className="w-12 text-center">#</TableHead>
+                        <TableHead>Désignation</TableHead>
+                        <TableHead className="w-20 text-right">Qté</TableHead>
+                        <TableHead className="w-24 text-right">P.U. HT</TableHead>
+                        <TableHead className="w-20 text-right">Remise</TableHead>
+                        <TableHead className="w-16 text-right">TVA</TableHead>
+                        <TableHead className="w-28 text-right">Total HT</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {lignes.map((ligne: any, index: number) => {
+                        const ligneTotal = ligne.totalHT || (ligne.quantite * ligne.prixUnitaireHT * (1 - (ligne.remisePct || 0) / 100));
+                        const isService = ligne.produitService?.type === 'SERVICE';
+                        const isProduit = ligne.produitService?.type === 'PRODUIT';
+
+                        return (
+                          <TableRow key={index} className="hover:bg-gray-50/50">
+                            <TableCell className="text-center text-muted-foreground font-mono text-xs">
+                              {index + 1}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                {isService && <span className="w-2 h-2 rounded-full bg-purple-400 flex-shrink-0" />}
+                                {isProduit && <span className="w-2 h-2 rounded-full bg-emerald-400 flex-shrink-0" />}
+                                {!isService && !isProduit && <span className="w-2 h-2 rounded-full bg-gray-300 flex-shrink-0" />}
+                                <div className="min-w-0">
+                                  <p className="font-medium">
+                                    {ligne.libelle || ligne.produitService?.nom || 'Article sans nom'}
+                                  </p>
+                                  {ligne.description && (
+                                    <p className="text-xs text-muted-foreground whitespace-pre-wrap">{ligne.description}</p>
+                                  )}
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right font-medium align-top">
+                              {ligne.quantite}
+                              {ligne.unite && <span className="text-xs text-muted-foreground ml-1">{ligne.unite}</span>}
+                            </TableCell>
+                            <TableCell className="text-right whitespace-nowrap align-top">{formatMontant(ligne.prixUnitaireHT)}</TableCell>
+                            <TableCell className="text-right align-top">
+                              {ligne.remisePct > 0 ? (
+                                <span className="text-orange-600 font-medium">-{ligne.remisePct}%</span>
+                              ) : (
+                                <span className="text-muted-foreground">—</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right text-muted-foreground align-top">{ligne.tauxTVA}%</TableCell>
+                            <TableCell className="text-right font-semibold whitespace-nowrap align-top">{formatMontant(ligneTotal)}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+
+              {/* Totaux */}
+              {lignes.length > 0 && (
+                <div className="mt-4 pt-4 border-t space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Total Hors Taxes</span>
+                    <span className="font-medium">{formatMontant(facture.totalHT)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">TVA</span>
+                    <span className="font-medium">{formatMontant(facture.totalTVA)}</span>
+                  </div>
+                  <div className="flex justify-between text-lg pt-2">
+                    <span className="font-semibold text-blue-700">Total TTC</span>
+                    <span className="font-bold text-blue-700">{formatMontant(facture.totalTTC)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Notes */}
+            {facture.notes && (
+              <>
+                <Separator />
+                <div className="rounded-md border border-amber-200 bg-amber-50">
+                  <div className="px-3 py-2 border-b border-amber-200 bg-amber-100/50">
+                    <span className="text-sm font-medium text-amber-800 flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Notes
+                    </span>
+                  </div>
+                  <div className="px-3 py-2">
+                    <p className="text-sm text-amber-900 whitespace-pre-wrap">{facture.notes}</p>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Conditions */}
+            {facture.conditions && (
+              <div className="rounded-md border border-blue-200 bg-blue-50">
+                <div className="px-3 py-2 border-b border-blue-200 bg-blue-100/50">
+                  <span className="text-sm font-medium text-blue-800 flex items-center gap-2">
+                    <ClipboardList className="h-4 w-4" />
+                    Conditions
+                  </span>
+                </div>
+                <div className="px-3 py-2">
+                  <p className="text-sm text-blue-900 whitespace-pre-wrap">{facture.conditions}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <DialogFooter className="gap-2 flex-wrap">
+              {/* Actions de modification/suppression à gauche */}
+              <div className="flex items-center gap-2 mr-auto">
+                {canManage && canDelete && (
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="text-red-600 border-red-300 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Supprimer
+                  </Button>
+                )}
+                {canManage && isBrouillon && (
+                  <Button
+                    variant="outline"
+                    onClick={onEdit}
+                  >
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Modifier
+                  </Button>
+                )}
+              </div>
+
+              {/* Actions principales à droite */}
+              <Button
+                variant="outline"
+                onClick={onDownloadPdf}
+              >
+                <FileDown className="h-4 w-4 mr-2" />
+                {isAvoir ? 'Avoir' : 'Facture'}
+              </Button>
+
+              {canManage && !isBrouillon && facture.statut !== 'PAYEE' && (
+                <Button
+                  variant="outline"
+                  onClick={onRelance}
+                >
+                  <Bell className="h-4 w-4 mr-2" />
+                  Relance
+                </Button>
+              )}
+
+              {canManage && !isBrouillon && facture.statut !== 'PAYEE' && facture.statut !== 'EN_ATTENTE_ENCAISSEMENT' && (
+                <Button
+                  onClick={onPayment}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  <Banknote className="h-4 w-4 mr-2" />
+                  Paiement
+                </Button>
+              )}
+
+              {canManage && isBrouillon && (
+                <Button
+                  onClick={() => setShowValidateConfirm(true)}
+                  disabled={isValidating}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  {isValidating ? 'Validation...' : 'Valider'}
+                </Button>
+              )}
+
+              <Button variant="outline" onClick={onClose}>
+                Fermer
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de confirmation de validation */}
+      <AlertDialog open={showValidateConfirm} onOpenChange={setShowValidateConfirm}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-blue-600">
+              <CheckCircle2 className="h-5 w-5" />
+              Valider la facture ?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>Vous allez valider cette facture. Une fois validée, elle ne pourra plus être modifiée.</p>
+
+                <div className="bg-gray-50 rounded-lg p-3 space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Facture</span>
+                    <span className="font-medium text-foreground">{facture.ref}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Client</span>
+                    <span className="font-medium text-foreground">{client?.nomEntreprise || '-'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Type</span>
+                    <span className="font-medium text-foreground">{isAvoir ? 'Avoir' : 'Facture'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Articles</span>
+                    <span className="font-medium text-foreground">{lignes.length} ligne{lignes.length > 1 ? 's' : ''}</span>
+                  </div>
+                  <Separator />
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total TTC</span>
+                    <span className="font-bold text-blue-600">{formatMontant(facture.totalTTC)}</span>
+                  </div>
+                </div>
+
+                {/* Avertissement stock mixte */}
+                {(() => {
+                  const produitsSousSeuil = lignes.filter((l: any) => {
+                    const ps = l.produitService;
+                    if (!ps || !ps.aStock || ps.type === 'SERVICE') return false;
+                    if (!ps.stockMinimum || ps.stockMinimum <= 0) return false;
+                    const stockApres = ps.quantite - l.quantite;
+                    return stockApres < ps.stockMinimum;
+                  });
+                  if (produitsSousSeuil.length === 0) return null;
+                  return (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-1 text-sm">
+                      <p className="font-medium text-amber-800 flex items-center gap-1">
+                        <AlertTriangle className="h-4 w-4" />
+                        {produitsSousSeuil.length} produit{produitsSousSeuil.length > 1 ? 's' : ''} passeront sous le stock minimum
+                      </p>
+                      <ul className="text-amber-700 space-y-0.5 pl-5 list-disc">
+                        {produitsSousSeuil.map((l: any) => (
+                          <li key={l.id}>
+                            {l.produitService?.nom} — stock après : {(l.produitService?.quantite - l.quantite).toFixed(2)} / min. {l.produitService?.stockMinimum}
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="text-amber-600 text-xs">La validation reste possible.</p>
+                    </div>
+                  );
+                })()}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-blue-600 hover:bg-blue-700"
+              onClick={() => {
+                setShowValidateConfirm(false);
+                onValidate();
+              }}
+            >
+              Valider la facture
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Dialog de confirmation de suppression */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="h-5 w-5" />
+              Supprimer la facture ?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Êtes-vous sûr de vouloir supprimer la facture <strong>{facture.ref}</strong> ?
+              Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                setShowDeleteConfirm(false);
+                onDelete();
+              }}
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
 // ============ MAIN COMPONENT ============
 
 export function CommercePage() {
@@ -1913,6 +2632,10 @@ export function CommercePage() {
   // Sort states
   const [sortDevis, setSortDevis] = useState<string>('recent');
   const [sortCommandes, setSortCommandes] = useState<string>('recent');
+  const [sortFactures, setSortFactures] = useState<string>('recent');
+  const [statusFilterFactures, setStatusFilterFactures] = useState<string>(
+    () => new URLSearchParams(window.location.search).get('statut') || 'all'
+  );
 
   // Detail sheet state
   const [viewingDocument, setViewingDocument] = useState<{
@@ -1939,7 +2662,7 @@ export function CommercePage() {
   const [paiementFacture, setPaiementFacture] = useState<any>(null);
   const [paiementForm, setPaiementForm] = useState({
     montant: 0,
-    modePaiement: 'VIREMENT' as 'ESPECES' | 'CHEQUE' | 'VIREMENT' | 'CARTE' | 'EFFET',
+    modePaiement: 'CHEQUE' as 'ESPECES' | 'CHEQUE' | 'VIREMENT' | 'CARTE' | 'EFFET',
     reference: '',
     banque: '',
     emetteur: '',
@@ -1947,8 +2670,32 @@ export function CommercePage() {
     notes: '',
   });
 
-  // Active tab state
-  const [activeTab, setActiveTab] = useState('devis');
+  // Cheque lifecycle modal state
+  const [chequeActionModal, setChequeActionModal] = useState<{
+    paiementId: string;
+    newStatut: 'DEPOSE' | 'ENCAISSE' | 'REJETE';
+    label: string;
+  } | null>(null);
+  const [chequeActionDate, setChequeActionDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // Active tab state — synced with ?tab= query param
+  const searchParams = new URLSearchParams(location.search);
+  const tabFromUrl = searchParams.get('tab');
+  const validTabs = ['devis', 'commandes', 'factures'];
+  const activeTab = validTabs.includes(tabFromUrl ?? '') ? tabFromUrl! : 'devis';
+  const setActiveTab = (tab: string) => {
+    navigate(`${location.pathname}?tab=${tab}`, { replace: true });
+  };
+
+  // Auto-open facture from ?openId= URL param
+  useEffect(() => {
+    const openId = new URLSearchParams(location.search).get('openId');
+    if (openId) {
+      commerceApi.getFacture(openId)
+        .then(facture => setViewingDocument({ type: 'facture', document: facture }))
+        .catch(() => {});
+    }
+  }, []);
 
   // ============ QUERIES ============
 
@@ -1985,19 +2732,21 @@ export function CommercePage() {
   // Sort function for documents
   const sortDocuments = <T extends {
     ref: string;
+    createdAt?: string;
     dateDevis?: string;
     dateCommande?: string;
+    dateFacture?: string;
     totalTTC: number;
     client?: { nomEntreprise: string };
   }>(documents: T[], sortBy: string): T[] => {
     return [...documents].sort((a, b) => {
       switch (sortBy) {
         case 'recent':
-          return new Date(b.dateDevis || b.dateCommande || 0).getTime() -
-                 new Date(a.dateDevis || a.dateCommande || 0).getTime();
+          return new Date(b.createdAt || b.dateDevis || b.dateCommande || b.dateFacture || 0).getTime() -
+                 new Date(a.createdAt || a.dateDevis || a.dateCommande || a.dateFacture || 0).getTime();
         case 'oldest':
-          return new Date(a.dateDevis || a.dateCommande || 0).getTime() -
-                 new Date(b.dateDevis || b.dateCommande || 0).getTime();
+          return new Date(a.createdAt || a.dateDevis || a.dateCommande || a.dateFacture || 0).getTime() -
+                 new Date(b.createdAt || b.dateDevis || b.dateCommande || b.dateFacture || 0).getTime();
         case 'client-az':
           return (a.client?.nomEntreprise || '').localeCompare(b.client?.nomEntreprise || '');
         case 'client-za':
@@ -2036,14 +2785,18 @@ export function CommercePage() {
   }, [commandesData?.commandes, searchCommandes]);
 
   const filteredFactures = useMemo(() => {
-    const list = facturesData?.factures || [];
+    let list = facturesData?.factures || [];
+    if (statusFilterFactures !== 'all') {
+      list = list.filter((f) => f.statut === statusFilterFactures);
+    }
     if (!searchFactures) return list;
     const search = searchFactures.toLowerCase();
     return list.filter((f) =>
       f.ref?.toLowerCase().includes(search) ||
-      f.client?.nomEntreprise?.toLowerCase().includes(search)
+      f.client?.nomEntreprise?.toLowerCase().includes(search) ||
+      f.site?.nom?.toLowerCase().includes(search)
     );
-  }, [facturesData?.factures, searchFactures]);
+  }, [facturesData?.factures, searchFactures, statusFilterFactures]);
 
   // Track which documents have been converted
   const convertedDevisIds = useMemo(() => {
@@ -2131,6 +2884,8 @@ export function CommercePage() {
       // Pré-remplir le formulaire de facture avec les données de l'intervention
       setFactureForm({
         clientId: state.clientId,
+        siteId: undefined,
+        typeDocument: 'SERVICE',
         lignes: [{
           ...EMPTY_LINE,
           libelle: state.prestation || 'Prestation de service',
@@ -2393,15 +3148,21 @@ export function CommercePage() {
 
   // Payment mutation
   const createPaiementMutation = useMutation({
-    mutationFn: (payload: { factureId: string; montant: number; datePaiement?: string; reference?: string; notes?: string }) =>
+    mutationFn: (payload: { factureId: string; montant: number; datePaiement?: string; modePaiement?: string; reference?: string; banque?: string; notes?: string }) =>
       commerceApi.createPaiement(payload),
-    onSuccess: () => {
+    onSuccess: async (_, variables) => {
       toast.success('Paiement enregistré');
       queryClient.invalidateQueries({ queryKey: ['commerce', 'factures'] });
+      if (viewingDocument?.type === 'facture' && variables.factureId) {
+        try {
+          const freshFacture = await commerceApi.getFacture(variables.factureId);
+          setViewingDocument({ type: 'facture', document: freshFacture });
+        } catch {}
+      }
       setPaiementFacture(null);
       setPaiementForm({
         montant: 0,
-        modePaiement: 'VIREMENT',
+        modePaiement: 'CHEQUE',
         reference: '',
         banque: '',
         emetteur: '',
@@ -2411,6 +3172,26 @@ export function CommercePage() {
     },
     onError: (error: any) => {
       toast.error(error?.response?.data?.error || 'Erreur lors de l\'enregistrement du paiement');
+    },
+  });
+
+  // Cheque status mutation
+  const updateStatutChequeMutation = useMutation({
+    mutationFn: ({ id, statut, date }: { id: string; statut: string; date?: string }) =>
+      commerceApi.updateStatutCheque(id, statut, date),
+    onSuccess: async () => {
+      toast.success('Statut du chèque mis à jour');
+      queryClient.invalidateQueries({ queryKey: ['commerce', 'factures'] });
+      setChequeActionModal(null);
+      if (viewingDocument?.type === 'facture' && viewingDocument.document?.id) {
+        try {
+          const freshFacture = await commerceApi.getFacture(viewingDocument.document.id);
+          setViewingDocument({ type: 'facture', document: freshFacture });
+        } catch {}
+      }
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Erreur lors de la mise à jour');
     },
   });
 
@@ -2476,7 +3257,7 @@ export function CommercePage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Factures</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold">{facturesData?.factures?.length || 0}</p>
+            <p className="text-2xl font-bold">{facturesData?.factures?.filter((f: any) => f.statut !== 'BROUILLON').length || 0}</p>
           </CardContent>
         </Card>
       </div>
@@ -2955,7 +3736,7 @@ export function CommercePage() {
             <CardHeader>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <CardTitle>Factures</CardTitle>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <div className="relative flex-1 sm:w-64">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -2965,6 +3746,36 @@ export function CommercePage() {
                       className="pl-10"
                     />
                   </div>
+                  <Select value={statusFilterFactures} onValueChange={setStatusFilterFactures}>
+                    <SelectTrigger className="w-[160px]">
+                      <SelectValue placeholder="Tous les statuts" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Tous les statuts</SelectItem>
+                      <SelectItem value="BROUILLON">Brouillon</SelectItem>
+                      <SelectItem value="VALIDEE">Validée</SelectItem>
+                      <SelectItem value="EN_RETARD">En retard</SelectItem>
+                      <SelectItem value="PARTIELLEMENT_PAYEE">Part. payée</SelectItem>
+                      <SelectItem value="EN_ATTENTE_ENCAISSEMENT">En att. encaissement</SelectItem>
+                      <SelectItem value="PAYEE">Payée</SelectItem>
+                      <SelectItem value="ANNULEE">Annulée</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={sortFactures} onValueChange={setSortFactures}>
+                    <SelectTrigger className="w-[160px]">
+                      <ArrowUpDown className="h-4 w-4 mr-2" />
+                      <SelectValue placeholder="Trier par..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="recent">Plus récent</SelectItem>
+                      <SelectItem value="oldest">Plus ancien</SelectItem>
+                      <SelectItem value="client-az">Client A-Z</SelectItem>
+                      <SelectItem value="client-za">Client Z-A</SelectItem>
+                      <SelectItem value="montant-desc">Montant ↓</SelectItem>
+                      <SelectItem value="montant-asc">Montant ↑</SelectItem>
+                      <SelectItem value="ref-az">Référence A-Z</SelectItem>
+                    </SelectContent>
+                  </Select>
                   {canManage && (
                     <Button onClick={() => setShowFactureDialog(true)}>
                       <Plus className="h-4 w-4 mr-2" />
@@ -2986,43 +3797,75 @@ export function CommercePage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Référence</TableHead>
-                        <TableHead>Client</TableHead>
-                        <TableHead className="hidden md:table-cell">Date</TableHead>
-                        <TableHead>Statut</TableHead>
-                        <TableHead className="hidden lg:table-cell">Type</TableHead>
-                        <TableHead className="text-right">Total TTC</TableHead>
-                        <TableHead className="text-right hidden lg:table-cell">Payé</TableHead>
-                        <TableHead></TableHead>
+                        <TableHead className="w-32">Référence</TableHead>
+                        <TableHead className="w-24">Type</TableHead>
+                        <TableHead className="min-w-[160px]">Client</TableHead>
+                        <TableHead className="hidden md:table-cell min-w-[140px]">Site</TableHead>
+                        <TableHead className="hidden md:table-cell w-28">Date</TableHead>
+                        <TableHead className="w-32">Statut</TableHead>
+                        <TableHead className="text-right w-32">Total TTC</TableHead>
+                        <TableHead className="text-right hidden lg:table-cell w-28">Payé</TableHead>
+                        <TableHead className="w-36"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredFactures.map((f) => (
+                      {sortDocuments(filteredFactures, sortFactures).map((f) => (
                         <TableRow
                           key={f.id}
                           className="cursor-pointer hover:bg-gray-50"
-                          onClick={() => setViewingDocument({ type: 'facture', document: f })}
+                          onClick={async () => {
+                            try {
+                              const fullFacture = await commerceApi.getFacture(f.id);
+                              setViewingDocument({ type: 'facture', document: fullFacture });
+                            } catch {
+                              toast.error('Erreur lors du chargement de la facture');
+                            }
+                          }}
                         >
                           <TableCell className="font-medium">{f.ref}</TableCell>
-                          <TableCell>{f.client?.nomEntreprise || '-'}</TableCell>
-                          <TableCell className="hidden md:table-cell">{formatDate(f.dateFacture)}</TableCell>
-                          <TableCell>{statusBadge(f.statut)}</TableCell>
-                          <TableCell className="hidden lg:table-cell">
-                            {f.type === 'AVOIR' ? (
+                          <TableCell>
+                            {f.typeDocument ? (
+                              <Badge className={f.typeDocument === 'SERVICE'
+                                ? 'bg-purple-100 text-purple-800'
+                                : 'bg-emerald-100 text-emerald-800'
+                              }>
+                                {f.typeDocument === 'SERVICE' ? 'Service' : 'Produit'}
+                              </Badge>
+                            ) : f.type === 'AVOIR' ? (
                               <Badge variant="secondary">Avoir</Badge>
                             ) : (
-                              <Badge variant="default">Facture</Badge>
+                              <span className="text-muted-foreground text-xs">-</span>
                             )}
                           </TableCell>
-                          <TableCell className="text-right font-medium">{formatMontant(f.totalTTC)}</TableCell>
-                          <TableCell className="text-right hidden lg:table-cell">{formatMontant(f.totalPaye)}</TableCell>
+                          <TableCell className="font-medium">{f.client?.nomEntreprise || '-'}</TableCell>
+                          <TableCell className="hidden md:table-cell">
+                            {f.site ? (
+                              <span className="text-sm flex items-center gap-1">
+                                <MapPin className="h-3 w-3 text-muted-foreground" />
+                                {f.site.nom}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">-</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="hidden md:table-cell text-sm">{formatDate(f.dateFacture)}</TableCell>
+                          <TableCell>{statusBadge(f.statut)}</TableCell>
+                          <TableCell className="text-right font-semibold">{formatMontant(f.totalTTC)}</TableCell>
+                          <TableCell className="text-right hidden lg:table-cell text-muted-foreground">{formatMontant(f.totalPaye)}</TableCell>
                           <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="flex justify-end gap-1">
                               <Tooltip content="Voir les détails">
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  onClick={() => setViewingDocument({ type: 'facture', document: f })}
+                                  onClick={async () => {
+                                    try {
+                                      const fullFacture = await commerceApi.getFacture(f.id);
+                                      setViewingDocument({ type: 'facture', document: fullFacture });
+                                    } catch {
+                                      toast.error('Erreur lors du chargement de la facture');
+                                    }
+                                  }}
                                 >
                                   <Eye className="h-4 w-4" />
                                 </Button>
@@ -3086,21 +3929,26 @@ export function CommercePage() {
                                     variant="ghost"
                                     size="sm"
                                     className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                                    onClick={() => {
-                                      setValidationFactureForm({
-                                        delaiPaiementJours: f.delaiPaiementJours ?? 45,
-                                        dateFacture: f.dateFacture?.split('T')[0] || new Date().toISOString().split('T')[0],
-                                        notes: f.notes || '',
-                                        conditions: f.conditions || '',
-                                      });
-                                      setValidationFactureDialog(f);
+                                    onClick={async () => {
+                                      try {
+                                        const fullFacture = await commerceApi.getFacture(f.id);
+                                        setValidationFactureForm({
+                                          delaiPaiementJours: fullFacture.delaiPaiementJours ?? 45,
+                                          dateFacture: fullFacture.dateFacture?.split('T')[0] || new Date().toISOString().split('T')[0],
+                                          notes: fullFacture.notes || '',
+                                          conditions: fullFacture.conditions || '',
+                                        });
+                                        setValidationFactureDialog(fullFacture);
+                                      } catch {
+                                        toast.error('Erreur lors du chargement de la facture');
+                                      }
                                     }}
                                   >
                                     <CheckCircle2 className="h-4 w-4" />
                                   </Button>
                                 </Tooltip>
                               )}
-                              {canManage && f.statut !== 'PAYEE' && f.statut !== 'BROUILLON' && (
+                              {canManage && f.statut !== 'PAYEE' && f.statut !== 'BROUILLON' && f.statut !== 'EN_ATTENTE_ENCAISSEMENT' && (
                                 <Tooltip content="Enregistrer un paiement">
                                   <Button
                                     variant="ghost"
@@ -3108,9 +3956,10 @@ export function CommercePage() {
                                     className="text-green-600 hover:text-green-700 hover:bg-green-50"
                                     onClick={() => {
                                       setPaiementFacture(f);
+                                      const remaining = Math.max(0, f.totalTTC - (f.totalPaye || 0) - (f.totalEnAttente || 0));
                                       setPaiementForm({
                                         ...paiementForm,
-                                        montant: f.totalTTC - (f.totalPaye || 0),
+                                        montant: remaining,
                                         emetteur: f.client?.nomEntreprise || '',
                                       });
                                     }}
@@ -3606,15 +4455,16 @@ export function CommercePage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6">
-            {/* Type de vente - obligatoire pour nouvelle facture */}
-            {!editingFactureId && (
-              <div className="space-y-2">
-                <Label>Type de vente <span className="text-red-500">*</span></Label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      let newLignes = [{ ...EMPTY_LINE }];
+            {/* Type de prestation */}
+            <div className="space-y-2">
+              <Label>Type de prestation <span className="text-red-500">*</span></Label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    let newLignes = factureForm.lignes;
+                    if (!editingFactureId) {
+                      newLignes = [{ ...EMPTY_LINE }];
                       if (factureForm.siteId && factureForm.clientId) {
                         const selectedClient = clients.find((c: Tiers) => c.id === factureForm.clientId);
                         const selectedSite = selectedClient?.sites?.find((s: any) => s.id === factureForm.siteId);
@@ -3622,64 +4472,57 @@ export function CommercePage() {
                           newLignes = [{ ...EMPTY_LINE, description: selectedSite.noteServiceDefaut }];
                         }
                       }
-                      setFactureForm({ ...factureForm, typeDocument: 'SERVICE', lignes: newLignes });
-                    }}
-                    className={cn(
-                      "p-4 rounded-lg border-2 text-left transition-all",
-                      factureForm.typeDocument === 'SERVICE'
-                        ? "border-purple-500 bg-purple-50"
-                        : "border-gray-200 hover:border-gray-300"
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={cn(
-                        "w-3 h-3 rounded-full",
-                        factureForm.typeDocument === 'SERVICE' ? "bg-purple-500" : "bg-gray-300"
-                      )} />
-                      <div>
-                        <p className={cn("font-semibold", factureForm.typeDocument === 'SERVICE' && "text-purple-700")}>
-                          Services
-                        </p>
-                        <p className="text-xs text-muted-foreground">Prestations, interventions, maintenance...</p>
-                      </div>
+                    }
+                    setFactureForm({ ...factureForm, typeDocument: 'SERVICE', lignes: newLignes });
+                  }}
+                  className={cn(
+                    "p-4 rounded-lg border-2 text-left transition-all",
+                    factureForm.typeDocument === 'SERVICE'
+                      ? "border-purple-500 bg-purple-50"
+                      : "border-gray-200 hover:border-gray-300"
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "w-3 h-3 rounded-full",
+                      factureForm.typeDocument === 'SERVICE' ? "bg-purple-500" : "bg-gray-300"
+                    )} />
+                    <div>
+                      <p className={cn("font-semibold", factureForm.typeDocument === 'SERVICE' && "text-purple-700")}>
+                        Services
+                      </p>
+                      <p className="text-xs text-muted-foreground">Prestations, interventions, maintenance...</p>
                     </div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFactureForm({ ...factureForm, typeDocument: 'PRODUIT', lignes: [{ ...EMPTY_LINE }] })}
-                    className={cn(
-                      "p-4 rounded-lg border-2 text-left transition-all",
-                      factureForm.typeDocument === 'PRODUIT'
-                        ? "border-emerald-500 bg-emerald-50"
-                        : "border-gray-200 hover:border-gray-300"
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={cn(
-                        "w-3 h-3 rounded-full",
-                        factureForm.typeDocument === 'PRODUIT' ? "bg-emerald-500" : "bg-gray-300"
-                      )} />
-                      <div>
-                        <p className={cn("font-semibold", factureForm.typeDocument === 'PRODUIT' && "text-emerald-700")}>
-                          Produits
-                        </p>
-                        <p className="text-xs text-muted-foreground">Matériel, équipements, consommables...</p>
-                      </div>
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newLignes = editingFactureId ? factureForm.lignes : [{ ...EMPTY_LINE }];
+                    setFactureForm({ ...factureForm, typeDocument: 'PRODUIT', lignes: newLignes });
+                  }}
+                  className={cn(
+                    "p-4 rounded-lg border-2 text-left transition-all",
+                    factureForm.typeDocument === 'PRODUIT'
+                      ? "border-emerald-500 bg-emerald-50"
+                      : "border-gray-200 hover:border-gray-300"
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={cn(
+                      "w-3 h-3 rounded-full",
+                      factureForm.typeDocument === 'PRODUIT' ? "bg-emerald-500" : "bg-gray-300"
+                    )} />
+                    <div>
+                      <p className={cn("font-semibold", factureForm.typeDocument === 'PRODUIT' && "text-emerald-700")}>
+                        Produits
+                      </p>
+                      <p className="text-xs text-muted-foreground">Matériel, équipements, consommables...</p>
                     </div>
-                  </button>
-                </div>
+                  </div>
+                </button>
               </div>
-            )}
-
-            {/* Afficher le type pour une facture en modification */}
-            {editingFactureId && factureForm.typeDocument && (
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">Type:</span>
-                <Badge className={factureForm.typeDocument === 'SERVICE' ? "bg-purple-100 text-purple-800" : "bg-emerald-100 text-emerald-800"}>
-                  {factureForm.typeDocument === 'SERVICE' ? 'Services' : 'Produits'}
-                </Badge>
-              </div>
-            )}
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -3739,9 +4582,10 @@ export function CommercePage() {
                 </Select>
               </div>
             </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Type de facture</Label>
+                <Label>Facture ou Avoir</Label>
                 <Select
                   value={factureForm.type || 'FACTURE'}
                   onValueChange={(value) => setFactureForm({ ...factureForm, type: value as FactureType })}
@@ -3755,6 +4599,9 @@ export function CommercePage() {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Date de facturation</Label>
                 <Input
@@ -3764,8 +4611,6 @@ export function CommercePage() {
                 />
                 <p className="text-xs text-muted-foreground">Date d'émission de la facture</p>
               </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Délai de paiement (jours)</Label>
                 <Input
@@ -3782,7 +4627,7 @@ export function CommercePage() {
               lignes={factureForm.lignes}
               setForm={setFactureForm}
               produitsList={produits}
-              typeDocument={factureForm.typeDocument}
+              typeDocument={factureForm.typeDocument as 'PRODUIT' | 'SERVICE' | undefined}
               noteServiceDefaut={(() => {
                 if (factureForm.typeDocument !== 'SERVICE' || !factureForm.siteId || !factureForm.clientId) return null;
                 const selectedClient = clients.find((c: Tiers) => c.id === factureForm.clientId);
@@ -3954,18 +4799,17 @@ export function CommercePage() {
         isConverting={convertirCommande.isPending}
       />
 
-      {/* Document Detail Sheet - Pour factures uniquement */}
-      <DocumentDetailSheet
+      {/* Facture Detail Dialog - Design premium similaire à Devis/Commande */}
+      <FactureDetailDialog
         open={viewingDocument?.type === 'facture'}
-        onOpenChange={(open) => !open && setViewingDocument(null)}
-        type="facture"
-        document={viewingDocument?.document}
+        facture={viewingDocument?.type === 'facture' ? viewingDocument.document : null}
+        onClose={() => setViewingDocument(null)}
         canManage={canManage}
-        onDownloadPdf={() => {
-          if (viewingDocument?.type === 'facture') {
-            commerceApi.downloadFacturePdf(viewingDocument.document.id).catch(() => toast.error('Erreur téléchargement'));
-          }
-        }}
+        canDelete={
+          viewingDocument?.type === 'facture'
+            ? (viewingDocument.document.statut === 'BROUILLON' || viewingDocument.document.statut === 'VALIDEE')
+            : false
+        }
         onValidate={() => {
           if (viewingDocument?.type === 'facture') {
             const doc = viewingDocument.document;
@@ -3978,44 +4822,73 @@ export function CommercePage() {
             setValidationFactureDialog(doc);
           }
         }}
+        onEdit={async () => {
+          if (viewingDocument?.type !== 'facture') return;
+          try {
+            const fullFacture = await commerceApi.getFacture(viewingDocument.document.id);
+            setEditingFactureId(viewingDocument.document.id);
+            setFactureForm({
+              clientId: fullFacture.clientId,
+              siteId: fullFacture.siteId || undefined,
+              typeDocument: fullFacture.typeDocument || 'PRODUIT',
+              devisId: fullFacture.devisId || undefined,
+              commandeId: fullFacture.commandeId || undefined,
+              dateFacture: fullFacture.dateFacture?.split('T')[0] || new Date().toISOString().split('T')[0],
+              delaiPaiementJours: fullFacture.delaiPaiementJours ?? 45,
+              notes: fullFacture.notes || '',
+              conditions: fullFacture.conditions || '',
+              type: fullFacture.type || 'FACTURE',
+              remiseGlobalPct: fullFacture.remiseGlobalPct || 0,
+              remiseGlobalMontant: fullFacture.remiseGlobalMontant || 0,
+              lignes: fullFacture.lignes?.map((l: any) => ({
+                produitServiceId: l.produitServiceId || undefined,
+                libelle: l.libelle || '',
+                description: l.description || '',
+                quantite: l.quantite || 1,
+                unite: l.unite || '',
+                prixUnitaireHT: l.prixUnitaireHT || 0,
+                tauxTVA: l.tauxTVA ?? 19,
+                remisePct: l.remisePct || 0,
+              })) || [{ ...EMPTY_LINE }],
+            });
+            setViewingDocument(null);
+            setShowFactureDialog(true);
+          } catch {
+            toast.error('Erreur lors du chargement de la facture');
+          }
+        }}
         onDelete={() => {
           if (viewingDocument?.type === 'facture') {
             setDeleteTarget({ type: 'facture', item: viewingDocument.document });
           }
         }}
-        canDelete={
-          viewingDocument?.type === 'facture'
-            ? (viewingDocument.document.statut === 'BROUILLON' || viewingDocument.document.statut === 'VALIDEE')
-            : false
-        }
+        onDownloadPdf={() => {
+          if (viewingDocument?.type === 'facture') {
+            commerceApi.downloadFacturePdf(viewingDocument.document.id).catch(() => toast.error('Erreur téléchargement'));
+          }
+        }}
         onPayment={() => {
           if (viewingDocument?.type === 'facture') {
-            setPaiementFacture(viewingDocument.document);
+            const doc = viewingDocument.document;
+            setPaiementFacture(doc);
+            const remaining = Math.max(0, doc.totalTTC - (doc.totalPaye || 0) - (doc.totalEnAttente || 0));
             setPaiementForm({
               ...paiementForm,
-              montant: viewingDocument.document.totalTTC - (viewingDocument.document.totalPaye || 0),
-              emetteur: viewingDocument.document.client?.nomEntreprise || '',
+              montant: remaining,
+              emetteur: doc.client?.nomEntreprise || '',
             });
           }
         }}
-        onNavigateToDocument={async (docType, docId) => {
-          try {
-            let doc: any;
-            if (docType === 'devis') {
-              doc = await commerceApi.getDevis(docId);
-            } else if (docType === 'commande') {
-              doc = await commerceApi.getCommande(docId);
-            } else {
-              doc = await commerceApi.getFacture(docId);
-            }
-            // Change tab and show the document
-            const tabMap = { devis: 'devis', commande: 'commandes', facture: 'factures' };
-            setActiveTab(tabMap[docType]);
-            setViewingDocument({ type: docType, document: doc });
-          } catch (error) {
-            toast.error('Erreur lors de la récupération du document');
+        onRelance={() => {
+          if (viewingDocument?.type === 'facture') {
+            setRelanceFacture(viewingDocument.document);
           }
         }}
+        onChequeAction={(paiementId, newStatut, label) => {
+          setChequeActionDate(new Date().toISOString().split('T')[0]);
+          setChequeActionModal({ paiementId, newStatut, label });
+        }}
+        isValidating={validerFacture.isPending}
       />
 
       {/* Relance Dialog */}
@@ -4182,13 +5055,19 @@ export function CommercePage() {
                   <span className="font-semibold">{formatMontant(paiementFacture.totalTTC)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Déjà payé</span>
+                  <span className="text-muted-foreground">Encaissé</span>
                   <span className="font-medium text-green-600">{formatMontant(paiementFacture.totalPaye || 0)}</span>
                 </div>
+                {(paiementFacture.totalEnAttente || 0) > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">En attente bancaire (chèques)</span>
+                    <span className="font-medium text-amber-600">{formatMontant(paiementFacture.totalEnAttente)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm pt-2 border-t">
                   <span className="font-medium">Reste à payer</span>
                   <span className="font-bold text-primary">
-                    {formatMontant(paiementFacture.totalTTC - (paiementFacture.totalPaye || 0))}
+                    {formatMontant(Math.max(0, paiementFacture.totalTTC - (paiementFacture.totalPaye || 0) - (paiementFacture.totalEnAttente || 0)))}
                   </span>
                 </div>
               </div>
@@ -4201,7 +5080,7 @@ export function CommercePage() {
                     type="number"
                     step="0.01"
                     min="0"
-                    max={paiementFacture.totalTTC - (paiementFacture.totalPaye || 0)}
+                    max={Math.max(0, paiementFacture.totalTTC - (paiementFacture.totalPaye || 0) - (paiementFacture.totalEnAttente || 0))}
                     value={paiementForm.montant}
                     onChange={(e) => setPaiementForm({ ...paiementForm, montant: parseFloat(e.target.value) || 0 })}
                   />
@@ -4378,21 +5257,13 @@ export function CommercePage() {
             <Button
               onClick={() => {
                 if (paiementFacture && paiementForm.montant > 0) {
-                  // Construire la référence avec les détails du paiement
-                  let refParts: string[] = [];
-                  refParts.push(paiementForm.modePaiement);
-                  if (paiementForm.reference) refParts.push(paiementForm.reference);
-                  if (paiementForm.banque) refParts.push(`Banque: ${paiementForm.banque}`);
-                  if (paiementForm.emetteur && paiementForm.emetteur !== paiementFacture.client?.nomEntreprise) {
-                    refParts.push(`Émetteur: ${paiementForm.emetteur}`);
-                  }
-                  const refStr = refParts.join(' - ');
-
                   createPaiementMutation.mutate({
                     factureId: paiementFacture.id,
                     montant: paiementForm.montant,
                     datePaiement: paiementForm.datePaiement,
-                    reference: refStr,
+                    modePaiement: paiementForm.modePaiement,
+                    reference: paiementForm.modePaiement === 'CHEQUE' ? paiementForm.reference || undefined : undefined,
+                    banque: paiementForm.modePaiement === 'CHEQUE' ? paiementForm.banque || undefined : undefined,
                     notes: paiementForm.notes || undefined,
                   });
                 }
@@ -4401,6 +5272,51 @@ export function CommercePage() {
               className="bg-green-600 hover:bg-green-700"
             >
               {createPaiementMutation.isPending ? 'Enregistrement...' : 'Enregistrer le paiement'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog suivi chèque */}
+      <Dialog open={!!chequeActionModal} onOpenChange={(open) => !open && setChequeActionModal(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Receipt className="h-5 w-5 text-blue-600" />
+              {chequeActionModal?.newStatut === 'DEPOSE' && 'Dépôt en banque'}
+              {chequeActionModal?.newStatut === 'ENCAISSE' && 'Confirmation d\'encaissement'}
+              {chequeActionModal?.newStatut === 'REJETE' && 'Chèque rejeté'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>{chequeActionModal?.label}</Label>
+              <Input
+                type="date"
+                value={chequeActionDate}
+                onChange={(e) => setChequeActionDate(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setChequeActionModal(null)}>Annuler</Button>
+            <Button
+              onClick={() => {
+                if (chequeActionModal) {
+                  updateStatutChequeMutation.mutate({
+                    id: chequeActionModal.paiementId,
+                    statut: chequeActionModal.newStatut,
+                    date: chequeActionDate,
+                  });
+                }
+              }}
+              disabled={updateStatutChequeMutation.isPending}
+              className={cn(
+                chequeActionModal?.newStatut === 'REJETE' ? 'bg-red-600 hover:bg-red-700' :
+                chequeActionModal?.newStatut === 'ENCAISSE' ? 'bg-green-600 hover:bg-green-700' : ''
+              )}
+            >
+              {updateStatutChequeMutation.isPending ? 'Enregistrement...' : 'Confirmer'}
             </Button>
           </DialogFooter>
         </DialogContent>

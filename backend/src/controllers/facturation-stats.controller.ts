@@ -556,6 +556,203 @@ export const facturationStatsController = {
       res.status(500).json({ error: 'Erreur serveur' });
     }
   },
+
+  // Années ayant des données TVA (factures non brouillon/annulées)
+  async getAnneesDisponibles(_req: AuthRequest, res: Response) {
+    try {
+      const factures = await prisma.facture.findMany({
+        where: { statut: { notIn: ['BROUILLON', 'ANNULEE'] } },
+        select: { dateFacture: true },
+      });
+      const years = [...new Set(factures.map(f => new Date(f.dateFacture).getFullYear()))]
+        .sort((a, b) => b - a);
+      res.json(years);
+    } catch (error) {
+      console.error('Get annees disponibles error:', error);
+      res.status(500).json({ error: 'Erreur serveur' });
+    }
+  },
+
+  // Déclaration G50 — TVA mensuelle (produits sur date facture, services sur encaissement)
+  async getG50(req: AuthRequest, res: Response) {
+    try {
+      const { annee } = req.query;
+      const year = annee ? parseInt(annee as string) : new Date().getFullYear();
+      const startDate = new Date(year, 0, 1);
+      const endDate = new Date(year, 11, 31, 23, 59, 59);
+
+      const MOIS_NOMS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+
+      // 1. TVA collectée produits — exigible à la date de facturation
+      const facturesProduits = await prisma.facture.findMany({
+        where: {
+          dateFacture: { gte: startDate, lte: endDate },
+          typeDocument: { not: 'SERVICE' }, // PRODUIT ou null → TVA à la facturation
+          statut: { notIn: ['BROUILLON', 'ANNULEE'] },
+          type: { not: 'ACOMPTE' },
+        },
+        select: {
+          id: true, ref: true, type: true,
+          client: { select: { nomEntreprise: true } },
+          dateFacture: true, totalHT: true, totalTVA: true, totalTTC: true, statut: true,
+        },
+        orderBy: { dateFacture: 'asc' },
+      });
+
+      // 2. TVA collectée services — exigible à l'encaissement
+      const paiementsServices = await prisma.paiement.findMany({
+        where: {
+          statut: 'ENCAISSE',
+          OR: [
+            { dateEncaissement: { gte: startDate, lte: endDate } },
+            { dateEncaissement: null, datePaiement: { gte: startDate, lte: endDate } },
+          ],
+          facture: {
+            typeDocument: 'SERVICE',
+            statut: { notIn: ['BROUILLON', 'ANNULEE'] },
+          },
+        },
+        include: {
+          facture: {
+            select: {
+              id: true, ref: true, type: true,
+              client: { select: { nomEntreprise: true } },
+              totalHT: true, totalTVA: true, totalTTC: true,
+            },
+          },
+        },
+        orderBy: { datePaiement: 'asc' },
+      });
+
+      // 3. TVA déductible — achats fournisseurs
+      const facturesFournisseurs = await prisma.factureFournisseur.findMany({
+        where: {
+          dateFacture: { gte: startDate, lte: endDate },
+          statut: { not: 'BROUILLON' },
+        },
+        select: {
+          id: true, ref: true,
+          fournisseur: { select: { nomEntreprise: true } },
+          dateFacture: true, totalHT: true, totalTVA: true, totalTTC: true,
+        },
+        orderBy: { dateFacture: 'asc' },
+      });
+
+      // 4. TVA déductible — charges
+      const charges = await prisma.charge.findMany({
+        where: {
+          dateCharge: { gte: startDate, lte: endDate },
+          statut: { not: 'ANNULEE' },
+        },
+        select: {
+          id: true, libelle: true,
+          fournisseur: { select: { nomEntreprise: true } },
+          dateCharge: true, montantHT: true, montantTVA: true, montantTTC: true,
+        },
+        orderBy: { dateCharge: 'asc' },
+      });
+
+      const moisDetails = Array.from({ length: 12 }, (_, i) => {
+        const mois = i + 1;
+
+        // Factures produits du mois (AVOIR = signe négatif)
+        const factProduitsMois = facturesProduits.filter(f => new Date(f.dateFacture).getMonth() === i);
+        const tvaCollecteeProduits = factProduitsMois.reduce((sum, f) => sum + (f.type === 'AVOIR' ? -f.totalTVA : f.totalTVA), 0);
+        const htCollecteeProduits = factProduitsMois.reduce((sum, f) => sum + (f.type === 'AVOIR' ? -f.totalHT : f.totalHT), 0);
+
+        // Paiements services du mois
+        const paiServMois = paiementsServices.filter(p => {
+          const d = new Date((p.dateEncaissement ?? p.datePaiement) as Date);
+          return d.getMonth() === i;
+        });
+        const paiementsServicesDetail = paiServMois.map(p => {
+          const tvaRate = p.facture.totalTTC > 0 ? p.facture.totalTVA / p.facture.totalTTC : 0;
+          const sign = p.facture.type === 'AVOIR' ? -1 : 1;
+          const tvaProportionnelle = p.montant * tvaRate * sign;
+          const htProportionnel = (p.montant - p.montant * tvaRate) * sign;
+          return {
+            id: p.id,
+            factureId: p.factureId,
+            factureRef: p.facture.ref,
+            factureType: p.facture.type,
+            client: p.facture.client,
+            datePaiement: p.datePaiement,
+            dateEncaissement: p.dateEncaissement,
+            montantEncaisse: p.montant,
+            htProportionnel,
+            tvaProportionnelle,
+          };
+        });
+        const tvaCollecteeServices = paiementsServicesDetail.reduce((s, p) => s + p.tvaProportionnelle, 0);
+        const htCollecteeServices = paiementsServicesDetail.reduce((s, p) => s + p.htProportionnel, 0);
+
+        // Fournisseurs du mois
+        const fournMois = facturesFournisseurs.filter(f => new Date(f.dateFacture).getMonth() === i);
+        const tvaDeductibleAchats = fournMois.reduce((s, f) => s + f.totalTVA, 0);
+
+        // Charges du mois
+        const chargesMois = charges.filter(c => new Date(c.dateCharge).getMonth() === i);
+        const tvaDeductibleCharges = chargesMois.reduce((s, c) => s + c.montantTVA, 0);
+
+        const tvaCollecteeTotale = tvaCollecteeProduits + tvaCollecteeServices;
+        const tvaDeductibleTotale = tvaDeductibleAchats + tvaDeductibleCharges;
+        const tvaNette = tvaCollecteeTotale - tvaDeductibleTotale;
+
+        return {
+          mois,
+          nomMois: MOIS_NOMS[i],
+          tvaCollectee: {
+            produits: {
+              montantHT: htCollecteeProduits,
+              montantTVA: tvaCollecteeProduits,
+              factures: factProduitsMois,
+            },
+            services: {
+              montantHT: htCollecteeServices,
+              montantTVA: tvaCollecteeServices,
+              paiements: paiementsServicesDetail,
+            },
+            total: {
+              montantHT: htCollecteeProduits + htCollecteeServices,
+              montantTVA: tvaCollecteeTotale,
+            },
+          },
+          tvaDeductible: {
+            achats: {
+              montantHT: fournMois.reduce((s, f) => s + f.totalHT, 0),
+              montantTVA: tvaDeductibleAchats,
+              factures: fournMois,
+            },
+            charges: {
+              montantHT: chargesMois.reduce((s, c) => s + c.montantHT, 0),
+              montantTVA: tvaDeductibleCharges,
+              charges: chargesMois,
+            },
+            total: {
+              montantHT: fournMois.reduce((s, f) => s + f.totalHT, 0) + chargesMois.reduce((s, c) => s + c.montantHT, 0),
+              montantTVA: tvaDeductibleTotale,
+            },
+          },
+          tvaNette,
+          aPayer: tvaNette > 0 ? tvaNette : 0,
+          credit: tvaNette < 0 ? Math.abs(tvaNette) : 0,
+        };
+      });
+
+      const totalAnnuel = moisDetails.reduce((acc, m) => ({
+        tvaCollectee: acc.tvaCollectee + m.tvaCollectee.total.montantTVA,
+        tvaDeductible: acc.tvaDeductible + m.tvaDeductible.total.montantTVA,
+        tvaNette: acc.tvaNette + m.tvaNette,
+        aPayer: acc.aPayer + (m.tvaNette > 0 ? m.tvaNette : 0),
+        credit: acc.credit + (m.tvaNette < 0 ? Math.abs(m.tvaNette) : 0),
+      }), { tvaCollectee: 0, tvaDeductible: 0, tvaNette: 0, aPayer: 0, credit: 0 });
+
+      res.json({ annee: year, moisDetails, totalAnnuel });
+    } catch (error) {
+      console.error('Get G50 error:', error);
+      res.status(500).json({ error: 'Erreur serveur' });
+    }
+  },
 };
 
 export default facturationStatsController;

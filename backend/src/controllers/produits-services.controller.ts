@@ -2,6 +2,8 @@ import { Response } from 'express';
 import { prisma } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
+import fs from 'fs';
+import path from 'path';
 
 export const produitsServicesController = {
   // ============ PRODUITS/SERVICES ============
@@ -205,6 +207,7 @@ export const produitsServicesController = {
         prixAchatHT,
         margeParDefaut,
         aStock,
+        modeGestion,
         quantite,
         stockMinimum,
         stockMaximum,
@@ -228,6 +231,7 @@ export const produitsServicesController = {
         enVente,
         enAchat,
         categorieIds,
+        entrepotInitialId,
       } = req.body;
 
       // Vérifier que la référence n'existe pas déjà
@@ -272,6 +276,7 @@ export const produitsServicesController = {
           prixAchatHT,
           margeParDefaut,
           aStock: type === 'SERVICE' ? false : (aStock ?? true),
+          modeGestion: type === 'SERVICE' ? 'FLUX_TENDU' : (modeGestion ?? 'MIXTE'),
           quantite: quantite || 0,
           stockMinimum: stockMinimum || 0,
           stockMaximum,
@@ -321,15 +326,16 @@ export const produitsServicesController = {
 
       // Créer un mouvement de stock initial si quantité > 0 et type PRODUIT
       if (quantite && quantite > 0 && produit.aStock) {
-        // Trouver l'entrepôt par défaut
-        const entrepotDefaut = await prisma.entrepot.findFirst({
-          where: { estDefaut: true, actif: true },
-        });
+        // Utiliser l'entrepôt spécifié, sinon l'entrepôt par défaut
+        let entrepotCible = entrepotInitialId
+          ? await prisma.entrepot.findUnique({ where: { id: entrepotInitialId } })
+          : (await prisma.entrepot.findFirst({ where: { estDefaut: true, actif: true } }))
+            ?? (await prisma.entrepot.findFirst({ where: { actif: true }, orderBy: { createdAt: 'asc' } }));
 
         await prisma.mouvementStock.create({
           data: {
             produitServiceId: produit.id,
-            entrepotId: entrepotDefaut?.id,
+            entrepotId: entrepotCible?.id,
             type: 'ENTREE',
             quantite,
             quantiteAvant: 0,
@@ -339,12 +345,12 @@ export const produitsServicesController = {
           },
         });
 
-        // Créer le stock dans l'entrepôt par défaut si existe
-        if (entrepotDefaut) {
+        // Créer le stock dans l'entrepôt cible si existe
+        if (entrepotCible) {
           await prisma.stockEntrepot.create({
             data: {
               produitId: produit.id,
-              entrepotId: entrepotDefaut.id,
+              entrepotId: entrepotCible.id,
               quantite,
             },
           });
@@ -397,6 +403,7 @@ export const produitsServicesController = {
         prixAchatHT,
         margeParDefaut,
         aStock,
+        modeGestion,
         stockMinimum,
         stockMaximum,
         lotSuivi,
@@ -474,6 +481,7 @@ export const produitsServicesController = {
           prixAchatHT: prixAchatHT !== undefined ? prixAchatHT : existing.prixAchatHT,
           margeParDefaut: margeParDefaut !== undefined ? margeParDefaut : existing.margeParDefaut,
           aStock: aStock !== undefined ? aStock : existing.aStock,
+          modeGestion: modeGestion !== undefined ? modeGestion : existing.modeGestion,
           stockMinimum: stockMinimum !== undefined ? stockMinimum : existing.stockMinimum,
           stockMaximum: stockMaximum !== undefined ? stockMaximum : existing.stockMaximum,
           lotSuivi: lotSuivi !== undefined ? lotSuivi : existing.lotSuivi,
@@ -861,9 +869,31 @@ export const produitsServicesController = {
         include: {
           stocks: {
             include: {
-              produit: { select: { id: true, reference: true, nom: true, unite: true } },
+              produit: {
+                select: {
+                  id: true,
+                  reference: true,
+                  nom: true,
+                  unite: true,
+                  prixVenteHT: true,
+                  prixVenteTTC: true,
+                  prixAchatHT: true,
+                  stockMinimum: true,
+                  type: true,
+                  actif: true,
+                },
+              },
             },
             orderBy: { produit: { nom: 'asc' } },
+          },
+          mouvements: {
+            take: 15,
+            orderBy: { createdAt: 'desc' },
+            where: { produitServiceId: { not: null } },
+            include: {
+              produitService: { select: { id: true, reference: true, nom: true, unite: true } },
+              user: { select: { id: true, nom: true, prenom: true } },
+            },
           },
         },
       });
@@ -1528,6 +1558,87 @@ export const produitsServicesController = {
     } catch (error) {
       console.error('Get alertes produits-services error:', error);
       res.status(500).json({ error: 'Erreur serveur' });
+    }
+  },
+
+  /**
+   * POST /api/produits-services/:id/fiche-technique
+   * Upload d'un PDF fiche technique pour un produit
+   */
+  async uploadFicheTechnique(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+
+      if (!req.file) {
+        return res.status(400).json({ error: 'Aucun fichier PDF reçu' });
+      }
+
+      const produit = await prisma.produitService.findUnique({
+        where: { id },
+        select: { id: true, ficheTechniqueUrl: true },
+      });
+
+      if (!produit) {
+        // Supprimer le fichier uploadé si le produit n'existe pas
+        fs.unlink(req.file.path, () => {});
+        return res.status(404).json({ error: 'Produit non trouvé' });
+      }
+
+      // Supprimer l'ancienne fiche technique si elle existe
+      if (produit.ficheTechniqueUrl) {
+        const oldPath = path.join(process.cwd(), produit.ficheTechniqueUrl.replace(/^\//, ''));
+        fs.unlink(oldPath, () => {});
+      }
+
+      const ficheTechniqueUrl = `/uploads/fiches-techniques/${req.file.filename}`;
+
+      const updated = await prisma.produitService.update({
+        where: { id },
+        data: {
+          ficheTechniqueUrl,
+          ficheTechniqueNom: req.file.originalname,
+        },
+        select: { id: true, ficheTechniqueUrl: true, ficheTechniqueNom: true },
+      });
+
+      res.json(updated);
+    } catch (error) {
+      console.error('Upload fiche technique error:', error);
+      res.status(500).json({ error: 'Erreur lors de l\'upload de la fiche technique' });
+    }
+  },
+
+  /**
+   * DELETE /api/produits-services/:id/fiche-technique
+   * Supprime la fiche technique d'un produit
+   */
+  async deleteFicheTechnique(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+
+      const produit = await prisma.produitService.findUnique({
+        where: { id },
+        select: { id: true, ficheTechniqueUrl: true },
+      });
+
+      if (!produit) {
+        return res.status(404).json({ error: 'Produit non trouvé' });
+      }
+
+      if (produit.ficheTechniqueUrl) {
+        const filePath = path.join(process.cwd(), produit.ficheTechniqueUrl.replace(/^\//, ''));
+        fs.unlink(filePath, () => {});
+      }
+
+      await prisma.produitService.update({
+        where: { id },
+        data: { ficheTechniqueUrl: null, ficheTechniqueNom: null },
+      });
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Delete fiche technique error:', error);
+      res.status(500).json({ error: 'Erreur lors de la suppression de la fiche technique' });
     }
   },
 };

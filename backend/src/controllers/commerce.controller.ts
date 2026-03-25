@@ -155,31 +155,42 @@ async function buildLignes(
   });
 }
 
-async function updateFacturePaiementStatus(factureId: string) {
-  const facture = await prisma.facture.findUnique({
+async function updateFacturePaiementStatus(factureId: string, tx?: any) {
+  const db = tx ?? prisma;
+  const facture = await db.facture.findUnique({
     where: { id: factureId },
-    include: { paiements: { where: { statut: 'RECU' } } },
+    include: { paiements: { where: { statut: { not: 'ANNULE' } } } },
   });
 
   if (!facture) return;
   if (facture.statut === 'BROUILLON' || facture.statut === 'ANNULEE') return;
 
-  const totalPaye = facture.paiements.reduce((sum, p) => sum + p.montant, 0);
-  let statut = facture.statut;
+  // Seuls les paiements ENCAISSE comptent comme réellement encaissés
+  const totalPaye = facture.paiements
+    .filter((p: any) => p.statut === 'ENCAISSE')
+    .reduce((sum: number, p: any) => sum + p.montant, 0);
 
+  // Chèques en attente (RECU ou DEPOSE)
+  const totalEnAttente = facture.paiements
+    .filter((p: any) => p.statut === 'RECU' || p.statut === 'DEPOSE')
+    .reduce((sum: number, p: any) => sum + p.montant, 0);
+
+  let statut: string;
   if (facture.totalTTC <= 0) {
     statut = 'PAYEE';
-  } else if (totalPaye <= 0) {
-    statut = 'VALIDEE';
-  } else if (totalPaye < facture.totalTTC) {
+  } else if (totalPaye >= facture.totalTTC) {
+    statut = 'PAYEE';
+  } else if (totalEnAttente > 0 && totalPaye + totalEnAttente >= facture.totalTTC) {
+    statut = 'EN_ATTENTE_ENCAISSEMENT';
+  } else if (totalPaye > 0 || totalEnAttente > 0) {
     statut = 'PARTIELLEMENT_PAYEE';
   } else {
-    statut = 'PAYEE';
+    statut = 'VALIDEE';
   }
 
-  await prisma.facture.update({
+  await db.facture.update({
     where: { id: factureId },
-    data: { totalPaye, statut },
+    data: { totalPaye, totalEnAttente, statut },
   });
 }
 
@@ -846,8 +857,8 @@ export const commerceController = {
         data: {
           ref,
           clientId: commande.clientId,
-          siteId: commande.siteId ?? undefined,
-          typeDocument: commande.typeDocument ?? undefined,
+          siteId: commande.siteId,
+          typeDocument: commande.typeDocument,
           devisId: commande.devisId,
           commandeId: commande.id,
           adresseFacturationId: commande.adresseFacturationId ?? undefined,
@@ -881,11 +892,7 @@ export const commerceController = {
             })),
           },
         },
-        include: {
-          client: { select: { id: true, nomEntreprise: true } },
-          site: { select: { id: true, nom: true, ville: true } },
-          lignes: true
-        },
+        include: { client: { select: { id: true, nomEntreprise: true } }, lignes: true },
       });
 
       await createAuditLog(req.user!.id, 'CREATE', 'Facture', facture.id, { after: facture });
@@ -940,8 +947,10 @@ export const commerceController = {
             totalTVA: true,
             totalTTC: true,
             totalPaye: true,
+            totalEnAttente: true,
             remiseGlobalPct: true,
             remiseGlobalMontant: true,
+            createdAt: true,
             client: { select: { id: true, nomEntreprise: true } },
             site: { select: { id: true, nom: true, ville: true } },
             _count: { select: { lignes: true, paiements: true } },
@@ -992,13 +1001,23 @@ export const commerceController = {
           lignes: {
             orderBy: { ordre: 'asc' },
             include: {
-              produitService: { select: { id: true, nom: true, reference: true } },
+              produitService: {
+                select: {
+                  id: true,
+                  nom: true,
+                  reference: true,
+                  type: true,
+                  aStock: true,
+                  quantite: true,
+                  stockMinimum: true,
+                },
+              },
             },
           },
           paiements: {
             orderBy: { datePaiement: 'desc' },
             include: {
-              modePaiement: { select: { id: true, libelle: true } },
+              modePaiement: { select: { id: true, code: true, libelle: true } },
             },
           },
           relances: {
@@ -1330,8 +1349,8 @@ export const commerceController = {
           },
         });
 
-        // Gérer le stock si c'est une facture de vente
-        if (updated.type === 'FACTURE' && req.user?.id) {
+        // Gérer le stock si c'est une facture de vente (pas un avoir, pas de service)
+        if (updated.type === 'FACTURE' && updated.typeDocument !== 'SERVICE' && req.user?.id) {
           const stockResult = await stockService.processFactureValidation(
             updated.id,
             updated.lignes,
@@ -1340,7 +1359,7 @@ export const commerceController = {
             tx
           );
           if (!stockResult.success) {
-            throw new Error(`Erreur stock: ${stockResult.errors.join(', ')}`);
+            throw Object.assign(new Error(stockResult.errors.join(', ')), { isStockError: true });
           }
         }
 
@@ -1364,8 +1383,11 @@ export const commerceController = {
       });
 
       res.json({ facture, message: 'Facture validée avec succès' });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Valider facture error:', error);
+      if (error?.isStockError) {
+        return res.status(400).json({ error: `Stock insuffisant : ${error.message}` });
+      }
       res.status(500).json({ error: 'Erreur lors de la validation de la facture' });
     }
   },
@@ -1432,13 +1454,17 @@ export const commerceController = {
         return res.status(400).json({ error: 'Impossible d\'ajouter un paiement à une facture en brouillon' });
       }
 
-      const resteAPayer = facture.totalTTC - facture.totalPaye;
-      if (data.montant > resteAPayer) {
+      // Pour les chèques, on vérifie le reste incluant ce qui est en attente
+      const resteAPayer = facture.totalTTC - facture.totalPaye - (facture.totalEnAttente ?? 0);
+      if (data.montant > resteAPayer + 0.01) {
         return res.status(400).json({ error: `Le montant dépasse le reste à payer (${resteAPayer.toFixed(2)})` });
       }
 
-      // Utiliser une transaction pour garantir l'atomicité
-      const { paiement, nouveauStatut } = await prisma.$transaction(async (tx) => {
+      // Statut initial : CHEQUE → RECU, autres modes → ENCAISSE directement
+      const isCheque = data.modePaiement === 'CHEQUE';
+      const statutInitial = isCheque ? 'RECU' : 'ENCAISSE';
+
+      const paiement = await prisma.$transaction(async (tx) => {
         const newPaiement = await tx.paiement.create({
           data: {
             factureId: data.factureId,
@@ -1446,32 +1472,24 @@ export const commerceController = {
             datePaiement: parseDate(data.datePaiement) ?? new Date(),
             montant: data.montant,
             reference: data.reference,
+            banque: data.banque,
             notes: data.notes,
+            statut: statutInitial,
             createdById: req.user?.id,
           },
         });
 
-        // Calculer le nouveau statut
-        const totalPaye = facture.totalPaye + data.montant;
-        let statut = facture.statut;
+        await updateFacturePaiementStatus(data.factureId, tx);
 
-        if (facture.totalTTC <= 0) {
-          statut = 'PAYEE';
-        } else if (totalPaye <= 0) {
-          statut = 'VALIDEE';
-        } else if (totalPaye < facture.totalTTC) {
-          statut = 'PARTIELLEMENT_PAYEE';
-        } else {
-          statut = 'PAYEE';
-        }
-
-        await tx.facture.update({
-          where: { id: data.factureId },
-          data: { totalPaye, statut },
-        });
-
-        return { paiement: newPaiement, nouveauStatut: statut };
+        return newPaiement;
       });
+
+      // Récupérer le nouveau statut de la facture pour les événements
+      const factureUpdated = await prisma.facture.findUnique({
+        where: { id: data.factureId },
+        select: { statut: true, totalTTC: true, totalPaye: true },
+      });
+      const nouveauStatut = factureUpdated?.statut ?? facture.statut;
 
       await createAuditLog(req.user!.id, 'CREATE', 'Paiement', paiement.id, { after: paiement });
 
@@ -1489,7 +1507,7 @@ export const commerceController = {
           userId: req.user?.id,
           timestamp: new Date(),
         });
-      } else if (nouveauStatut === 'PARTIELLEMENT_PAYEE') {
+      } else if (nouveauStatut === 'PARTIELLEMENT_PAYEE' || nouveauStatut === 'EN_ATTENTE_ENCAISSEMENT') {
         facturationEvents.emitEvent({
           type: 'facture.partially_paid',
           entityId: facture.id,
@@ -1498,7 +1516,7 @@ export const commerceController = {
             ref: facture.ref,
             clientNom: facture.client.nomEntreprise,
             montantPaye: paiement.montant,
-            resteAPayer: facture.totalTTC - facture.totalPaye - paiement.montant,
+            resteAPayer: facture.totalTTC - (factureUpdated?.totalPaye ?? 0),
           },
           userId: req.user?.id,
           timestamp: new Date(),
@@ -1509,6 +1527,42 @@ export const commerceController = {
     } catch (error) {
       console.error('Create paiement error:', error);
       res.status(500).json({ error: 'Erreur lors de la création du paiement' });
+    }
+  },
+
+  async updateStatutCheque(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const { statut, date } = req.body;
+
+      const paiement = await prisma.paiement.findUnique({ where: { id } });
+      if (!paiement) {
+        return res.status(404).json({ error: 'Paiement non trouvé' });
+      }
+
+      const transitionsValides: Record<string, string[]> = {
+        RECU: ['DEPOSE', 'REJETE'],
+        DEPOSE: ['ENCAISSE', 'REJETE'],
+      };
+      if (!transitionsValides[paiement.statut]?.includes(statut)) {
+        return res.status(400).json({ error: `Transition ${paiement.statut} → ${statut} invalide` });
+      }
+
+      const updateData: any = { statut };
+      if (statut === 'DEPOSE') updateData.dateDepot = date ? new Date(date) : new Date();
+      if (statut === 'ENCAISSE') updateData.dateEncaissement = date ? new Date(date) : new Date();
+
+      await prisma.$transaction(async (tx) => {
+        await tx.paiement.update({ where: { id }, data: updateData });
+        await updateFacturePaiementStatus(paiement.factureId, tx);
+      });
+
+      await createAuditLog(req.user!.id, 'UPDATE', 'Paiement', id, { after: { statut, date } });
+
+      res.json({ success: true, statut });
+    } catch (error) {
+      console.error('Update statut cheque error:', error);
+      res.status(500).json({ error: 'Erreur lors de la mise à jour du statut' });
     }
   },
 

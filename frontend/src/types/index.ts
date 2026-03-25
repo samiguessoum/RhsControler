@@ -930,6 +930,39 @@ export interface Entrepot {
   _count?: {
     stocks: number;
   };
+  // Détail (retourné par GET /entrepots/:id)
+  stocks?: EntrepotStockDetail[];
+  mouvements?: EntrepotMouvementDetail[];
+}
+
+export interface EntrepotStockDetail {
+  id: string;
+  quantite: number;
+  emplacement?: string;
+  produit: {
+    id: string;
+    reference: string;
+    nom: string;
+    unite: string;
+    prixVenteHT?: number;
+    prixVenteTTC?: number;
+    prixAchatHT?: number;
+    stockMinimum?: number;
+    type?: string;
+    actif?: boolean;
+  };
+}
+
+export interface EntrepotMouvementDetail {
+  id: string;
+  type: string;
+  quantite: number;
+  quantiteAvant: number;
+  quantiteApres: number;
+  motif?: string;
+  createdAt: string;
+  produitService?: { id: string; reference: string; nom: string; unite: string };
+  user?: { id: string; nom: string; prenom: string };
 }
 
 // Stock par entrepôt
@@ -967,6 +1000,7 @@ export interface ProduitService {
   margeParDefaut?: number;
 
   aStock: boolean;
+  modeGestion?: string;
   quantite: number;
   stockMinimum: number;
   stockMaximum?: number;
@@ -992,6 +1026,8 @@ export interface ProduitService {
   notePublique?: string;
   notePrivee?: string;
   urlExterne?: string;
+  ficheTechniqueUrl?: string | null;
+  ficheTechniqueNom?: string | null;
 
   enVente: boolean;
   enAchat: boolean;
@@ -1116,6 +1152,7 @@ export interface CreateProduitServiceInput {
   prixAchatHT?: number;
   margeParDefaut?: number;
   aStock?: boolean;
+  modeGestion?: string;
   quantite?: number;
   stockMinimum?: number;
   stockMaximum?: number;
@@ -1139,6 +1176,7 @@ export interface CreateProduitServiceInput {
   enVente?: boolean;
   enAchat?: boolean;
   categorieIds?: string[];
+  entrepotInitialId?: string;  // Entrepôt où placer le stock initial (création uniquement)
 }
 
 export interface CreateCategorieProduitInput {
@@ -1220,9 +1258,9 @@ export interface ProduitServiceAlerte extends ProduitService {
 
 export type DevisStatut = 'BROUILLON' | 'VALIDE' | 'SIGNE' | 'REFUSE' | 'EXPIRE' | 'ANNULE';
 export type CommandeStatut = 'BROUILLON' | 'VALIDEE' | 'EN_PREPARATION' | 'EXPEDIEE' | 'LIVREE' | 'ANNULEE';
-export type FactureStatut = 'BROUILLON' | 'VALIDEE' | 'EN_RETARD' | 'PARTIELLEMENT_PAYEE' | 'PAYEE' | 'ANNULEE';
+export type FactureStatut = 'BROUILLON' | 'VALIDEE' | 'EN_RETARD' | 'PARTIELLEMENT_PAYEE' | 'EN_ATTENTE_ENCAISSEMENT' | 'PAYEE' | 'ANNULEE';
 export type FactureType = 'FACTURE' | 'AVOIR';
-export type PaiementStatut = 'RECU' | 'ANNULE';
+export type PaiementStatut = 'RECU' | 'DEPOSE' | 'ENCAISSE' | 'REJETE' | 'ANNULE';
 
 export interface CommerceLigne {
   id?: string;
@@ -1312,6 +1350,7 @@ export interface Facture {
   totalTVA: number;
   totalTTC: number;
   totalPaye: number;
+  totalEnAttente?: number;
   devise?: string;
   notes?: string;
   conditions?: string;
@@ -1324,9 +1363,13 @@ export interface Paiement {
   id: string;
   factureId: string;
   modePaiementId?: string;
+  modePaiement?: { code: string; libelle: string };
   datePaiement: string;
   montant: number;
   reference?: string;
+  banque?: string;
+  dateDepot?: string;
+  dateEncaissement?: string;
   notes?: string;
   statut: PaiementStatut;
 }
@@ -1395,9 +1438,11 @@ export interface CreateFactureRelanceInput {
 export interface CreatePaiementInput {
   factureId: string;
   modePaiementId?: string;
+  modePaiement?: string;
   datePaiement?: string;
   montant: number;
   reference?: string;
+  banque?: string;
   notes?: string;
 }
 

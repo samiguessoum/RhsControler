@@ -575,11 +575,12 @@ export const stockService = {
     quantite: number;
     stockMinimum: number;
   }>> {
-    return prisma.produitService.findMany({
+    // Prisma ne permet pas de comparer deux colonnes dans where, on filtre en JS
+    const produits = await prisma.produitService.findMany({
       where: {
         type: 'PRODUIT',
         aStock: true,
-        quantite: { lte: prisma.produitService.fields.stockMinimum },
+        stockMinimum: { gt: 0 },
       },
       select: {
         id: true,
@@ -589,8 +590,10 @@ export const stockService = {
         quantite: true,
         stockMinimum: true,
       },
-      orderBy: { quantite: 'asc' },
     });
+    return produits
+      .filter((p) => p.quantite <= p.stockMinimum)
+      .sort((a, b) => a.quantite - b.quantite);
   },
 
   /**

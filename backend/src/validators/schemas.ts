@@ -618,12 +618,9 @@ export type UpdateInterventionInput = z.infer<typeof updateInterventionSchema>;
 export const typeProduitEnum = z.enum(['PRODUIT', 'SERVICE']);
 
 export const natureProduitEnum = z.enum([
-  'MATIERE_PREMIERE',
-  'PRODUIT_FINI',
-  'PRODUIT_SEMI_FINI',
   'CONSOMMABLE',
-  'PIECE_DETACHEE',
-  'AUTRE',
+  'EPI',
+  'MATERIEL_ANTI_NUISIBLES',
 ]);
 
 export const typeMouvementEnum = z.enum([
@@ -696,6 +693,7 @@ export const createProduitServiceSchema = z.object({
 
   // Stock
   aStock: z.boolean().optional(),
+  modeGestion: z.enum(['FLUX_TENDU', 'MIXTE', 'STOCKE']).optional(),
   quantite: z.number().min(0).optional().default(0),
   stockMinimum: z.number().min(0).optional().default(0),
   stockMaximum: z.number().min(0).optional(),
@@ -736,6 +734,9 @@ export const createProduitServiceSchema = z.object({
 
   // Catégories
   categorieIds: z.array(z.string().uuid()).optional(),
+
+  // Entrepôt pour le stock initial (création uniquement)
+  entrepotInitialId: z.string().uuid().optional(),
 });
 
 export const updateProduitServiceSchema = createProduitServiceSchema.partial().extend({
@@ -904,12 +905,16 @@ export const updateCommandeSchema = createCommandeSchema.partial().extend({
 
 export const createFactureSchema = z.object({
   clientId: z.string().uuid('ID client invalide'),
+  siteId: z.string().uuid().optional().nullable(),
+  typeDocument: z.enum(['PRODUIT', 'SERVICE']).optional().nullable(),
   devisId: z.string().uuid().optional(),
   commandeId: z.string().uuid().optional(),
   adresseFacturationId: z.string().uuid().optional(),
   adresseLivraisonId: z.string().uuid().optional(),
   dateFacture: z.string().optional(),
   dateEcheance: z.string().optional(),
+  delaiPaiementJours: z.number().int().optional(),
+  ref: z.string().optional(),
   statut: z.enum(['BROUILLON', 'VALIDEE', 'EN_RETARD', 'PARTIELLEMENT_PAYEE', 'PAYEE', 'ANNULEE']).optional(),
   type: z.enum(['FACTURE', 'AVOIR']).optional(),
   remiseGlobalPct: z.number().min(0).max(100).optional(),
@@ -935,10 +940,17 @@ export const createFactureRelanceSchema = z.object({
 export const createPaiementSchema = z.object({
   factureId: z.string().uuid('ID facture invalide'),
   modePaiementId: z.string().uuid().optional(),
+  modePaiement: z.string().optional(),
   datePaiement: z.string().optional(),
   montant: z.number().positive('Montant invalide'),
   reference: z.string().optional(),
+  banque: z.string().optional(),
   notes: z.string().optional(),
+});
+
+export const updateStatutChequeSchema = z.object({
+  statut: z.enum(['DEPOSE', 'ENCAISSE', 'REJETE']),
+  date: z.string().optional(),
 });
 
 // ============ COMMANDES FOURNISSEURS ============

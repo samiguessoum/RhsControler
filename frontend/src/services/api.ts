@@ -957,6 +957,20 @@ export const produitsServicesApi = {
     const { data } = await api.get('/produits-services/alertes');
     return data;
   },
+
+  uploadFicheTechnique: async (id: string, file: File): Promise<{ id: string; ficheTechniqueUrl: string; ficheTechniqueNom: string }> => {
+    const formData = new FormData();
+    formData.append('ficheTechnique', file);
+    const { data } = await api.post(`/produits-services/${id}/fiche-technique`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
+  },
+
+  deleteFicheTechnique: async (id: string): Promise<{ success: boolean }> => {
+    const { data } = await api.delete(`/produits-services/${id}/fiche-technique`);
+    return data;
+  },
 };
 
 // ============ CATEGORIES PRODUITS ============
@@ -1170,6 +1184,9 @@ export const commerceApi = {
     const { data } = await api.post('/commerce/paiements', payload);
     return data.paiement;
   },
+  updateStatutCheque: async (id: string, statut: string, date?: string): Promise<void> => {
+    await api.patch(`/commerce/paiements/${id}/statut-cheque`, { statut, date });
+  },
   deletePaiement: async (id: string): Promise<void> => {
     await api.delete(`/commerce/paiements/${id}`);
   },
@@ -1381,6 +1398,14 @@ export const facturationStatsApi = {
   getRetards: async (): Promise<any> => {
     const { data } = await api.get('/facturation/stats/retards');
     return data; // Backend returns data directly
+  },
+  getAnneesDisponibles: async (): Promise<number[]> => {
+    const { data } = await api.get('/facturation/tva/annees');
+    return data;
+  },
+  getG50: async (annee?: number): Promise<any> => {
+    const { data } = await api.get('/facturation/tva/g50', { params: { annee } });
+    return data;
   },
 };
 

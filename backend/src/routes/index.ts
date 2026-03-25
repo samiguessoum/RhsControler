@@ -64,6 +64,7 @@ import {
   createFactureSchema,
   updateFactureSchema,
   createPaiementSchema,
+  updateStatutChequeSchema,
   createFactureRelanceSchema,
   // Commandes Fournisseurs
   createCommandeFournisseurSchema,
@@ -107,6 +108,33 @@ import path from 'path';
 import fs from 'fs';
 
 const router = Router();
+
+// Configuration multer pour upload des fiches techniques PDF
+const ficheTechniqueStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(process.cwd(), 'uploads', 'fiches-techniques');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `fiche-${(req as any).params?.id || 'unknown'}-${Date.now()}${ext}`);
+  },
+});
+
+const ficheTechniqueUpload = multer({
+  storage: ficheTechniqueStorage,
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB max
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/pdf') {
+      cb(null, true);
+    } else {
+      cb(new Error('Type de fichier non autorisé. Utilisez un fichier PDF.'));
+    }
+  },
+});
 
 // Configuration multer pour upload du logo
 const logoStorage = multer.diskStorage({
@@ -313,6 +341,8 @@ router.post('/produits-services', authMiddleware, canDo('manageStock'), validate
 router.put('/produits-services/:id', authMiddleware, canDo('manageStock'), validate(updateProduitServiceSchema), produitsServicesController.update);
 router.delete('/produits-services/:id', authMiddleware, canDo('manageStock'), produitsServicesController.delete);
 router.post('/produits-services/:id/mouvement', authMiddleware, canDo('manageStock'), validate(createMouvementProduitServiceSchema), produitsServicesController.createMouvementProduitService);
+router.post('/produits-services/:id/fiche-technique', authMiddleware, canDo('manageStock'), ficheTechniqueUpload.single('ficheTechnique'), produitsServicesController.uploadFicheTechnique);
+router.delete('/produits-services/:id/fiche-technique', authMiddleware, canDo('manageStock'), produitsServicesController.deleteFicheTechnique);
 
 // Catégories de produits
 router.get('/categories-produits', authMiddleware, produitsServicesController.listCategories);
@@ -374,6 +404,7 @@ router.post('/commerce/factures/:id/relances', authMiddleware, canDo('manageComm
 
 // Paiements
 router.post('/commerce/paiements', authMiddleware, canDo('manageCommerce'), validate(createPaiementSchema), commerceController.createPaiement);
+router.patch('/commerce/paiements/:id/statut-cheque', authMiddleware, canDo('manageCommerce'), validate(updateStatutChequeSchema), commerceController.updateStatutCheque);
 router.delete('/commerce/paiements/:id', authMiddleware, canDo('manageCommerce'), commerceController.deletePaiement);
 
 // ============ COMMANDES FOURNISSEURS ============
@@ -427,6 +458,8 @@ router.get('/facturation/stats/marges', authMiddleware, canDo('viewFacturation')
 router.get('/facturation/stats/commandes-facturables', authMiddleware, canDo('viewFacturation'), facturationStatsController.getCommandesFacturables);
 router.get('/facturation/stats/tresorerie', authMiddleware, canDo('viewFacturation'), facturationStatsController.getTresorerie);
 router.get('/facturation/stats/retards', authMiddleware, canDo('viewFacturation'), facturationStatsController.getFacturesEnRetard);
+router.get('/facturation/tva/annees', authMiddleware, canDo('viewFacturation'), facturationStatsController.getAnneesDisponibles);
+router.get('/facturation/tva/g50', authMiddleware, canDo('viewFacturation'), facturationStatsController.getG50);
 
 // ============ NOTIFICATIONS ============
 router.get('/notifications', authMiddleware, notificationsController.list);

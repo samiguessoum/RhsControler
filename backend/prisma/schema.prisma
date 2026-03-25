@@ -119,6 +119,7 @@ enum FactureStatut {
   VALIDEE
   EN_RETARD
   PARTIELLEMENT_PAYEE
+  EN_ATTENTE_ENCAISSEMENT
   PAYEE
   ANNULEE
 }
@@ -131,6 +132,9 @@ enum FactureType {
 
 enum PaiementStatut {
   RECU
+  DEPOSE
+  ENCAISSE
+  REJETE
   ANNULE
 }
 
@@ -762,6 +766,7 @@ model ProduitService {
 
   // === Stock (pour type PRODUIT) ===
   aStock          Boolean         @default(true)    // Gérer le stock (false pour services)
+  modeGestion     String          @default("MIXTE") // FLUX_TENDU | MIXTE | STOCKE
   quantite        Float           @default(0)       // Quantité totale en stock
   stockMinimum    Float           @default(0)       // Seuil d'alerte
   stockMaximum    Float?                            // Stock maximum souhaité
@@ -792,6 +797,8 @@ model ProduitService {
   notePublique    String?                   // Note sur documents
   notePrivee      String?                   // Note interne
   urlExterne      String?                   // Lien vers documentation externe
+  ficheTechniqueUrl String?                 // URL du fichier PDF fiche technique
+  ficheTechniqueNom String?                 // Nom original du fichier PDF
 
   // === Statut ===
   enVente         Boolean         @default(true)    // Peut être vendu
@@ -1137,6 +1144,7 @@ model Facture {
   totalTVA             Float         @default(0)
   totalTTC             Float         @default(0)
   totalPaye            Float         @default(0)
+  totalEnAttente       Float         @default(0)
   devise               String?       @default("DZD")
   notes                String?
   conditions           String?
@@ -1209,14 +1217,17 @@ model Paiement {
   facture        Facture        @relation(fields: [factureId], references: [id], onDelete: Cascade)
   modePaiementId String?
   modePaiement   ModePaiement?  @relation(fields: [modePaiementId], references: [id])
-  datePaiement   DateTime       @default(now())
-  montant        Float
-  reference      String?
-  notes          String?
-  statut         PaiementStatut @default(RECU)
-  createdById    String?
-  createdBy      User?          @relation("PaiementCreatedBy", fields: [createdById], references: [id])
-  createdAt      DateTime       @default(now())
+  datePaiement     DateTime       @default(now())
+  montant          Float
+  reference        String?
+  banque           String?
+  dateDepot        DateTime?
+  dateEncaissement DateTime?
+  notes            String?
+  statut           PaiementStatut @default(RECU)
+  createdById      String?
+  createdBy        User?          @relation("PaiementCreatedBy", fields: [createdById], references: [id])
+  createdAt        DateTime       @default(now())
 
   @@index([factureId])
   @@index([datePaiement])

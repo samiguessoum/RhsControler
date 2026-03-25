@@ -341,29 +341,30 @@ export async function checkOverdueInvoices(): Promise<void> {
 
 // Fonction pour vérifier les stocks bas
 export async function checkLowStock(): Promise<void> {
-  const produitsStockBas = await prisma.produitService.findMany({
+  const tous = await prisma.produitService.findMany({
     where: {
       type: 'PRODUIT',
-      gestionStock: true,
-      stockActuel: { lte: prisma.produitService.fields.stockMin },
+      aStock: true,
+      stockMinimum: { gt: 0 },
     },
+    select: { id: true, nom: true, reference: true, quantite: true, stockMinimum: true },
   });
 
+  const produitsStockBas = tous.filter((p) => p.quantite <= p.stockMinimum);
+
   for (const produit of produitsStockBas) {
-    if (produit.stockActuel <= (produit.stockMin || 0)) {
-      facturationEvents.emitEvent({
-        type: 'stock.low',
-        entityId: produit.id,
-        entityType: 'ProduitService',
-        data: {
-          nom: produit.nom,
-          reference: produit.reference,
-          stockActuel: produit.stockActuel,
-          stockMin: produit.stockMin,
-        },
-        timestamp: new Date(),
-      });
-    }
+    facturationEvents.emitEvent({
+      type: 'stock.low',
+      entityId: produit.id,
+      entityType: 'ProduitService',
+      data: {
+        nom: produit.nom,
+        reference: produit.reference,
+        stockActuel: produit.quantite,
+        stockMin: produit.stockMinimum,
+      },
+      timestamp: new Date(),
+    });
   }
 }
 

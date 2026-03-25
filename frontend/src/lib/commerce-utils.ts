@@ -125,6 +125,7 @@ export const STATUS_MAP: Record<string, StatusConfig> = {
   // Payment statuses
   EN_RETARD: { label: 'En retard', variant: 'destructive' },
   PARTIELLEMENT_PAYEE: { label: 'Part. payée', variant: 'warning' },
+  EN_ATTENTE_ENCAISSEMENT: { label: 'En att. encaissement', variant: 'warning' },
   PAYEE: { label: 'Payée', variant: 'success' },
   A_PAYER: { label: 'À payer', variant: 'warning' },
 };
