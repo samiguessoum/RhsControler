@@ -469,7 +469,7 @@ export const commerceController = {
         },
       });
 
-      await createAuditLog(req.user!.id, 'UPDATE', 'Devis', devis.id, { action: 'VALIDATION', after: devis });
+      await createAuditLog(req.user!.id, 'UPDATE', 'Devis', devis.id, { action: 'VALIDATION', after: devis } as any);
 
       res.json({ devis, message: 'Devis validé avec succès' });
     } catch (error) {
@@ -868,7 +868,7 @@ export const commerceController = {
         },
       });
 
-      await createAuditLog(req.user!.id, 'UPDATE', 'Commande', commande.id, { action: 'VALIDATION', after: commande });
+      await createAuditLog(req.user!.id, 'UPDATE', 'Commande', commande.id, { action: 'VALIDATION', after: commande } as any);
 
       res.json({ commande, message: 'Commande validée avec succès' });
     } catch (error) {
@@ -1417,7 +1417,7 @@ export const commerceController = {
         return updated;
       });
 
-      await createAuditLog(req.user!.id, 'UPDATE', 'Facture', facture.id, { action: 'VALIDATION', after: facture });
+      await createAuditLog(req.user!.id, 'UPDATE', 'Facture', facture.id, { action: 'VALIDATION', after: facture } as any);
 
       // Émettre l'événement
       facturationEvents.emitEvent({

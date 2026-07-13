@@ -651,7 +651,7 @@ export const interventionController = {
         after: intervention,
         action: 'ANNULEE',
         raison,
-      });
+      } as any);
 
       res.json({ intervention });
     } catch (error: any) {

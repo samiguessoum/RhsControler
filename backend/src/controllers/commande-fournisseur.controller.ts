@@ -432,7 +432,7 @@ export const commandeFournisseurController = {
       const commande = await prisma.commandeFournisseur.update({
         where: { id },
         data: {
-          statut: 'VALIDEE',
+          statut: 'VALIDEE' as any,
           updatedById: req.user?.id,
         },
         include: {

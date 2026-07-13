@@ -641,7 +641,7 @@ export const facturationStatsController = {
   },
 
   // Années ayant des données TVA (factures non brouillon/annulées)
-  async getAnneesDisponibles(_req: AuthRequest, res: Response) {
+  async getAnneesDisponibles(_req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const factures = await prisma.facture.findMany({
         where: { statut: { notIn: ['BROUILLON', 'ANNULEE'] } },

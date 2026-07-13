@@ -74,7 +74,7 @@ class FacturationEventEmitter extends EventEmitter {
   }
 
   emitEvent(event: FacturationEvent) {
-    logger.info(`[EVENT] ${event.type}:`, event.entityId);
+    logger.info({ eventType: event.type, entityId: event.entityId }, '[EVENT]');
     this.emit(event.type, event);
     this.emit('*', event); // Wildcard pour les listeners globaux
   }
