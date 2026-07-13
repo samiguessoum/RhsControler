@@ -1,8 +1,11 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import { prisma } from '../config/database.js';
 import { ChargeStatut } from '@prisma/client';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
+import logger from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
+
 
 const DEFAULT_PREFIX = 'CHG';
 
@@ -49,7 +52,7 @@ function determineStatut(montantTTC: number, montantPaye: number): ChargeStatut 
 
 export const chargeController = {
   // Liste des charges
-  async list(req: AuthRequest, res: Response) {
+  async list(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const {
         search,
@@ -109,13 +112,13 @@ export const chargeController = {
         },
       });
     } catch (error) {
-      console.error('List charges error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List charges error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   // Détail d'une charge
-  async get(req: AuthRequest, res: Response) {
+  async get(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const charge = await prisma.charge.findUnique({
@@ -137,13 +140,13 @@ export const chargeController = {
 
       res.json({ charge });
     } catch (error) {
-      console.error('Get charge error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get charge error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   // Créer une charge
-  async create(req: AuthRequest, res: Response) {
+  async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const data = req.body;
 
@@ -204,13 +207,13 @@ export const chargeController = {
 
       res.status(201).json({ charge });
     } catch (error) {
-      console.error('Create charge error:', error);
-      res.status(500).json({ error: 'Erreur lors de la création de la charge' });
+      logger.error({ err: error }, 'Create charge error');
+      return next(new AppError(500, 'Erreur lors de la création de la charge'));
     }
   },
 
   // Mettre à jour une charge
-  async update(req: AuthRequest, res: Response) {
+  async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const data = req.body;
@@ -272,13 +275,13 @@ export const chargeController = {
 
       res.json({ charge });
     } catch (error) {
-      console.error('Update charge error:', error);
-      res.status(500).json({ error: 'Erreur lors de la mise à jour de la charge' });
+      logger.error({ err: error }, 'Update charge error');
+      return next(new AppError(500, 'Erreur lors de la mise à jour de la charge'));
     }
   },
 
   // Supprimer une charge
-  async delete(req: AuthRequest, res: Response) {
+  async delete(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -300,13 +303,13 @@ export const chargeController = {
 
       res.json({ message: 'Charge supprimée' });
     } catch (error) {
-      console.error('Delete charge error:', error);
-      res.status(500).json({ error: 'Erreur lors de la suppression de la charge' });
+      logger.error({ err: error }, 'Delete charge error');
+      return next(new AppError(500, 'Erreur lors de la suppression de la charge'));
     }
   },
 
   // Ajouter un paiement
-  async createPaiement(req: AuthRequest, res: Response) {
+  async createPaiement(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { montant, datePaiement, modePaiementId, reference, notes } = req.body;
@@ -360,13 +363,13 @@ export const chargeController = {
 
       res.status(201).json({ paiement, nouveauStatut, montantPaye: nouveauMontantPaye });
     } catch (error) {
-      console.error('Create paiement charge error:', error);
-      res.status(500).json({ error: 'Erreur lors de la création du paiement' });
+      logger.error({ err: error }, 'Create paiement charge error');
+      return next(new AppError(500, 'Erreur lors de la création du paiement'));
     }
   },
 
   // Supprimer un paiement
-  async deletePaiement(req: AuthRequest, res: Response) {
+  async deletePaiement(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id, paiementId } = req.params;
 
@@ -399,13 +402,13 @@ export const chargeController = {
 
       res.json({ message: 'Paiement supprimé', nouveauStatut, montantPaye: nouveauMontantPaye });
     } catch (error) {
-      console.error('Delete paiement charge error:', error);
-      res.status(500).json({ error: 'Erreur lors de la suppression du paiement' });
+      logger.error({ err: error }, 'Delete paiement charge error');
+      return next(new AppError(500, 'Erreur lors de la suppression du paiement'));
     }
   },
 
   // Liste des catégories distinctes
-  async getCategories(req: AuthRequest, res: Response) {
+  async getCategories(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { typeCharge } = req.query;
 
@@ -438,13 +441,13 @@ export const chargeController = {
 
       res.json({ categories });
     } catch (error) {
-      console.error('Get categories error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get categories error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   // Statistiques par type de charge
-  async getStatsByType(req: AuthRequest, res: Response) {
+  async getStatsByType(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { annee } = req.query;
       const year = annee ? parseInt(annee as string) : new Date().getFullYear();
@@ -480,13 +483,13 @@ export const chargeController = {
 
       res.json({ stats, statsByCategorie, annee: year });
     } catch (error) {
-      console.error('Get stats by type error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get stats by type error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   // Annuler une charge
-  async annuler(req: AuthRequest, res: Response) {
+  async annuler(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -518,8 +521,8 @@ export const chargeController = {
 
       res.json({ charge, message: 'Charge annulée' });
     } catch (error) {
-      console.error('Annuler charge error:', error);
-      res.status(500).json({ error: 'Erreur lors de l\'annulation de la charge' });
+      logger.error({ err: error }, 'Annuler charge error');
+      return next(new AppError(500, 'Erreur lors de l\'annulation de la charge'));
     }
   },
 };

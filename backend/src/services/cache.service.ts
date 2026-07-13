@@ -1,3 +1,4 @@
+import logger from '../lib/logger.js';
 /**
  * Service de cache simple en mémoire pour les rapports de facturation
  * Pour la production, remplacer par Redis ou un autre système de cache distribué
@@ -149,7 +150,7 @@ export const cacheService = new CacheService();
 setInterval(() => {
   const cleaned = cacheService.cleanup();
   if (cleaned > 0) {
-    console.log(`[CACHE] Nettoyage: ${cleaned} entrées supprimées`);
+    logger.info(`[CACHE] Nettoyage: ${cleaned} entrées supprimées`);
   }
 }, 10 * 60 * 1000);
 

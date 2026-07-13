@@ -4,278 +4,471 @@ import { useState } from 'react';
 import {
   AlertTriangle,
   Clock,
-  CheckCircle,
-  ArrowRight,
+  CheckCircle2,
   Plus,
   AlertCircle,
   Users,
-  FileText,
-  TrendingUp,
-  TrendingDown,
-  CalendarDays,
-  ClipboardList,
-  Activity,
-  ChevronRight,
-  ChevronDown,
   Sun,
-  Sparkles,
-  UserCheck,
-  UserX,
-  Briefcase,
-  MapPin,
-  Building2,
-  BarChart3,
-  ExternalLink,
+  ChevronRight,
   X,
+  CalendarDays,
+  ShieldAlert,
+  ClipboardList,
+  UserCheck,
 } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { dashboardApi } from '@/services/api';
 import { getStatutColor, getStatutLabel, formatDate } from '@/lib/utils';
 import type { Intervention, Alerte } from '@/types';
 import { useAuthStore } from '@/store/auth.store';
 
-// Config pour auto-refresh
 const QUERY_CONFIG = {
   refetchOnWindowFocus: true,
   refetchOnMount: true,
-  staleTime: 30000, // 30 secondes
-  refetchInterval: 60000, // Refresh toutes les minutes
+  staleTime: 30000,
+  refetchInterval: 60000,
 };
 
-// Composant pour les statistiques principales (compact)
-function StatCard({
-  title,
+/* ─────────────────────────────────────────────
+   KPI Card
+───────────────────────────────────────────── */
+function KpiCard({
+  label,
   value,
   icon: Icon,
-  variant = 'default',
+  color,
   link,
+  onClick,
 }: {
-  title: string;
+  label: string;
   value: number;
   icon: React.ElementType;
-  variant?: 'default' | 'warning' | 'error' | 'success';
+  color: 'red' | 'amber' | 'orange' | 'green' | 'gray';
   link?: string;
+  onClick?: () => void;
 }) {
-  const variants = {
-    default: { iconBg: 'bg-gray-100', iconColor: 'text-gray-600', border: 'border-gray-100' },
-    success: { iconBg: 'bg-green-50', iconColor: 'text-green-600', border: 'border-green-100' },
-    warning: { iconBg: 'bg-amber-50', iconColor: 'text-amber-600', border: 'border-amber-100' },
-    error: { iconBg: 'bg-red-50', iconColor: 'text-red-600', border: 'border-red-100' },
-  };
-  const style = variants[variant];
+  const active = value > 0;
 
-  const content = (
-    <div className={`bg-white ${style.border} border rounded-lg p-3 hover:shadow-sm transition-all cursor-pointer group`}>
-      <div className="flex items-center justify-between">
+  const palette = {
+    red:    { bar: 'bg-red-500',    icon: 'text-red-500',    num: 'text-red-600',    bg: 'bg-red-50' },
+    amber:  { bar: 'bg-amber-400',  icon: 'text-amber-500',  num: 'text-amber-600',  bg: 'bg-amber-50' },
+    orange: { bar: 'bg-orange-400', icon: 'text-orange-500', num: 'text-orange-600', bg: 'bg-orange-50' },
+    green:  { bar: 'bg-green-500',  icon: 'text-green-600',  num: 'text-green-700',  bg: 'bg-green-50' },
+    gray:   { bar: 'bg-gray-300',   icon: 'text-gray-300',   num: 'text-gray-300',   bg: 'bg-gray-50' },
+  };
+
+  const p = active ? palette[color] : palette.gray;
+
+  const inner = (
+    <div
+      className={`relative bg-white rounded-xl p-5 cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 overflow-hidden ${active ? 'shadow-sm' : 'shadow-none'}`}
+      onClick={onClick}
+    >
+      {/* colored bottom bar */}
+      <div className={`absolute bottom-0 left-0 right-0 h-1 ${p.bar} rounded-b-xl transition-all`} />
+
+      <div className="flex items-start justify-between">
         <div>
-          <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">{title}</p>
-          <p className="text-xl font-bold text-gray-900">{value}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-1">{label}</p>
+          <p className={`text-4xl font-black tabular-nums leading-none ${p.num}`}>{value}</p>
         </div>
-        <div className={`p-1.5 rounded-lg ${style.iconBg}`}>
-          <Icon className={`h-4 w-4 ${style.iconColor}`} />
+        <div className={`p-2.5 rounded-xl ${active ? p.bg : 'bg-gray-50'}`}>
+          <Icon className={`h-5 w-5 ${p.icon}`} />
         </div>
       </div>
     </div>
   );
 
-  return link ? <Link to={link}>{content}</Link> : content;
+  if (link && active) return <Link to={link}>{inner}</Link>;
+  return inner;
 }
 
-// Mini calendrier semaine (plus compact)
-function WeekCalendar({ jours }: { jours: { date: string; jour: string; count: number; isToday: boolean }[] }) {
+/* ─────────────────────────────────────────────
+   Semaine Calendar
+───────────────────────────────────────────── */
+function WeekStrip({ jours }: { jours: { date: string; jour: string; count: number; isToday: boolean }[] }) {
   return (
-    <div className="flex gap-1">
-      {jours.map((jour) => (
-        <Link
-          key={jour.date}
-          to={`/planning?date=${jour.date}`}
-          className={`flex-1 flex flex-col items-center py-1.5 px-1 rounded-lg transition-all hover:scale-105 ${
-            jour.isToday ? 'bg-green-600 text-white shadow' : 'bg-gray-50 hover:bg-gray-100'
-          }`}
-        >
-          <span className={`text-[9px] font-medium uppercase ${jour.isToday ? 'text-green-100' : 'text-gray-400'}`}>
-            {jour.jour}
-          </span>
-          <span className={`text-sm font-bold ${jour.isToday ? 'text-white' : 'text-gray-700'}`}>
-            {new Date(jour.date).getDate()}
-          </span>
-          <span className={`text-[10px] font-semibold ${
-            jour.count === 0 ? (jour.isToday ? 'text-green-200' : 'text-gray-300') :
-            jour.isToday ? 'text-white' : 'text-green-600'
-          }`}>
-            {jour.count}
-          </span>
-        </Link>
-      ))}
+    <div className="bg-white rounded-xl shadow-sm p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <CalendarDays className="h-4 w-4 text-gray-400" />
+        <span className="text-xs font-semibold uppercase tracking-widest text-gray-400">Cette semaine</span>
+      </div>
+      <div className="grid grid-cols-7 gap-2">
+        {jours.map((jour) => (
+          <Link
+            key={jour.date}
+            to={`/planning?date=${jour.date}`}
+            className={`flex flex-col items-center py-2.5 px-1 rounded-xl transition-all duration-150 hover:scale-105 ${
+              jour.isToday
+                ? 'bg-green-600 shadow-md shadow-green-200'
+                : jour.count > 0
+                  ? 'bg-green-50 hover:bg-green-100'
+                  : 'bg-gray-50 hover:bg-gray-100'
+            }`}
+          >
+            <span className={`text-[10px] font-bold uppercase tracking-wider ${jour.isToday ? 'text-green-200' : 'text-gray-400'}`}>
+              {jour.jour.slice(0, 3)}
+            </span>
+            <span className={`text-lg font-black leading-tight ${jour.isToday ? 'text-white' : 'text-gray-700'}`}>
+              {new Date(jour.date + 'T12:00:00').getDate()}
+            </span>
+            <span className={`text-xs font-bold ${
+              jour.count === 0
+                ? jour.isToday ? 'text-green-300' : 'text-gray-300'
+                : jour.isToday ? 'text-green-100' : 'text-green-600'
+            }`}>
+              {jour.count > 0 ? jour.count : '·'}
+            </span>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }
 
-// Section Aujourd'hui
-function TodaySection({ interventions, total, realisees }: { interventions: Intervention[]; total: number; realisees: number }) {
+/* ─────────────────────────────────────────────
+   Section Aujourd'hui (Hero)
+───────────────────────────────────────────── */
+function TodayHero({
+  interventions,
+  total,
+  realisees,
+}: {
+  interventions: Intervention[];
+  total: number;
+  realisees: number;
+}) {
   const progress = total > 0 ? Math.round((realisees / total) * 100) : 0;
 
+  const statutConfig: Record<string, { dot: string; badge: string }> = {
+    REALISEE:  { dot: 'bg-green-500', badge: 'bg-green-100 text-green-700' },
+    PLANIFIEE: { dot: 'bg-blue-500',  badge: 'bg-blue-100 text-blue-700' },
+    REPORTEE:  { dot: 'bg-amber-400', badge: 'bg-amber-100 text-amber-700' },
+    ANNULEE:   { dot: 'bg-red-400',   badge: 'bg-red-100 text-red-600' },
+  };
+
   return (
-    <Card className="shadow-sm border-gray-100">
-      <CardHeader className="pb-2 px-3 pt-3">
+    <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      {/* Header strip */}
+      <div className="bg-gradient-to-r from-green-600 to-green-500 px-6 py-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Sun className="h-4 w-4 text-amber-500" />
-            <span className="font-semibold text-gray-800">Aujourd'hui</span>
+          <div className="flex items-center gap-3">
+            <Sun className="h-5 w-5 text-green-200" />
+            <span className="text-white font-bold text-lg tracking-tight">Aujourd'hui</span>
             {total > 0 && (
-              <Badge variant="secondary" className="bg-green-100 text-green-700 text-[10px]">
-                {realisees}/{total}
-              </Badge>
+              <span className="bg-white/20 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">
+                {realisees}/{total} réalisées
+              </span>
             )}
           </div>
-          <Link to="/planning" className="text-[10px] text-green-600 hover:text-green-700 font-medium flex items-center gap-0.5">
-            Planning <ArrowRight className="h-3 w-3" />
+          <Link
+            to="/planning"
+            className="text-green-100 hover:text-white text-xs font-semibold flex items-center gap-1 transition-colors"
+          >
+            Planning complet <ChevronRight className="h-3.5 w-3.5" />
           </Link>
         </div>
-        {total > 0 && <Progress value={progress} className="h-1 mt-2" />}
-      </CardHeader>
-      <CardContent className="px-3 pb-3">
-        {interventions.length === 0 ? (
-          <div className="text-center py-3 text-gray-400">
-            <Sparkles className="h-6 w-6 mx-auto mb-1 text-green-200" />
-            <p className="text-xs">Aucune intervention</p>
-          </div>
-        ) : (
-          <div className="space-y-1 max-h-[140px] overflow-y-auto">
-            {interventions.map((i) => (
-              <Link
-                key={i.id}
-                to={`/planning?interventionId=${i.id}`}
-                className="flex items-center justify-between p-1.5 rounded bg-gray-50 hover:bg-gray-100 transition-colors"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className={`w-1 h-6 rounded-full flex-shrink-0 ${
-                    i.statut === 'REALISEE' ? 'bg-green-500' : i.statut === 'PLANIFIEE' ? 'bg-blue-500' : 'bg-amber-500'
-                  }`} />
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium text-gray-900 truncate">{i.client?.nomEntreprise}</p>
-                    <p className="text-[10px] text-gray-500 truncate">
-                      {i.heurePrevue && <span className="font-medium">{i.heurePrevue}</span>}
-                      {i.prestation && <span> • {i.prestation}</span>}
-                    </p>
-                  </div>
-                </div>
-                <ChevronRight className="h-3 w-3 text-gray-300 flex-shrink-0" />
-              </Link>
-            ))}
+        {total > 0 && (
+          <div className="mt-3">
+            <Progress value={progress} className="h-1.5 bg-green-700 [&>div]:bg-white" />
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+
+      {/* Body */}
+      <div className="p-4">
+        {interventions.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <div className="w-14 h-14 rounded-full bg-green-50 flex items-center justify-center mb-3">
+              <Sun className="h-7 w-7 text-green-400" />
+            </div>
+            <p className="font-semibold text-gray-700">Journée libre</p>
+            <p className="text-sm text-gray-400 mt-1">Aucune intervention planifiée aujourd'hui</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {interventions.map((i) => {
+              const cfg = statutConfig[i.statut] || { dot: 'bg-gray-300', badge: 'bg-gray-100 text-gray-600' };
+              return (
+                <Link
+                  key={i.id}
+                  to={`/planning?interventionId=${i.id}`}
+                  className="group flex items-center gap-4 p-3 rounded-xl hover:bg-gray-50 transition-colors"
+                >
+                  {/* Hour */}
+                  <div className="w-12 text-right flex-shrink-0">
+                    <span className="text-sm font-black text-gray-800 tabular-nums">
+                      {i.heurePrevue || '—'}
+                    </span>
+                  </div>
+
+                  {/* Status dot */}
+                  <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
+
+                  {/* Client + prestation */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">
+                      {i.client?.nomEntreprise || '—'}
+                    </p>
+                    {i.prestation && (
+                      <p className="text-xs text-gray-400 truncate">{i.prestation}</p>
+                    )}
+                  </div>
+
+                  {/* Badge statut */}
+                  <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full flex-shrink-0 ${cfg.badge}`}>
+                    {getStatutLabel(i.statut)}
+                  </span>
+
+                  <ChevronRight className="h-4 w-4 text-gray-200 group-hover:text-gray-400 transition-colors flex-shrink-0" />
+                </Link>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
-// Section Employés disponibles (avec scroll)
-function EmployesSansMission({ employes }: { employes: { id: string; nom: string; prenom: string; postes: { nom: string }[] }[] }) {
-  if (employes.length === 0) {
+/* ─────────────────────────────────────────────
+   Alertes Contrats
+───────────────────────────────────────────── */
+function AlertesPanel({ alertes }: { alertes: Alerte[] }) {
+  const visible = alertes.slice(0, 5);
+  const more = alertes.length - 5;
+
+  if (alertes.length === 0) {
     return (
-      <div className="flex items-center gap-2 p-2 rounded-lg bg-green-50 border border-green-100">
-        <UserCheck className="h-4 w-4 text-green-600" />
-        <span className="text-xs text-green-700 font-medium">Tous les employés sont occupés</span>
+      <div className="bg-white rounded-xl shadow-sm p-6 flex flex-col items-center justify-center text-center min-h-[200px]">
+        <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mb-3">
+          <CheckCircle2 className="h-6 w-6 text-green-500" />
+        </div>
+        <p className="font-semibold text-gray-700">Tout est en ordre</p>
+        <p className="text-sm text-gray-400 mt-1">Aucune alerte contrat active</p>
       </div>
     );
   }
 
+  const getConfig = (type: string, joursRestants?: number) => {
+    if (type === 'CONTRAT_SANS_INTERVENTION' || type === 'CONTRAT_HORS_VALIDITE') {
+      return { dot: 'bg-red-500', pill: 'bg-red-100 text-red-700', label: 'text-red-600' };
+    }
+    if (type === 'ANNUEL_FIN_PROCHE') {
+      return joursRestants && joursRestants <= 30
+        ? { dot: 'bg-orange-500', pill: 'bg-orange-100 text-orange-700', label: 'text-orange-600' }
+        : { dot: 'bg-amber-400', pill: 'bg-amber-100 text-amber-700', label: 'text-amber-600' };
+    }
+    if (type === 'PONCTUEL_FIN_PROCHE') {
+      return { dot: 'bg-purple-500', pill: 'bg-purple-100 text-purple-700', label: 'text-purple-600' };
+    }
+    return { dot: 'bg-gray-400', pill: 'bg-gray-100 text-gray-600', label: 'text-gray-600' };
+  };
+
+  const getTypeLabel = (type: string) => {
+    if (type === 'CONTRAT_SANS_INTERVENTION') return 'Sans intervention';
+    if (type === 'CONTRAT_HORS_VALIDITE') return 'Hors validité';
+    if (type === 'ANNUEL_FIN_PROCHE') return 'Renouvellement';
+    if (type === 'PONCTUEL_FIN_PROCHE') return 'Op. restantes';
+    return type;
+  };
+
   return (
-    <Card className="shadow-sm border-gray-100">
-      <CardHeader className="pb-1 px-3 pt-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <UserX className="h-4 w-4 text-amber-500" />
-            <span className="font-semibold text-gray-800 text-sm">Disponibles</span>
-            <Badge variant="secondary" className="bg-amber-100 text-amber-700 text-[10px]">{employes.length}</Badge>
-          </div>
+    <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <ShieldAlert className="h-4.5 w-4.5 text-red-500 h-5 w-5" />
+          <span className="font-bold text-gray-800">Alertes contrats</span>
+          <span className="bg-red-500 text-white text-[11px] font-bold px-2 py-0.5 rounded-full">
+            {alertes.length}
+          </span>
         </div>
-      </CardHeader>
-      <CardContent className="px-3 pb-3">
-        <div className="space-y-1 max-h-[120px] overflow-y-auto">
-          {employes.map((e) => (
-            <div key={e.id} className="flex items-center gap-2 p-1.5 rounded bg-gray-50">
-              <div className="w-6 h-6 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
-                <span className="text-[9px] font-bold text-amber-700">{e.prenom[0]}{e.nom[0]}</span>
+      </div>
+
+      <div className="p-3 space-y-1.5">
+        {visible.map((a) => {
+          const cfg = getConfig(a.type, a.joursRestants);
+          return (
+            <Link
+              key={a.id}
+              to={`/contrats/${a.contratId}`}
+              className="group flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors"
+            >
+              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${cfg.dot}`} />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900 truncate">
+                  {a.client?.nomEntreprise || '—'}
+                </p>
+                <p className={`text-xs ${cfg.label}`}>{getTypeLabel(a.type)}</p>
               </div>
-              <div className="min-w-0">
-                <p className="text-xs font-medium text-gray-900 truncate">{e.prenom} {e.nom}</p>
-                <p className="text-[10px] text-gray-500 truncate">{e.postes.map(p => p.nom).join(', ') || '-'}</p>
+              <div className={`text-center px-3 py-1.5 rounded-xl ${cfg.pill} flex-shrink-0`}>
+                {a.type === 'ANNUEL_FIN_PROCHE' && a.joursRestants !== undefined ? (
+                  <>
+                    <p className="text-base font-black leading-none">{a.joursRestants}</p>
+                    <p className="text-[9px] font-semibold mt-0.5 opacity-70">jours</p>
+                  </>
+                ) : a.type === 'PONCTUEL_FIN_PROCHE' && a.operationsRestantes !== undefined ? (
+                  <>
+                    <p className="text-base font-black leading-none">{a.operationsRestantes}</p>
+                    <p className="text-[9px] font-semibold mt-0.5 opacity-70">op.</p>
+                  </>
+                ) : (
+                  <p className="text-xs font-bold">!</p>
+                )}
               </div>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+              <ChevronRight className="h-4 w-4 text-gray-200 group-hover:text-gray-400 transition-colors" />
+            </Link>
+          );
+        })}
+
+        {more > 0 && (
+          <Link
+            to="/contrats"
+            className="flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            +{more} autres alertes <ChevronRight className="h-3 w-3" />
+          </Link>
+        )}
+      </div>
+    </div>
   );
 }
 
-// Section Charge de travail (cliquable avec détails)
-function ChargeEmployes({
+/* ─────────────────────────────────────────────
+   Équipe du Jour
+───────────────────────────────────────────── */
+function EquipePanel({
   employes,
-  onSelect,
+  stats,
+  missionsNonAssignees,
+  employesSansMission,
+  onSelectEmploye,
 }: {
-  employes: { id: string; nom: string; prenom: string; totalMissionsSemaine: number; heuresTravaillees: number; tendance: number }[];
-  onSelect: (id: string) => void;
+  employes: { id: string; nom: string; prenom: string; totalMissionsSemaine: number; postes: { nom: string }[]; detailsMissions: { id: string; date: string; client: string; statut: string; heure: string | null }[] }[];
+  stats: { totalEmployes: number; employesAvecMission: number; employesSansMissionCount: number; totalMissionsSemaine: number };
+  missionsNonAssignees: number;
+  employesSansMission: { id: string; nom: string; prenom: string; postes: { nom: string }[] }[];
+  onSelectEmploye: (id: string) => void;
 }) {
-  const maxMissions = Math.max(...employes.map(e => e.totalMissionsSemaine), 1);
+  const enMission = employes.filter(e => e.totalMissionsSemaine > 0);
 
   return (
-    <Card className="shadow-sm border-gray-100">
-      <CardHeader className="pb-1 px-3 pt-3">
-        <div className="flex items-center gap-2">
-          <Briefcase className="h-4 w-4 text-green-600" />
-          <span className="font-semibold text-gray-800 text-sm">Charge de travail</span>
+    <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-gray-50">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <Users className="h-5 w-5 text-blue-500" />
+            <span className="font-bold text-gray-800">Équipe</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="bg-green-100 text-green-700 text-[11px] font-bold px-2 py-0.5 rounded-full">
+              {stats.employesAvecMission} en mission
+            </span>
+            <span className="bg-amber-100 text-amber-700 text-[11px] font-bold px-2 py-0.5 rounded-full">
+              {stats.employesSansMissionCount} dispo
+            </span>
+            <span className="bg-gray-100 text-gray-500 text-[11px] font-bold px-2 py-0.5 rounded-full">
+              {stats.totalMissionsSemaine} missions
+            </span>
+          </div>
         </div>
-        <CardDescription className="text-[10px]">Cliquez pour voir les détails</CardDescription>
-      </CardHeader>
-      <CardContent className="px-3 pb-3">
-        {employes.length === 0 ? (
-          <p className="text-xs text-gray-400 text-center py-2">Aucune donnée</p>
-        ) : (
-          <div className="space-y-2 max-h-[150px] overflow-y-auto">
-            {employes.map((e, idx) => (
-              <button
-                key={e.id}
-                onClick={() => onSelect(e.id)}
-                className="w-full text-left p-1.5 rounded hover:bg-gray-50 transition-colors"
-              >
-                <div className="flex items-center justify-between mb-0.5">
-                  <div className="flex items-center gap-1.5">
-                    <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold ${
-                      idx === 0 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                    }`}>{idx + 1}</span>
-                    <span className="text-xs font-medium text-gray-800">{e.prenom} {e.nom}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs font-bold text-gray-900">{e.totalMissionsSemaine}</span>
-                    {e.tendance !== 0 && (
-                      <span className={`text-[9px] ${e.tendance > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                        {e.tendance > 0 ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="flex-1 h-1 bg-gray-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-green-500 rounded-full" style={{ width: `${(e.totalMissionsSemaine / maxMissions) * 100}%` }} />
-                  </div>
-                  <span className="text-[9px] text-gray-400 w-6 text-right">{e.heuresTravaillees}h</span>
-                </div>
-              </button>
-            ))}
+      </div>
+
+      <div className="p-3 space-y-1">
+        {/* Missions non assignées */}
+        {missionsNonAssignees > 0 && (
+          <div className="flex items-center gap-3 p-3 rounded-xl bg-amber-50 border border-amber-100 mb-2">
+            <ClipboardList className="h-4 w-4 text-amber-500 flex-shrink-0" />
+            <p className="text-xs font-semibold text-amber-800 flex-1">
+              {missionsNonAssignees} mission{missionsNonAssignees > 1 ? 's' : ''} sans équipier
+            </p>
+            <Link to="/planning" className="text-[11px] font-bold text-amber-600 hover:text-amber-800">
+              Assigner →
+            </Link>
           </div>
         )}
-      </CardContent>
-    </Card>
+
+        {/* Employés en mission */}
+        {enMission.length > 0 && (
+          <>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 px-3 pt-1">En mission cette semaine</p>
+            {enMission.map((e) => (
+              <button
+                key={e.id}
+                onClick={() => onSelectEmploye(e.id)}
+                className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors text-left"
+              >
+                <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                  <span className="text-xs font-black text-green-700">
+                    {e.prenom[0]}{e.nom[0]}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900">{e.prenom} {e.nom}</p>
+                  <p className="text-xs text-gray-400 truncate">
+                    {e.postes.map(p => p.nom).join(', ') || '—'}
+                  </p>
+                </div>
+                <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0">
+                  {e.totalMissionsSemaine}
+                </span>
+                <ChevronRight className="h-4 w-4 text-gray-200" />
+              </button>
+            ))}
+          </>
+        )}
+
+        {/* Séparateur */}
+        {enMission.length > 0 && employesSansMission.length > 0 && (
+          <div className="flex items-center gap-2 px-3 py-2">
+            <div className="flex-1 h-px bg-gray-100" />
+            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-300">disponibles</span>
+            <div className="flex-1 h-px bg-gray-100" />
+          </div>
+        )}
+
+        {/* Employés disponibles */}
+        {employesSansMission.length > 0 && (
+          <>
+            {employesSansMission.map((e) => (
+              <div
+                key={e.id}
+                className="flex items-center gap-3 p-3 rounded-xl"
+              >
+                <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
+                  <span className="text-xs font-black text-gray-400">
+                    {e.prenom[0]}{e.nom[0]}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-500">{e.prenom} {e.nom}</p>
+                  <p className="text-xs text-gray-300 truncate">
+                    {e.postes.map(p => p.nom).join(', ') || '—'}
+                  </p>
+                </div>
+                <UserCheck className="h-4 w-4 text-gray-300" />
+              </div>
+            ))}
+          </>
+        )}
+
+        {enMission.length === 0 && employesSansMission.length === 0 && (
+          <div className="flex flex-col items-center py-8 text-center">
+            <Users className="h-8 w-8 text-gray-200 mb-2" />
+            <p className="text-sm text-gray-400">Aucun employé</p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
-// Modal détails employé
+/* ─────────────────────────────────────────────
+   Modal Détail Employé (unchanged)
+───────────────────────────────────────────── */
 function EmployeDetailModal({
   employe,
   onClose,
@@ -348,319 +541,9 @@ function EmployeDetailModal({
   );
 }
 
-// Activité équipe (clients visités)
-function ActiviteEquipe({
-  employes,
-  onSelectEmploye,
-}: {
-  employes: { id: string; nom: string; prenom: string; totalMissionsSemaine: number; detailsMissions: { client: string; statut: string }[] }[];
-  onSelectEmploye: (id: string) => void;
-}) {
-  const withMissions = employes.filter(e => e.totalMissionsSemaine > 0);
-  if (withMissions.length === 0) return null;
-
-  return (
-    <Card className="shadow-sm border-gray-100">
-      <CardHeader className="pb-1 px-3 pt-3">
-        <div className="flex items-center gap-2">
-          <MapPin className="h-4 w-4 text-green-600" />
-          <span className="font-semibold text-gray-800 text-sm">Activité équipe</span>
-        </div>
-      </CardHeader>
-      <CardContent className="px-3 pb-3">
-        <div className="space-y-1.5 max-h-[150px] overflow-y-auto">
-          {withMissions.slice(0, 10).map((e) => (
-            <button
-              key={e.id}
-              onClick={() => onSelectEmploye(e.id)}
-              className="w-full text-left p-1.5 rounded bg-gray-50 hover:bg-gray-100 transition-colors"
-            >
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center">
-                    <span className="text-[8px] font-bold text-green-700">{e.prenom[0]}{e.nom[0]}</span>
-                  </div>
-                  <span className="text-xs font-medium text-gray-800">{e.prenom}</span>
-                </div>
-                <Badge variant="secondary" className="bg-green-100 text-green-700 text-[9px]">{e.totalMissionsSemaine}</Badge>
-              </div>
-              <div className="flex flex-wrap gap-0.5">
-                {e.detailsMissions.slice(0, 3).map((m, i) => (
-                  <span key={i} className={`text-[9px] px-1 py-0.5 rounded ${
-                    m.statut === 'REALISEE' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
-                  }`}>{m.client}</span>
-                ))}
-                {e.detailsMissions.length > 3 && (
-                  <span className="text-[9px] px-1 py-0.5 rounded bg-gray-100 text-gray-500">+{e.detailsMissions.length - 3}</span>
-                )}
-              </div>
-            </button>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// Stats par type
-function OperationsParType({ data }: { data: { type: string; count: number }[] }) {
-  const labels: Record<string, string> = {
-    OPERATION: 'Opérations',
-    CONTROLE: 'Contrôles',
-    RECLAMATION: 'Réclamations',
-    PREMIERE_VISITE: '1ère visite',
-    DEPLACEMENT_COMMERCIAL: 'Commercial',
-  };
-  const colors: Record<string, string> = {
-    OPERATION: 'bg-green-500',
-    CONTROLE: 'bg-blue-500',
-    RECLAMATION: 'bg-red-500',
-    PREMIERE_VISITE: 'bg-purple-500',
-    DEPLACEMENT_COMMERCIAL: 'bg-amber-500',
-  };
-  const total = data.reduce((a, d) => a + d.count, 0);
-
-  // S'assurer que RECLAMATION est dans la liste même si count = 0
-  const allTypes = ['OPERATION', 'CONTROLE', 'RECLAMATION', 'PREMIERE_VISITE', 'DEPLACEMENT_COMMERCIAL'];
-  const dataWithAll = allTypes.map(type => {
-    const found = data.find(d => d.type === type);
-    return { type, count: found?.count || 0 };
-  }).filter(d => d.count > 0 || d.type === 'RECLAMATION');
-
-  return (
-    <Card className="shadow-sm border-gray-100">
-      <CardHeader className="pb-1 px-3 pt-3">
-        <div className="flex items-center gap-2">
-          <BarChart3 className="h-4 w-4 text-green-600" />
-          <span className="font-semibold text-gray-800 text-sm">Par type</span>
-        </div>
-        <CardDescription className="text-[10px]">Ce mois</CardDescription>
-      </CardHeader>
-      <CardContent className="px-3 pb-3">
-        <div className="space-y-1.5">
-          {dataWithAll.map((d) => (
-            <div key={d.type} className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${colors[d.type] || 'bg-gray-400'}`} />
-              <span className="text-[11px] text-gray-600 flex-1">{labels[d.type] || d.type}</span>
-              <span className="text-xs font-semibold text-gray-900">{d.count}</span>
-              <span className="text-[9px] text-gray-400 w-6 text-right">
-                {total > 0 ? Math.round((d.count / total) * 100) : 0}%
-              </span>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// Top Clients
-function TopClients({ clients }: { clients: { clientId: string; nomEntreprise: string; count: number }[] }) {
-  return (
-    <Card className="shadow-sm border-gray-100">
-      <CardHeader className="pb-1 px-3 pt-3">
-        <div className="flex items-center gap-2">
-          <Building2 className="h-4 w-4 text-green-600" />
-          <span className="font-semibold text-gray-800 text-sm">Top clients</span>
-        </div>
-      </CardHeader>
-      <CardContent className="px-3 pb-3">
-        <div className="space-y-1 max-h-[120px] overflow-y-auto">
-          {clients.slice(0, 10).map((c, i) => (
-            <Link
-              key={c.clientId}
-              to={`/clients/${c.clientId}`}
-              className="flex items-center gap-2 p-1 rounded hover:bg-gray-50 transition-colors"
-            >
-              <span className={`w-4 h-4 rounded flex items-center justify-center text-[9px] font-bold ${
-                i === 0 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-              }`}>{i + 1}</span>
-              <span className="text-xs text-gray-700 flex-1 truncate">{c.nomEntreprise}</span>
-              <Badge variant="secondary" className="text-[9px]">{c.count}</Badge>
-            </Link>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// Performance mois
-function MonthProgress({ realisees, annulees, enAttente, tauxRealisation, moisCourant }: {
-  realisees: number; annulees: number; enAttente: number; tauxRealisation: number; moisCourant: string;
-}) {
-  return (
-    <Card className="shadow-sm border-gray-100">
-      <CardHeader className="pb-1 px-3 pt-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Activity className="h-4 w-4 text-green-600" />
-            <span className="font-semibold text-gray-800 text-sm">Performance</span>
-          </div>
-          <span className="text-[10px] text-gray-400 capitalize">{moisCourant}</span>
-        </div>
-      </CardHeader>
-      <CardContent className="px-3 pb-3">
-        <div className="flex items-center gap-3">
-          <div className="relative w-14 h-14">
-            <svg className="w-full h-full transform -rotate-90">
-              <circle cx="28" cy="28" r="22" fill="none" stroke="#f3f4f6" strokeWidth="5" />
-              <circle cx="28" cy="28" r="22" fill="none" stroke="#16a34a" strokeWidth="5"
-                strokeLinecap="round" strokeDasharray={`${tauxRealisation * 1.38} 138`} />
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-xs font-bold text-gray-800">{tauxRealisation}%</span>
-            </div>
-          </div>
-          <div className="flex-1 space-y-0.5 text-[11px]">
-            <div className="flex justify-between"><span className="text-gray-500">Réalisées</span><span className="font-semibold text-green-600">{realisees}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">En attente</span><span className="font-semibold text-gray-600">{enAttente}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Annulées</span><span className="font-semibold text-gray-400">{annulees}</span></div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// Alertes
-function AlertesSection({ alertes }: { alertes: Alerte[] }) {
-  if (alertes.length === 0) return null;
-
-  // Grouper les alertes par type pour mieux les afficher
-  const alertesCritiques = alertes.filter(a =>
-    a.type === 'CONTRAT_SANS_INTERVENTION' || a.type === 'CONTRAT_HORS_VALIDITE'
-  );
-  const alertesPonctuels = alertes.filter(a => a.type === 'PONCTUEL_FIN_PROCHE');
-  const alertesAnnuels = alertes.filter(a => a.type === 'ANNUEL_FIN_PROCHE');
-
-  const getAlertStyle = (type: string, joursRestants?: number) => {
-    if (type === 'ANNUEL_FIN_PROCHE') {
-      if (joursRestants && joursRestants <= 30) {
-        return { bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-700', badge: 'bg-orange-100 text-orange-700' };
-      }
-      return { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', badge: 'bg-amber-100 text-amber-700' };
-    }
-    if (type === 'PONCTUEL_FIN_PROCHE') {
-      return { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-700', badge: 'bg-purple-100 text-purple-700' };
-    }
-    return { bg: 'bg-white', border: 'border-red-100', text: 'text-red-700', badge: 'bg-red-100 text-red-700' };
-  };
-
-  return (
-    <Card className="shadow-sm border-red-100 bg-red-50/30">
-      <CardHeader className="pb-1 px-3 pt-3">
-        <div className="flex items-center gap-2">
-          <AlertCircle className="h-4 w-4 text-red-500" />
-          <span className="font-semibold text-red-700 text-sm">Alertes Contrats</span>
-          <Badge variant="secondary" className="bg-red-100 text-red-700 text-[10px]">{alertes.length}</Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="px-3 pb-3">
-        <div className="space-y-1.5 max-h-[250px] overflow-y-auto">
-          {/* Alertes critiques (sans intervention, hors validité) */}
-          {alertesCritiques.length > 0 && (
-            <div className="space-y-1">
-              {alertesCritiques.map((a) => {
-                const style = getAlertStyle(a.type);
-                return (
-                  <Link key={a.id} to={`/contrats/${a.contratId}`}
-                    className={`flex items-center justify-between p-1.5 rounded ${style.bg} border ${style.border} hover:opacity-80`}>
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium text-gray-900 truncate">{a.client.nomEntreprise}</p>
-                      <p className={`text-[10px] ${style.text}`}>
-                        {a.type === 'CONTRAT_SANS_INTERVENTION' ? 'Sans intervention planifiée' : 'Interventions hors validité'}
-                      </p>
-                    </div>
-                    <ChevronRight className="h-3 w-3 text-gray-300" />
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Alertes contrats ponctuels - avec nombre d'opérations bien visible */}
-          {alertesPonctuels.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-[9px] font-semibold text-purple-600 uppercase tracking-wide mt-1">Ponctuels - Opérations restantes</p>
-              {alertesPonctuels.map((a) => {
-                const style = getAlertStyle(a.type);
-                return (
-                  <Link key={a.id} to={`/contrats/${a.contratId}`}
-                    className={`flex items-center justify-between p-2 rounded ${style.bg} border ${style.border} hover:opacity-80`}>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-gray-900 truncate">{a.client.nomEntreprise}</p>
-                      {a.numeroBonCommande && (
-                        <p className="text-[9px] text-gray-500">BC: {a.numeroBonCommande}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className={`px-2 py-1 rounded-lg ${style.badge} text-center min-w-[50px]`}>
-                        <p className="text-lg font-bold leading-none">{a.operationsRestantes}</p>
-                        <p className="text-[8px] leading-tight">op.</p>
-                      </div>
-                      <ChevronRight className="h-3 w-3 text-gray-300" />
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Alertes contrats annuels à reconduire - avec jours restants bien visibles */}
-          {alertesAnnuels.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-[9px] font-semibold text-amber-600 uppercase tracking-wide mt-1">Annuels - Validité restante</p>
-              {alertesAnnuels.map((a) => {
-                const style = getAlertStyle(a.type, a.joursRestants);
-                const isUrgent = a.joursRestants && a.joursRestants <= 30;
-                return (
-                  <Link key={a.id} to={`/contrats/${a.contratId}`}
-                    className={`flex items-center justify-between p-2 rounded ${style.bg} border ${style.border} hover:opacity-80`}>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1">
-                        <p className="text-xs font-medium text-gray-900 truncate">{a.client.nomEntreprise}</p>
-                        {a.reconductionAuto && (
-                          <Badge variant="outline" className="text-[8px] py-0 px-1 h-3 bg-green-50 text-green-600 border-green-200">Auto</Badge>
-                        )}
-                      </div>
-                      {a.dateFin && (
-                        <p className="text-[9px] text-gray-500">Fin: {formatDate(a.dateFin)}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className={`px-2 py-1 rounded-lg ${style.badge} text-center min-w-[50px] ${isUrgent ? 'animate-pulse' : ''}`}>
-                        <p className="text-lg font-bold leading-none">{a.joursRestants}</p>
-                        <p className="text-[8px] leading-tight">jours</p>
-                      </div>
-                      <ChevronRight className="h-3 w-3 text-gray-300" />
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-// Missions non assignées
-function MissionsNonAssignees({ count }: { count: number }) {
-  if (count === 0) return null;
-  return (
-    <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-50 border border-amber-100">
-      <ClipboardList className="h-4 w-4 text-amber-600" />
-      <div className="flex-1">
-        <span className="text-xs font-medium text-amber-800">Missions sans employé</span>
-      </div>
-      <span className="text-lg font-bold text-amber-700">{count}</span>
-    </div>
-  );
-}
-
-// Dashboard principal
+/* ─────────────────────────────────────────────
+   Dashboard Principal
+───────────────────────────────────────────── */
 export function DashboardPage() {
   const user = useAuthStore((state) => state.user);
   const [selectedEmployeId, setSelectedEmployeId] = useState<string | null>(null);
@@ -689,141 +572,110 @@ export function DashboardPage() {
     ...QUERY_CONFIG,
   });
 
-  const { data: operationsData } = useQuery({
-    queryKey: ['dashboard-operations-stats'],
-    queryFn: dashboardApi.operationsStats,
-    ...QUERY_CONFIG,
-  });
-
   const stats = statsData?.stats;
   const prochains7Jours = statsData?.prochains7Jours || [];
-  const selectedEmploye = employesData?.employes.find(e => e.id === selectedEmployeId) || null;
+  const alertes: Alerte[] = alertesData?.alertes || [];
+  const selectedEmploye = employesData?.employes.find((e: any) => e.id === selectedEmployeId) || null;
+
+  const totalAlertes =
+    (stats?.contratsEnAlerte || 0) +
+    (stats?.ponctuelAlerte || 0) +
+    (stats?.contratsAnnuelsFinProche || 0);
 
   const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Bonjour';
-    if (hour < 18) return 'Bon après-midi';
+    const h = new Date().getHours();
+    if (h < 12) return 'Bonjour';
+    if (h < 18) return 'Bon après-midi';
     return 'Bonsoir';
   };
 
+  const dateLabel = new Date().toLocaleDateString('fr-FR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
   return (
-    <div className="space-y-3 pb-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-bold text-gray-900">{getGreeting()}, {user?.prenom || 'Utilisateur'}</h1>
-          <p className="text-xs text-gray-500">Vue d'ensemble</p>
-        </div>
-        <Link to="/planning">
-          <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white h-8 text-xs">
-            <Plus className="h-3.5 w-3.5 mr-1" /> Intervention
-          </Button>
-        </Link>
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
 
-      {/* Stats row */}
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-        <StatCard title="À planifier" value={stats?.aPlanifier || 0} icon={Clock} variant="warning" link="/planning?view=a-planifier" />
-        <StatCard title="En retard" value={stats?.enRetard || 0} icon={AlertTriangle} variant={stats?.enRetard ? 'error' : 'default'} link="/planning?view=en-retard" />
-        <StatCard title="Contrôles" value={stats?.controles30j || 0} icon={CheckCircle} variant="success" link="/planning?type=CONTROLE" />
-        <StatCard
-          title="Alertes"
-          value={(stats?.contratsEnAlerte || 0) + (stats?.ponctuelAlerte || 0) + (stats?.contratsAnnuelsFinProche || 0)}
-          icon={AlertCircle}
-          variant={(stats?.contratsEnAlerte || stats?.ponctuelAlerte || stats?.contratsAnnuelsFinProche) ? 'error' : 'default'}
-        />
-        <StatCard title="Clients" value={stats?.totalClients || 0} icon={Users} link="/clients" />
-        <StatCard title="Contrats" value={stats?.totalContrats || 0} icon={FileText} link="/contrats" />
-      </div>
-
-      {/* Calendrier */}
-      {prochains7Jours.length > 0 && (
-        <Card className="shadow-sm border-gray-100 p-3">
-          <div className="flex items-center gap-2 mb-2">
-            <CalendarDays className="h-4 w-4 text-green-600" />
-            <span className="font-semibold text-gray-800 text-sm">Semaine</span>
+        {/* ── Zone 1 : Header ── */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-black text-gray-900 tracking-tight">
+              {getGreeting()}, {user?.prenom || 'Utilisateur'}
+            </h1>
+            <p className="text-sm text-gray-400 mt-0.5 capitalize">{dateLabel}</p>
           </div>
-          <WeekCalendar jours={prochains7Jours} />
-        </Card>
-      )}
-
-      {/* Grid 2 colonnes */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        {/* Colonne gauche */}
-        <div className="space-y-3">
-          <TodaySection
-            interventions={aujourdhuiData?.interventions || []}
-            total={stats?.interventionsAujourdhui || 0}
-            realisees={stats?.realiseeAujourdhui || 0}
-          />
-
-          {alertesData && alertesData.alertes.length > 0 && (
-            <AlertesSection alertes={alertesData.alertes} />
-          )}
-
-          <MonthProgress
-            realisees={stats?.realiseeMois || 0}
-            annulees={stats?.annuleeMois || 0}
-            enAttente={stats?.enAttenteMois || 0}
-            tauxRealisation={stats?.tauxRealisationMois || 0}
-            moisCourant={statsData?.moisCourant || ''}
-          />
-
-          <OperationsParType data={operationsData?.parType || []} />
-
-          <TopClients clients={operationsData?.topClients || []} />
+          <Link to="/planning">
+            <Button className="bg-green-600 hover:bg-green-700 text-white font-semibold shadow-sm shadow-green-200 h-10">
+              <Plus className="h-4 w-4 mr-1.5" />
+              Nouvelle intervention
+            </Button>
+          </Link>
         </div>
 
-        {/* Colonne droite - Employés */}
-        <div className="space-y-3">
-          {/* Résumé équipe */}
-          <Card className="shadow-sm border-gray-100">
-            <CardContent className="p-3">
-              <div className="flex items-center gap-2 mb-2">
-                <Users className="h-4 w-4 text-blue-600" />
-                <span className="font-semibold text-gray-800 text-sm">Équipe</span>
-                {employesData && (
-                  <Badge variant="secondary" className="bg-blue-100 text-blue-700 text-[10px]">
-                    {employesData.stats.totalEmployes}
-                  </Badge>
-                )}
-              </div>
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="p-2 rounded-lg bg-green-50 border border-green-100">
-                  <p className="text-lg font-bold text-green-600">{employesData?.stats.employesAvecMission || 0}</p>
-                  <p className="text-[9px] text-green-700">Actifs</p>
-                </div>
-                <div className="p-2 rounded-lg bg-amber-50 border border-amber-100">
-                  <p className="text-lg font-bold text-amber-600">{employesData?.stats.employesSansMissionCount || 0}</p>
-                  <p className="text-[9px] text-amber-700">Dispo</p>
-                </div>
-                <div className="p-2 rounded-lg bg-gray-50 border border-gray-100">
-                  <p className="text-lg font-bold text-gray-600">{employesData?.stats.totalMissionsSemaine || 0}</p>
-                  <p className="text-[9px] text-gray-500">Missions</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {employesData && employesData.stats.totalMissionsNonAssignees > 0 && (
-            <MissionsNonAssignees count={employesData.stats.totalMissionsNonAssignees} />
-          )}
-
-          <EmployesSansMission employes={employesData?.employesSansMission || []} />
-
-          <ChargeEmployes
-            employes={employesData?.topEmployes || []}
-            onSelect={setSelectedEmployeId}
+        {/* ── Zone 2 : KPIs ── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiCard
+            label="En retard"
+            value={stats?.enRetard || 0}
+            icon={AlertTriangle}
+            color="red"
+            link="/planning?view=en-retard"
           />
+          <KpiCard
+            label="À planifier"
+            value={stats?.aPlanifier || 0}
+            icon={Clock}
+            color="amber"
+            link="/planning?view=a-planifier"
+          />
+          <KpiCard
+            label="Alertes contrats"
+            value={totalAlertes}
+            icon={AlertCircle}
+            color="orange"
+          />
+          <KpiCard
+            label="Réalisées ce mois"
+            value={stats?.realiseeMois || 0}
+            icon={CheckCircle2}
+            color="green"
+          />
+        </div>
 
-          <ActiviteEquipe
+        {/* ── Zone 3 : Hero Aujourd'hui ── */}
+        <TodayHero
+          interventions={aujourdhuiData?.interventions || []}
+          total={stats?.interventionsAujourdhui || 0}
+          realisees={stats?.realiseeAujourdhui || 0}
+        />
+
+        {/* ── Zone 4 : Calendrier semaine ── */}
+        {prochains7Jours.length > 0 && <WeekStrip jours={prochains7Jours} />}
+
+        {/* ── Zone 5 : Alertes + Équipe ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <AlertesPanel alertes={alertes} />
+          <EquipePanel
             employes={employesData?.employes || []}
+            stats={employesData?.stats || {
+              totalEmployes: 0,
+              employesAvecMission: 0,
+              employesSansMissionCount: 0,
+              totalMissionsSemaine: 0,
+            }}
+            missionsNonAssignees={employesData?.stats?.totalMissionsNonAssignees || 0}
+            employesSansMission={employesData?.employesSansMission || []}
             onSelectEmploye={setSelectedEmployeId}
           />
         </div>
+
       </div>
 
-      {/* Modal détails employé */}
+      {/* Modal détail employé */}
       {selectedEmploye && (
         <EmployeDetailModal
           employe={selectedEmploye}

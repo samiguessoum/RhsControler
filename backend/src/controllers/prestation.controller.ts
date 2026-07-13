@@ -1,12 +1,15 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import { prisma } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
+import logger from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
+
 
 export const prestationController = {
   /**
    * GET /api/prestations
    */
-  async list(req: AuthRequest, res: Response) {
+  async list(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { actif } = req.query;
 
@@ -22,15 +25,15 @@ export const prestationController = {
 
       res.json({ prestations });
     } catch (error) {
-      console.error('List prestations error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List prestations error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * POST /api/prestations
    */
-  async create(req: AuthRequest, res: Response) {
+  async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { nom, ordre, description } = req.body;
 
@@ -58,15 +61,15 @@ export const prestationController = {
 
       res.status(201).json({ prestation });
     } catch (error) {
-      console.error('Create prestation error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Create prestation error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * PUT /api/prestations/:id
    */
-  async update(req: AuthRequest, res: Response) {
+  async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { nom, ordre, actif, description } = req.body;
@@ -99,15 +102,15 @@ export const prestationController = {
 
       res.json({ prestation });
     } catch (error) {
-      console.error('Update prestation error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Update prestation error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * DELETE /api/prestations/:id (désactivation)
    */
-  async delete(req: AuthRequest, res: Response) {
+  async delete(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -123,8 +126,8 @@ export const prestationController = {
 
       res.json({ message: 'Prestation supprimée' });
     } catch (error) {
-      console.error('Delete prestation error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Delete prestation error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 };

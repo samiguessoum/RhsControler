@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { GeocoderSearch } from '@/components/AddressAutocomplete';
+import type { GeoSelection } from '@/components/AddressAutocomplete';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -11,7 +13,6 @@ import {
   Plus,
   Edit,
   Trash2,
-  Eye,
   Phone,
   Mail,
   MapPin,
@@ -30,13 +31,11 @@ import {
 
 import { tiersApi, referentielsApi } from '@/services/api';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { Tooltip } from '@/components/ui/tooltip';
 import {
   Dialog,
   DialogContent,
@@ -52,14 +51,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -189,139 +180,105 @@ function TiersCard({
   canDelete: boolean;
 }) {
   const config = TYPE_TIERS_CONFIG[tiers.typeTiers];
-  const Icon = config.icon;
   const prospectNiveau = PROSPECT_NIVEAUX.find(n => n.value === tiers.prospectNiveau);
+  const initials = tiers.nomEntreprise.slice(0, 2).toUpperCase();
 
   return (
-    <Card
-      className={cn(
-        'hover:shadow-md transition-all cursor-pointer border-l-4',
-        config.borderColor
-      )}
+    <div
+      className="bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer overflow-hidden hover:-translate-y-0.5"
       onClick={onView}
     >
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className={cn('w-10 h-10 rounded-full flex items-center justify-center', config.bgColor)}>
-              <Icon className={cn('h-5 w-5', config.color)} />
+      {/* Top colored bar */}
+      <div className={cn('h-1', config.borderColor.replace('border-', 'bg-'))} />
+
+      <div className="p-4 space-y-3">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 font-black text-sm', config.bgColor, config.color)}>
+              {initials}
             </div>
             <div className="min-w-0">
-              <CardTitle className="text-base truncate">{tiers.nomEntreprise}</CardTitle>
+              <p className="font-bold text-gray-900 truncate text-sm">{tiers.nomEntreprise}</p>
               {tiers.nomAlias && (
-                <p className="text-xs text-muted-foreground truncate">{tiers.nomAlias}</p>
+                <p className="text-xs text-gray-400 truncate">{tiers.nomAlias}</p>
               )}
             </div>
           </div>
-          <Badge className={cn(config.bgColor, config.color, 'text-xs')}>
+          <span className={cn('text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0', config.bgColor, config.color)}>
             {config.label}
-          </Badge>
+          </span>
         </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {/* Location */}
-        {tiers.siegeVille && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <MapPin className="h-4 w-4 flex-shrink-0" />
-            <span className="truncate">{tiers.siegeVille}</span>
-          </div>
-        )}
 
-        {/* Contact info - clickable */}
-        <div className="space-y-1">
+        {/* Contact */}
+        <div className="space-y-1.5">
+          {tiers.siegeVille && (
+            <div className="flex items-center gap-2 text-xs text-gray-400">
+              <MapPin className="h-3 w-3 flex-shrink-0" />
+              <span className="truncate">{tiers.siegeVille}</span>
+            </div>
+          )}
           {tiers.siegeTel && (
-            <a
-              href={`tel:${tiers.siegeTel}`}
-              onClick={(e) => e.stopPropagation()}
-              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors"
-            >
-              <Phone className="h-4 w-4 flex-shrink-0" />
+            <a href={`tel:${tiers.siegeTel}`} onClick={e => e.stopPropagation()}
+              className="flex items-center gap-2 text-xs text-gray-500 hover:text-green-600 transition-colors">
+              <Phone className="h-3 w-3 flex-shrink-0" />
               <span>{tiers.siegeTel}</span>
             </a>
           )}
           {tiers.siegeEmail && (
-            <a
-              href={`mailto:${tiers.siegeEmail}`}
-              onClick={(e) => e.stopPropagation()}
-              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors truncate"
-            >
-              <Mail className="h-4 w-4 flex-shrink-0" />
+            <a href={`mailto:${tiers.siegeEmail}`} onClick={e => e.stopPropagation()}
+              className="flex items-center gap-2 text-xs text-gray-500 hover:text-green-600 transition-colors truncate">
+              <Mail className="h-3 w-3 flex-shrink-0" />
               <span className="truncate">{tiers.siegeEmail}</span>
             </a>
           )}
         </div>
 
-        {/* Type-specific info */}
-        <div className="pt-2 border-t">
-          {(tiers.typeTiers === 'CLIENT' || tiers.typeTiers === 'CLIENT_FOURNISSEUR') && (
-            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-              {tiers.sites && tiers.sites.length > 0 && (
+        {/* Footer */}
+        <div className="pt-2 border-t border-gray-50 flex items-center justify-between">
+          <div className="flex items-center gap-3 text-[11px] text-gray-400">
+            {(tiers.typeTiers === 'CLIENT' || tiers.typeTiers === 'CLIENT_FOURNISSEUR') && (
+              <>
+                {tiers.sites && tiers.sites.length > 0 && (
+                  <span className="flex items-center gap-1">
+                    <Building2 className="h-3 w-3" />{tiers.sites.length} site{tiers.sites.length > 1 ? 's' : ''}
+                  </span>
+                )}
                 <span className="flex items-center gap-1">
-                  <Building2 className="h-3 w-3" />
-                  {tiers.sites.length} site(s)
+                  <FileText className="h-3 w-3" />{tiers._count?.contrats || 0} contrat{(tiers._count?.contrats || 0) > 1 ? 's' : ''}
                 </span>
-              )}
-              <span className="flex items-center gap-1">
-                <FileText className="h-3 w-3" />
-                {tiers._count?.contrats || 0} contrat(s)
+              </>
+            )}
+            {tiers.typeTiers === 'PROSPECT' && prospectNiveau && (
+              <span className={cn('flex items-center gap-1 font-semibold px-2 py-0.5 rounded-full', prospectNiveau.bgColor, prospectNiveau.color)}>
+                <prospectNiveau.icon className="h-3 w-3" />{prospectNiveau.label}
               </span>
-            </div>
-          )}
+            )}
+          </div>
 
-          {(tiers.typeTiers === 'FOURNISSEUR' || tiers.typeTiers === 'CLIENT_FOURNISSEUR') && (
-            <div className="text-xs text-muted-foreground">
-              {tiers.siegeRC && <span>RC: {tiers.siegeRC}</span>}
-            </div>
-          )}
-
-          {tiers.typeTiers === 'PROSPECT' && prospectNiveau && (
-            <div className="flex items-center justify-between">
-              <Badge className={cn(prospectNiveau.bgColor, prospectNiveau.color, 'text-xs')}>
-                <prospectNiveau.icon className="h-3 w-3 mr-1" />
-                {prospectNiveau.label}
-              </Badge>
-              {canEdit && onConvert && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="text-xs h-7"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onConvert();
-                  }}
-                >
-                  <ArrowRightLeft className="h-3 w-3 mr-1" />
-                  Convertir
-                </Button>
-              )}
-            </div>
-          )}
+          <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+            {tiers.typeTiers === 'PROSPECT' && canEdit && onConvert && (
+              <button onClick={onConvert}
+                className="p-1.5 rounded-lg text-green-600 hover:bg-green-50 transition-colors">
+                <ArrowRightLeft className="h-3.5 w-3.5" />
+              </button>
+            )}
+            {canEdit && (
+              <button onClick={onEdit}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors">
+                <Edit className="h-3.5 w-3.5" />
+              </button>
+            )}
+            {canDelete && (
+              <button onClick={onDelete}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         </div>
-
-        {/* Actions */}
-        <div className="flex gap-1 pt-2 border-t" onClick={(e) => e.stopPropagation()}>
-          <Tooltip content="Voir les détails">
-            <Button size="sm" variant="ghost" onClick={onView}>
-              <Eye className="h-4 w-4" />
-            </Button>
-          </Tooltip>
-          {canEdit && (
-            <Tooltip content="Modifier">
-              <Button size="sm" variant="ghost" onClick={onEdit}>
-                <Edit className="h-4 w-4" />
-              </Button>
-            </Tooltip>
-          )}
-          {canDelete && (
-            <Tooltip content="Supprimer">
-              <Button size="sm" variant="ghost" className="text-red-500" onClick={onDelete}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </Tooltip>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -358,11 +315,19 @@ export default function TiersPage() {
   });
 
   // Delete mutation
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ['tiers'] });
+    queryClient.invalidateQueries({ queryKey: ['tiers-stats'] });
+    queryClient.invalidateQueries({ queryKey: ['clients'] });
+    queryClient.invalidateQueries({ queryKey: ['clients-active'] });
+    queryClient.invalidateQueries({ queryKey: ['contrats'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
+  };
+
   const deleteMutation = useMutation({
     mutationFn: tiersApi.delete,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tiers'] });
-      queryClient.invalidateQueries({ queryKey: ['tiers-stats'] });
+      invalidateAll();
       setDeleteTarget(null);
     },
   });
@@ -371,8 +336,7 @@ export default function TiersPage() {
   const convertMutation = useMutation({
     mutationFn: tiersApi.convertirProspect,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tiers'] });
-      queryClient.invalidateQueries({ queryKey: ['tiers-stats'] });
+      invalidateAll();
       setConvertTarget(null);
     },
   });
@@ -403,151 +367,140 @@ export default function TiersPage() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="min-h-screen bg-gray-50">
+    <div className="max-w-7xl mx-auto px-4 py-6 space-y-5">
+
+      {/* ── Header ── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Tiers</h1>
-          <p className="text-muted-foreground">
-            Gestion des clients, fournisseurs et prospects
-          </p>
+          <h1 className="text-2xl font-black text-gray-900 tracking-tight">Tiers</h1>
+          <p className="text-sm text-gray-400 mt-0.5">Clients, fournisseurs et prospects</p>
         </div>
         {canCreate && (
           <Button
+            className="bg-green-600 hover:bg-green-700 text-white font-semibold shadow-sm shadow-green-200 h-9"
             onClick={() => {
               const type = (activeTab === 'CLIENT' || activeTab === 'FOURNISSEUR' || activeTab === 'PROSPECT')
-                ? activeTab
-                : 'CLIENT';
+                ? activeTab : 'CLIENT';
               setCreateType(type as TypeTiers);
               setShowCreateDialog(true);
             }}
           >
-            <Plus className="h-4 w-4 mr-2" />
+            <Plus className="h-4 w-4 mr-1.5" />
             Nouveau tiers
           </Button>
         )}
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        <Card
-          className={cn(
-            'cursor-pointer hover:shadow-md transition-all',
-            activeTab === 'CLIENT' && 'ring-2 ring-blue-500'
-          )}
-          onClick={() => setActiveTab('CLIENT')}
-        >
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Clients</CardTitle>
-            <Users className="h-4 w-4 text-blue-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.clients.actifs || 0}</div>
-            <p className="text-xs text-muted-foreground">
-              {stats?.clients.total || 0} total
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card
-          className={cn(
-            'cursor-pointer hover:shadow-md transition-all',
-            activeTab === 'FOURNISSEUR' && 'ring-2 ring-orange-500'
-          )}
-          onClick={() => setActiveTab('FOURNISSEUR')}
-        >
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Fournisseurs</CardTitle>
-            <Truck className="h-4 w-4 text-orange-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.fournisseurs.actifs || 0}</div>
-            <p className="text-xs text-muted-foreground">
-              {stats?.fournisseurs.total || 0} total
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card
-          className={cn(
-            'cursor-pointer hover:shadow-md transition-all',
-            activeTab === 'PROSPECT' && 'ring-2 ring-purple-500'
-          )}
-          onClick={() => setActiveTab('PROSPECT')}
-        >
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Prospects</CardTitle>
-            <UserPlus className="h-4 w-4 text-purple-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats?.prospects.actifs || 0}</div>
-            <p className="text-xs text-muted-foreground">
-              {stats?.prospects.total || 0} total
-            </p>
-          </CardContent>
-        </Card>
+      {/* ── KPIs ── */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { key: 'CLIENT',      label: 'Clients',      icon: Users,    bar: 'bg-blue-500',   num: 'text-blue-700',   bg: 'bg-blue-50',   ring: 'ring-blue-300',   count: stats?.clients.actifs || 0,      total: stats?.clients.total || 0 },
+          { key: 'FOURNISSEUR', label: 'Fournisseurs', icon: Truck,    bar: 'bg-orange-400', num: 'text-orange-700', bg: 'bg-orange-50', ring: 'ring-orange-300', count: stats?.fournisseurs.actifs || 0,  total: stats?.fournisseurs.total || 0 },
+          { key: 'PROSPECT',    label: 'Prospects',    icon: UserPlus, bar: 'bg-purple-500', num: 'text-purple-700', bg: 'bg-purple-50', ring: 'ring-purple-300', count: stats?.prospects.actifs || 0,     total: stats?.prospects.total || 0 },
+        ].map(({ key, label, icon: Icon, bar, num, bg, ring, count, total }) => (
+          <div
+            key={key}
+            onClick={() => setActiveTab(activeTab === key ? 'all' : key)}
+            className={cn(
+              'relative bg-white rounded-xl p-5 overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-0.5',
+              activeTab === key ? `ring-2 ${ring} shadow-sm` : 'shadow-sm'
+            )}
+          >
+            <div className={`absolute bottom-0 left-0 right-0 h-1 ${bar} rounded-b-xl`} />
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-1">{label}</p>
+                <p className={`text-4xl font-black tabular-nums leading-none ${num}`}>{count}</p>
+                <p className="text-xs text-gray-400 mt-1">{total} au total</p>
+              </div>
+              <div className={`p-2.5 rounded-xl ${bg}`}>
+                <Icon className={`h-5 w-5 ${num}`} />
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* Tabs, Search and View Toggle */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
-            <TabsTrigger value="all">Tous</TabsTrigger>
-            <TabsTrigger value="CLIENT">Clients</TabsTrigger>
-            <TabsTrigger value="FOURNISSEUR">Fournisseurs</TabsTrigger>
-            <TabsTrigger value="PROSPECT">Prospects</TabsTrigger>
-          </TabsList>
-        </Tabs>
+      {/* ── Barre filtres ── */}
+      <div className="bg-white rounded-xl shadow-sm px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        {/* Tabs */}
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+          {[
+            { value: 'all',         label: 'Tous' },
+            { value: 'CLIENT',      label: 'Clients' },
+            { value: 'FOURNISSEUR', label: 'Fournisseurs' },
+            { value: 'PROSPECT',    label: 'Prospects' },
+          ].map(tab => (
+            <button
+              key={tab.value}
+              onClick={() => setActiveTab(tab.value)}
+              className={cn(
+                'h-7 px-3 rounded-md text-xs font-semibold transition-all',
+                activeTab === tab.value
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
         <div className="flex items-center gap-2">
-          <div className="relative w-64">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          {/* Recherche */}
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-gray-400" />
             <Input
               placeholder="Rechercher..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-10"
+              className="pl-8 h-8 w-52 text-sm border-gray-200"
             />
+            {search && (
+              <button onClick={() => setSearch('')} className="absolute right-2 top-2">
+                <X className="h-3.5 w-3.5 text-gray-400 hover:text-gray-600" />
+              </button>
+            )}
           </div>
 
-          {/* View Toggle */}
-          <div className="flex border rounded-md">
-            <Tooltip content="Vue cartes">
-              <Button
-                variant={viewMode === 'cards' ? 'default' : 'ghost'}
-                size="sm"
-                className="rounded-r-none"
-                onClick={() => setViewMode('cards')}
-              >
-                <LayoutGrid className="h-4 w-4" />
-              </Button>
-            </Tooltip>
-            <Tooltip content="Vue liste">
-              <Button
-                variant={viewMode === 'list' ? 'default' : 'ghost'}
-                size="sm"
-                className="rounded-l-none"
-                onClick={() => setViewMode('list')}
-              >
-                <List className="h-4 w-4" />
-              </Button>
-            </Tooltip>
+          {/* View toggle */}
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setViewMode('list')}
+              className={cn('p-1.5 rounded-md transition-all', viewMode === 'list' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400 hover:text-gray-600')}
+            >
+              <List className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setViewMode('cards')}
+              className={cn('p-1.5 rounded-md transition-all', viewMode === 'cards' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-400 hover:text-gray-600')}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Content */}
+      {/* ── Contenu ── */}
       {isLoading ? (
-        <div className="text-center py-8 text-muted-foreground">Chargement...</div>
+        <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+          <div className="w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-gray-400 font-medium">Chargement...</p>
+        </div>
       ) : tiersList.length === 0 ? (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            {search ? 'Aucun tiers trouvé pour cette recherche' : 'Aucun tiers enregistré'}
-          </CardContent>
-        </Card>
+        <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+          <Building2 className="h-10 w-10 text-gray-200 mx-auto mb-3" />
+          <p className="font-semibold text-gray-600">
+            {search ? `Aucun résultat pour "${search}"` : 'Aucun tiers enregistré'}
+          </p>
+          <p className="text-sm text-gray-400 mt-1">
+            {search ? 'Essayez un autre terme de recherche' : 'Créez votre premier tiers pour commencer'}
+          </p>
+        </div>
       ) : viewMode === 'cards' ? (
         /* Cards View */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {tiersList.map((tiers) => (
             <TiersCard
               key={tiers.id}
@@ -563,108 +516,84 @@ export default function TiersPage() {
         </div>
       ) : (
         /* List View */
-        <Card>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nom</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Ville</TableHead>
-                <TableHead>Téléphone</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {tiersList.map((tiers) => {
-                const config = TYPE_TIERS_CONFIG[tiers.typeTiers];
-                return (
-                  <TableRow
-                    key={tiers.id}
-                    className="cursor-pointer hover:bg-gray-50"
-                    onClick={() => setViewingTiers(tiers)}
-                  >
-                    <TableCell>
-                      <div>
-                        <div className="font-medium">{tiers.nomEntreprise}</div>
-                        {tiers.nomAlias && (
-                          <div className="text-xs text-muted-foreground">{tiers.nomAlias}</div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={cn(config.bgColor, config.color)}>
-                        {config.label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{tiers.siegeVille || '-'}</TableCell>
-                    <TableCell>
-                      {tiers.siegeTel ? (
-                        <a
-                          href={`tel:${tiers.siegeTel}`}
-                          className="text-primary hover:underline"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {tiers.siegeTel}
-                        </a>
-                      ) : '-'}
-                    </TableCell>
-                    <TableCell>
-                      {tiers.siegeEmail ? (
-                        <a
-                          href={`mailto:${tiers.siegeEmail}`}
-                          className="text-primary hover:underline"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {tiers.siegeEmail}
-                        </a>
-                      ) : '-'}
-                    </TableCell>
-                    <TableCell onClick={(e) => e.stopPropagation()}>
-                      <div className="flex gap-1">
-                        {canEdit && (
-                          <Tooltip content="Modifier">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => setEditingTiers(tiers)}
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          </Tooltip>
-                        )}
-                        {tiers.typeTiers === 'PROSPECT' && canEdit && (
-                          <Tooltip content="Convertir en client">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-green-600"
-                              onClick={() => setConvertTarget(tiers)}
-                            >
-                              <ArrowRightLeft className="h-4 w-4" />
-                            </Button>
-                          </Tooltip>
-                        )}
-                        {canDelete && (
-                          <Tooltip content="Supprimer">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-red-500"
-                              onClick={() => setDeleteTarget(tiers)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </Tooltip>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </Card>
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+          {/* List header */}
+          <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] gap-4 px-5 py-3 bg-gray-50 border-b border-gray-100">
+            {['Nom', 'Type', 'Ville', 'Téléphone', 'Email', ''].map(h => (
+              <span key={h} className="text-[11px] font-bold uppercase tracking-widest text-gray-400">{h}</span>
+            ))}
+          </div>
+          <div className="divide-y divide-gray-50">
+            {tiersList.map((tiers) => {
+              const config = TYPE_TIERS_CONFIG[tiers.typeTiers];
+              const initials = tiers.nomEntreprise.slice(0, 2).toUpperCase();
+              return (
+                <div
+                  key={tiers.id}
+                  className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] gap-4 px-5 py-3.5 items-center cursor-pointer hover:bg-gray-50 transition-colors"
+                  onClick={() => setViewingTiers(tiers)}
+                >
+                  {/* Nom */}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={cn('w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 text-xs font-black', config.bgColor, config.color)}>
+                      {initials}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 truncate">{tiers.nomEntreprise}</p>
+                      {tiers.nomAlias && <p className="text-xs text-gray-400 truncate">{tiers.nomAlias}</p>}
+                    </div>
+                  </div>
+
+                  {/* Type */}
+                  <span className={cn('text-[11px] font-semibold px-2 py-0.5 rounded-full w-fit', config.bgColor, config.color)}>
+                    {config.label}
+                  </span>
+
+                  {/* Ville */}
+                  <span className="text-sm text-gray-500 truncate">{tiers.siegeVille || <span className="text-gray-300">—</span>}</span>
+
+                  {/* Téléphone */}
+                  <div onClick={e => e.stopPropagation()}>
+                    {tiers.siegeTel
+                      ? <a href={`tel:${tiers.siegeTel}`} className="text-sm text-gray-700 hover:text-green-600 transition-colors">{tiers.siegeTel}</a>
+                      : <span className="text-gray-300">—</span>
+                    }
+                  </div>
+
+                  {/* Email */}
+                  <div onClick={e => e.stopPropagation()} className="min-w-0">
+                    {tiers.siegeEmail
+                      ? <a href={`mailto:${tiers.siegeEmail}`} className="text-sm text-gray-700 hover:text-green-600 transition-colors truncate block">{tiers.siegeEmail}</a>
+                      : <span className="text-gray-300">—</span>
+                    }
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                    {tiers.typeTiers === 'PROSPECT' && canEdit && (
+                      <button onClick={() => setConvertTarget(tiers)}
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-green-600 hover:bg-green-50 transition-colors">
+                        <ArrowRightLeft className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    {canEdit && (
+                      <button onClick={() => setEditingTiers(tiers)}
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
+                        <Edit className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button onClick={() => setDeleteTarget(tiers)}
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {/* Create/Edit Dialog */}
@@ -741,6 +670,7 @@ export default function TiersPage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+    </div>
   );
 }
 
@@ -801,6 +731,7 @@ function TiersFormDialog({
           siegeTIN: tiersData.siegeTIN,
           siegeAI: tiersData.siegeAI,
           siegeNIS: tiersData.siegeNIS,
+          siegeNIN: tiersData.siegeNIN,
           tvaIntracom: tiersData.tvaIntracom,
           capital: tiersData.capital,
           siegeNom: tiersData.siegeNom,
@@ -821,14 +752,15 @@ function TiersFormDialog({
           prospectNiveau: normalizeProspectNiveau(tiersData.prospectNiveau),
           prospectStatut: tiersData.prospectStatut,
         });
-        setSites(tiersData.sites?.map(s => ({
-          id: s.id, // Inclure l'ID pour la mise à jour
+        const loadedSites = tiersData.sites?.map(s => ({
+          id: s.id,
           nom: s.nom,
           adresse: s.adresse,
           tel: s.tel,
           email: s.email,
           notes: s.notes,
-        })) || []);
+        })) || [];
+        setSites(loadedSites);
         setContactPrincipal(principalContact || { nom: '' });
         setExtraContacts(otherContacts.map(c => ({
           civilite: c.civilite,
@@ -873,6 +805,10 @@ function TiersFormDialog({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tiers'] });
       queryClient.invalidateQueries({ queryKey: ['tiers-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      queryClient.invalidateQueries({ queryKey: ['clients-active'] });
+      queryClient.invalidateQueries({ queryKey: ['contrats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
       onOpenChange(false);
     },
     onError: (error: any) => {
@@ -888,6 +824,10 @@ function TiersFormDialog({
     onSuccess: (response: any) => {
       queryClient.invalidateQueries({ queryKey: ['tiers'] });
       queryClient.invalidateQueries({ queryKey: ['tiers-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      queryClient.invalidateQueries({ queryKey: ['clients-active'] });
+      queryClient.invalidateQueries({ queryKey: ['contrats'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
       onOpenChange(false);
 
       // Afficher une notification si des sites n'ont pas pu être supprimés
@@ -957,11 +897,17 @@ function TiersFormDialog({
     setSites(prev => prev.filter((_, i) => i !== index));
   };
 
-  const updateSite = (index: number, field: keyof SiteInput, value: string) => {
+  const updateSite = (index: number, field: keyof SiteInput, value: string | number) => {
     setSites(prev => prev.map((site, i) =>
       i === index ? { ...site, [field]: value } : site
     ));
   };
+
+  const handleSiteGeoSelect = useCallback((index: number, geo: GeoSelection) => {
+    setSites(prev => prev.map((site, i) =>
+      i === index ? { ...site, ville: geo.ville, codePostal: geo.codePostal, latitude: geo.latitude, longitude: geo.longitude } : site
+    ));
+  }, []);
 
   const addExtraContact = () => {
     setExtraContacts(prev => [...prev, { nom: '' }]);
@@ -1261,11 +1207,24 @@ function TiersFormDialog({
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Adresse</Label>
+                      <Label>Adresse officielle</Label>
                       <Input
                         value={site.adresse || ''}
                         onChange={(e) => updateSite(index, 'adresse', e.target.value)}
+                        placeholder="Ex: 147 Avenue Mustapha Ali Khodja, Alger"
                       />
+                      <div className="space-y-1">
+                        <p className="text-[11px] text-gray-400">Position approximative sur la carte</p>
+                        <GeocoderSearch
+                          hint={site.adresse}
+                          onSelect={(geo) => handleSiteGeoSelect(index, geo)}
+                        />
+                        {(site as any).latitude && (
+                          <p className="text-[11px] text-green-600 flex items-center gap-1">
+                            <MapPin className="h-3 w-3" /> Géolocalisé{site.ville ? ` — ${site.ville}` : ''}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
@@ -1437,6 +1396,21 @@ function TiersFormDialog({
                       Identifiant statistique délivré par l'ONS
                     </p>
                   </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Numéro d'Identification Nationale (NIN)</Label>
+                    <Input
+                      value={formData.siegeNIN || ''}
+                      onChange={(e) => setFormData({ ...formData, siegeNIN: e.target.value })}
+                      placeholder="Ex: 123456789012345"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      NIN du gérant
+                    </p>
+                  </div>
+                  <div />
                 </div>
               </div>
             </CollapsibleSection>
@@ -1639,7 +1613,7 @@ function TiersDetailDialog({
             </div>
 
             {/* Legal Info */}
-            {(tiers.formeJuridique || tiers.siegeRC || tiers.siegeNIF || tiers.siegeTIN || tiers.siegeAI || tiers.siegeNIS) && (
+            {(tiers.formeJuridique || tiers.siegeRC || tiers.siegeNIF || tiers.siegeTIN || tiers.siegeAI || tiers.siegeNIS || tiers.siegeNIN) && (
               <div className="space-y-3">
                 <h3 className="font-semibold border-b pb-2">Informations légales</h3>
                 <div className="rounded-lg border bg-white p-4 space-y-4">
@@ -1678,6 +1652,12 @@ function TiersDetailDialog({
                       <div className="space-y-1">
                         <p className="text-xs font-bold text-foreground">NIS</p>
                         <p className="text-sm text-foreground break-all">{tiers.siegeNIS}</p>
+                      </div>
+                    )}
+                    {tiers.siegeNIN && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-bold text-foreground">NIN</p>
+                        <p className="text-sm text-foreground break-all">{tiers.siegeNIN}</p>
                       </div>
                     )}
                   </div>

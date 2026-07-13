@@ -1,5 +1,7 @@
 import { EventEmitter } from 'events';
 import { prisma } from '../config/database.js';
+import logger from '../lib/logger.js';
+
 
 // Types d'événements de facturation
 export type FacturationEventType =
@@ -72,7 +74,7 @@ class FacturationEventEmitter extends EventEmitter {
   }
 
   emitEvent(event: FacturationEvent) {
-    console.log(`[EVENT] ${event.type}:`, event.entityId);
+    logger.info(`[EVENT] ${event.type}:`, event.entityId);
     this.emit(event.type, event);
     this.emit('*', event); // Wildcard pour les listeners globaux
   }
@@ -233,7 +235,7 @@ class FacturationEventEmitter extends EventEmitter {
 
   private handleStockUpdated(event: FacturationEvent) {
     // Log uniquement, pas de notification UI par défaut
-    console.log(`[STOCK] ${event.data.produitNom}: ${event.data.mouvement} (nouveau stock: ${event.data.nouveauStock})`);
+    logger.info(`[STOCK] ${event.data.produitNom}: ${event.data.mouvement} (nouveau stock: ${event.data.nouveauStock})`);
   }
 }
 

@@ -1,14 +1,17 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import { prisma } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
 import planningService from '../services/planning.service.js';
+import logger from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
+
 
 export const contratController = {
   /**
    * GET /api/contrats
    */
-  async list(req: AuthRequest, res: Response) {
+  async list(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { clientId, statut, type, page = '1', limit = '20' } = req.query;
 
@@ -62,15 +65,15 @@ export const contratController = {
         },
       });
     } catch (error) {
-      console.error('List contrats error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List contrats error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * GET /api/contrats/:id
    */
-  async get(req: AuthRequest, res: Response) {
+  async get(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -109,8 +112,8 @@ export const contratController = {
 
       res.json({ contrat });
     } catch (error) {
-      console.error('Get contrat error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get contrat error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -118,7 +121,7 @@ export const contratController = {
    * POST /api/contrats
    * Crée le contrat ET génère automatiquement le planning
    */
-  async create(req: AuthRequest, res: Response) {
+  async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const data = req.body;
 
@@ -171,6 +174,7 @@ export const contratController = {
               contratId: contrat.id,
               siteId: cs.siteId,
               prestations: cs.prestations || [],
+              prixPrestations: cs.prixPrestations ?? {},
               frequenceOperations: cs.frequenceOperations,
               frequenceOperationsJours: cs.frequenceOperationsJours,
               frequenceControle: cs.frequenceControle,
@@ -194,7 +198,7 @@ export const contratController = {
         try {
           planningResult = await planningService.genererPlanningContrat(contrat.id, req.user!.id);
         } catch (planningError) {
-          console.error('Auto-planning generation error:', planningError);
+          logger.error({ err: planningError }, 'Auto-planning generation error');
           // On ne bloque pas la création du contrat si le planning échoue
         }
       }
@@ -206,15 +210,15 @@ export const contratController = {
           : null,
       });
     } catch (error) {
-      console.error('Create contrat error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Create contrat error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * PUT /api/contrats/:id
    */
-  async update(req: AuthRequest, res: Response) {
+  async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const data = req.body;
@@ -295,6 +299,7 @@ export const contratController = {
                 contratId: id,
                 siteId: cs.siteId,
                 prestations: cs.prestations || [],
+                prixPrestations: cs.prixPrestations ?? {},
                 frequenceOperations: cs.frequenceOperations,
                 frequenceOperationsJours: cs.frequenceOperationsJours,
                 frequenceControle: cs.frequenceControle,
@@ -321,7 +326,7 @@ export const contratController = {
         try {
           await planningService.genererPlanningContrat(id, req.user!.id);
         } catch (planningError) {
-          console.error('Auto-planning update error:', planningError);
+          logger.error({ err: planningError }, 'Auto-planning update error');
         }
       }
 
@@ -333,15 +338,15 @@ export const contratController = {
 
       res.json({ contrat });
     } catch (error) {
-      console.error('Update contrat error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Update contrat error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * DELETE /api/contrats/:id
    */
-  async delete(req: AuthRequest, res: Response) {
+  async delete(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -369,8 +374,8 @@ export const contratController = {
 
       res.json({ message: 'Contrat supprimé' });
     } catch (error) {
-      console.error('Delete contrat error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Delete contrat error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 };

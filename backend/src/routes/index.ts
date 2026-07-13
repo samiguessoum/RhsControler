@@ -21,9 +21,6 @@ import {
   realiserInterventionSchema,
   reporterInterventionSchema,
   annulerInterventionSchema,
-  createProduitSchema,
-  updateProduitSchema,
-  createMouvementSchema,
   createCongeSchema,
   approuverCongeSchema,
   createWeekendTravailleSchema,
@@ -61,6 +58,8 @@ import {
   updateDevisSchema,
   createCommandeSchema,
   updateCommandeSchema,
+  createBonLivraisonSchema,
+  updateBonLivraisonSchema,
   createFactureSchema,
   updateFactureSchema,
   createPaiementSchema,
@@ -91,7 +90,6 @@ import contratController from '../controllers/contrat.controller.js';
 import interventionController from '../controllers/intervention.controller.js';
 import dashboardController from '../controllers/dashboard.controller.js';
 import importExportController from '../controllers/import-export.controller.js';
-import stockController from '../controllers/stock.controller.js';
 import rhController from '../controllers/rh.controller.js';
 import tiersController from '../controllers/tiers.controller.js';
 import produitsServicesController from '../controllers/produits-services.controller.js';
@@ -254,25 +252,12 @@ router.get('/import/templates/:type', authMiddleware, importExportController.get
 router.post('/import/preview', authMiddleware, canDo('importData'), importExportController.preview);
 router.post('/import/execute', authMiddleware, canDo('importData'), importExportController.execute);
 
-// ============ STOCK ============
-router.get('/produits', authMiddleware, stockController.listProduits);
-router.get('/produits/:id', authMiddleware, stockController.getProduit);
-router.post('/produits', authMiddleware, canDo('manageStock'), validate(createProduitSchema), stockController.createProduit);
-router.put('/produits/:id', authMiddleware, canDo('manageStock'), validate(updateProduitSchema), stockController.updateProduit);
-router.delete('/produits/:id', authMiddleware, canDo('manageStock'), stockController.deleteProduit);
-
-router.get('/mouvements-stock', authMiddleware, stockController.listMouvements);
-router.post('/mouvements-stock', authMiddleware, canDo('manageStock'), validate(createMouvementSchema), stockController.createMouvement);
-
-router.get('/stock/alertes', authMiddleware, stockController.getAlertes);
-router.get('/stock/stats', authMiddleware, stockController.getStats);
-
 // ============ RH ============
 router.get('/rh/dashboard', authMiddleware, canDo('viewRH'), rhController.getDashboard);
 
 // Congés
 router.get('/rh/conges', authMiddleware, canDo('viewRH'), rhController.listConges);
-router.post('/rh/conges', authMiddleware, canDo('viewRH'), validate(createCongeSchema), rhController.createConge);
+router.post('/rh/conges', authMiddleware, canDo('manageRH'), validate(createCongeSchema), rhController.createConge);
 router.put('/rh/conges/:id/approuver', authMiddleware, canDo('manageRH'), validate(approuverCongeSchema), rhController.approuverConge);
 router.delete('/rh/conges/:id', authMiddleware, canDo('manageRH'), rhController.annulerConge);
 
@@ -287,6 +272,11 @@ router.put('/rh/soldes', authMiddleware, canDo('manageRH'), validate(updateSolde
 
 // Récap employé
 router.get('/rh/employes/:id/recap', authMiddleware, canDo('viewRH'), rhController.getEmployeRecap);
+
+// Récupérations accordées
+router.get('/rh/recuperations', authMiddleware, canDo('viewRH'), rhController.listRecuperations);
+router.post('/rh/recuperations/accorder', authMiddleware, canDo('manageRH'), rhController.accorderRecuperation);
+router.delete('/rh/recuperations/accordees/:id', authMiddleware, canDo('manageRH'), rhController.deleteRecuperationAccordee);
 
 // ============ TIERS (Dolibarr-style) ============
 router.get('/tiers/stats', authMiddleware, tiersController.getStats);
@@ -390,6 +380,19 @@ router.put('/commerce/commandes/:id', authMiddleware, canDo('manageCommerce'), v
 router.delete('/commerce/commandes/:id', authMiddleware, canDo('manageCommerce'), commerceController.deleteCommande);
 router.post('/commerce/commandes/:id/valider', authMiddleware, canDo('manageCommerce'), commerceController.validerCommande);
 router.post('/commerce/commandes/:id/convertir-facture', authMiddleware, canDo('manageCommerce'), commerceController.convertirCommandeFacture);
+router.post('/commerce/commandes/:id/creer-bl', authMiddleware, canDo('manageCommerce'), commerceController.creerBLFromCommande);
+router.get('/commerce/commandes/:id/progression-livraison', authMiddleware, commerceController.getCommandeProgressionLivraison);
+
+// Bons de livraison
+router.get('/commerce/bons-livraison', authMiddleware, commerceController.listBonsLivraison);
+router.get('/commerce/bons-livraison/:id', authMiddleware, commerceController.getBonLivraison);
+router.get('/commerce/bons-livraison/:id/pdf', authMiddleware, commerceController.exportBonLivraisonPDF);
+router.post('/commerce/bons-livraison', authMiddleware, canDo('manageCommerce'), validate(createBonLivraisonSchema), commerceController.createBonLivraison);
+router.put('/commerce/bons-livraison/:id', authMiddleware, canDo('manageCommerce'), validate(updateBonLivraisonSchema), commerceController.updateBonLivraison);
+router.delete('/commerce/bons-livraison/:id', authMiddleware, canDo('manageCommerce'), commerceController.deleteBonLivraison);
+router.post('/commerce/bons-livraison/:id/valider', authMiddleware, canDo('manageCommerce'), commerceController.validerBonLivraison);
+router.post('/commerce/bons-livraison/:id/livrer', authMiddleware, canDo('manageCommerce'), commerceController.livrerBonLivraison);
+router.post('/commerce/bons-livraison/:id/annuler', authMiddleware, canDo('manageCommerce'), commerceController.annulerBonLivraison);
 
 // Factures
 router.get('/commerce/factures', authMiddleware, commerceController.listFactures);
@@ -460,6 +463,8 @@ router.get('/facturation/stats/tresorerie', authMiddleware, canDo('viewFacturati
 router.get('/facturation/stats/retards', authMiddleware, canDo('viewFacturation'), facturationStatsController.getFacturesEnRetard);
 router.get('/facturation/tva/annees', authMiddleware, canDo('viewFacturation'), facturationStatsController.getAnneesDisponibles);
 router.get('/facturation/tva/g50', authMiddleware, canDo('viewFacturation'), facturationStatsController.getG50);
+router.get('/facturation/stats/mensuel', authMiddleware, canDo('viewFacturation'), facturationStatsController.getMensuel);
+router.get('/facturation/stats/top-clients', authMiddleware, canDo('viewFacturation'), facturationStatsController.getTopClients);
 
 // ============ NOTIFICATIONS ============
 router.get('/notifications', authMiddleware, notificationsController.list);

@@ -1,9 +1,12 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import { prisma } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
 import fs from 'fs';
 import path from 'path';
+import logger from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
+
 
 export const produitsServicesController = {
   // ============ PRODUITS/SERVICES ============
@@ -12,7 +15,7 @@ export const produitsServicesController = {
    * GET /api/produits-services
    * Liste tous les produits et services avec filtres
    */
-  async list(req: AuthRequest, res: Response) {
+  async list(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const {
         search,
@@ -115,15 +118,15 @@ export const produitsServicesController = {
         }
       });
     } catch (error) {
-      console.error('List produits-services error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List produits-services error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * GET /api/produits-services/:id
    */
-  async get(req: AuthRequest, res: Response) {
+  async get(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -181,15 +184,15 @@ export const produitsServicesController = {
 
       res.json({ produit });
     } catch (error) {
-      console.error('Get produit-service error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get produit-service error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * POST /api/produits-services
    */
-  async create(req: AuthRequest, res: Response) {
+  async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const {
         reference,
@@ -376,15 +379,15 @@ export const produitsServicesController = {
 
       res.status(201).json({ produit: produitComplet });
     } catch (error) {
-      console.error('Create produit-service error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Create produit-service error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * PUT /api/produits-services/:id
    */
-  async update(req: AuthRequest, res: Response) {
+  async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const {
@@ -560,15 +563,15 @@ export const produitsServicesController = {
 
       res.json({ produit: produitComplet });
     } catch (error) {
-      console.error('Update produit-service error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Update produit-service error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * DELETE /api/produits-services/:id
    */
-  async delete(req: AuthRequest, res: Response) {
+  async delete(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -605,8 +608,8 @@ export const produitsServicesController = {
 
       res.json({ message: 'Produit/Service supprimé' });
     } catch (error) {
-      console.error('Delete produit-service error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Delete produit-service error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -615,7 +618,7 @@ export const produitsServicesController = {
   /**
    * GET /api/categories-produits
    */
-  async listCategories(req: AuthRequest, res: Response) {
+  async listCategories(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { search, actif, parentId } = req.query;
 
@@ -650,15 +653,15 @@ export const produitsServicesController = {
 
       res.json({ categories });
     } catch (error) {
-      console.error('List categories error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List categories error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * GET /api/categories-produits/:id
    */
-  async getCategorie(req: AuthRequest, res: Response) {
+  async getCategorie(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -683,15 +686,15 @@ export const produitsServicesController = {
 
       res.json({ categorie });
     } catch (error) {
-      console.error('Get categorie error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get categorie error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * POST /api/categories-produits
    */
-  async createCategorie(req: AuthRequest, res: Response) {
+  async createCategorie(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { code, nom, description, parentId, couleur, icone, ordre } = req.body;
 
@@ -722,15 +725,15 @@ export const produitsServicesController = {
 
       res.status(201).json({ categorie });
     } catch (error) {
-      console.error('Create categorie error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Create categorie error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * PUT /api/categories-produits/:id
    */
-  async updateCategorie(req: AuthRequest, res: Response) {
+  async updateCategorie(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { code, nom, description, parentId, couleur, icone, ordre, actif } = req.body;
@@ -778,15 +781,15 @@ export const produitsServicesController = {
 
       res.json({ categorie });
     } catch (error) {
-      console.error('Update categorie error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Update categorie error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * DELETE /api/categories-produits/:id
    */
-  async deleteCategorie(req: AuthRequest, res: Response) {
+  async deleteCategorie(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -814,8 +817,8 @@ export const produitsServicesController = {
 
       res.json({ message: 'Catégorie supprimée' });
     } catch (error) {
-      console.error('Delete categorie error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Delete categorie error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -824,7 +827,7 @@ export const produitsServicesController = {
   /**
    * GET /api/entrepots
    */
-  async listEntrepots(req: AuthRequest, res: Response) {
+  async listEntrepots(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { search, actif } = req.query;
 
@@ -852,15 +855,15 @@ export const produitsServicesController = {
 
       res.json({ entrepots });
     } catch (error) {
-      console.error('List entrepots error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List entrepots error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * GET /api/entrepots/:id
    */
-  async getEntrepot(req: AuthRequest, res: Response) {
+  async getEntrepot(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -904,15 +907,15 @@ export const produitsServicesController = {
 
       res.json({ entrepot });
     } catch (error) {
-      console.error('Get entrepot error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get entrepot error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * POST /api/entrepots
    */
-  async createEntrepot(req: AuthRequest, res: Response) {
+  async createEntrepot(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { code, nom, description, adresse, codePostal, ville, pays, responsable, tel, email, estDefaut } = req.body;
 
@@ -950,15 +953,15 @@ export const produitsServicesController = {
 
       res.status(201).json({ entrepot });
     } catch (error) {
-      console.error('Create entrepot error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Create entrepot error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * PUT /api/entrepots/:id
    */
-  async updateEntrepot(req: AuthRequest, res: Response) {
+  async updateEntrepot(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { code, nom, description, adresse, codePostal, ville, pays, responsable, tel, email, estDefaut, actif } = req.body;
@@ -1010,15 +1013,15 @@ export const produitsServicesController = {
 
       res.json({ entrepot });
     } catch (error) {
-      console.error('Update entrepot error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Update entrepot error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * DELETE /api/entrepots/:id
    */
-  async deleteEntrepot(req: AuthRequest, res: Response) {
+  async deleteEntrepot(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -1049,8 +1052,8 @@ export const produitsServicesController = {
 
       res.json({ message: 'Entrepôt supprimé' });
     } catch (error) {
-      console.error('Delete entrepot error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Delete entrepot error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -1059,7 +1062,7 @@ export const produitsServicesController = {
   /**
    * GET /api/prix-fournisseurs
    */
-  async listPrixFournisseurs(req: AuthRequest, res: Response) {
+  async listPrixFournisseurs(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { produitId, fournisseurId, actif } = req.query;
 
@@ -1080,15 +1083,15 @@ export const produitsServicesController = {
 
       res.json({ prix });
     } catch (error) {
-      console.error('List prix fournisseurs error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List prix fournisseurs error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * POST /api/prix-fournisseurs
    */
-  async createPrixFournisseur(req: AuthRequest, res: Response) {
+  async createPrixFournisseur(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { produitId, fournisseurId, refFournisseur, prixAchatHT, remise, quantiteMin, delaiLivraison, dateDebut, dateFin, estDefaut, notes } = req.body;
 
@@ -1131,15 +1134,15 @@ export const produitsServicesController = {
 
       res.status(201).json({ prix });
     } catch (error) {
-      console.error('Create prix fournisseur error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Create prix fournisseur error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * PUT /api/prix-fournisseurs/:id
    */
-  async updatePrixFournisseur(req: AuthRequest, res: Response) {
+  async updatePrixFournisseur(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { refFournisseur, prixAchatHT, remise, quantiteMin, delaiLivraison, dateDebut, dateFin, estDefaut, notes, actif } = req.body;
@@ -1180,15 +1183,15 @@ export const produitsServicesController = {
 
       res.json({ prix });
     } catch (error) {
-      console.error('Update prix fournisseur error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Update prix fournisseur error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * DELETE /api/prix-fournisseurs/:id
    */
-  async deletePrixFournisseur(req: AuthRequest, res: Response) {
+  async deletePrixFournisseur(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -1202,8 +1205,8 @@ export const produitsServicesController = {
 
       res.json({ message: 'Prix fournisseur supprimé' });
     } catch (error) {
-      console.error('Delete prix fournisseur error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Delete prix fournisseur error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -1212,7 +1215,7 @@ export const produitsServicesController = {
   /**
    * GET /api/prix-clients
    */
-  async listPrixClients(req: AuthRequest, res: Response) {
+  async listPrixClients(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { produitId, clientId, actif } = req.query;
 
@@ -1233,15 +1236,15 @@ export const produitsServicesController = {
 
       res.json({ prix });
     } catch (error) {
-      console.error('List prix clients error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List prix clients error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * POST /api/prix-clients
    */
-  async createPrixClient(req: AuthRequest, res: Response) {
+  async createPrixClient(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { produitId, clientId, prixVenteHT, remise, quantiteMin, dateDebut, dateFin, notes } = req.body;
 
@@ -1273,15 +1276,15 @@ export const produitsServicesController = {
 
       res.status(201).json({ prix });
     } catch (error) {
-      console.error('Create prix client error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Create prix client error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * PUT /api/prix-clients/:id
    */
-  async updatePrixClient(req: AuthRequest, res: Response) {
+  async updatePrixClient(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { prixVenteHT, remise, quantiteMin, dateDebut, dateFin, notes, actif } = req.body;
@@ -1311,15 +1314,15 @@ export const produitsServicesController = {
 
       res.json({ prix });
     } catch (error) {
-      console.error('Update prix client error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Update prix client error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * DELETE /api/prix-clients/:id
    */
-  async deletePrixClient(req: AuthRequest, res: Response) {
+  async deletePrixClient(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -1333,8 +1336,8 @@ export const produitsServicesController = {
 
       res.json({ message: 'Prix client supprimé' });
     } catch (error) {
-      console.error('Delete prix client error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Delete prix client error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -1344,7 +1347,7 @@ export const produitsServicesController = {
    * POST /api/produits-services/:id/mouvement
    * Créer un mouvement de stock pour un ProduitService
    */
-  async createMouvementProduitService(req: AuthRequest, res: Response) {
+  async createMouvementProduitService(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { type, quantite, entrepotId, entrepotDestId, motif, numeroLot, interventionId } = req.body;
@@ -1462,8 +1465,8 @@ export const produitsServicesController = {
 
       res.status(201).json({ mouvement });
     } catch (error) {
-      console.error('Create mouvement produit-service error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Create mouvement produit-service error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -1472,7 +1475,7 @@ export const produitsServicesController = {
   /**
    * GET /api/produits-services/stats
    */
-  async getStats(req: AuthRequest, res: Response) {
+  async getStats(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const [
         totalProduits,
@@ -1518,8 +1521,8 @@ export const produitsServicesController = {
         },
       });
     } catch (error) {
-      console.error('Get stats produits-services error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get stats produits-services error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -1527,7 +1530,7 @@ export const produitsServicesController = {
    * GET /api/produits-services/alertes
    * Produits en stock bas
    */
-  async getAlertes(req: AuthRequest, res: Response) {
+  async getAlertes(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const produits = await prisma.produitService.findMany({
         where: {
@@ -1556,8 +1559,8 @@ export const produitsServicesController = {
         count: alertes.length,
       });
     } catch (error) {
-      console.error('Get alertes produits-services error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get alertes produits-services error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -1565,7 +1568,7 @@ export const produitsServicesController = {
    * POST /api/produits-services/:id/fiche-technique
    * Upload d'un PDF fiche technique pour un produit
    */
-  async uploadFicheTechnique(req: AuthRequest, res: Response) {
+  async uploadFicheTechnique(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -1603,8 +1606,8 @@ export const produitsServicesController = {
 
       res.json(updated);
     } catch (error) {
-      console.error('Upload fiche technique error:', error);
-      res.status(500).json({ error: 'Erreur lors de l\'upload de la fiche technique' });
+      logger.error({ err: error }, 'Upload fiche technique error');
+      return next(new AppError(500, 'Erreur lors de l\'upload de la fiche technique'));
     }
   },
 
@@ -1612,7 +1615,7 @@ export const produitsServicesController = {
    * DELETE /api/produits-services/:id/fiche-technique
    * Supprime la fiche technique d'un produit
    */
-  async deleteFicheTechnique(req: AuthRequest, res: Response) {
+  async deleteFicheTechnique(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -1637,8 +1640,8 @@ export const produitsServicesController = {
 
       res.json({ success: true });
     } catch (error) {
-      console.error('Delete fiche technique error:', error);
-      res.status(500).json({ error: 'Erreur lors de la suppression de la fiche technique' });
+      logger.error({ err: error }, 'Delete fiche technique error');
+      return next(new AppError(500, 'Erreur lors de la suppression de la fiche technique'));
     }
   },
 };

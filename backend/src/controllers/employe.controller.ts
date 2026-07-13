@@ -1,12 +1,15 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import { prisma } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
+import logger from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
+
 
 export const employeController = {
   /**
    * GET /api/employes
    */
-  async list(req: AuthRequest, res: Response) {
+  async list(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const employes = await prisma.employe.findMany({
         include: { postes: true },
@@ -15,15 +18,15 @@ export const employeController = {
 
       res.json({ employes });
     } catch (error) {
-      console.error('List employes error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List employes error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * GET /api/employes/:id
    */
-  async get(req: AuthRequest, res: Response) {
+  async get(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const employe = await prisma.employe.findUnique({
@@ -37,15 +40,15 @@ export const employeController = {
 
       res.json({ employe });
     } catch (error) {
-      console.error('Get employe error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get employe error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * POST /api/employes
    */
-  async create(req: AuthRequest, res: Response) {
+  async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { prenom, nom, posteIds } = req.body;
 
@@ -62,15 +65,15 @@ export const employeController = {
 
       res.status(201).json({ employe });
     } catch (error) {
-      console.error('Create employe error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Create employe error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * PUT /api/employes/:id
    */
-  async update(req: AuthRequest, res: Response) {
+  async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { prenom, nom, posteIds } = req.body;
@@ -97,15 +100,15 @@ export const employeController = {
 
       res.json({ employe });
     } catch (error) {
-      console.error('Update employe error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Update employe error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * DELETE /api/employes/:id
    */
-  async delete(req: AuthRequest, res: Response) {
+  async delete(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const existing = await prisma.employe.findUnique({ where: { id } });
@@ -117,8 +120,8 @@ export const employeController = {
       await prisma.employe.delete({ where: { id } });
       res.json({ message: 'Employé supprimé' });
     } catch (error) {
-      console.error('Delete employe error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Delete employe error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 };

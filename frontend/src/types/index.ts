@@ -60,6 +60,7 @@ export interface Client {
   siegeNIF?: string;
   siegeAI?: string;
   siegeNIS?: string;
+  siegeNIN?: string;
   siegeTIN?: string;
   siegeContacts?: SiegeContact[];
   sites?: Site[];
@@ -91,6 +92,7 @@ export interface ContratSite {
   siteId: string;
   site?: Site;
   prestations: string[];
+  prixPrestations?: Record<string, number>;
   frequenceOperations?: Frequence;
   frequenceOperationsJours?: number;
   frequenceControle?: Frequence;
@@ -107,6 +109,7 @@ export interface ContratSite {
 export interface ContratSiteInput {
   siteId: string;
   prestations?: string[];
+  prixPrestations?: Record<string, number>;
   frequenceOperations?: Frequence;
   frequenceOperationsJours?: number;
   frequenceControle?: Frequence;
@@ -317,6 +320,7 @@ export interface CreateClientInput {
   siegeNIF?: string;
   siegeAI?: string;
   siegeNIS?: string;
+  siegeNIN?: string;
   siegeTIN?: string;
   siegeContacts: SiegeContactInput[];
   sites: SiteInput[];
@@ -624,6 +628,26 @@ export interface EmployeRecap {
   };
 }
 
+export interface RecuperationAccordee {
+  id: string;
+  employeId: string;
+  employe?: { id: string; nom: string; prenom: string };
+  nbJours: number;
+  motif?: string;
+  accordeeParId?: string;
+  annee: number;
+  dateAccordee: string;
+  createdAt: string;
+}
+
+export interface RecuperationEmploye {
+  employe: { id: string; nom: string; prenom: string; postes: { id: string; nom: string }[] };
+  weekends: JourWeekendTravaille[];
+  accordees: RecuperationAccordee[];
+  congesRecup: Conge[];
+  solde: SoldeConge | null;
+}
+
 // ============ TIERS (Dolibarr-style) ============
 export type TypeTiers = 'CLIENT' | 'FOURNISSEUR' | 'PROSPECT' | 'CLIENT_FOURNISSEUR';
 export type FormeJuridique = 'SARL' | 'EURL' | 'SPA' | 'SNC' | 'AUTO_ENTREPRENEUR' | 'ASSOCIATION' | 'PARTICULIER' | 'AUTRE';
@@ -721,6 +745,7 @@ export interface Tiers {
   siegeNIF?: string;
   siegeAI?: string;
   siegeNIS?: string;
+  siegeNIN?: string;
   siegeTIN?: string;
   tvaIntracom?: string;
   capital?: number;
@@ -794,6 +819,7 @@ export interface CreateTiersInput {
   siegeNIF?: string;
   siegeAI?: string;
   siegeNIS?: string;
+  siegeNIN?: string;
   siegeTIN?: string;
   tvaIntracom?: string;
   capital?: number;
@@ -1258,6 +1284,7 @@ export interface ProduitServiceAlerte extends ProduitService {
 
 export type DevisStatut = 'BROUILLON' | 'VALIDE' | 'SIGNE' | 'REFUSE' | 'EXPIRE' | 'ANNULE';
 export type CommandeStatut = 'BROUILLON' | 'VALIDEE' | 'EN_PREPARATION' | 'EXPEDIEE' | 'LIVREE' | 'ANNULEE';
+export type BonLivraisonStatut = 'BROUILLON' | 'CONFIRME' | 'LIVRE' | 'ANNULE';
 export type FactureStatut = 'BROUILLON' | 'VALIDEE' | 'EN_RETARD' | 'PARTIELLEMENT_PAYEE' | 'EN_ATTENTE_ENCAISSEMENT' | 'PAYEE' | 'ANNULEE';
 export type FactureType = 'FACTURE' | 'AVOIR';
 export type PaiementStatut = 'RECU' | 'DEPOSE' | 'ENCAISSE' | 'REJETE' | 'ANNULE';
@@ -1326,7 +1353,90 @@ export interface Commande {
   notes?: string;
   conditions?: string;
   lignes?: CommerceLigne[];
+  bonsLivraison?: {
+    id: string;
+    ref: string;
+    statut: string;
+    dateBonLivraison?: string;
+    dateLivraisonEffective?: string;
+    createdBy?: { nom: string; prenom: string };
+    lignes?: { libelle?: string; quantiteCommandee?: number; quantiteLivree: number; unite?: string }[];
+  }[];
   createdBy?: { id: string; nom: string; prenom: string };
+}
+
+export interface BonLivraisonLigne {
+  id: string;
+  bonLivraisonId: string;
+  commandeLigneId?: string;
+  produitServiceId?: string;
+  libelle: string;
+  description?: string;
+  quantiteCommandee?: number;
+  quantiteLivree: number;
+  unite?: string;
+  prixUnitaireHT: number;
+  tauxTVA: number;
+  remisePct?: number;
+  totalHT: number;
+  totalTVA: number;
+  totalTTC: number;
+  ordre?: number;
+}
+
+export interface BonLivraison {
+  id: string;
+  ref: string;
+  clientId: string;
+  client?: { id: string; nomEntreprise: string; code?: string; siegeAdresse?: string; siegeVille?: string; siegePays?: string; siegeRC?: string; siegeNIF?: string; siegeAI?: string; siegeNIS?: string; siegeNIN?: string };
+  commandeId?: string;
+  commande?: { id: string; ref: string };
+  siteId?: string;
+  site?: { id: string; nom: string; ville?: string; adresse?: string };
+  adresseLivraisonId?: string;
+  adresseLivraison?: { adresse?: string; ville?: string; codePostal?: string };
+  dateBonLivraison: string;
+  dateLivraisonEffective?: string;
+  statut: BonLivraisonStatut;
+  notes?: string;
+  devise?: string;
+  lignes?: BonLivraisonLigne[];
+  createdBy?: { id: string; nom: string; prenom: string };
+  createdAt?: string;
+}
+
+export interface CreateBonLivraisonInput {
+  clientId: string;
+  commandeId?: string;
+  adresseLivraisonId?: string;
+  siteId?: string;
+  dateBonLivraison?: string;
+  notes?: string;
+  devise?: string;
+  lignes: Array<{
+    commandeLigneId?: string;
+    produitServiceId?: string;
+    libelle: string;
+    description?: string;
+    quantiteCommandee?: number;
+    quantiteLivree: number;
+    unite?: string;
+    prixUnitaireHT?: number;
+    tauxTVA?: number;
+    remisePct?: number;
+    ordre?: number;
+  }>;
+}
+
+export interface CommandeProgressionLivraison {
+  lignes: Array<{
+    commandeLigneId: string;
+    libelle: string;
+    quantiteCommandee: number;
+    quantiteDejaLivree: number;
+    quantiteRestante: number;
+  }>;
+  pctLivre: number;
 }
 
 export interface Facture {
@@ -1340,6 +1450,7 @@ export interface Facture {
   devisId?: string;
   commandeId?: string;
   dateFacture: string;
+  dateOperation?: string;
   dateEcheance?: string;
   delaiPaiementJours?: number;
   type: FactureType;
@@ -1354,6 +1465,7 @@ export interface Facture {
   devise?: string;
   notes?: string;
   conditions?: string;
+  mentionSpeciale?: string;
   lignes?: CommerceLigne[];
   paiements?: Paiement[];
   relances?: FactureRelance[];
@@ -1412,10 +1524,12 @@ export type CreateFactureInput = Omit<CreateDevisInput, 'statut' | 'dateDevis' |
   devisId?: string;
   commandeId?: string;
   dateFacture?: string;
+  dateOperation?: string;
   dateEcheance?: string;
   delaiPaiementJours?: number;
   statut?: FactureStatut;
   type?: FactureType;
+  mentionSpeciale?: string;
 };
 
 export interface FactureRelance {
@@ -1770,6 +1884,7 @@ export interface CompanySettings {
   nif?: string;
   ai?: string;
   nis?: string;
+  nin?: string;
   compteBancaire?: string;
   rib?: string;
   banque?: string;
@@ -1781,6 +1896,7 @@ export interface CompanySettings {
   // Préfixes de numérotation - Documents vente
   prefixDevis: string;
   prefixCommande: string;
+  prefixBonLivraison: string;
   prefixFacture: string;
   prefixAvoir: string;
 
@@ -1806,6 +1922,7 @@ export interface CompanySettings {
   // Décalages de numérotation
   offsetDevis: number;
   offsetCommande: number;
+  offsetBonLivraison: number;
   offsetFacture: number;
   offsetAvoir: number;
   offsetCommandeFournisseur: number;
@@ -1841,6 +1958,7 @@ export interface UpdateCompanySettingsInput {
   nif?: string;
   ai?: string;
   nis?: string;
+  nin?: string;
   compteBancaire?: string;
   rib?: string;
   banque?: string;

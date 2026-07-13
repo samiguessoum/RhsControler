@@ -1,13 +1,16 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import { prisma } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
+import logger from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
+
 
 export const clientController = {
   /**
    * GET /api/clients
    */
-  async list(req: AuthRequest, res: Response) {
+  async list(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { search, actif, page = '1', limit = '20' } = req.query;
 
@@ -94,15 +97,15 @@ export const clientController = {
         },
       });
     } catch (error) {
-      console.error('List clients error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List clients error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * GET /api/clients/:id
    */
-  async get(req: AuthRequest, res: Response) {
+  async get(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -132,15 +135,15 @@ export const clientController = {
 
       res.json({ client });
     } catch (error) {
-      console.error('Get client error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get client error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * POST /api/clients
    */
-  async create(req: AuthRequest, res: Response) {
+  async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const data = req.body;
 
@@ -178,6 +181,7 @@ export const clientController = {
           siegeNIF: data.siegeNIF,
           siegeAI: data.siegeAI,
           siegeNIS: data.siegeNIS,
+          siegeNIN: data.siegeNIN,
           siegeTIN: data.siegeTIN,
           siegeContacts: {
             create: data.siegeContacts || [],
@@ -194,15 +198,15 @@ export const clientController = {
 
       res.status(201).json({ client });
     } catch (error) {
-      console.error('Create client error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Create client error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * PUT /api/clients/:id
    */
-  async update(req: AuthRequest, res: Response) {
+  async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const data = req.body;
@@ -250,6 +254,7 @@ export const clientController = {
           siegeNIF: data.siegeNIF ?? existing.siegeNIF,
           siegeAI: data.siegeAI ?? existing.siegeAI,
           siegeNIS: data.siegeNIS ?? existing.siegeNIS,
+          siegeNIN: data.siegeNIN ?? existing.siegeNIN,
           siegeTIN: data.siegeTIN ?? existing.siegeTIN,
           actif: data.actif ?? existing.actif,
           ...(data.siegeContacts
@@ -280,15 +285,15 @@ export const clientController = {
 
       res.json({ client });
     } catch (error) {
-      console.error('Update client error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Update client error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * DELETE /api/clients/:id (désactivation)
    */
-  async delete(req: AuthRequest, res: Response) {
+  async delete(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -314,8 +319,8 @@ export const clientController = {
 
       res.json({ message: 'Client supprimé' });
     } catch (error) {
-      console.error('Delete client error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Delete client error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 };

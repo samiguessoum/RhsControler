@@ -88,12 +88,20 @@ enum TypeAdresse {
 enum DocumentType {
   DEVIS
   COMMANDE
+  BON_LIVRAISON
   FACTURE
   FACTURE_AVOIR
   COMMANDE_FOURNISSEUR
   FACTURE_FOURNISSEUR
   CHARGE
   PAIEMENT_DIVERS
+}
+
+enum BonLivraisonStatut {
+  BROUILLON
+  CONFIRME
+  LIVRE
+  ANNULE
 }
 
 enum DevisStatut {
@@ -207,6 +215,8 @@ model User {
   chargesModifies             Charge[]              @relation("ChargeUpdatedBy")
   paiementsChargeCrees        PaiementCharge[]      @relation("PaiementChargeCreatedBy")
   paiementsDiversCrees        PaiementDivers[]      @relation("PaiementDiversCreatedBy")
+  bonsLivraisonCrees          BonLivraison[]        @relation("BonLivraison_createdByIdToUser")
+  bonsLivraisonModifies       BonLivraison[]        @relation("BonLivraison_updatedByIdToUser")
 }
 
 model Employe {
@@ -217,10 +227,11 @@ model Employe {
   createdAt DateTime             @default(now())
   updatedAt DateTime             @updatedAt
 
-  interventionEmployes  InterventionEmploye[]
-  conges                Conge[]
-  joursWeekendTravailles JourWeekendTravaille[]
-  soldesConges          SoldeConge[]
+  interventionEmployes     InterventionEmploye[]
+  conges                   Conge[]
+  joursWeekendTravailles   JourWeekendTravaille[]
+  soldesConges             SoldeConge[]
+  recuperationsAccordees   RecuperationAccordee[]
 }
 
 model Poste {
@@ -251,6 +262,7 @@ model Client {
   siegeNIF        String?           // Numéro d'identification fiscale
   siegeAI         String?           // Article d'imposition
   siegeNIS        String?           // Numéro d'identification statistique
+  siegeNIN        String?           // NIN du gérant
   siegeTIN        String?           // Tax Identification Number (international)
   tvaIntracom     String?           // TVA intracommunautaire
   capital         Float?            // Capital social
@@ -315,6 +327,7 @@ model Client {
   // Commerce
   devis            Devis[]
   commandes        Commande[]
+  bonsLivraison    BonLivraison[]
   factures         Facture[]
   commandesFournisseur CommandeFournisseur[] @relation("CommandesFournisseur")
   facturesFournisseur  FactureFournisseur[]  @relation("FacturesFournisseur")
@@ -393,6 +406,7 @@ model Adresse {
   commandesLivraison   Commande[] @relation("CommandeAdresseLivraison")
   facturesFacturation  Facture[]  @relation("FactureAdresseFacturation")
   facturesLivraison    Facture[]  @relation("FactureAdresseLivraison")
+  bonsLivraison        BonLivraison[] @relation("BonLivraisonAdresse")
 
   @@index([clientId])
   @@index([type])
@@ -474,6 +488,7 @@ model Site {
   interventions   Intervention[]
   devis           Devis[]
   commandes       Commande[]
+  bonsLivraison   BonLivraison[]
   factures        Facture[]
 
   @@index([clientId])
@@ -554,6 +569,7 @@ model ContratSite {
   siteId                   String
   site                     Site       @relation(fields: [siteId], references: [id])
   prestations              String[]   @default([])
+  prixPrestations          Json       @default("{}")  // Map prestation → prix unitaire HT
   frequenceOperations      Frequence?
   frequenceOperationsJours Int?
   frequenceControle        Frequence?
@@ -814,9 +830,10 @@ model ProduitService {
   stocks          StockEntrepot[]
   mouvements      MouvementStock[]
   lots            LotProduit[]
-  devisLignes     DevisLigne[]
-  commandeLignes  CommandeLigne[]
-  factureLignes   FactureLigne[]
+  devisLignes          DevisLigne[]
+  commandeLignes       CommandeLigne[]
+  bonLivraisonLignes   BonLivraisonLigne[]
+  factureLignes        FactureLigne[]
   commandeFournisseurLignes   CommandeFournisseurLigne[]
   factureFournisseurLignes    FactureFournisseurLigne[] @relation("FactureFournisseurLignes")
 
@@ -1087,6 +1104,7 @@ model Commande {
 
   lignes               CommandeLigne[]
   factures             Facture[]
+  bonsLivraison        BonLivraison[]
 
   @@index([clientId])
   @@index([siteId])
@@ -1112,8 +1130,67 @@ model CommandeLigne {
   totalTVA         Float          @default(0)
   totalTTC         Float          @default(0)
   ordre            Int            @default(0)
+  bonLivraisonLignes BonLivraisonLigne[]
 
   @@index([commandeId])
+  @@index([produitServiceId])
+}
+
+model BonLivraison {
+  id                     String              @id @default(uuid())
+  ref                    String              @unique
+  clientId               String
+  client                 Client              @relation(fields: [clientId], references: [id])
+  commandeId             String?
+  commande               Commande?           @relation(fields: [commandeId], references: [id])
+  adresseLivraisonId     String?
+  adresseLivraison       Adresse?            @relation("BonLivraisonAdresse", fields: [adresseLivraisonId], references: [id])
+  siteId                 String?
+  site                   Site?               @relation(fields: [siteId], references: [id])
+  dateBonLivraison       DateTime            @default(now())
+  dateLivraisonEffective DateTime?
+  statut                 BonLivraisonStatut  @default(BROUILLON)
+  notes                  String?
+  devise                 String?             @default("DZD")
+  createdById            String?
+  createdBy              User?               @relation("BonLivraison_createdByIdToUser", fields: [createdById], references: [id])
+  updatedById            String?
+  updatedBy              User?               @relation("BonLivraison_updatedByIdToUser", fields: [updatedById], references: [id])
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+  lignes                 BonLivraisonLigne[]
+
+  @@index([clientId])
+  @@index([commandeId])
+  @@index([siteId])
+  @@index([statut])
+  @@index([dateBonLivraison])
+  @@index([ref])
+}
+
+model BonLivraisonLigne {
+  id                String          @id @default(uuid())
+  bonLivraisonId    String
+  bonLivraison      BonLivraison    @relation(fields: [bonLivraisonId], references: [id], onDelete: Cascade)
+  commandeLigneId   String?
+  commandeLigne     CommandeLigne?  @relation(fields: [commandeLigneId], references: [id])
+  produitServiceId  String?
+  produitService    ProduitService? @relation(fields: [produitServiceId], references: [id])
+  libelle           String
+  description       String?
+  quantiteCommandee Float?
+  quantiteLivree    Float           @default(0)
+  unite             String?
+  prixUnitaireHT    Float           @default(0)
+  tauxTVA           Float           @default(0)
+  remisePct         Float?          @default(0)
+  totalHT           Float           @default(0)
+  totalTVA          Float           @default(0)
+  totalTTC          Float           @default(0)
+  ordre             Int             @default(0)
+
+  @@index([bonLivraisonId])
+  @@index([commandeLigneId])
   @@index([produitServiceId])
 }
 
@@ -1134,6 +1211,7 @@ model Facture {
   adresseLivraisonId   String?
   adresseLivraison     Adresse?      @relation("FactureAdresseLivraison", fields: [adresseLivraisonId], references: [id])
   dateFacture          DateTime      @default(now())
+  dateOperation        DateTime?     // Date réelle de l'opération (depuis le Planning), affichée "Opération du..." sur le PDF
   dateEcheance         DateTime?
   delaiPaiementJours   Int?          @default(45)  // Délai de paiement en jours
   type                 FactureType   @default(FACTURE)
@@ -1148,6 +1226,7 @@ model Facture {
   devise               String?       @default("DZD")
   notes                String?
   conditions           String?
+  mentionSpeciale      String?       // Mention libre affichée sur le PDF (ex: Selon le bon de commande..., Selon la convention...)
   createdById          String?
   createdBy            User?         @relation("FactureCreatedBy", fields: [createdById], references: [id])
   updatedById          String?
@@ -1301,6 +1380,22 @@ model SoldeConge {
   updatedAt       DateTime  @updatedAt
 
   @@unique([employeId, annee, type])
+  @@index([employeId])
+  @@index([annee])
+}
+
+// Récupérations accordées manuellement par un manager
+model RecuperationAccordee {
+  id            String   @id @default(uuid())
+  employeId     String
+  employe       Employe  @relation(fields: [employeId], references: [id])
+  nbJours       Float    // Nombre de jours accordés
+  motif         String?  // Raison (ex: "travail exceptionnel", "astreinte")
+  dateAccordee  DateTime @default(now()) // Date à laquelle c'est accordé
+  accordeeParId String?  // Qui a accordé (utilisateur)
+  annee         Int      // Année concernée
+  createdAt     DateTime @default(now())
+
   @@index([employeId])
   @@index([annee])
 }
@@ -1619,6 +1714,7 @@ model CompanySettings {
   nif                   String?  // Numéro d'identification fiscale
   ai                    String?  // Article d'imposition
   nis                   String?  // Numéro d'identification statistique
+  nin                   String?  // NIN du gérant
   compteBancaire        String?  // Numéro de compte
   rib                   String?  // RIB complet
   banque                String?  // Nom de la banque
@@ -1632,6 +1728,7 @@ model CompanySettings {
   prefixCommande        String   @default("CMD")
   prefixFacture         String   @default("FAC")
   prefixAvoir           String   @default("AV")
+  prefixBonLivraison    String   @default("BL")
 
   // Préfixes de numérotation - Documents achat
   prefixCommandeFournisseur  String   @default("CF")
@@ -1658,6 +1755,7 @@ model CompanySettings {
   offsetCommande              Int      @default(0)
   offsetFacture               Int      @default(0)
   offsetAvoir                 Int      @default(0)
+  offsetBonLivraison          Int      @default(0)
   offsetCommandeFournisseur   Int      @default(0)
   offsetFactureFournisseur    Int      @default(0)
   offsetCharge                Int      @default(0)

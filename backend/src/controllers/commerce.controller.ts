@@ -1,30 +1,36 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import { prisma } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
 import { facturationEvents } from '../services/events.service.js';
 import { stockService } from '../services/stock.service.js';
+import logger from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
+
 
 // Préfixes par défaut (utilisés si aucun paramètre en base)
-const DEFAULT_PREFIX: Record<'DEVIS' | 'COMMANDE' | 'FACTURE' | 'FACTURE_AVOIR', string> = {
+const DEFAULT_PREFIX: Record<'DEVIS' | 'COMMANDE' | 'BON_LIVRAISON' | 'FACTURE' | 'FACTURE_AVOIR', string> = {
   DEVIS: 'DV',
   COMMANDE: 'CMD',
+  BON_LIVRAISON: 'BL',
   FACTURE: 'FAC',
   FACTURE_AVOIR: 'AV',
 };
 
 // Mapping entre type de document et champ de préfixe dans CompanySettings
-const PREFIX_FIELD_MAP: Record<'DEVIS' | 'COMMANDE' | 'FACTURE' | 'FACTURE_AVOIR', string> = {
+const PREFIX_FIELD_MAP: Record<'DEVIS' | 'COMMANDE' | 'BON_LIVRAISON' | 'FACTURE' | 'FACTURE_AVOIR', string> = {
   DEVIS: 'prefixDevis',
   COMMANDE: 'prefixCommande',
+  BON_LIVRAISON: 'prefixBonLivraison',
   FACTURE: 'prefixFacture',
   FACTURE_AVOIR: 'prefixAvoir',
 };
 
 // Mapping entre type de document et champ de décalage dans CompanySettings
-const OFFSET_FIELD_MAP: Record<'DEVIS' | 'COMMANDE' | 'FACTURE' | 'FACTURE_AVOIR', string> = {
+const OFFSET_FIELD_MAP: Record<'DEVIS' | 'COMMANDE' | 'BON_LIVRAISON' | 'FACTURE' | 'FACTURE_AVOIR', string> = {
   DEVIS: 'offsetDevis',
   COMMANDE: 'offsetCommande',
+  BON_LIVRAISON: 'offsetBonLivraison',
   FACTURE: 'offsetFacture',
   FACTURE_AVOIR: 'offsetAvoir',
 };
@@ -36,7 +42,7 @@ function parseDate(value?: string): Date | undefined {
 }
 
 // Génère une référence au format: PRÉFIXE0000/2026
-async function generateReference(type: 'DEVIS' | 'COMMANDE' | 'FACTURE' | 'FACTURE_AVOIR', date: Date): Promise<string> {
+async function generateReference(type: 'DEVIS' | 'COMMANDE' | 'BON_LIVRAISON' | 'FACTURE' | 'FACTURE_AVOIR', date: Date): Promise<string> {
   const annee = date.getFullYear();
 
   // Récupérer les paramètres de numérotation
@@ -56,7 +62,7 @@ async function generateReference(type: 'DEVIS' | 'COMMANDE' | 'FACTURE' | 'FACTU
   const counter = await prisma.compteurDocument.upsert({
     where: { type_annee: { type, annee } },
     update: { prochainNumero: { increment: 1 } },
-    create: { type, annee, prochainNumero: 2 },
+    create: { id: crypto.randomUUID(), type, annee, prochainNumero: 2, updatedAt: new Date() },
     select: { prochainNumero: true },
   });
   // Appliquer le décalage au numéro
@@ -196,7 +202,7 @@ async function updateFacturePaiementStatus(factureId: string, tx?: any) {
 
 export const commerceController = {
   // ============ DEVIS ============
-  async listDevis(req: AuthRequest, res: Response) {
+  async listDevis(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { search, clientId, statut, page = '1', limit = '50' } = req.query;
 
@@ -239,12 +245,12 @@ export const commerceController = {
         },
       });
     } catch (error) {
-      console.error('List devis error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List devis error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
-  async getDevis(req: AuthRequest, res: Response) {
+  async getDevis(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const devis = await prisma.devis.findUnique({
@@ -291,12 +297,12 @@ export const commerceController = {
 
       res.json({ devis });
     } catch (error) {
-      console.error('Get devis error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get devis error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
-  async createDevis(req: AuthRequest, res: Response) {
+  async createDevis(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const data = req.body;
 
@@ -348,7 +354,7 @@ export const commerceController = {
             where: { id: data.siteId },
             data: { noteServiceDefaut: firstLineDescription.trim() },
           });
-          console.log(`[Devis SERVICE] Note sauvegardée pour site ${data.siteId}: "${firstLineDescription.trim().substring(0, 50)}..."`);
+          logger.info(`[Devis SERVICE] Note sauvegardée pour site ${data.siteId}: "${firstLineDescription.trim().substring(0, 50)}..."`);
         }
       }
 
@@ -356,12 +362,12 @@ export const commerceController = {
 
       res.status(201).json({ devis });
     } catch (error) {
-      console.error('Create devis error:', error);
-      res.status(500).json({ error: 'Erreur lors de la création du devis' });
+      logger.error({ err: error }, 'Create devis error');
+      return next(new AppError(500, 'Erreur lors de la création du devis'));
     }
   },
 
-  async updateDevis(req: AuthRequest, res: Response) {
+  async updateDevis(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const data = req.body;
@@ -421,24 +427,24 @@ export const commerceController = {
 
       res.json({ devis });
     } catch (error) {
-      console.error('Update devis error:', error);
-      res.status(500).json({ error: 'Erreur lors de la mise à jour du devis' });
+      logger.error({ err: error }, 'Update devis error');
+      return next(new AppError(500, 'Erreur lors de la mise à jour du devis'));
     }
   },
 
-  async deleteDevis(req: AuthRequest, res: Response) {
+  async deleteDevis(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       await prisma.devis.delete({ where: { id } });
       await createAuditLog(req.user!.id, 'DELETE', 'Devis', id);
       res.json({ message: 'Devis supprimé' });
     } catch (error) {
-      console.error('Delete devis error:', error);
-      res.status(500).json({ error: 'Erreur lors de la suppression du devis' });
+      logger.error({ err: error }, 'Delete devis error');
+      return next(new AppError(500, 'Erreur lors de la suppression du devis'));
     }
   },
 
-  async validerDevis(req: AuthRequest, res: Response) {
+  async validerDevis(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const existing = await prisma.devis.findUnique({ where: { id } });
@@ -467,12 +473,12 @@ export const commerceController = {
 
       res.json({ devis, message: 'Devis validé avec succès' });
     } catch (error) {
-      console.error('Valider devis error:', error);
-      res.status(500).json({ error: 'Erreur lors de la validation du devis' });
+      logger.error({ err: error }, 'Valider devis error');
+      return next(new AppError(500, 'Erreur lors de la validation du devis'));
     }
   },
 
-  async convertirDevisCommande(req: AuthRequest, res: Response) {
+  async convertirDevisCommande(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const devis = await prisma.devis.findUnique({
@@ -531,13 +537,13 @@ export const commerceController = {
 
       res.status(201).json({ commande, message: 'Commande créée à partir du devis' });
     } catch (error) {
-      console.error('Convert devis -> commande error:', error);
-      res.status(500).json({ error: 'Erreur lors de la conversion' });
+      logger.error({ err: error }, 'Convert devis -> commande error');
+      return next(new AppError(500, 'Erreur lors de la conversion'));
     }
   },
 
   // ============ COMMANDES ============
-  async listCommandes(req: AuthRequest, res: Response) {
+  async listCommandes(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { search, clientId, statut, page = '1', limit = '50' } = req.query;
 
@@ -577,6 +583,18 @@ export const commerceController = {
             totalTTC: true,
             client: { select: { id: true, nomEntreprise: true } },
             site: { select: { id: true, nom: true, ville: true } },
+            lignes: { select: { id: true, quantite: true } },
+            bonsLivraison: {
+              where: { statut: { not: 'ANNULE' } },
+              select: {
+                id: true,
+                ref: true,
+                statut: true,
+                dateBonLivraison: true,
+                dateLivraisonEffective: true,
+                lignes: { select: { commandeLigneId: true, quantiteCommandee: true, quantiteLivree: true } },
+              },
+            },
             _count: { select: { lignes: true } },
           },
         }),
@@ -593,12 +611,12 @@ export const commerceController = {
         },
       });
     } catch (error) {
-      console.error('List commandes error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List commandes error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
-  async getCommande(req: AuthRequest, res: Response) {
+  async getCommande(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const commande = await prisma.commande.findUnique({
@@ -635,6 +653,26 @@ export const commerceController = {
               produitService: { select: { id: true, nom: true, reference: true } },
             },
           },
+          bonsLivraison: {
+            where: { statut: { not: 'ANNULE' } },
+            orderBy: { createdAt: 'asc' },
+            select: {
+              id: true,
+              ref: true,
+              statut: true,
+              dateBonLivraison: true,
+              dateLivraisonEffective: true,
+              createdBy: { select: { nom: true, prenom: true } },
+              lignes: {
+                select: {
+                  libelle: true,
+                  quantiteCommandee: true,
+                  quantiteLivree: true,
+                  unite: true,
+                },
+              },
+            },
+          },
           createdBy: { select: { id: true, nom: true, prenom: true } },
           updatedBy: { select: { id: true, nom: true, prenom: true } },
         },
@@ -646,12 +684,12 @@ export const commerceController = {
 
       res.json({ commande });
     } catch (error) {
-      console.error('Get commande error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get commande error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
-  async createCommande(req: AuthRequest, res: Response) {
+  async createCommande(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const data = req.body;
 
@@ -711,12 +749,12 @@ export const commerceController = {
 
       res.status(201).json({ commande });
     } catch (error) {
-      console.error('Create commande error:', error);
-      res.status(500).json({ error: 'Erreur lors de la création de la commande' });
+      logger.error({ err: error }, 'Create commande error');
+      return next(new AppError(500, 'Erreur lors de la création de la commande'));
     }
   },
 
-  async updateCommande(req: AuthRequest, res: Response) {
+  async updateCommande(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const data = req.body;
@@ -776,24 +814,24 @@ export const commerceController = {
 
       res.json({ commande });
     } catch (error) {
-      console.error('Update commande error:', error);
-      res.status(500).json({ error: 'Erreur lors de la mise à jour de la commande' });
+      logger.error({ err: error }, 'Update commande error');
+      return next(new AppError(500, 'Erreur lors de la mise à jour de la commande'));
     }
   },
 
-  async deleteCommande(req: AuthRequest, res: Response) {
+  async deleteCommande(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       await prisma.commande.delete({ where: { id } });
       await createAuditLog(req.user!.id, 'DELETE', 'Commande', id);
       res.json({ message: 'Commande supprimée' });
     } catch (error) {
-      console.error('Delete commande error:', error);
-      res.status(500).json({ error: 'Erreur lors de la suppression de la commande' });
+      logger.error({ err: error }, 'Delete commande error');
+      return next(new AppError(500, 'Erreur lors de la suppression de la commande'));
     }
   },
 
-  async validerCommande(req: AuthRequest, res: Response) {
+  async validerCommande(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { refBonCommandeClient, dateCommande, dateLivraisonSouhaitee, notes, conditions } = req.body;
@@ -834,12 +872,12 @@ export const commerceController = {
 
       res.json({ commande, message: 'Commande validée avec succès' });
     } catch (error) {
-      console.error('Valider commande error:', error);
-      res.status(500).json({ error: 'Erreur lors de la validation de la commande' });
+      logger.error({ err: error }, 'Valider commande error');
+      return next(new AppError(500, 'Erreur lors de la validation de la commande'));
     }
   },
 
-  async convertirCommandeFacture(req: AuthRequest, res: Response) {
+  async convertirCommandeFacture(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const commande = await prisma.commande.findUnique({
@@ -899,13 +937,13 @@ export const commerceController = {
 
       res.status(201).json({ facture, message: 'Facture créée à partir de la commande' });
     } catch (error) {
-      console.error('Convert commande -> facture error:', error);
-      res.status(500).json({ error: 'Erreur lors de la conversion' });
+      logger.error({ err: error }, 'Convert commande -> facture error');
+      return next(new AppError(500, 'Erreur lors de la conversion'));
     }
   },
 
   // ============ FACTURES ============
-  async listFactures(req: AuthRequest, res: Response) {
+  async listFactures(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { search, clientId, statut, type, page = '1', limit = '50' } = req.query;
 
@@ -969,12 +1007,12 @@ export const commerceController = {
         },
       });
     } catch (error) {
-      console.error('List factures error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List factures error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
-  async getFacture(req: AuthRequest, res: Response) {
+  async getFacture(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const facture = await prisma.facture.findUnique({
@@ -1035,12 +1073,12 @@ export const commerceController = {
 
       res.json({ facture });
     } catch (error) {
-      console.error('Get facture error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get facture error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
-  async createFacture(req: AuthRequest, res: Response) {
+  async createFacture(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const data = req.body;
 
@@ -1076,6 +1114,7 @@ export const commerceController = {
             adresseFacturationId: data.adresseFacturationId,
             adresseLivraisonId: data.adresseLivraisonId,
             dateFacture,
+            dateOperation: parseDate(data.dateOperation) ?? null,
             dateEcheance,
             delaiPaiementJours,
             type: factureType,
@@ -1089,6 +1128,7 @@ export const commerceController = {
             devise: data.devise,
             notes: data.notes,
             conditions: data.conditions,
+            mentionSpeciale: data.mentionSpeciale || null,
             createdById: req.user?.id,
             updatedById: req.user?.id,
             lignes: { create: lignes },
@@ -1108,7 +1148,7 @@ export const commerceController = {
               where: { id: data.siteId },
               data: { noteServiceDefaut: firstLineDescription.trim() },
             });
-            console.log(`[Facture SERVICE] Note sauvegardée pour site ${data.siteId}: "${firstLineDescription.trim().substring(0, 50)}..."`);
+            logger.info(`[Facture SERVICE] Note sauvegardée pour site ${data.siteId}: "${firstLineDescription.trim().substring(0, 50)}..."`);
           }
         }
 
@@ -1148,13 +1188,13 @@ export const commerceController = {
 
       res.status(201).json({ facture });
     } catch (error) {
-      console.error('Create facture error:', error);
+      logger.error({ err: error }, 'Create facture error');
       const message = error instanceof Error ? error.message : 'Erreur lors de la création de la facture';
-      res.status(500).json({ error: message });
+      return next(new AppError(500, message));
     }
   },
 
-  async updateFacture(req: AuthRequest, res: Response) {
+  async updateFacture(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const data = req.body;
@@ -1165,6 +1205,15 @@ export const commerceController = {
       });
       if (!existing) {
         return res.status(404).json({ error: 'Facture non trouvée' });
+      }
+
+      // Seules les factures BROUILLON sont modifiables librement.
+      // Exception : passer une facture VALIDEE à ANNULEE est autorisé.
+      if (existing.statut !== 'BROUILLON') {
+        const isAnnulation = data.statut === 'ANNULEE' && Object.keys(data).length === 1;
+        if (!isAnnulation) {
+          return next(new AppError(400, 'Seule une facture en brouillon peut être modifiée. Utilisez les actions dédiées (valider, annuler).'));
+        }
       }
 
       let lignesData = undefined;
@@ -1210,6 +1259,7 @@ export const commerceController = {
             adresseFacturationId: data.adresseFacturationId,
             adresseLivraisonId: data.adresseLivraisonId,
             dateFacture: parseDate(data.dateFacture),
+            dateOperation: data.dateOperation !== undefined ? (parseDate(data.dateOperation) ?? null) : undefined,
             dateEcheance: dateEcheanceUpdate,
             delaiPaiementJours: delaiPaiementJoursUpdate,
             type: data.type,
@@ -1222,6 +1272,7 @@ export const commerceController = {
             devise: data.devise,
             notes: data.notes,
             conditions: data.conditions,
+            mentionSpeciale: data.mentionSpeciale !== undefined ? (data.mentionSpeciale || null) : undefined,
             updatedById: req.user?.id,
             lignes: lignesData
               ? {
@@ -1285,25 +1336,25 @@ export const commerceController = {
 
       res.json({ facture });
     } catch (error) {
-      console.error('Update facture error:', error);
+      logger.error({ err: error }, 'Update facture error');
       const message = error instanceof Error ? error.message : 'Erreur lors de la mise à jour de la facture';
-      res.status(500).json({ error: message });
+      return next(new AppError(500, message));
     }
   },
 
-  async deleteFacture(req: AuthRequest, res: Response) {
+  async deleteFacture(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       await prisma.facture.delete({ where: { id } });
       await createAuditLog(req.user!.id, 'DELETE', 'Facture', id);
       res.json({ message: 'Facture supprimée' });
     } catch (error) {
-      console.error('Delete facture error:', error);
-      res.status(500).json({ error: 'Erreur lors de la suppression de la facture' });
+      logger.error({ err: error }, 'Delete facture error');
+      return next(new AppError(500, 'Erreur lors de la suppression de la facture'));
     }
   },
 
-  async validerFacture(req: AuthRequest, res: Response) {
+  async validerFacture(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { delaiPaiementJours, dateFacture: dateFactureBody, notes, conditions } = req.body;
@@ -1384,16 +1435,16 @@ export const commerceController = {
 
       res.json({ facture, message: 'Facture validée avec succès' });
     } catch (error: any) {
-      console.error('Valider facture error:', error);
+      logger.error({ err: error }, 'Valider facture error');
       if (error?.isStockError) {
         return res.status(400).json({ error: `Stock insuffisant : ${error.message}` });
       }
-      res.status(500).json({ error: 'Erreur lors de la validation de la facture' });
+      return next(new AppError(500, 'Erreur lors de la validation de la facture'));
     }
   },
 
   // Relances factures clients
-  async listRelances(req: AuthRequest, res: Response) {
+  async listRelances(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const relances = await prisma.factureRelance.findMany({
@@ -1403,12 +1454,12 @@ export const commerceController = {
       });
       res.json({ relances });
     } catch (error) {
-      console.error('List relances error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List relances error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
-  async createRelance(req: AuthRequest, res: Response) {
+  async createRelance(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const data = req.body;
@@ -1432,13 +1483,13 @@ export const commerceController = {
       await createAuditLog(req.user!.id, 'CREATE', 'FactureRelance', relance.id, { after: relance });
       res.status(201).json({ relance });
     } catch (error) {
-      console.error('Create relance error:', error);
-      res.status(500).json({ error: 'Erreur lors de la création de la relance' });
+      logger.error({ err: error }, 'Create relance error');
+      return next(new AppError(500, 'Erreur lors de la création de la relance'));
     }
   },
 
   // ============ PAIEMENTS ============
-  async createPaiement(req: AuthRequest, res: Response) {
+  async createPaiement(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const data = req.body;
 
@@ -1525,12 +1576,12 @@ export const commerceController = {
 
       res.status(201).json({ paiement, nouveauStatut });
     } catch (error) {
-      console.error('Create paiement error:', error);
-      res.status(500).json({ error: 'Erreur lors de la création du paiement' });
+      logger.error({ err: error }, 'Create paiement error');
+      return next(new AppError(500, 'Erreur lors de la création du paiement'));
     }
   },
 
-  async updateStatutCheque(req: AuthRequest, res: Response) {
+  async updateStatutCheque(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { statut, date } = req.body;
@@ -1561,12 +1612,12 @@ export const commerceController = {
 
       res.json({ success: true, statut });
     } catch (error) {
-      console.error('Update statut cheque error:', error);
-      res.status(500).json({ error: 'Erreur lors de la mise à jour du statut' });
+      logger.error({ err: error }, 'Update statut cheque error');
+      return next(new AppError(500, 'Erreur lors de la mise à jour du statut'));
     }
   },
 
-  async deletePaiement(req: AuthRequest, res: Response) {
+  async deletePaiement(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const paiement = await prisma.paiement.findUnique({ where: { id } });
@@ -1584,13 +1635,13 @@ export const commerceController = {
 
       res.json({ message: 'Paiement annulé' });
     } catch (error) {
-      console.error('Delete paiement error:', error);
-      res.status(500).json({ error: 'Erreur lors de la suppression du paiement' });
+      logger.error({ err: error }, 'Delete paiement error');
+      return next(new AppError(500, 'Erreur lors de la suppression du paiement'));
     }
   },
 
   // ============ EXPORT PDF ============
-  async exportDevisPDF(req: AuthRequest, res: Response) {
+  async exportDevisPDF(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const devis = await prisma.devis.findUnique({
@@ -1608,6 +1659,7 @@ export const commerceController = {
               siegeNIF: true,
               siegeAI: true,
               siegeNIS: true,
+              siegeNIN: true,
             },
           },
           site: {
@@ -1629,22 +1681,43 @@ export const commerceController = {
       const pdfBuffer = await generateDevisPDF(devis as any);
 
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `inline; filename="${devis.ref}.pdf"`);
+      res.setHeader('Content-Disposition', `inline; filename="${devis.ref.replace(/\//g, '-')}.pdf"`);
       res.setHeader('Content-Length', pdfBuffer.length);
       res.send(pdfBuffer);
     } catch (error) {
-      console.error('Export devis PDF error:', error);
-      res.status(500).json({ error: 'Erreur lors de la génération du PDF' });
+      logger.error({ err: error }, 'Export devis PDF error');
+      return next(new AppError(500, 'Erreur lors de la génération du PDF'));
     }
   },
 
-  async exportCommandePDF(req: AuthRequest, res: Response) {
+  async exportCommandePDF(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const commande = await prisma.commande.findUnique({
         where: { id },
         include: {
-          client: { select: { id: true, nomEntreprise: true, code: true } },
+          client: {
+            select: {
+              id: true,
+              nomEntreprise: true,
+              code: true,
+              siegeAdresse: true,
+              siegeVille: true,
+              siegePays: true,
+              siegeRC: true,
+              siegeNIF: true,
+              siegeAI: true,
+              siegeNIS: true,
+              siegeNIN: true,
+            },
+          },
+          site: {
+            select: {
+              nom: true,
+              ville: true,
+              adresse: true,
+            },
+          },
           lignes: { orderBy: { ordre: 'asc' } },
         },
       });
@@ -1657,16 +1730,16 @@ export const commerceController = {
       const pdfBuffer = await generateCommandePDF(commande as any);
 
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `inline; filename="${commande.ref}.pdf"`);
+      res.setHeader('Content-Disposition', `inline; filename="${commande.ref.replace(/\//g, '-')}.pdf"`);
       res.setHeader('Content-Length', pdfBuffer.length);
       res.send(pdfBuffer);
     } catch (error) {
-      console.error('Export commande PDF error:', error);
-      res.status(500).json({ error: 'Erreur lors de la génération du PDF' });
+      logger.error({ err: error }, 'Export commande PDF error');
+      return next(new AppError(500, 'Erreur lors de la génération du PDF'));
     }
   },
 
-  async exportFacturePDF(req: AuthRequest, res: Response) {
+  async exportFacturePDF(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const facture = await prisma.facture.findUnique({
@@ -1685,8 +1758,11 @@ export const commerceController = {
               siegeNIF: true,
               siegeAI: true,
               siegeNIS: true,
+              siegeNIN: true,
             },
           },
+          commande: { select: { refBonCommandeClient: true } },
+          site: { select: { id: true, nom: true, ville: true, adresse: true } },
           lignes: { orderBy: { ordre: 'asc' } },
         },
       });
@@ -1696,15 +1772,547 @@ export const commerceController = {
       }
 
       const { generateFacturePDF } = await import('../services/pdf.service.js');
-      const pdfBuffer = await generateFacturePDF(facture as any);
+      const pdfBuffer = await generateFacturePDF({
+        ...facture,
+        refBonCommandeClient: facture.commande?.refBonCommandeClient ?? null,
+      } as any);
 
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `inline; filename="${facture.ref}.pdf"`);
+      res.setHeader('Content-Disposition', `inline; filename="${facture.ref.replace(/\//g, '-')}.pdf"`);
       res.setHeader('Content-Length', pdfBuffer.length);
       res.send(pdfBuffer);
     } catch (error) {
-      console.error('Export facture PDF error:', error);
-      res.status(500).json({ error: 'Erreur lors de la génération du PDF' });
+      logger.error({ err: error }, 'Export facture PDF error');
+      return next(new AppError(500, 'Erreur lors de la génération du PDF'));
+    }
+  },
+
+  // ── Bons de Livraison ──────────────────────────────────────────────────────
+
+  async listBonsLivraison(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { clientId, commandeId, statut, search, page = '1', limit = '50' } = req.query as Record<string, string>;
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+      const where: Record<string, unknown> = {};
+      if (clientId) where.clientId = clientId;
+      if (commandeId) where.commandeId = commandeId;
+      if (statut) where.statut = statut;
+      if (search) {
+        where.OR = [
+          { ref: { contains: search, mode: 'insensitive' } },
+          { client: { nomEntreprise: { contains: search, mode: 'insensitive' } } },
+        ];
+      }
+      const [total, items] = await Promise.all([
+        prisma.bonLivraison.count({ where }),
+        prisma.bonLivraison.findMany({
+          where,
+          skip,
+          take: parseInt(limit),
+          orderBy: { dateBonLivraison: 'desc' },
+          include: {
+            client: { select: { id: true, nomEntreprise: true, code: true } },
+            commande: { select: { id: true, ref: true } },
+            site: { select: { id: true, nom: true, ville: true } },
+            lignes: { select: { quantiteCommandee: true, quantiteLivree: true } },
+          },
+        }),
+      ]);
+      res.json({ items, total, page: parseInt(page), limit: parseInt(limit) });
+    } catch (error) {
+      logger.error({ err: error }, 'List bons livraison error');
+      return next(new AppError(500, 'Erreur lors de la récupération des bons de livraison'));
+    }
+  },
+
+  async getBonLivraison(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const bl = await prisma.bonLivraison.findUnique({
+        where: { id },
+        include: {
+          client: { select: { id: true, nomEntreprise: true, code: true, siegeAdresse: true, siegeVille: true, siegePays: true, siegeRC: true, siegeNIF: true, siegeAI: true, siegeNIS: true } },
+          commande: { select: { id: true, ref: true } },
+          site: { select: { id: true, nom: true, ville: true, adresse: true } },
+          adresseLivraison: true,
+          lignes: { orderBy: { ordre: 'asc' } },
+          createdBy: { select: { id: true, nom: true, prenom: true } },
+        },
+      });
+      if (!bl) return next(new AppError(404, 'Bon de livraison non trouvé'));
+      res.json(bl);
+    } catch (error) {
+      logger.error({ err: error }, 'Get bon livraison error');
+      return next(new AppError(500, 'Erreur lors de la récupération du bon de livraison'));
+    }
+  },
+
+  async createBonLivraison(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const data = req.body;
+      const userId = req.user?.id;
+
+      // Validation livraison partielle : vérifier que quantiteLivree ne dépasse pas ce qui reste
+      if (data.commandeId && data.lignes) {
+        await Promise.all(
+          data.lignes
+            .filter((l: { commandeLigneId?: string; quantiteLivree: number }) => l.commandeLigneId)
+            .map(async (l: { commandeLigneId: string; quantiteLivree: number }) => {
+              const [cmdLigne, dejaLivree] = await Promise.all([
+                prisma.commandeLigne.findUnique({ where: { id: l.commandeLigneId } }),
+                prisma.bonLivraisonLigne.aggregate({
+                  where: {
+                    commandeLigneId: l.commandeLigneId,
+                    bonLivraison: { statut: { not: 'ANNULE' } },
+                  },
+                  _sum: { quantiteLivree: true },
+                }),
+              ]);
+              if (!cmdLigne) throw new AppError(400, `Ligne de commande introuvable: ${l.commandeLigneId}`);
+              const totalApres = (dejaLivree._sum.quantiteLivree || 0) + l.quantiteLivree;
+              if (totalApres > cmdLigne.quantite) {
+                throw new AppError(400, `Quantité livrée (${totalApres}) dépasse la quantité commandée (${cmdLigne.quantite}) pour "${cmdLigne.libelle}"`);
+              }
+            })
+        );
+      }
+
+      const ref = await generateReference('BON_LIVRAISON', new Date());
+      const id = crypto.randomUUID();
+
+      const bl = await prisma.bonLivraison.create({
+        data: {
+          id,
+          ref,
+          clientId: data.clientId,
+          commandeId: data.commandeId || null,
+          adresseLivraisonId: data.adresseLivraisonId || null,
+          siteId: data.siteId || null,
+          dateBonLivraison: data.dateBonLivraison ? new Date(data.dateBonLivraison) : new Date(),
+          notes: data.notes || null,
+          devise: data.devise || 'DZD',
+          createdById: userId || null,
+          updatedById: userId || null,
+          updatedAt: new Date(),
+          lignes: {
+            create: data.lignes.map((l: {
+              commandeLigneId?: string; produitServiceId?: string; libelle: string;
+              description?: string; quantiteCommandee?: number; quantiteLivree: number;
+              unite?: string; prixUnitaireHT?: number; tauxTVA?: number; remisePct?: number; ordre?: number;
+            }, idx: number) => {
+              const prixHT = l.prixUnitaireHT ?? 0;
+              const tva = l.tauxTVA ?? 0;
+              const remise = l.remisePct ?? 0;
+              const totalHT = l.quantiteLivree * prixHT * (1 - remise / 100);
+              const totalTVA = totalHT * (tva / 100);
+              return {
+                id: crypto.randomUUID(),
+                commandeLigneId: l.commandeLigneId || null,
+                produitServiceId: l.produitServiceId || null,
+                libelle: l.libelle,
+                description: l.description || null,
+                quantiteCommandee: l.quantiteCommandee ?? null,
+                quantiteLivree: l.quantiteLivree,
+                unite: l.unite || null,
+                prixUnitaireHT: prixHT,
+                tauxTVA: tva,
+                remisePct: remise,
+                totalHT,
+                totalTVA,
+                totalTTC: totalHT + totalTVA,
+                ordre: l.ordre ?? idx,
+              };
+            }),
+          },
+        },
+        include: {
+          client: { select: { id: true, nomEntreprise: true } },
+          commande: { select: { id: true, ref: true } },
+          lignes: { orderBy: { ordre: 'asc' } },
+        },
+      });
+
+      await commerceController._checkAndUpdateCommandeStatut(data.commandeId);
+      await createAuditLog(userId || 'system', 'CREATE', 'BonLivraison', bl.id, { after: bl });
+      res.status(201).json(bl);
+    } catch (error) {
+      if (error instanceof AppError) return next(error);
+      logger.error({ err: error }, 'Create bon livraison error');
+      return next(new AppError(500, 'Erreur lors de la création du bon de livraison'));
+    }
+  },
+
+  async updateBonLivraison(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const data = req.body;
+      const userId = req.user?.id;
+
+      const existing = await prisma.bonLivraison.findUnique({ where: { id } });
+      if (!existing) return next(new AppError(404, 'Bon de livraison non trouvé'));
+      if (existing.statut !== 'BROUILLON') {
+        return next(new AppError(400, 'Seul un bon de livraison en brouillon peut être modifié'));
+      }
+
+      const bl = await prisma.bonLivraison.update({
+        where: { id },
+        data: {
+          ...(data.adresseLivraisonId !== undefined && { adresseLivraisonId: data.adresseLivraisonId }),
+          ...(data.siteId !== undefined && { siteId: data.siteId }),
+          ...(data.dateBonLivraison && { dateBonLivraison: new Date(data.dateBonLivraison) }),
+          ...(data.notes !== undefined && { notes: data.notes }),
+          ...(data.devise && { devise: data.devise }),
+          updatedById: userId || null,
+          updatedAt: new Date(),
+          ...(data.lignes && {
+            lignes: {
+              deleteMany: {},
+              create: data.lignes.map((l: {
+                commandeLigneId?: string; produitServiceId?: string; libelle: string;
+                description?: string; quantiteCommandee?: number; quantiteLivree: number;
+                unite?: string; prixUnitaireHT?: number; tauxTVA?: number; remisePct?: number; ordre?: number;
+              }, idx: number) => {
+                const prixHT = l.prixUnitaireHT ?? 0;
+                const tva = l.tauxTVA ?? 0;
+                const remise = l.remisePct ?? 0;
+                const totalHT = l.quantiteLivree * prixHT * (1 - remise / 100);
+                const totalTVA = totalHT * (tva / 100);
+                return {
+                  id: crypto.randomUUID(),
+                  commandeLigneId: l.commandeLigneId || null,
+                  produitServiceId: l.produitServiceId || null,
+                  libelle: l.libelle,
+                  description: l.description || null,
+                  quantiteCommandee: l.quantiteCommandee ?? null,
+                  quantiteLivree: l.quantiteLivree,
+                  unite: l.unite || null,
+                  prixUnitaireHT: prixHT,
+                  tauxTVA: tva,
+                  remisePct: remise,
+                  totalHT,
+                  totalTVA,
+                  totalTTC: totalHT + totalTVA,
+                  ordre: l.ordre ?? idx,
+                };
+              }),
+            },
+          }),
+        },
+        include: {
+          client: { select: { id: true, nomEntreprise: true } },
+          commande: { select: { id: true, ref: true } },
+          lignes: { orderBy: { ordre: 'asc' } },
+        },
+      });
+
+      await createAuditLog(userId || 'system', 'UPDATE', 'BonLivraison', bl.id, { before: existing, after: bl });
+      res.json(bl);
+    } catch (error) {
+      if (error instanceof AppError) return next(error);
+      logger.error({ err: error }, 'Update bon livraison error');
+      return next(new AppError(500, 'Erreur lors de la mise à jour du bon de livraison'));
+    }
+  },
+
+  async deleteBonLivraison(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const userId = req.user?.id;
+      const existing = await prisma.bonLivraison.findUnique({ where: { id } });
+      if (!existing) return next(new AppError(404, 'Bon de livraison non trouvé'));
+      if (existing.statut !== 'BROUILLON') {
+        return next(new AppError(400, 'Seul un bon de livraison en brouillon peut être supprimé'));
+      }
+      await prisma.bonLivraison.delete({ where: { id } });
+      await createAuditLog(userId || 'system', 'DELETE', 'BonLivraison', id, { before: existing });
+      res.status(204).send();
+    } catch (error) {
+      logger.error({ err: error }, 'Delete bon livraison error');
+      return next(new AppError(500, 'Erreur lors de la suppression du bon de livraison'));
+    }
+  },
+
+  async validerBonLivraison(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const existing = await prisma.bonLivraison.findUnique({ where: { id } });
+      if (!existing) return next(new AppError(404, 'Bon de livraison non trouvé'));
+      if (existing.statut !== 'BROUILLON') {
+        return next(new AppError(400, 'Seul un BL en brouillon peut être validé'));
+      }
+      const bl = await prisma.bonLivraison.update({
+        where: { id },
+        data: { statut: 'CONFIRME', updatedAt: new Date(), updatedById: req.user?.id || null },
+      });
+      res.json(bl);
+    } catch (error) {
+      logger.error({ err: error }, 'Valider bon livraison error');
+      return next(new AppError(500, 'Erreur lors de la validation du bon de livraison'));
+    }
+  },
+
+  async livrerBonLivraison(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const existing = await prisma.bonLivraison.findUnique({ where: { id } });
+      if (!existing) return next(new AppError(404, 'Bon de livraison non trouvé'));
+      if (existing.statut !== 'CONFIRME') {
+        return next(new AppError(400, 'Seul un BL confirmé peut être marqué livré'));
+      }
+      const bl = await prisma.bonLivraison.update({
+        where: { id },
+        data: {
+          statut: 'LIVRE',
+          dateLivraisonEffective: new Date(),
+          updatedAt: new Date(),
+          updatedById: req.user?.id || null,
+        },
+      });
+      await commerceController._checkAndUpdateCommandeStatut(existing.commandeId);
+      res.json(bl);
+    } catch (error) {
+      logger.error({ err: error }, 'Livrer bon livraison error');
+      return next(new AppError(500, 'Erreur lors de la livraison du bon de livraison'));
+    }
+  },
+
+  async annulerBonLivraison(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const existing = await prisma.bonLivraison.findUnique({ where: { id } });
+      if (!existing) return next(new AppError(404, 'Bon de livraison non trouvé'));
+      if (existing.statut === 'LIVRE') {
+        return next(new AppError(400, 'Un BL livré ne peut pas être annulé'));
+      }
+      const bl = await prisma.bonLivraison.update({
+        where: { id },
+        data: { statut: 'ANNULE', updatedAt: new Date(), updatedById: req.user?.id || null },
+      });
+      res.json(bl);
+    } catch (error) {
+      logger.error({ err: error }, 'Annuler bon livraison error');
+      return next(new AppError(500, 'Erreur lors de l\'annulation du bon de livraison'));
+    }
+  },
+
+  async creerBLFromCommande(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id: commandeId } = req.params;
+      const userId = req.user?.id;
+
+      const commande = await prisma.commande.findUnique({
+        where: { id: commandeId },
+        include: { lignes: { orderBy: { ordre: 'asc' } } },
+      });
+      if (!commande) return next(new AppError(404, 'Commande non trouvée'));
+
+      // Calculer les quantités déjà livrées par ligne
+      const dejaLivrees = await prisma.bonLivraisonLigne.groupBy({
+        by: ['commandeLigneId'],
+        where: {
+          commandeLigneId: { in: commande.lignes.map(l => l.id) },
+          bonLivraison: { statut: { not: 'ANNULE' } },
+        },
+        _sum: { quantiteLivree: true },
+      });
+      const livreeMap = new Map(dejaLivrees.map(d => [d.commandeLigneId, d._sum.quantiteLivree || 0]));
+
+      // Ne garder que les lignes avec quantité restante > 0
+      const lignesRestantes = commande.lignes.filter(l => {
+        const dejaLivree = livreeMap.get(l.id) || 0;
+        return l.quantite - dejaLivree > 0;
+      });
+
+      if (lignesRestantes.length === 0) {
+        return next(new AppError(400, 'Toutes les lignes de cette commande ont déjà été livrées'));
+      }
+
+      const ref = await generateReference('BON_LIVRAISON', new Date());
+      const id = crypto.randomUUID();
+
+      const bl = await prisma.bonLivraison.create({
+        data: {
+          id,
+          ref,
+          clientId: commande.clientId,
+          commandeId: commande.id,
+          siteId: commande.siteId || null,
+          adresseLivraisonId: commande.adresseLivraisonId || null,
+          dateBonLivraison: new Date(),
+          devise: commande.devise || 'DZD',
+          createdById: userId || null,
+          updatedById: userId || null,
+          updatedAt: new Date(),
+          lignes: {
+            create: lignesRestantes.map((l, idx) => {
+              const dejaLivree = livreeMap.get(l.id) || 0;
+              const qteRestante = l.quantite - dejaLivree;
+              const totalHT = qteRestante * l.prixUnitaireHT * (1 - (l.remisePct || 0) / 100);
+              const totalTVA = totalHT * (l.tauxTVA / 100);
+              return {
+                id: crypto.randomUUID(),
+                commandeLigneId: l.id,
+                produitServiceId: l.produitServiceId || null,
+                libelle: l.libelle,
+                description: l.description || null,
+                quantiteCommandee: l.quantite,
+                quantiteLivree: qteRestante,
+                unite: l.unite || null,
+                prixUnitaireHT: l.prixUnitaireHT,
+                tauxTVA: l.tauxTVA,
+                remisePct: l.remisePct || 0,
+                totalHT,
+                totalTVA,
+                totalTTC: totalHT + totalTVA,
+                ordre: l.ordre ?? idx,
+              };
+            }),
+          },
+        },
+        include: {
+          client: { select: { id: true, nomEntreprise: true } },
+          commande: { select: { id: true, ref: true } },
+          lignes: { orderBy: { ordre: 'asc' } },
+        },
+      });
+
+      await createAuditLog(userId || 'system', 'CREATE', 'BonLivraison', bl.id, { after: bl });
+      res.status(201).json(bl);
+    } catch (error) {
+      if (error instanceof AppError) return next(error);
+      logger.error({ err: error }, 'Creer BL from commande error');
+      return next(new AppError(500, 'Erreur lors de la création du bon de livraison'));
+    }
+  },
+
+  async getCommandeProgressionLivraison(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id: commandeId } = req.params;
+      const commande = await prisma.commande.findUnique({
+        where: { id: commandeId },
+        include: { lignes: { orderBy: { ordre: 'asc' } } },
+      });
+      if (!commande) return next(new AppError(404, 'Commande non trouvée'));
+
+      const dejaLivrees = await prisma.bonLivraisonLigne.groupBy({
+        by: ['commandeLigneId'],
+        where: {
+          commandeLigneId: { in: commande.lignes.map(l => l.id) },
+          bonLivraison: { statut: { not: 'ANNULE' } },
+        },
+        _sum: { quantiteLivree: true },
+      });
+      const livreeMap = new Map(dejaLivrees.map(d => [d.commandeLigneId, d._sum.quantiteLivree || 0]));
+
+      const progression = commande.lignes.map(l => ({
+        commandeLigneId: l.id,
+        libelle: l.libelle,
+        quantiteCommandee: l.quantite,
+        quantiteDejaLivree: livreeMap.get(l.id) || 0,
+        quantiteRestante: Math.max(0, l.quantite - (livreeMap.get(l.id) || 0)),
+      }));
+
+      const totalCommandee = progression.reduce((s, l) => s + l.quantiteCommandee, 0);
+      const totalLivree = progression.reduce((s, l) => s + l.quantiteDejaLivree, 0);
+
+      res.json({
+        lignes: progression,
+        pctLivre: totalCommandee > 0 ? Math.round((totalLivree / totalCommandee) * 100) : 0,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Progression livraison error');
+      return next(new AppError(500, 'Erreur lors du calcul de la progression'));
+    }
+  },
+
+  async exportBonLivraisonPDF(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const bl = await prisma.bonLivraison.findUnique({
+        where: { id },
+        include: {
+          client: true,
+          commande: { select: { ref: true, refBonCommandeClient: true, typeDocument: true } },
+          site: { select: { nom: true, ville: true, adresse: true } },
+          adresseLivraison: true,
+          lignes: { orderBy: { ordre: 'asc' } },
+        },
+      });
+      if (!bl) return next(new AppError(404, 'Bon de livraison non trouvé'));
+
+      const { generateBonLivraisonPDF } = await import('../services/pdf.service.js');
+      const pdfBuffer = await generateBonLivraisonPDF({
+        ref: bl.ref,
+        client: {
+          nomEntreprise: bl.client.nomEntreprise,
+          code: bl.client.code,
+          siegeAdresse: bl.client.siegeAdresse,
+          siegeVille: bl.client.siegeVille,
+          siegePays: bl.client.siegePays,
+          siegeRC: bl.client.siegeRC,
+          siegeNIF: bl.client.siegeNIF,
+          siegeAI: bl.client.siegeAI,
+          siegeNIS: bl.client.siegeNIS,
+          siegeNIN: bl.client.siegeNIN,
+        },
+        commande: bl.commande ? { ref: bl.commande.ref, refBonCommandeClient: bl.commande.refBonCommandeClient, typeDocument: bl.commande.typeDocument } : null,
+        site: bl.site,
+        dateBonLivraison: bl.dateBonLivraison,
+        dateLivraisonEffective: bl.dateLivraisonEffective,
+        statut: bl.statut,
+        notes: bl.notes,
+        lignes: bl.lignes.map(l => ({
+          libelle: l.libelle,
+          description: l.description,
+          quantiteCommandee: l.quantiteCommandee ?? undefined,
+          quantiteLivree: l.quantiteLivree,
+          unite: l.unite,
+          prixUnitaireHT: l.prixUnitaireHT,
+          tauxTVA: l.tauxTVA,
+        })),
+        adresseLivraison: bl.adresseLivraison ? {
+          adresse: bl.adresseLivraison.adresse ?? undefined,
+          ville: bl.adresseLivraison.ville ?? undefined,
+          codePostal: bl.adresseLivraison.codePostal ?? undefined,
+        } : null,
+      });
+
+      const fileName = `${bl.ref.replace(/\//g, '-')}.pdf`;
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.setHeader('Content-Length', pdfBuffer.length);
+      res.send(pdfBuffer);
+    } catch (error) {
+      logger.error({ err: error }, 'Export BL PDF error');
+      return next(new AppError(500, 'Erreur lors de la génération du PDF'));
+    }
+  },
+
+  // Méthode interne : met à jour le statut de la commande si toutes les lignes sont livrées
+  async _checkAndUpdateCommandeStatut(commandeId: string | null | undefined) {
+    if (!commandeId) return;
+    try {
+      const commande = await prisma.commande.findUnique({
+        where: { id: commandeId },
+        include: { lignes: true },
+      });
+      if (!commande || commande.statut === 'ANNULEE' || commande.statut === 'LIVREE') return;
+
+      const dejaLivrees = await prisma.bonLivraisonLigne.groupBy({
+        by: ['commandeLigneId'],
+        where: {
+          commandeLigneId: { in: commande.lignes.map(l => l.id) },
+          bonLivraison: { statut: { not: 'ANNULE' } },
+        },
+        _sum: { quantiteLivree: true },
+      });
+      const livreeMap = new Map(dejaLivrees.map(d => [d.commandeLigneId, d._sum.quantiteLivree || 0]));
+      const toutLivre = commande.lignes.every(l => (livreeMap.get(l.id) || 0) >= l.quantite);
+      if (toutLivre) {
+        await prisma.commande.update({ where: { id: commandeId }, data: { statut: 'LIVREE', updatedAt: new Date() } });
+      }
+    } catch {
+      // non-bloquant
     }
   },
 };

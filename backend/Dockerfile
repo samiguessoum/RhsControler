@@ -1,0 +1,34 @@
+# Stage 1 — Build TypeScript
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+COPY package*.json ./
+RUN npm ci
+
+COPY prisma ./prisma
+RUN npx prisma generate
+
+COPY . .
+RUN npm run build
+
+# Stage 2 — Runtime léger (pas de devDependencies)
+FROM node:20-alpine AS runner
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+# Copier le client Prisma généré et le build compilé
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/dist ./dist
+COPY prisma ./prisma
+
+# Créer les dossiers uploads (le volume Docker les montera)
+RUN mkdir -p uploads/logos uploads/fiches-techniques
+
+EXPOSE 3000
+
+# Migrate en premier, puis démarrer
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/app.js"]

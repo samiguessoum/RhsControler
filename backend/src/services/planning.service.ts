@@ -353,40 +353,43 @@ export const planningService = {
         }
       }
 
+      // ── Étape 1 : Décaler les interventions futures si la date de réalisation
+      //   diffère de la date prévue (ex : réalisé le 17 juin au lieu du 15 juin).
+      //   S'applique à TOUS les types de contrat (annuel ET ponctuel).
+      if (
+        dateRealiseeEffective.getTime() !== datePrevueInitiale.getTime() &&
+        intervention.contratId
+      ) {
+        const deltaMs = dateRealiseeEffective.getTime() - datePrevueInitiale.getTime();
+        const futures = await prisma.intervention.findMany({
+          where: {
+            contratId: intervention.contratId,
+            siteId: intervention.siteId || undefined,
+            type: intervention.type,
+            statut: { notIn: ['REALISEE', 'ANNULEE'] },
+            datePrevue: { gt: datePrevueInitiale },
+          },
+          orderBy: { datePrevue: 'asc' },
+        });
+        for (const f of futures) {
+          await prisma.intervention.update({
+            where: { id: f.id },
+            data: { datePrevue: new Date(f.datePrevue.getTime() + deltaMs) },
+          });
+        }
+      }
+
+      // ── Étape 2 : Calcul de la prochaine date (contrats ANNUELS avec fréquence).
+      //   Pour les ponctuels, les interventions sont pré-générées ; le décalage
+      //   ci-dessus (step 1 + reporter) suffit à maintenir la cohérence.
       if (frequence) {
-        // Calculer la prochaine date à partir de la DATE RÉELLE de réalisation
         suggestedDate = getProchaineDateIntervention(
           dateRealiseeEffective,
           frequence,
           joursPerso
         );
 
-        // Auto-créer si option activée sur le contrat ou demandée explicitement
         if (intervention.contrat.autoCreerProchaine || options.creerProchaine) {
-          // Décaler toutes les interventions futures du même type/site si la date a changé
-          if (dateRealiseeEffective.getTime() !== datePrevueInitiale.getTime()) {
-            const deltaMs = dateRealiseeEffective.getTime() - datePrevueInitiale.getTime();
-            const futures = await prisma.intervention.findMany({
-              where: {
-                contratId: intervention.contratId!,
-                siteId: intervention.siteId || undefined,
-                type: intervention.type,
-                statut: { notIn: ['REALISEE', 'ANNULEE'] },
-                datePrevue: { gt: datePrevueInitiale },
-              },
-              orderBy: { datePrevue: 'asc' },
-            });
-
-            for (const f of futures) {
-              const newDate = new Date(f.datePrevue.getTime() + deltaMs);
-              await prisma.intervention.update({
-                where: { id: f.id },
-                data: { datePrevue: newDate },
-              });
-            }
-          }
-
-          // Si une prochaine intervention existe déjà, on la décale au lieu d'en créer une nouvelle
           const nextExisting = await prisma.intervention.findFirst({
             where: {
               contratId: intervention.contratId!,
@@ -400,6 +403,7 @@ export const planningService = {
           });
 
           if (nextExisting) {
+            // La prochaine existe déjà (pré-générée ou décalée) : caler sur suggestedDate
             if (nextExisting.datePrevue.getTime() !== suggestedDate.getTime()) {
               nextIntervention = await prisma.intervention.update({
                 where: { id: nextExisting.id },
@@ -410,37 +414,17 @@ export const planningService = {
               nextIntervention = nextExisting;
             }
           } else {
-            // Stopper si le nombre d'interventions autorisées est atteint (annuel ou ponctuel)
+            // Aucune future : vérifier le quota avant d'en créer une
             if (maxCount !== null) {
-              if (maxCount <= 0) {
-                return {
-                  intervention: updated,
-                  nextCreated: false,
-                  nextIntervention: null,
-                  suggestedDate,
-                };
-              }
-
               const countWhere: any = {
                 contratId: intervention.contratId!,
                 type: intervention.type,
                 statut: { not: 'ANNULEE' },
               };
-
-              // Logique par site si l'intervention est rattachée à un site
-              if (intervention.siteId) {
-                countWhere.siteId = intervention.siteId;
-              }
-
+              if (intervention.siteId) countWhere.siteId = intervention.siteId;
               const count = await prisma.intervention.count({ where: countWhere });
-
               if (count >= maxCount) {
-                return {
-                  intervention: updated,
-                  nextCreated: false,
-                  nextIntervention: null,
-                  suggestedDate,
-                };
+                return { intervention: updated, nextCreated: false, nextIntervention: null, suggestedDate };
               }
             }
 
@@ -457,12 +441,25 @@ export const planningService = {
                 statut: 'A_PLANIFIER',
                 createdById: userId,
               },
-              include: {
-                client: true,
-              },
+              include: { client: true },
             });
           }
         }
+      } else if (intervention.contratId) {
+        // ── Étape 2b : Pour les ponctuels (sans fréquence), identifier la prochaine
+        //   intervention existante (déjà décalée par le reporter ou par l'étape 1).
+        nextIntervention = await prisma.intervention.findFirst({
+          where: {
+            contratId: intervention.contratId,
+            siteId: intervention.siteId || undefined,
+            type: intervention.type,
+            statut: { notIn: ['REALISEE', 'ANNULEE'] },
+            datePrevue: { gt: dateRealiseeEffective },
+            id: { not: intervention.id },
+          },
+          orderBy: { datePrevue: 'asc' },
+          include: { client: true },
+        }) as any;
       }
     }
 
@@ -486,9 +483,34 @@ export const planningService = {
       throw new Error('Intervention non trouvée');
     }
 
+    const deltaMs = nouvelleDatePrevue.getTime() - intervention.datePrevue.getTime();
+
     const noteUpdate = raison
       ? `${intervention.notesTerrain || ''}\n[Reportée le ${new Date().toLocaleDateString('fr-FR')}] ${raison}`.trim()
       : intervention.notesTerrain;
+
+    // Cascader le décalage à toutes les interventions futures du même contrat/site/type
+    // afin que la chaîne planning reste cohérente avec la date réelle de réalisation.
+    if (deltaMs !== 0 && intervention.contratId) {
+      const futures = await prisma.intervention.findMany({
+        where: {
+          contratId: intervention.contratId,
+          siteId: intervention.siteId ?? undefined,
+          type: intervention.type,
+          statut: { notIn: ['REALISEE', 'ANNULEE'] },
+          datePrevue: { gt: intervention.datePrevue },
+          id: { not: interventionId },
+        },
+        orderBy: { datePrevue: 'asc' },
+      });
+
+      for (const f of futures) {
+        await prisma.intervention.update({
+          where: { id: f.id },
+          data: { datePrevue: new Date(f.datePrevue.getTime() + deltaMs) },
+        });
+      }
+    }
 
     return prisma.intervention.update({
       where: { id: interventionId },

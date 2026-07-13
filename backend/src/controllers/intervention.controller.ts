@@ -1,16 +1,19 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import { prisma } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
 import planningService from '../services/planning.service.js';
 import { startOfDay, endOfDay, parseISO } from 'date-fns';
 import attestationService from '../services/attestation.service.js';
+import logger from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
+
 
 export const interventionController = {
   /**
    * GET /api/interventions
    */
-  async list(req: AuthRequest, res: Response) {
+  async list(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const {
         clientId,
@@ -87,6 +90,10 @@ export const interventionController = {
                 id: true,
                 nom: true,
                 adresse: true,
+                codePostal: true,
+                ville: true,
+                latitude: true,
+                longitude: true,
                 tel: true,
                 email: true,
                 notes: true,
@@ -133,55 +140,55 @@ export const interventionController = {
         },
       });
     } catch (error) {
-      console.error('List interventions error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List interventions error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * GET /api/interventions/a-planifier
    */
-  async aPlanifier(req: AuthRequest, res: Response) {
+  async aPlanifier(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { days = '7' } = req.query;
       const interventions = await planningService.getAPlanifier(parseInt(days as string));
       res.json({ interventions });
     } catch (error) {
-      console.error('A planifier error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'A planifier error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * GET /api/interventions/en-retard
    */
-  async enRetard(req: AuthRequest, res: Response) {
+  async enRetard(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const interventions = await planningService.getEnRetard();
       res.json({ interventions });
     } catch (error) {
-      console.error('En retard error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'En retard error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * GET /api/interventions/semaine
    */
-  async semaine(req: AuthRequest, res: Response) {
+  async semaine(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const interventions = await planningService.getSemaineCourante();
       res.json({ interventions });
     } catch (error) {
-      console.error('Semaine error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Semaine error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * GET /api/interventions/:id
    */
-  async get(req: AuthRequest, res: Response) {
+  async get(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -350,15 +357,15 @@ export const interventionController = {
         },
       });
     } catch (error) {
-      console.error('Get intervention error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get intervention error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * POST /api/interventions
    */
-  async create(req: AuthRequest, res: Response) {
+  async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const data = req.body;
 
@@ -427,15 +434,15 @@ export const interventionController = {
 
       res.status(201).json({ intervention });
     } catch (error) {
-      console.error('Create intervention error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Create intervention error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * PUT /api/interventions/:id
    */
-  async update(req: AuthRequest, res: Response) {
+  async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const data = req.body;
@@ -519,8 +526,8 @@ export const interventionController = {
 
       res.json({ intervention });
     } catch (error) {
-      console.error('Update intervention error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Update intervention error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -529,7 +536,7 @@ export const interventionController = {
    * @body dateRealisee - Date effective de réalisation (optionnel, défaut: date prévue)
    *                      La prochaine intervention sera calculée à partir de cette date
    */
-  async realiser(req: AuthRequest, res: Response) {
+  async realiser(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { notesTerrain, creerProchaine, dateRealisee } = req.body;
@@ -547,7 +554,7 @@ export const interventionController = {
         suggestedDate: result.suggestedDate,
       });
     } catch (error: any) {
-      console.error('Realiser error:', error);
+      logger.error({ err: error }, 'Realiser error');
       res.status(400).json({ error: error.message || 'Erreur lors de la réalisation' });
     }
   },
@@ -555,7 +562,7 @@ export const interventionController = {
   /**
    * POST /api/interventions/:id/reporter
    */
-  async reporter(req: AuthRequest, res: Response) {
+  async reporter(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { nouvelleDatePrevue, raison } = req.body;
@@ -577,7 +584,7 @@ export const interventionController = {
 
       res.json({ intervention });
     } catch (error: any) {
-      console.error('Reporter error:', error);
+      logger.error({ err: error }, 'Reporter error');
       res.status(400).json({ error: error.message || 'Erreur lors du report' });
     }
   },
@@ -585,7 +592,7 @@ export const interventionController = {
   /**
    * POST /api/interventions/:id/annuler
    */
-  async annuler(req: AuthRequest, res: Response) {
+  async annuler(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { raison } = req.body;
@@ -648,7 +655,7 @@ export const interventionController = {
 
       res.json({ intervention });
     } catch (error: any) {
-      console.error('Annuler error:', error);
+      logger.error({ err: error }, 'Annuler error');
       res.status(400).json({ error: error.message || 'Erreur lors de l\'annulation' });
     }
   },
@@ -656,7 +663,7 @@ export const interventionController = {
   /**
    * DELETE /api/interventions/:id
    */
-  async delete(req: AuthRequest, res: Response) {
+  async delete(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -679,15 +686,15 @@ export const interventionController = {
 
       res.json({ message: 'Intervention supprimée' });
     } catch (error) {
-      console.error('Delete intervention error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Delete intervention error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * GET /api/interventions/:id/attestation-passage.pdf
    */
-  async exportAttestationPassage(req: AuthRequest, res: Response) {
+  async exportAttestationPassage(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { garantieMois, ville } = req.query;
@@ -706,7 +713,7 @@ export const interventionController = {
       res.setHeader('Content-Length', pdfBuffer.length);
       res.send(pdfBuffer);
     } catch (error: any) {
-      console.error('Export attestation passage error:', error);
+      logger.error({ err: error }, 'Export attestation passage error');
 
       const message = error?.message || 'Erreur lors de la génération de l\'attestation';
       const status = message.includes('non trouvée') ? 404 : message.includes('uniquement') ? 400 : 500;
@@ -717,7 +724,7 @@ export const interventionController = {
   /**
    * GET /api/interventions/:id/attestation-passage/body
    */
-  async getAttestationBody(req: AuthRequest, res: Response) {
+  async getAttestationBody(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { garantieMois, ville } = req.query;
@@ -728,7 +735,7 @@ export const interventionController = {
       });
       res.json(result);
     } catch (error: any) {
-      console.error('Get attestation body error:', error);
+      logger.error({ err: error }, 'Get attestation body error');
       const message = error?.message || 'Erreur lors du chargement du message d’attestation';
       const status = message.includes('non trouvée') ? 404 : message.includes('uniquement') || message.includes('contrat') ? 400 : 500;
       res.status(status).json({ error: message });
@@ -738,7 +745,7 @@ export const interventionController = {
   /**
    * PUT /api/interventions/:id/attestation-passage/body
    */
-  async updateAttestationBody(req: AuthRequest, res: Response) {
+  async updateAttestationBody(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { bodyText, garantieMois, ville } = req.body;
@@ -754,7 +761,7 @@ export const interventionController = {
       });
       res.json(result);
     } catch (error: any) {
-      console.error('Update attestation body error:', error);
+      logger.error({ err: error }, 'Update attestation body error');
       const message = error?.message || 'Erreur lors de la sauvegarde du message d’attestation';
       const status = message.includes('non trouvée') ? 404 : message.includes('contrat') ? 400 : 500;
       res.status(status).json({ error: message });
@@ -764,7 +771,7 @@ export const interventionController = {
   /**
    * GET /api/interventions/:id/attestation-garantie.pdf
    */
-  async exportAttestationGarantie(req: AuthRequest, res: Response) {
+  async exportAttestationGarantie(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { garantieMois, ville } = req.query;
@@ -783,7 +790,7 @@ export const interventionController = {
       res.setHeader('Content-Length', pdfBuffer.length);
       res.send(pdfBuffer);
     } catch (error: any) {
-      console.error('Export attestation garantie error:', error);
+      logger.error({ err: error }, 'Export attestation garantie error');
       const message = error?.message || 'Erreur lors de la génération de l\'attestation de garantie';
       const status = message.includes('non trouvée') ? 404 : message.includes('uniquement') ? 400 : 500;
       res.status(status).json({ error: message });
@@ -793,7 +800,7 @@ export const interventionController = {
   /**
    * GET /api/interventions/:id/attestation-garantie/body
    */
-  async getAttestationGarantieBody(req: AuthRequest, res: Response) {
+  async getAttestationGarantieBody(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { garantieMois, ville } = req.query;
@@ -804,7 +811,7 @@ export const interventionController = {
       });
       res.json(result);
     } catch (error: any) {
-      console.error('Get attestation garantie body error:', error);
+      logger.error({ err: error }, 'Get attestation garantie body error');
       const message = error?.message || 'Erreur lors du chargement du message d’attestation de garantie';
       const status = message.includes('non trouvée') ? 404 : message.includes('uniquement') || message.includes('contrat') ? 400 : 500;
       res.status(status).json({ error: message });
@@ -814,7 +821,7 @@ export const interventionController = {
   /**
    * PUT /api/interventions/:id/attestation-garantie/body
    */
-  async updateAttestationGarantieBody(req: AuthRequest, res: Response) {
+  async updateAttestationGarantieBody(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { bodyText, garantieMois, ville } = req.body;
@@ -830,7 +837,7 @@ export const interventionController = {
       });
       res.json(result);
     } catch (error: any) {
-      console.error('Update attestation garantie body error:', error);
+      logger.error({ err: error }, 'Update attestation garantie body error');
       const message = error?.message || 'Erreur lors de la sauvegarde du message d’attestation de garantie';
       const status = message.includes('non trouvée') ? 404 : message.includes('contrat') ? 400 : 500;
       res.status(status).json({ error: message });
@@ -840,7 +847,7 @@ export const interventionController = {
   /**
    * GET /api/interventions/:id/attestation-controle.pdf
    */
-  async exportAttestationControle(req: AuthRequest, res: Response) {
+  async exportAttestationControle(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { garantieMois, ville } = req.query;
@@ -859,7 +866,7 @@ export const interventionController = {
       res.setHeader('Content-Length', pdfBuffer.length);
       res.send(pdfBuffer);
     } catch (error: any) {
-      console.error('Export attestation controle error:', error);
+      logger.error({ err: error }, 'Export attestation controle error');
       const message = error?.message || 'Erreur lors de la génération de l\'attestation de visite de contrôle';
       const status = message.includes('non trouvée') ? 404 : message.includes('uniquement') ? 400 : 500;
       res.status(status).json({ error: message });
@@ -869,7 +876,7 @@ export const interventionController = {
   /**
    * GET /api/interventions/:id/attestation-controle/body
    */
-  async getAttestationControleBody(req: AuthRequest, res: Response) {
+  async getAttestationControleBody(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { garantieMois, ville } = req.query;
@@ -880,7 +887,7 @@ export const interventionController = {
       });
       res.json(result);
     } catch (error: any) {
-      console.error('Get attestation controle body error:', error);
+      logger.error({ err: error }, 'Get attestation controle body error');
       const message = error?.message || 'Erreur lors du chargement du message d’attestation de visite de contrôle';
       const status = message.includes('non trouvée') ? 404 : message.includes('uniquement') || message.includes('contrat') ? 400 : 500;
       res.status(status).json({ error: message });
@@ -890,7 +897,7 @@ export const interventionController = {
   /**
    * PUT /api/interventions/:id/attestation-controle/body
    */
-  async updateAttestationControleBody(req: AuthRequest, res: Response) {
+  async updateAttestationControleBody(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { bodyText, garantieMois, ville } = req.body;
@@ -906,7 +913,7 @@ export const interventionController = {
       });
       res.json(result);
     } catch (error: any) {
-      console.error('Update attestation controle body error:', error);
+      logger.error({ err: error }, 'Update attestation controle body error');
       const message = error?.message || 'Erreur lors de la sauvegarde du message d’attestation de visite de contrôle';
       const status = message.includes('non trouvée') ? 404 : message.includes('contrat') ? 400 : 500;
       res.status(status).json({ error: message });
@@ -918,7 +925,7 @@ export const interventionController = {
    * Récupère les notes terrain de la dernière intervention réalisée pour un client
    * @query siteId - Optionnel, pour filtrer par site
    */
-  async getLastNotes(req: AuthRequest, res: Response) {
+  async getLastNotes(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { clientId } = req.params;
       const { siteId } = req.query;
@@ -962,8 +969,8 @@ export const interventionController = {
         res.json({ previousIntervention: null });
       }
     } catch (error) {
-      console.error('Get last notes error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get last notes error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 };

@@ -98,12 +98,8 @@ import {
   Copy,
   Power,
   TrendingDown,
-  CheckCircle2,
-  XCircle,
   Paperclip,
   ArrowUpRight,
-  Layers,
-  ShoppingCart,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -246,7 +242,7 @@ function ProduitCard({
           </div>
           <div className="flex items-center gap-1.5">
             {produit.ficheTechniqueUrl && (
-              <Paperclip className="h-3.5 w-3.5 text-gray-400" title="Fiche technique disponible" />
+              <Paperclip className="h-3.5 w-3.5 text-gray-400" aria-label="Fiche technique disponible" />
             )}
             {!produit.actif && (
               <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">Inactif</span>
@@ -631,6 +627,8 @@ export default function ProduitsServices() {
   });
 
   const [uniteCustom, setUniteCustom] = useState('');
+  const [prixVenteMode, setPrixVenteMode] = useState<'marge' | 'direct'>('direct');
+  const [margePercent, setMargePercent] = useState<number | ''>('');
 
   // Mode de gestion du stock: STOCKE (entrepôt), MIXTE (stock minimal + flux tendu), FLUX_TENDU (pas de stock)
   type ModeGestionStock = 'STOCKE' | 'MIXTE' | 'FLUX_TENDU';
@@ -664,6 +662,8 @@ export default function ProduitsServices() {
     setModeGestionStock('STOCKE');
     setEntrepotInitialId('');
     setPendingFicheTechnique(null);
+    setPrixVenteMode('direct');
+    setMargePercent('');
   };
 
   const resetCategorieForm = () => {
@@ -913,96 +913,95 @@ export default function ProduitsServices() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 py-6 space-y-5">
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Produits & Services</h1>
-          <p className="text-muted-foreground">
-            Gestion du catalogue produits et services
-          </p>
+          <h1 className="text-2xl font-black text-gray-900 tracking-tight">Produits & Services</h1>
+          <p className="text-sm text-gray-400 mt-0.5">Catalogue, stocks et entrepôts</p>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card className="border-l-4 border-l-blue-500 hover:shadow-md transition-shadow">
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground font-medium">Produits actifs</p>
-                <div className="text-3xl font-bold text-blue-700 mt-1">{stats?.produitsActifs || 0}</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  sur <span className="font-medium">{stats?.totalProduits || 0}</span> au total
-                  {(stats?.totalProduits || 0) - (stats?.produitsActifs || 0) > 0 && (
-                    <span className="ml-1 text-amber-600">· {(stats!.totalProduits - stats!.produitsActifs)} inactif(s)</span>
-                  )}
-                </p>
-              </div>
-              <div className="p-2.5 bg-blue-50 rounded-xl">
-                <Package className="h-6 w-6 text-blue-600" />
-              </div>
+      {/* KPI Cards */}
+      <div className="grid gap-3 md:grid-cols-4">
+        {/* Produits */}
+        <div className="relative bg-white rounded-xl p-5 shadow-sm overflow-hidden hover:shadow-md transition-all">
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-500 rounded-b-xl" />
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5">Produits actifs</p>
+              <p className="text-xl font-black text-blue-700 tabular-nums leading-none">{stats?.produitsActifs || 0}</p>
+              <p className="text-xs text-gray-400 mt-1.5">
+                sur <span className="font-medium text-gray-600">{stats?.totalProduits || 0}</span> au total
+                {(stats?.totalProduits || 0) - (stats?.produitsActifs || 0) > 0 && (
+                  <span className="ml-1 text-amber-600">· {(stats!.totalProduits - stats!.produitsActifs)} inactif(s)</span>
+                )}
+              </p>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-4 border-l-emerald-500 hover:shadow-md transition-shadow">
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground font-medium">Services actifs</p>
-                <div className="text-3xl font-bold text-emerald-700 mt-1">{stats?.servicesActifs || 0}</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  sur <span className="font-medium">{stats?.totalServices || 0}</span> au total
-                </p>
-              </div>
-              <div className="p-2.5 bg-emerald-50 rounded-xl">
-                <Wrench className="h-6 w-6 text-emerald-600" />
-              </div>
+            <div className="p-2.5 rounded-xl bg-blue-100 text-blue-600 flex-shrink-0">
+              <Package className="h-5 w-5" />
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card className={cn(
-          'border-l-4 hover:shadow-md transition-shadow',
-          (stats?.stockBas || 0) > 0 ? 'border-l-orange-500 bg-orange-50/30' : 'border-l-gray-200'
+        {/* Services */}
+        <div className="relative bg-white rounded-xl p-5 shadow-sm overflow-hidden hover:shadow-md transition-all">
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500 rounded-b-xl" />
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5">Services actifs</p>
+              <p className="text-xl font-black text-emerald-700 tabular-nums leading-none">{stats?.servicesActifs || 0}</p>
+              <p className="text-xs text-gray-400 mt-1.5">
+                sur <span className="font-medium text-gray-600">{stats?.totalServices || 0}</span> au total
+              </p>
+            </div>
+            <div className="p-2.5 rounded-xl bg-emerald-100 text-emerald-600 flex-shrink-0">
+              <Wrench className="h-5 w-5" />
+            </div>
+          </div>
+        </div>
+
+        {/* Alertes stock */}
+        <div className={cn(
+          'relative bg-white rounded-xl p-5 shadow-sm overflow-hidden hover:shadow-md transition-all',
         )}>
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground font-medium">Stock bas</p>
-                <div className={cn('text-3xl font-bold mt-1', (stats?.stockBas || 0) > 0 ? 'text-orange-600' : 'text-gray-400')}>
-                  {stats?.stockBas || 0}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {(stats?.stockBas || 0) > 0
-                    ? <span className="text-orange-600 font-medium">Réapprovisionnement requis</span>
-                    : 'Aucune alerte'}
-                </p>
-              </div>
-              <div className={cn('p-2.5 rounded-xl', (stats?.stockBas || 0) > 0 ? 'bg-orange-100' : 'bg-gray-100')}>
-                <AlertTriangle className={cn('h-6 w-6', (stats?.stockBas || 0) > 0 ? 'text-orange-500' : 'text-gray-400')} />
-              </div>
+          <div className={cn('absolute bottom-0 left-0 right-0 h-1 rounded-b-xl', (stats?.stockBas || 0) > 0 ? 'bg-orange-400' : 'bg-gray-200')} />
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5">Stock bas</p>
+              <p className={cn('text-xl font-black tabular-nums leading-none', (stats?.stockBas || 0) > 0 ? 'text-orange-600' : 'text-gray-300')}>
+                {stats?.stockBas || 0}
+              </p>
+              <p className="text-xs mt-1.5">
+                {(stats?.stockBas || 0) > 0
+                  ? <span className="text-orange-600 font-medium">Réapprovisionnement requis</span>
+                  : <span className="text-gray-400">Aucune alerte</span>}
+              </p>
             </div>
-          </CardContent>
-        </Card>
+            <div className={cn('p-2.5 rounded-xl flex-shrink-0', (stats?.stockBas || 0) > 0 ? 'bg-orange-100 text-orange-500' : 'bg-gray-100 text-gray-400')}>
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+          </div>
+        </div>
 
-        <Card className="border-l-4 border-l-violet-500 hover:shadow-md transition-shadow">
-          <CardContent className="pt-5 pb-4">
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground font-medium">Catégories</p>
-                <div className="text-3xl font-bold text-violet-700 mt-1">{stats?.totalCategories || 0}</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  <span className="font-medium">{stats?.totalEntrepots || 0}</span> entrepôt{(stats?.totalEntrepots || 0) > 1 ? 's' : ''} configuré{(stats?.totalEntrepots || 0) > 1 ? 's' : ''}
-                </p>
-              </div>
-              <div className="p-2.5 bg-violet-50 rounded-xl">
-                <FolderTree className="h-6 w-6 text-violet-600" />
-              </div>
+        {/* Catégories */}
+        <div className="relative bg-white rounded-xl p-5 shadow-sm overflow-hidden hover:shadow-md transition-all">
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-violet-500 rounded-b-xl" />
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-1.5">Catégories</p>
+              <p className="text-xl font-black text-violet-700 tabular-nums leading-none">{stats?.totalCategories || 0}</p>
+              <p className="text-xs text-gray-400 mt-1.5">
+                <span className="font-medium text-gray-600">{stats?.totalEntrepots || 0}</span> entrepôt{(stats?.totalEntrepots || 0) !== 1 ? 's' : ''}
+              </p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="p-2.5 rounded-xl bg-violet-100 text-violet-600 flex-shrink-0">
+              <FolderTree className="h-5 w-5" />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Alertes stock bas */}
@@ -1046,12 +1045,12 @@ export default function ProduitsServices() {
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="produits" className="flex items-center gap-2">
+        <TabsList className="bg-white shadow-sm border border-gray-100">
+          <TabsTrigger value="produits" className="flex items-center gap-2 data-[state=active]:bg-green-600 data-[state=active]:text-white">
             <Package className="h-4 w-4" />
             Produits & Services
           </TabsTrigger>
-          <TabsTrigger value="categories" className="flex items-center gap-2">
+          <TabsTrigger value="categories" className="flex items-center gap-2 data-[state=active]:bg-green-600 data-[state=active]:text-white">
             <FolderTree className="h-4 w-4" />
             Catégories
           </TabsTrigger>
@@ -1209,7 +1208,7 @@ export default function ProduitsServices() {
                               <div className="flex items-center gap-1.5">
                                 <span className="font-medium">{produit.nom}</span>
                                 {produit.ficheTechniqueUrl && (
-                                  <Paperclip className="h-3 w-3 text-gray-400 shrink-0" title="Fiche technique disponible" />
+                                  <Paperclip className="h-3 w-3 text-gray-400 shrink-0" aria-label="Fiche technique disponible" />
                                 )}
                                 {!produit.actif && (
                                   <span className="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">Inactif</span>
@@ -1635,38 +1634,170 @@ export default function ProduitsServices() {
                       <p className="text-xs text-muted-foreground">Durée estimée de la prestation</p>
                     </div>
                   </>
-                ) : (
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label>Prix achat HT</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={produitForm.prixAchatHT || ''}
-                        onChange={(e) => setProduitForm({ ...produitForm, prixAchatHT: parseFloat(e.target.value) || undefined })}
-                        placeholder="0.00"
-                      />
+                ) : (() => {
+                  const achat = produitForm.prixAchatHT || 0;
+                  const tva = produitForm.tauxTVA || 19;
+                  const venteHT = produitForm.prixVenteHT || 0;
+                  const vetteTTC = venteHT * (1 + tva / 100);
+                  const margeCalc = achat > 0 && venteHT > 0 ? ((venteHT - achat) / achat * 100) : null;
+                  const MARGES_PRESET = [10, 15, 20, 25, 30, 40, 50];
+                  return (
+                    <div className="space-y-4">
+                      {/* Ligne 1: achat + TVA */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Prix achat HT</Label>
+                          <div className="relative">
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={produitForm.prixAchatHT || ''}
+                              onChange={(e) => {
+                                const val = parseFloat(e.target.value) || undefined;
+                                const newAchat = val || 0;
+                                if (prixVenteMode === 'marge' && margePercent !== '') {
+                                  const computed = parseFloat((newAchat * (1 + (margePercent as number) / 100)).toFixed(2));
+                                  setProduitForm({ ...produitForm, prixAchatHT: val, prixVenteHT: computed || undefined });
+                                } else {
+                                  setProduitForm({ ...produitForm, prixAchatHT: val });
+                                }
+                              }}
+                              placeholder="0.00"
+                              className="pr-8"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">DA</span>
+                          </div>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">TVA %</Label>
+                          <Input
+                            type="number"
+                            value={produitForm.tauxTVA || 19}
+                            onChange={(e) => setProduitForm({ ...produitForm, tauxTVA: parseFloat(e.target.value) || 19 })}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Séparateur + toggle mode prix vente */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Prix vente HT</Label>
+                          <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs">
+                            <button
+                              type="button"
+                              onClick={() => setPrixVenteMode('direct')}
+                              className={cn('px-3 py-1.5 font-medium transition-colors', prixVenteMode === 'direct' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500 hover:bg-gray-50')}
+                            >
+                              Valeur fixe
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPrixVenteMode('marge')}
+                              className={cn('px-3 py-1.5 font-medium transition-colors border-l border-gray-200', prixVenteMode === 'marge' ? 'bg-gray-800 text-white' : 'bg-white text-gray-500 hover:bg-gray-50')}
+                            >
+                              Par marge %
+                            </button>
+                          </div>
+                        </div>
+
+                        {prixVenteMode === 'direct' ? (
+                          <div className="relative">
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={produitForm.prixVenteHT || ''}
+                              onChange={(e) => setProduitForm({ ...produitForm, prixVenteHT: parseFloat(e.target.value) || undefined })}
+                              placeholder="0.00"
+                              className="pr-8"
+                            />
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">DA</span>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {/* Presets */}
+                            <div className="flex flex-wrap gap-1.5">
+                              {MARGES_PRESET.map((m) => (
+                                <button
+                                  key={m}
+                                  type="button"
+                                  onClick={() => {
+                                    setMargePercent(m);
+                                    if (achat > 0) {
+                                      const computed = parseFloat((achat * (1 + m / 100)).toFixed(2));
+                                      setProduitForm({ ...produitForm, prixVenteHT: computed });
+                                    }
+                                  }}
+                                  className={cn(
+                                    'px-3 py-1 rounded-full text-xs font-semibold border transition-all',
+                                    margePercent === m
+                                      ? 'bg-green-600 text-white border-green-600'
+                                      : 'bg-white text-gray-600 border-gray-200 hover:border-green-400 hover:text-green-700'
+                                  )}
+                                >
+                                  +{m}%
+                                </button>
+                              ))}
+                            </div>
+                            {/* Custom marge input */}
+                            <div className="flex gap-2">
+                              <div className="relative flex-1">
+                                <Input
+                                  type="number"
+                                  step="0.1"
+                                  min="0"
+                                  max="99"
+                                  value={margePercent}
+                                  onChange={(e) => {
+                                    const m = parseFloat(e.target.value);
+                                    setMargePercent(isNaN(m) ? '' : m);
+                                    if (!isNaN(m) && achat > 0) {
+                                      const computed = parseFloat((achat * (1 + m / 100)).toFixed(2));
+                                      setProduitForm({ ...produitForm, prixVenteHT: computed > 0 ? computed : undefined });
+                                    }
+                                  }}
+                                  placeholder="Marge personnalisée"
+                                  className="pr-7"
+                                />
+                                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">%</span>
+                              </div>
+                              {achat > 0 && margePercent !== '' && (
+                                <div className="flex items-center px-3 bg-gray-50 border rounded-lg text-sm font-bold text-gray-700 whitespace-nowrap">
+                                  = {(achat * (1 + (margePercent as number) / 100)).toFixed(2)} DA
+                                </div>
+                              )}
+                            </div>
+                            {achat === 0 && (
+                              <p className="text-xs text-amber-600 flex items-center gap-1">
+                                <AlertTriangle className="h-3 w-3" />
+                                Renseignez d'abord le prix d'achat pour calculer automatiquement
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Résumé des prix */}
+                      {(achat > 0 || venteHT > 0) && (
+                        <div className="grid grid-cols-3 gap-2 p-3 bg-gray-50 rounded-xl border border-gray-100">
+                          <div className="text-center">
+                            <p className="text-[10px] text-gray-400 uppercase font-semibold tracking-wide mb-0.5">Achat HT</p>
+                            <p className="text-sm font-bold text-gray-700">{achat > 0 ? achat.toFixed(2) : '—'} <span className="text-xs font-normal text-gray-400">DA</span></p>
+                          </div>
+                          <div className="text-center border-x border-gray-200">
+                            <p className="text-[10px] text-gray-400 uppercase font-semibold tracking-wide mb-0.5">Marge brute</p>
+                            <p className={cn('text-sm font-bold', margeCalc !== null ? (margeCalc >= 20 ? 'text-green-600' : margeCalc >= 10 ? 'text-amber-600' : 'text-red-500') : 'text-gray-300')}>
+                              {margeCalc !== null ? `${margeCalc.toFixed(1)}%` : '—'}
+                            </p>
+                          </div>
+                          <div className="text-center">
+                            <p className="text-[10px] text-gray-400 uppercase font-semibold tracking-wide mb-0.5">Vente TTC</p>
+                            <p className="text-sm font-bold text-blue-700">{venteHT > 0 ? vetteTTC.toFixed(2) : '—'} <span className="text-xs font-normal text-gray-400">DA</span></p>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                    <div className="space-y-2">
-                      <Label>Prix vente HT</Label>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={produitForm.prixVenteHT || ''}
-                        onChange={(e) => setProduitForm({ ...produitForm, prixVenteHT: parseFloat(e.target.value) || undefined })}
-                        placeholder="0.00"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>TVA %</Label>
-                      <Input
-                        type="number"
-                        value={produitForm.tauxTVA || 19}
-                        onChange={(e) => setProduitForm({ ...produitForm, tauxTVA: parseFloat(e.target.value) || 19 })}
-                      />
-                    </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             </CollapsibleSection>
 
@@ -2946,6 +3077,7 @@ export default function ProduitsServices() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      </div>
     </div>
   );
 }

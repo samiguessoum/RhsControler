@@ -1,7 +1,62 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import { prisma } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { startOfYear, endOfYear, startOfWeek, endOfWeek, addWeeks, isFriday, isSaturday, parseISO, format } from 'date-fns';
+import logger from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
+
+
+async function recalculerRecuperation(employeId: string, annee: number) {
+  const debut = startOfYear(new Date(annee, 0, 1));
+  const fin = endOfYear(new Date(annee, 0, 1));
+
+  const jours = await prisma.jourWeekendTravaille.findMany({
+    where: { employeId, date: { gte: debut, lte: fin } },
+    orderBy: { date: 'asc' },
+  });
+
+  const parSemaine: Map<string, { vendredi: boolean; samedi: boolean }> = new Map();
+  for (const jour of jours) {
+    const weekStart = startOfWeek(jour.date, { weekStartsOn: 0 });
+    const weekKey = format(weekStart, 'yyyy-ww');
+    if (!parSemaine.has(weekKey)) parSemaine.set(weekKey, { vendredi: false, samedi: false });
+    const semaine = parSemaine.get(weekKey)!;
+    if (jour.estVendredi) semaine.vendredi = true; else semaine.samedi = true;
+  }
+
+  let joursRecup = 0;
+  const semaines = Array.from(parSemaine.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  let semainesConsecutives = 0;
+  for (const [, { vendredi, samedi }] of semaines) {
+    if (vendredi && samedi) { joursRecup += 1; semainesConsecutives = 1; continue; }
+    if (vendredi || samedi) {
+      semainesConsecutives++;
+      if (semainesConsecutives >= 2) { joursRecup += 1; semainesConsecutives = 0; }
+    }
+  }
+
+  // Ajouter les jours accordés manuellement
+  const accordees = await prisma.recuperationAccordee.aggregate({
+    where: { employeId, annee },
+    _sum: { nbJours: true },
+  });
+  const joursAccordes = accordees._sum.nbJours || 0;
+  const totalAcquis = joursRecup + joursAccordes;
+
+  const joursPris = await prisma.conge.aggregate({
+    where: { employeId, type: 'RECUPERATION', statut: 'APPROUVE', dateDebut: { gte: debut, lte: fin } },
+    _sum: { nbJours: true },
+  });
+  const totalPris = joursPris._sum.nbJours || 0;
+
+  await prisma.soldeConge.upsert({
+    where: { employeId_annee_type: { employeId, annee, type: 'RECUPERATION' } },
+    update: { joursAcquis: totalAcquis, joursPris: totalPris, joursRestants: totalAcquis - totalPris },
+    create: { employeId, annee, type: 'RECUPERATION', joursAcquis: totalAcquis, joursPris: totalPris, joursRestants: totalAcquis - totalPris },
+  });
+
+  return totalAcquis;
+}
 
 export const rhController = {
   // ============ CONGES ============
@@ -10,7 +65,7 @@ export const rhController = {
    * GET /api/rh/conges
    * Liste des congés avec filtres
    */
-  async listConges(req: AuthRequest, res: Response) {
+  async listConges(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { employeId, statut, type, dateDebut, dateFin, page = '1', limit = '50' } = req.query;
 
@@ -54,8 +109,8 @@ export const rhController = {
         },
       });
     } catch (error) {
-      console.error('List conges error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List conges error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -63,7 +118,7 @@ export const rhController = {
    * POST /api/rh/conges
    * Créer une demande de congé
    */
-  async createConge(req: AuthRequest, res: Response) {
+  async createConge(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { employeId, type, dateDebut, dateFin, nbJours, motif } = req.body;
 
@@ -103,8 +158,8 @@ export const rhController = {
 
       res.status(201).json({ conge });
     } catch (error) {
-      console.error('Create conge error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Create conge error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -112,7 +167,7 @@ export const rhController = {
    * PUT /api/rh/conges/:id/approuver
    * Approuver ou refuser un congé
    */
-  async approuverConge(req: AuthRequest, res: Response) {
+  async approuverConge(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { approuve, commentaire } = req.body;
@@ -168,8 +223,8 @@ export const rhController = {
 
       res.json({ conge: updated });
     } catch (error) {
-      console.error('Approuver conge error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Approuver conge error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -177,7 +232,7 @@ export const rhController = {
    * DELETE /api/rh/conges/:id
    * Annuler un congé (seulement si en attente ou futur)
    */
-  async annulerConge(req: AuthRequest, res: Response) {
+  async annulerConge(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -211,8 +266,8 @@ export const rhController = {
 
       res.json({ message: 'Congé annulé' });
     } catch (error) {
-      console.error('Annuler conge error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Annuler conge error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -222,7 +277,7 @@ export const rhController = {
    * GET /api/rh/weekend-travailles
    * Liste des jours de weekend travaillés
    */
-  async listWeekendTravailles(req: AuthRequest, res: Response) {
+  async listWeekendTravailles(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { employeId, dateDebut, dateFin } = req.query;
 
@@ -246,8 +301,8 @@ export const rhController = {
 
       res.json({ jours });
     } catch (error) {
-      console.error('List weekend travailles error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List weekend travailles error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -255,7 +310,7 @@ export const rhController = {
    * POST /api/rh/weekend-travailles
    * Enregistrer un jour de weekend travaillé
    */
-  async createWeekendTravaille(req: AuthRequest, res: Response) {
+  async createWeekendTravaille(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { employeId, date, notes } = req.body;
 
@@ -287,16 +342,18 @@ export const rhController = {
         },
       });
 
-      // Recalculer les jours de récupération pour cet employé
-      await this.recalculerRecuperation(employeId, dateObj.getFullYear());
+      // Recalculer les jours de récupération pour cet employé (non-bloquant)
+      recalculerRecuperation(employeId, dateObj.getFullYear()).catch((err) => {
+        logger.error({ err }, 'recalculerRecuperation failed after weekend create');
+      });
 
       res.status(201).json({ jour });
     } catch (error: any) {
       if (error.code === 'P2002') {
         return res.status(400).json({ error: 'Ce jour est déjà enregistré pour cet employé' });
       }
-      console.error('Create weekend travaille error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Create weekend travaille error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -304,7 +361,7 @@ export const rhController = {
    * DELETE /api/rh/weekend-travailles/:id
    * Supprimer un jour de weekend travaillé
    */
-  async deleteWeekendTravaille(req: AuthRequest, res: Response) {
+  async deleteWeekendTravaille(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -316,13 +373,15 @@ export const rhController = {
 
       await prisma.jourWeekendTravaille.delete({ where: { id } });
 
-      // Recalculer les jours de récupération
-      await this.recalculerRecuperation(jour.employeId, jour.date.getFullYear());
+      // Recalculer les jours de récupération (non-bloquant)
+      recalculerRecuperation(jour.employeId, jour.date.getFullYear()).catch((err) => {
+        logger.error({ err }, 'recalculerRecuperation failed after weekend delete');
+      });
 
       res.json({ message: 'Jour supprimé' });
     } catch (error) {
-      console.error('Delete weekend travaille error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Delete weekend travaille error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -332,7 +391,7 @@ export const rhController = {
    * GET /api/rh/soldes
    * Récupérer les soldes de congés
    */
-  async getSoldes(req: AuthRequest, res: Response) {
+  async getSoldes(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { employeId, annee } = req.query;
 
@@ -351,8 +410,8 @@ export const rhController = {
 
       res.json({ soldes });
     } catch (error) {
-      console.error('Get soldes error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get soldes error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -360,7 +419,7 @@ export const rhController = {
    * PUT /api/rh/soldes
    * Mettre à jour ou créer un solde (pour définir les jours acquis)
    */
-  async updateSolde(req: AuthRequest, res: Response) {
+  async updateSolde(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { employeId, annee, type, joursAcquis } = req.body;
 
@@ -393,121 +452,16 @@ export const rhController = {
 
       res.json({ solde });
     } catch (error) {
-      console.error('Update solde error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Update solde error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
-  },
-
-  // ============ CALCUL RECUPERATION ============
-
-  /**
-   * Recalculer les jours de récupération pour un employé
-   * Règles:
-   * - 1 jour de weekend requis toutes les 2 semaines
-   * - Weekend complet travaillé (ven + sam) = 1 jour récup
-   * - 2 weekends consécutifs travaillés = 1 jour récup
-   */
-  async recalculerRecuperation(employeId: string, annee: number) {
-    const debut = startOfYear(new Date(annee, 0, 1));
-    const fin = endOfYear(new Date(annee, 0, 1));
-
-    // Récupérer tous les jours de weekend travaillés pour cette année
-    const jours = await prisma.jourWeekendTravaille.findMany({
-      where: {
-        employeId,
-        date: { gte: debut, lte: fin },
-      },
-      orderBy: { date: 'asc' },
-    });
-
-    // Grouper par semaine (numéro de semaine ISO)
-    const parSemaine: Map<string, { vendredi: boolean; samedi: boolean }> = new Map();
-
-    for (const jour of jours) {
-      // Clé = année-semaine
-      const weekStart = startOfWeek(jour.date, { weekStartsOn: 0 }); // Dimanche
-      const weekKey = format(weekStart, 'yyyy-ww');
-
-      if (!parSemaine.has(weekKey)) {
-        parSemaine.set(weekKey, { vendredi: false, samedi: false });
-      }
-
-      const semaine = parSemaine.get(weekKey)!;
-      if (jour.estVendredi) {
-        semaine.vendredi = true;
-      } else {
-        semaine.samedi = true;
-      }
-    }
-
-    // Calculer les jours de récupération
-    let joursRecup = 0;
-    const semaines = Array.from(parSemaine.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-
-    // Compteur pour les semaines consécutives travaillées
-    let semainesConsecutives = 0;
-
-    for (let i = 0; i < semaines.length; i++) {
-      const [weekKey, { vendredi, samedi }] = semaines[i];
-
-      // Weekend complet = 1 jour récup
-      if (vendredi && samedi) {
-        joursRecup += 1;
-        semainesConsecutives = 1; // Reset car on a déjà donné la récup
-        continue;
-      }
-
-      // Au moins un jour travaillé ce weekend
-      if (vendredi || samedi) {
-        semainesConsecutives++;
-
-        // Si 2 weekends consécutifs travaillés, 1 jour récup
-        // (car normalement c'est 1 weekend sur 2)
-        if (semainesConsecutives >= 2) {
-          joursRecup += 1;
-          semainesConsecutives = 0; // Reset
-        }
-      }
-    }
-
-    // Mettre à jour le solde de récupération
-    const joursPris = await prisma.conge.aggregate({
-      where: {
-        employeId,
-        type: 'RECUPERATION',
-        statut: 'APPROUVE',
-        dateDebut: { gte: debut, lte: fin },
-      },
-      _sum: { nbJours: true },
-    });
-
-    const totalPris = joursPris._sum.nbJours || 0;
-
-    await prisma.soldeConge.upsert({
-      where: { employeId_annee_type: { employeId, annee, type: 'RECUPERATION' } },
-      update: {
-        joursAcquis: joursRecup,
-        joursPris: totalPris,
-        joursRestants: joursRecup - totalPris,
-      },
-      create: {
-        employeId,
-        annee,
-        type: 'RECUPERATION',
-        joursAcquis: joursRecup,
-        joursPris: totalPris,
-        joursRestants: joursRecup - totalPris,
-      },
-    });
-
-    return joursRecup;
   },
 
   /**
    * GET /api/rh/employes/:id/recap
    * Récapitulatif RH d'un employé
    */
-  async getEmployeRecap(req: AuthRequest, res: Response) {
+  async getEmployeRecap(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { annee = new Date().getFullYear().toString() } = req.query;
@@ -552,7 +506,7 @@ export const rhController = {
       });
 
       // Recalculer les récupérations pour être sûr
-      const joursRecupCalcules = await this.recalculerRecuperation(id, anneeNum);
+      const joursRecupCalcules = await recalculerRecuperation(id, anneeNum);
 
       res.json({
         employe,
@@ -566,8 +520,8 @@ export const rhController = {
         },
       });
     } catch (error) {
-      console.error('Get employe recap error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get employe recap error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -575,7 +529,7 @@ export const rhController = {
    * GET /api/rh/dashboard
    * Dashboard RH
    */
-  async getDashboard(req: AuthRequest, res: Response) {
+  async getDashboard(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const annee = new Date().getFullYear();
       const today = new Date();
@@ -637,8 +591,121 @@ export const rhController = {
         employesAvecRecup: soldesRecup,
       });
     } catch (error) {
-      console.error('Get dashboard RH error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get dashboard RH error');
+      return next(new AppError(500, 'Erreur serveur'));
+    }
+  },
+
+  // ============ RECUPERATIONS ACCORDEES ============
+
+  /**
+   * GET /api/rh/recuperations
+   * Historique complet des récupérations par employé
+   */
+  async listRecuperations(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { annee = new Date().getFullYear().toString(), employeId } = req.query;
+      const anneeNum = parseInt(annee as string);
+      const debut = startOfYear(new Date(anneeNum, 0, 1));
+      const fin = endOfYear(new Date(anneeNum, 0, 1));
+
+      const whereEmploye = employeId ? { id: employeId as string } : {};
+
+      const employes = await prisma.employe.findMany({
+        where: whereEmploye,
+        select: { id: true, nom: true, prenom: true, postes: { select: { id: true, nom: true } } },
+        orderBy: [{ nom: 'asc' }, { prenom: 'asc' }],
+      });
+
+      const result = await Promise.all(employes.map(async (emp) => {
+        const [weekends, accordees, congesRecup, solde] = await Promise.all([
+          prisma.jourWeekendTravaille.findMany({
+            where: { employeId: emp.id, date: { gte: debut, lte: fin } },
+            orderBy: { date: 'desc' },
+          }),
+          prisma.recuperationAccordee.findMany({
+            where: { employeId: emp.id, annee: anneeNum },
+            orderBy: { dateAccordee: 'desc' },
+          }),
+          prisma.conge.findMany({
+            where: { employeId: emp.id, type: 'RECUPERATION', dateDebut: { gte: debut, lte: fin } },
+            orderBy: { dateDebut: 'desc' },
+          }),
+          prisma.soldeConge.findFirst({
+            where: { employeId: emp.id, annee: anneeNum, type: 'RECUPERATION' },
+          }),
+        ]);
+
+        return { employe: emp, weekends, accordees, congesRecup, solde };
+      }));
+
+      res.json({ recuperations: result, annee: anneeNum });
+    } catch (error) {
+      logger.error({ err: error }, 'List recuperations error');
+      return next(new AppError(500, 'Erreur serveur'));
+    }
+  },
+
+  /**
+   * POST /api/rh/recuperations/accorder
+   * Accorder des jours de récupération à un employé
+   */
+  async accorderRecuperation(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { employeId, nbJours, motif, annee = new Date().getFullYear() } = req.body;
+
+      if (!employeId || !nbJours || nbJours <= 0) {
+        return res.status(400).json({ error: 'employeId et nbJours (> 0) requis' });
+      }
+
+      const employe = await prisma.employe.findUnique({ where: { id: employeId } });
+      if (!employe) return res.status(404).json({ error: 'Employé non trouvé' });
+
+      const accordee = await prisma.recuperationAccordee.create({
+        data: {
+          employeId,
+          nbJours,
+          motif: motif || null,
+          accordeeParId: req.user?.id || null,
+          annee: parseInt(annee.toString()),
+        },
+        include: {
+          employe: { select: { id: true, nom: true, prenom: true } },
+        },
+      });
+
+      // Recalculer le solde
+      recalculerRecuperation(employeId, parseInt(annee.toString())).catch((err) => {
+        logger.error({ err }, 'recalculerRecuperation failed after accord');
+      });
+
+      res.status(201).json({ accordee });
+    } catch (error) {
+      logger.error({ err: error }, 'Accorder recuperation error');
+      return next(new AppError(500, 'Erreur serveur'));
+    }
+  },
+
+  /**
+   * DELETE /api/rh/recuperations/accordees/:id
+   * Supprimer une récupération accordée
+   */
+  async deleteRecuperationAccordee(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const accordee = await prisma.recuperationAccordee.findUnique({ where: { id } });
+      if (!accordee) return res.status(404).json({ error: 'Récupération non trouvée' });
+
+      await prisma.recuperationAccordee.delete({ where: { id } });
+
+      recalculerRecuperation(accordee.employeId, accordee.annee).catch((err) => {
+        logger.error({ err }, 'recalculerRecuperation failed after delete accord');
+      });
+
+      res.json({ message: 'Récupération supprimée' });
+    } catch (error) {
+      logger.error({ err: error }, 'Delete recuperation accordee error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 };

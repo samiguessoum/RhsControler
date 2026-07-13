@@ -6,6 +6,10 @@ import rateLimit from 'express-rate-limit';
 import path from 'path';
 import { prisma } from './config/database.js';
 import routes from './routes/index.js';
+import logger from './lib/logger.js';
+import { errorMiddleware } from './middleware/error.middleware.js';
+import { authMiddleware } from './middleware/auth.middleware.js';
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -15,15 +19,25 @@ app.use(helmet());
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://127.0.0.1:30001',
   credentials: true,
+  exposedHeaders: ['Content-Disposition'],
 }));
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 2000, // limit each IP to 2000 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 2000,
   message: { error: 'Trop de requêtes, veuillez réessayer plus tard.' }
 });
 app.use('/api', limiter);
+
+// Rate limiting strict sur le login (anti brute-force)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Trop de tentatives de connexion, réessayez dans 15 minutes.' },
+  skipSuccessfulRequests: true,
+});
+app.use('/api/auth/login', loginLimiter);
 
 // Body parsing
 app.use(express.json({ limit: '10mb' }));
@@ -34,38 +48,34 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Fichiers statiques (logos, fiches techniques, etc.)
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+// Logos publics (utilisés dans les PDFs et l'UI)
+app.use('/uploads/logos', express.static(path.join(process.cwd(), 'uploads/logos')));
+
+// Fiches techniques protégées — auth requise
+app.use('/uploads/fiches-techniques', authMiddleware as express.RequestHandler, express.static(path.join(process.cwd(), 'uploads/fiches-techniques')));
 
 // API routes
 app.use('/api', routes);
 
 // 404 handler
 app.use((req, res) => {
-  res.status(404).json({ error: 'Route non trouvée' });
+  res.status(404).json({ error: 'Route non trouvée', timestamp: new Date().toISOString() });
 });
 
-// Error handler
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Error:', err);
-  res.status(500).json({
-    error: process.env.NODE_ENV === 'production'
-      ? 'Erreur serveur interne'
-      : err.message
-  });
-});
+// Centralized error handler
+app.use(errorMiddleware);
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
-  console.log('SIGTERM received, shutting down...');
+  logger.info('SIGTERM received, shutting down...');
   await prisma.$disconnect();
   process.exit(0);
 });
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 RHS Controler API running on http://localhost:${PORT}`);
-  console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+  logger.info(`🚀 RHS Controler API running on http://localhost:${PORT}`);
+  logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 
 export default app;

@@ -1,21 +1,24 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import planningService from '../services/planning.service.js';
 import { prisma } from '../config/database.js';
 import { startOfDay, endOfDay, addDays, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subMonths, format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import logger from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
+
 
 export const dashboardController = {
   /**
    * GET /api/dashboard/stats
    */
-  async stats(req: AuthRequest, res: Response) {
+  async stats(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const stats = await planningService.getStats();
       res.json({ stats });
     } catch (error) {
-      console.error('Dashboard stats error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Dashboard stats error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -23,7 +26,7 @@ export const dashboardController = {
    * GET /api/dashboard/stats-extended
    * Statistiques enrichies pour le nouveau dashboard
    */
-  async statsExtended(req: AuthRequest, res: Response) {
+  async statsExtended(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const today = startOfDay(new Date());
       const endToday = endOfDay(new Date());
@@ -202,8 +205,8 @@ export const dashboardController = {
         moisCourant: format(today, 'MMMM yyyy', { locale: fr }),
       });
     } catch (error) {
-      console.error('Dashboard stats extended error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Dashboard stats extended error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -211,7 +214,7 @@ export const dashboardController = {
    * GET /api/dashboard/aujourdhui
    * Interventions du jour avec détails
    */
-  async aujourdhui(req: AuthRequest, res: Response) {
+  async aujourdhui(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const today = startOfDay(new Date());
       const endToday = endOfDay(new Date());
@@ -235,15 +238,15 @@ export const dashboardController = {
 
       res.json({ interventions, count: interventions.length });
     } catch (error) {
-      console.error('Dashboard aujourdhui error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Dashboard aujourdhui error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * GET /api/dashboard/alertes
    */
-  async alertes(req: AuthRequest, res: Response) {
+  async alertes(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const [contrats, ponctuelContrats, contratsHorsValidite, contratsAnnuelsFinProche] = await Promise.all([
         planningService.getContratsEnAlerte(),
@@ -311,8 +314,8 @@ export const dashboardController = {
         count: alertes.length + ponctuelAlertes.length + horsValiditeAlertes.length + annuelFinProcheAlertes.length,
       });
     } catch (error) {
-      console.error('Dashboard alertes error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Dashboard alertes error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -320,7 +323,7 @@ export const dashboardController = {
    * GET /api/dashboard/employes-stats
    * Statistiques des employés : charge de travail, missions cette semaine
    */
-  async employesStats(req: AuthRequest, res: Response) {
+  async employesStats(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const today = startOfDay(new Date());
       const startWeek = startOfWeek(today, { weekStartsOn: 1 }); // Lundi
@@ -477,8 +480,8 @@ export const dashboardController = {
         },
       });
     } catch (error) {
-      console.error('Dashboard employes stats error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Dashboard employes stats error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -486,7 +489,7 @@ export const dashboardController = {
    * GET /api/dashboard/operations-stats
    * Statistiques détaillées des opérations
    */
-  async operationsStats(req: AuthRequest, res: Response) {
+  async operationsStats(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const today = startOfDay(new Date());
       const startWeek = startOfWeek(today, { weekStartsOn: 1 });
@@ -613,8 +616,8 @@ export const dashboardController = {
         moisCourant: format(today, 'MMMM yyyy', { locale: fr }),
       });
     } catch (error) {
-      console.error('Dashboard operations stats error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Dashboard operations stats error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 };

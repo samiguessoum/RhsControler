@@ -1,8 +1,11 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import { prisma } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
 import { TypeTiers } from '@prisma/client';
+import logger from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
+
 
 // Préfixes par défaut pour les tiers
 const DEFAULT_TIERS_PREFIX: Record<string, string> = {
@@ -91,7 +94,7 @@ export const tiersController = {
    * GET /api/tiers
    * Liste des tiers avec filtres avancés
    */
-  async list(req: AuthRequest, res: Response) {
+  async list(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const {
         search,
@@ -195,8 +198,8 @@ export const tiersController = {
         },
       });
     } catch (error) {
-      console.error('List tiers error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List tiers error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -204,7 +207,7 @@ export const tiersController = {
    * GET /api/tiers/:id
    * Détail complet d'un tiers
    */
-  async get(req: AuthRequest, res: Response) {
+  async get(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -257,8 +260,8 @@ export const tiersController = {
 
       res.json({ tiers });
     } catch (error) {
-      console.error('Get tiers error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get tiers error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -266,7 +269,7 @@ export const tiersController = {
    * POST /api/tiers
    * Créer un nouveau tiers
    */
-  async create(req: AuthRequest, res: Response) {
+  async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const data = req.body;
 
@@ -287,6 +290,7 @@ export const tiersController = {
           siegeNIF: data.siegeNIF,
           siegeAI: data.siegeAI,
           siegeNIS: data.siegeNIS,
+          siegeNIN: data.siegeNIN,
           siegeTIN: data.siegeTIN,
           tvaIntracom: data.tvaIntracom,
           capital: data.capital,
@@ -423,11 +427,11 @@ export const tiersController = {
 
       res.status(201).json({ tiers });
     } catch (error: any) {
-      console.error('Create tiers error:', error);
+      logger.error({ err: error }, 'Create tiers error');
       if (error.code === 'P2002') {
         return res.status(400).json({ error: 'Un tiers avec ce code existe déjà' });
       }
-      res.status(500).json({ error: 'Erreur serveur' });
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -435,7 +439,7 @@ export const tiersController = {
    * PUT /api/tiers/:id
    * Mettre à jour un tiers
    */
-  async update(req: AuthRequest, res: Response) {
+  async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const data = req.body;
@@ -479,6 +483,7 @@ export const tiersController = {
           siegeNIF: data.siegeNIF,
           siegeAI: data.siegeAI,
           siegeNIS: data.siegeNIS,
+          siegeNIN: data.siegeNIN,
           siegeTIN: data.siegeTIN,
           tvaIntracom: data.tvaIntracom,
           capital: data.capital,
@@ -692,15 +697,15 @@ export const tiersController = {
         ...(sitesNotDeleted.length > 0 && { sitesNotDeleted }),
       });
     } catch (error) {
-      console.error('Update tiers error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Update tiers error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * DELETE /api/tiers/:id
    */
-  async delete(req: AuthRequest, res: Response) {
+  async delete(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -726,8 +731,8 @@ export const tiersController = {
 
       res.json({ message: 'Tiers supprimé' });
     } catch (error) {
-      console.error('Delete tiers error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Delete tiers error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -735,7 +740,7 @@ export const tiersController = {
    * POST /api/tiers/:id/convertir
    * Convertir un prospect en client
    */
-  async convertirProspect(req: AuthRequest, res: Response) {
+  async convertirProspect(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -766,8 +771,8 @@ export const tiersController = {
 
       res.json({ tiers: updated, message: 'Prospect converti en client' });
     } catch (error) {
-      console.error('Convertir prospect error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Convertir prospect error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -776,7 +781,7 @@ export const tiersController = {
   /**
    * POST /api/tiers/:id/contacts
    */
-  async addContact(req: AuthRequest, res: Response) {
+  async addContact(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const data = req.body;
@@ -808,15 +813,15 @@ export const tiersController = {
 
       res.status(201).json({ contact });
     } catch (error) {
-      console.error('Add contact error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Add contact error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * PUT /api/tiers/:tiersId/contacts/:id
    */
-  async updateContact(req: AuthRequest, res: Response) {
+  async updateContact(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const data = req.body;
@@ -849,15 +854,15 @@ export const tiersController = {
 
       res.json({ contact });
     } catch (error) {
-      console.error('Update contact error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Update contact error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * DELETE /api/tiers/:tiersId/contacts/:id
    */
-  async deleteContact(req: AuthRequest, res: Response) {
+  async deleteContact(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -865,8 +870,8 @@ export const tiersController = {
 
       res.json({ message: 'Contact supprimé' });
     } catch (error) {
-      console.error('Delete contact error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Delete contact error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -875,7 +880,7 @@ export const tiersController = {
   /**
    * POST /api/tiers/:id/adresses
    */
-  async addAdresse(req: AuthRequest, res: Response) {
+  async addAdresse(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const data = req.body;
@@ -908,15 +913,15 @@ export const tiersController = {
 
       res.status(201).json({ adresse });
     } catch (error) {
-      console.error('Add adresse error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Add adresse error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * PUT /api/tiers/:tiersId/adresses/:id
    */
-  async updateAdresse(req: AuthRequest, res: Response) {
+  async updateAdresse(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const data = req.body;
@@ -949,15 +954,15 @@ export const tiersController = {
 
       res.json({ adresse });
     } catch (error) {
-      console.error('Update adresse error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Update adresse error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * DELETE /api/tiers/:tiersId/adresses/:id
    */
-  async deleteAdresse(req: AuthRequest, res: Response) {
+  async deleteAdresse(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -965,8 +970,8 @@ export const tiersController = {
 
       res.json({ message: 'Adresse supprimée' });
     } catch (error) {
-      console.error('Delete adresse error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Delete adresse error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -975,7 +980,7 @@ export const tiersController = {
   /**
    * POST /api/tiers/:id/comptes-bancaires
    */
-  async addCompteBancaire(req: AuthRequest, res: Response) {
+  async addCompteBancaire(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const data = req.body;
@@ -1007,15 +1012,15 @@ export const tiersController = {
 
       res.status(201).json({ compte });
     } catch (error) {
-      console.error('Add compte bancaire error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Add compte bancaire error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * PUT /api/tiers/:tiersId/comptes-bancaires/:id
    */
-  async updateCompteBancaire(req: AuthRequest, res: Response) {
+  async updateCompteBancaire(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const data = req.body;
@@ -1048,15 +1053,15 @@ export const tiersController = {
 
       res.json({ compte });
     } catch (error) {
-      console.error('Update compte bancaire error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Update compte bancaire error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * DELETE /api/tiers/:tiersId/comptes-bancaires/:id
    */
-  async deleteCompteBancaire(req: AuthRequest, res: Response) {
+  async deleteCompteBancaire(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -1064,8 +1069,8 @@ export const tiersController = {
 
       res.json({ message: 'Compte bancaire supprimé' });
     } catch (error) {
-      console.error('Delete compte bancaire error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Delete compte bancaire error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -1075,7 +1080,7 @@ export const tiersController = {
    * GET /api/tiers/:id/sites
    * Liste des sites d'un tiers
    */
-  async listSites(req: AuthRequest, res: Response) {
+  async listSites(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -1094,8 +1099,8 @@ export const tiersController = {
 
       res.json({ sites });
     } catch (error) {
-      console.error('List sites error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List sites error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -1103,7 +1108,7 @@ export const tiersController = {
    * GET /api/sites/:id
    * Détail d'un site
    */
-  async getSite(req: AuthRequest, res: Response) {
+  async getSite(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -1136,8 +1141,8 @@ export const tiersController = {
 
       res.json({ site });
     } catch (error) {
-      console.error('Get site error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get site error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -1145,7 +1150,7 @@ export const tiersController = {
    * POST /api/tiers/:id/sites
    * Créer un site pour un tiers
    */
-  async addSite(req: AuthRequest, res: Response) {
+  async addSite(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const data = req.body;
@@ -1191,8 +1196,8 @@ export const tiersController = {
 
       res.status(201).json({ site });
     } catch (error) {
-      console.error('Add site error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Add site error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -1200,7 +1205,7 @@ export const tiersController = {
    * PUT /api/sites/:id
    * Mettre à jour un site
    */
-  async updateSite(req: AuthRequest, res: Response) {
+  async updateSite(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const data = req.body;
@@ -1242,8 +1247,8 @@ export const tiersController = {
 
       res.json({ site });
     } catch (error) {
-      console.error('Update site error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Update site error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -1251,7 +1256,7 @@ export const tiersController = {
    * DELETE /api/sites/:id
    * Supprimer un site
    */
-  async deleteSite(req: AuthRequest, res: Response) {
+  async deleteSite(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -1282,8 +1287,8 @@ export const tiersController = {
 
       res.json({ message: 'Site supprimé' });
     } catch (error) {
-      console.error('Delete site error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Delete site error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -1293,7 +1298,7 @@ export const tiersController = {
    * POST /api/sites/:id/contacts
    * Ajouter un contact à un site
    */
-  async addSiteContact(req: AuthRequest, res: Response) {
+  async addSiteContact(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const data = req.body;
@@ -1323,8 +1328,8 @@ export const tiersController = {
 
       res.status(201).json({ contact });
     } catch (error) {
-      console.error('Add site contact error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Add site contact error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -1332,7 +1337,7 @@ export const tiersController = {
    * PUT /api/sites/:siteId/contacts/:id
    * Mettre à jour un contact de site
    */
-  async updateSiteContact(req: AuthRequest, res: Response) {
+  async updateSiteContact(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const data = req.body;
@@ -1363,8 +1368,8 @@ export const tiersController = {
 
       res.json({ contact });
     } catch (error) {
-      console.error('Update site contact error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Update site contact error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -1372,7 +1377,7 @@ export const tiersController = {
    * DELETE /api/sites/:siteId/contacts/:id
    * Supprimer un contact de site
    */
-  async deleteSiteContact(req: AuthRequest, res: Response) {
+  async deleteSiteContact(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -1380,8 +1385,8 @@ export const tiersController = {
 
       res.json({ message: 'Contact supprimé' });
     } catch (error) {
-      console.error('Delete site contact error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Delete site contact error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -1390,7 +1395,7 @@ export const tiersController = {
   /**
    * GET /api/modes-paiement
    */
-  async listModesPaiement(req: AuthRequest, res: Response) {
+  async listModesPaiement(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const modes = await prisma.modePaiement.findMany({
         where: { actif: true },
@@ -1398,15 +1403,15 @@ export const tiersController = {
       });
       res.json({ modes });
     } catch (error) {
-      console.error('List modes paiement error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List modes paiement error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * POST /api/modes-paiement
    */
-  async createModePaiement(req: AuthRequest, res: Response) {
+  async createModePaiement(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { code, libelle, ordre } = req.body;
       const mode = await prisma.modePaiement.create({
@@ -1417,14 +1422,14 @@ export const tiersController = {
       if (error.code === 'P2002') {
         return res.status(400).json({ error: 'Ce code existe déjà' });
       }
-      res.status(500).json({ error: 'Erreur serveur' });
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * GET /api/conditions-paiement
    */
-  async listConditionsPaiement(req: AuthRequest, res: Response) {
+  async listConditionsPaiement(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const conditions = await prisma.conditionPaiement.findMany({
         where: { actif: true },
@@ -1432,15 +1437,15 @@ export const tiersController = {
       });
       res.json({ conditions });
     } catch (error) {
-      console.error('List conditions paiement error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List conditions paiement error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * POST /api/conditions-paiement
    */
-  async createConditionPaiement(req: AuthRequest, res: Response) {
+  async createConditionPaiement(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { code, libelle, nbJours, ordre } = req.body;
       const condition = await prisma.conditionPaiement.create({
@@ -1451,7 +1456,7 @@ export const tiersController = {
       if (error.code === 'P2002') {
         return res.status(400).json({ error: 'Ce code existe déjà' });
       }
-      res.status(500).json({ error: 'Erreur serveur' });
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -1460,7 +1465,7 @@ export const tiersController = {
   /**
    * GET /api/tiers/stats
    */
-  async getStats(req: AuthRequest, res: Response) {
+  async getStats(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const [
         totalClients,
@@ -1486,8 +1491,8 @@ export const tiersController = {
         },
       });
     } catch (error) {
-      console.error('Get tiers stats error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get tiers stats error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 };

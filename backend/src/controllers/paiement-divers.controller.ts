@@ -1,7 +1,10 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import { prisma } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
+import logger from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
+
 
 const DEFAULT_PREFIX = 'PD';
 
@@ -40,7 +43,7 @@ async function generateReference(date: Date): Promise<string> {
 
 export const paiementDiversController = {
   // Liste des paiements divers
-  async list(req: AuthRequest, res: Response) {
+  async list(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const {
         search,
@@ -98,13 +101,13 @@ export const paiementDiversController = {
         },
       });
     } catch (error) {
-      console.error('List paiements divers error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List paiements divers error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   // Détail d'un paiement
-  async get(req: AuthRequest, res: Response) {
+  async get(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const paiement = await prisma.paiementDivers.findUnique({
@@ -121,13 +124,13 @@ export const paiementDiversController = {
 
       res.json({ paiement });
     } catch (error) {
-      console.error('Get paiement divers error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get paiement divers error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   // Créer un paiement divers
-  async create(req: AuthRequest, res: Response) {
+  async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const data = req.body;
 
@@ -170,13 +173,13 @@ export const paiementDiversController = {
 
       res.status(201).json({ paiement });
     } catch (error) {
-      console.error('Create paiement divers error:', error);
-      res.status(500).json({ error: 'Erreur lors de la création du paiement divers' });
+      logger.error({ err: error }, 'Create paiement divers error');
+      return next(new AppError(500, 'Erreur lors de la création du paiement divers'));
     }
   },
 
   // Mettre à jour un paiement divers
-  async update(req: AuthRequest, res: Response) {
+  async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const data = req.body;
@@ -223,13 +226,13 @@ export const paiementDiversController = {
 
       res.json({ paiement });
     } catch (error) {
-      console.error('Update paiement divers error:', error);
-      res.status(500).json({ error: 'Erreur lors de la mise à jour du paiement divers' });
+      logger.error({ err: error }, 'Update paiement divers error');
+      return next(new AppError(500, 'Erreur lors de la mise à jour du paiement divers'));
     }
   },
 
   // Supprimer un paiement divers
-  async delete(req: AuthRequest, res: Response) {
+  async delete(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -246,13 +249,13 @@ export const paiementDiversController = {
 
       res.json({ message: 'Paiement divers supprimé' });
     } catch (error) {
-      console.error('Delete paiement divers error:', error);
-      res.status(500).json({ error: 'Erreur lors de la suppression du paiement divers' });
+      logger.error({ err: error }, 'Delete paiement divers error');
+      return next(new AppError(500, 'Erreur lors de la suppression du paiement divers'));
     }
   },
 
   // Liste des catégories distinctes
-  async getCategories(req: AuthRequest, res: Response) {
+  async getCategories(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { typeOperation } = req.query;
 
@@ -272,13 +275,13 @@ export const paiementDiversController = {
 
       res.json({ categories });
     } catch (error) {
-      console.error('Get categories error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get categories error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   // Statistiques par type et catégorie
-  async getStats(req: AuthRequest, res: Response) {
+  async getStats(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { annee } = req.query;
       const year = annee ? parseInt(annee as string) : new Date().getFullYear();
@@ -314,8 +317,8 @@ export const paiementDiversController = {
 
       res.json({ statsByType, statsByCategorie, totaux, annee: year });
     } catch (error) {
-      console.error('Get paiement divers stats error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get paiement divers stats error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 };

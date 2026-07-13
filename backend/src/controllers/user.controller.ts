@@ -1,14 +1,17 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
+import logger from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
+
 
 export const userController = {
   /**
    * GET /api/users
    */
-  async list(req: AuthRequest, res: Response) {
+  async list(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const users = await prisma.user.findMany({
         select: {
@@ -26,15 +29,15 @@ export const userController = {
 
       res.json({ users });
     } catch (error) {
-      console.error('List users error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List users error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * GET /api/users/:id
    */
-  async get(req: AuthRequest, res: Response) {
+  async get(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -59,15 +62,15 @@ export const userController = {
 
       res.json({ user });
     } catch (error) {
-      console.error('Get user error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get user error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * POST /api/users
    */
-  async create(req: AuthRequest, res: Response) {
+  async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { email, password, nom, prenom, tel, role } = req.body;
 
@@ -108,15 +111,15 @@ export const userController = {
 
       res.status(201).json({ user });
     } catch (error) {
-      console.error('Create user error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Create user error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * PUT /api/users/:id
    */
-  async update(req: AuthRequest, res: Response) {
+  async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { email, password, nom, prenom, tel, role, actif } = req.body;
@@ -170,15 +173,15 @@ export const userController = {
 
       res.json({ user });
     } catch (error) {
-      console.error('Update user error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Update user error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * DELETE /api/users/:id (désactivation)
    */
-  async delete(req: AuthRequest, res: Response) {
+  async delete(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -203,8 +206,8 @@ export const userController = {
 
       res.json({ message: 'Utilisateur désactivé' });
     } catch (error) {
-      console.error('Delete user error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Delete user error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 };

@@ -1,7 +1,10 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import { prisma } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
+import logger from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
+
 
 const DEFAULT_PREFIX = 'CF';
 
@@ -125,7 +128,7 @@ async function buildLignes(lignes: Array<any>): Promise<Array<any>> {
 
 export const commandeFournisseurController = {
   // Liste des commandes fournisseurs
-  async list(req: AuthRequest, res: Response) {
+  async list(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { search, fournisseurId, statut, page = '1', limit = '50' } = req.query;
 
@@ -167,13 +170,13 @@ export const commandeFournisseurController = {
         },
       });
     } catch (error) {
-      console.error('List commandes fournisseur error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List commandes fournisseur error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   // Détail d'une commande
-  async get(req: AuthRequest, res: Response) {
+  async get(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const commande = await prisma.commandeFournisseur.findUnique({
@@ -195,13 +198,13 @@ export const commandeFournisseurController = {
 
       res.json({ commande });
     } catch (error) {
-      console.error('Get commande fournisseur error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get commande fournisseur error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   // Créer une commande
-  async create(req: AuthRequest, res: Response) {
+  async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const data = req.body;
 
@@ -250,13 +253,13 @@ export const commandeFournisseurController = {
 
       res.status(201).json({ commande });
     } catch (error) {
-      console.error('Create commande fournisseur error:', error);
-      res.status(500).json({ error: 'Erreur lors de la création de la commande fournisseur' });
+      logger.error({ err: error }, 'Create commande fournisseur error');
+      return next(new AppError(500, 'Erreur lors de la création de la commande fournisseur'));
     }
   },
 
   // Mettre à jour une commande
-  async update(req: AuthRequest, res: Response) {
+  async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const data = req.body;
@@ -320,26 +323,26 @@ export const commandeFournisseurController = {
 
       res.json({ commande });
     } catch (error) {
-      console.error('Update commande fournisseur error:', error);
-      res.status(500).json({ error: 'Erreur lors de la mise à jour de la commande fournisseur' });
+      logger.error({ err: error }, 'Update commande fournisseur error');
+      return next(new AppError(500, 'Erreur lors de la mise à jour de la commande fournisseur'));
     }
   },
 
   // Supprimer une commande
-  async delete(req: AuthRequest, res: Response) {
+  async delete(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       await prisma.commandeFournisseur.delete({ where: { id } });
       await createAuditLog(req.user!.id, 'DELETE', 'CommandeFournisseur', id);
       res.json({ message: 'Commande fournisseur supprimée' });
     } catch (error) {
-      console.error('Delete commande fournisseur error:', error);
-      res.status(500).json({ error: 'Erreur lors de la suppression de la commande fournisseur' });
+      logger.error({ err: error }, 'Delete commande fournisseur error');
+      return next(new AppError(500, 'Erreur lors de la suppression de la commande fournisseur'));
     }
   },
 
   // Marquer une commande comme reçue
-  async reception(req: AuthRequest, res: Response) {
+  async reception(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { lignes, dateLivraison } = req.body;
@@ -401,13 +404,13 @@ export const commandeFournisseurController = {
 
       res.json({ commande, message: toutRecu ? 'Commande entièrement reçue' : 'Réception partielle enregistrée' });
     } catch (error) {
-      console.error('Reception commande fournisseur error:', error);
-      res.status(500).json({ error: 'Erreur lors de la réception' });
+      logger.error({ err: error }, 'Reception commande fournisseur error');
+      return next(new AppError(500, 'Erreur lors de la réception'));
     }
   },
 
   // Valider une commande fournisseur (passer de BROUILLON à VALIDEE)
-  async valider(req: AuthRequest, res: Response) {
+  async valider(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -445,19 +448,19 @@ export const commandeFournisseurController = {
 
       res.json({ commande, message: 'Commande fournisseur validée avec succès' });
     } catch (error) {
-      console.error('Valider commande fournisseur error:', error);
-      res.status(500).json({ error: 'Erreur lors de la validation de la commande fournisseur' });
+      logger.error({ err: error }, 'Valider commande fournisseur error');
+      return next(new AppError(500, 'Erreur lors de la validation de la commande fournisseur'));
     }
   },
 
   // Export PDF
-  async exportPDF(req: AuthRequest, res: Response) {
+  async exportPDF(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const commande = await prisma.commandeFournisseur.findUnique({
         where: { id },
         include: {
-          fournisseur: { select: { id: true, nomEntreprise: true, code: true } },
+          fournisseur: { select: { id: true, nomEntreprise: true, code: true, siegeAdresse: true, siegeVille: true, siegePays: true, siegeRC: true, siegeNIF: true, siegeAI: true, siegeNIS: true, siegeNIN: true, siegeTel: true, siegeEmail: true } },
           lignes: { orderBy: { ordre: 'asc' } },
         },
       });
@@ -467,18 +470,15 @@ export const commandeFournisseurController = {
       }
 
       const { generateCommandeFournisseurPDF } = await import('../services/pdf.service.js');
-      const pdfBuffer = await generateCommandeFournisseurPDF({
-        ...commande,
-        client: commande.fournisseur, // Pour compatibilité avec le template PDF
-      } as any);
+      const pdfBuffer = await generateCommandeFournisseurPDF(commande as any);
 
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `inline; filename="${commande.ref}.pdf"`);
       res.setHeader('Content-Length', pdfBuffer.length);
       res.send(pdfBuffer);
     } catch (error) {
-      console.error('Export commande fournisseur PDF error:', error);
-      res.status(500).json({ error: 'Erreur lors de la génération du PDF' });
+      logger.error({ err: error }, 'Export commande fournisseur PDF error');
+      return next(new AppError(500, 'Erreur lors de la génération du PDF'));
     }
   },
 };

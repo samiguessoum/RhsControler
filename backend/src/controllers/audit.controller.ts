@@ -1,4 +1,7 @@
 import { prisma } from '../config/database.js';
+import logger from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
+
 
 /**
  * Crée une entrée dans le log d'audit
@@ -22,7 +25,7 @@ export async function createAuditLog(
     });
   } catch (error) {
     // Ne pas faire échouer l'opération principale si l'audit échoue
-    console.error('Audit log error:', error);
+    logger.error({ err: error }, 'Audit log error');
   }
 }
 

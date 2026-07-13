@@ -1,11 +1,14 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import { prisma } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { cacheService, CACHE_KEYS, CACHE_TTL } from '../services/cache.service.js';
+import logger from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
+
 
 export const facturationStatsController = {
   // Statistiques globales de facturation
-  async getGlobalStats(req: AuthRequest, res: Response) {
+  async getGlobalStats(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { annee, noCache } = req.query;
       const year = annee ? parseInt(annee as string) : new Date().getFullYear();
@@ -122,13 +125,13 @@ export const facturationStatsController = {
 
       res.json(result);
     } catch (error) {
-      console.error('Get global stats error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get global stats error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   // Résumé TVA (collectée vs déductible)
-  async getTVASummary(req: AuthRequest, res: Response) {
+  async getTVASummary(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { annee, trimestre, mois } = req.query;
       const year = annee ? parseInt(annee as string) : new Date().getFullYear();
@@ -227,13 +230,13 @@ export const facturationStatsController = {
         credit: tvaNette < 0 ? Math.abs(tvaNette) : 0,
       });
     } catch (error) {
-      console.error('Get TVA summary error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get TVA summary error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   // Analyse des marges par produit
-  async getMarges(req: AuthRequest, res: Response) {
+  async getMarges(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { annee, produitId } = req.query;
       const year = annee ? parseInt(annee as string) : new Date().getFullYear();
@@ -339,13 +342,13 @@ export const facturationStatsController = {
         },
       });
     } catch (error) {
-      console.error('Get marges error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get marges error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   // Commandes facturables (commandes clients confirmées sans facture)
-  async getCommandesFacturables(req: AuthRequest, res: Response) {
+  async getCommandesFacturables(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const commandesClients = await prisma.commande.findMany({
         where: {
@@ -376,13 +379,13 @@ export const facturationStatsController = {
         commandesFournisseurs,
       });
     } catch (error) {
-      console.error('Get commandes facturables error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get commandes facturables error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   // Flux de trésorerie
-  async getTresorerie(req: AuthRequest, res: Response) {
+  async getTresorerie(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { annee } = req.query;
       const year = annee ? parseInt(annee as string) : new Date().getFullYear();
@@ -488,13 +491,13 @@ export const facturationStatsController = {
         evolutionMensuelle,
       });
     } catch (error) {
-      console.error('Get tresorerie error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get tresorerie error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   // Factures en retard
-  async getFacturesEnRetard(req: AuthRequest, res: Response) {
+  async getFacturesEnRetard(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const today = new Date();
 
@@ -552,8 +555,88 @@ export const facturationStatsController = {
         })),
       });
     } catch (error) {
-      console.error('Get factures en retard error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get factures en retard error');
+      return next(new AppError(500, 'Erreur serveur'));
+    }
+  },
+
+  // CA mensuel + encaissements mensuels (léger, pour le dashboard)
+  async getMensuel(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { annee } = req.query;
+      const year = annee ? parseInt(annee as string) : new Date().getFullYear();
+      const MOIS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+
+      const mois = await Promise.all(
+        Array.from({ length: 12 }, async (_, m) => {
+          const start = new Date(year, m, 1);
+          const end = new Date(year, m + 1, 0, 23, 59, 59);
+          const [ca, enc] = await Promise.all([
+            prisma.facture.aggregate({
+              where: { dateFacture: { gte: start, lte: end }, statut: { not: 'BROUILLON' } },
+              _sum: { totalHT: true, totalTTC: true },
+            }),
+            prisma.paiement.aggregate({
+              where: { datePaiement: { gte: start, lte: end } },
+              _sum: { montant: true },
+            }),
+          ]);
+          return {
+            mois: m + 1,
+            label: MOIS[m],
+            caHT: ca._sum.totalHT || 0,
+            caTTC: ca._sum.totalTTC || 0,
+            encaissements: enc._sum.montant || 0,
+          };
+        })
+      );
+      res.json({ annee: year, mois });
+    } catch (error) {
+      logger.error({ err: error }, 'Get mensuel error');
+      return next(new AppError(500, 'Erreur serveur'));
+    }
+  },
+
+  // Top clients par CA sur l'année
+  async getTopClients(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { annee, limit: lim } = req.query;
+      const year = annee ? parseInt(annee as string) : new Date().getFullYear();
+      const start = new Date(year, 0, 1);
+      const end = new Date(year, 11, 31, 23, 59, 59);
+
+      const grouped = await prisma.facture.groupBy({
+        by: ['clientId'],
+        where: { dateFacture: { gte: start, lte: end }, statut: { not: 'BROUILLON' } },
+        _sum: { totalHT: true, totalTTC: true, totalPaye: true },
+        _count: true,
+        orderBy: { _sum: { totalTTC: 'desc' } },
+        take: parseInt(lim as string) || 8,
+      });
+
+      const clientIds = grouped.map((g) => g.clientId);
+      const clients = await prisma.client.findMany({
+        where: { id: { in: clientIds } },
+        select: { id: true, nomEntreprise: true, code: true },
+      });
+      const clientMap = new Map(clients.map((c) => [c.id, c]));
+
+      const topClients = grouped.map((g) => ({
+        client: clientMap.get(g.clientId) || { id: g.clientId, nomEntreprise: 'Inconnu', code: null },
+        totalHT: g._sum.totalHT || 0,
+        totalTTC: g._sum.totalTTC || 0,
+        totalPaye: g._sum.totalPaye || 0,
+        nbFactures: g._count,
+        tauxRecouvrement: (g._sum.totalTTC || 0) > 0
+          ? Math.round(((g._sum.totalPaye || 0) / (g._sum.totalTTC || 0)) * 100)
+          : 0,
+      }));
+
+      const totalCA = topClients.reduce((s, c) => s + c.totalTTC, 0);
+      res.json({ annee: year, topClients, totalCA });
+    } catch (error) {
+      logger.error({ err: error }, 'Get top clients error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -568,13 +651,13 @@ export const facturationStatsController = {
         .sort((a, b) => b - a);
       res.json(years);
     } catch (error) {
-      console.error('Get annees disponibles error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get annees disponibles error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   // Déclaration G50 — TVA mensuelle (produits sur date facture, services sur encaissement)
-  async getG50(req: AuthRequest, res: Response) {
+  async getG50(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { annee } = req.query;
       const year = annee ? parseInt(annee as string) : new Date().getFullYear();
@@ -749,8 +832,8 @@ export const facturationStatsController = {
 
       res.json({ annee: year, moisDetails, totalAnnuel });
     } catch (error) {
-      console.error('Get G50 error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get G50 error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 };

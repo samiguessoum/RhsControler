@@ -79,6 +79,7 @@ export function ParametresPage() {
         nif: settings.nif || '',
         ai: settings.ai || '',
         nis: settings.nis || '',
+        nin: settings.nin || '',
         compteBancaire: settings.compteBancaire || '',
         rib: settings.rib || '',
         banque: settings.banque || '',
@@ -646,6 +647,17 @@ export function ParametresPage() {
                           value={settingsForm.nis || ''}
                           onChange={(e) => handleSettingsChange('nis', e.target.value)}
                         />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="nin">Numéro d'Identification Nationale (NIN)</Label>
+                        <Input
+                          id="nin"
+                          value={settingsForm.nin || ''}
+                          onChange={(e) => handleSettingsChange('nin', e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">NIN du gérant</p>
                       </div>
                     </div>
                   </CardContent>

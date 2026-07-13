@@ -30,11 +30,18 @@ import {
   Timer,
   ArrowUpDown,
   AlertTriangle,
+  RotateCcw,
+  Truck,
+  PackageCheck,
+  XCircle,
+  AlertCircle,
+  Layers,
+  SquareCheck,
 } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -73,7 +80,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { commerceApi, produitsServicesApi, tiersApi } from '@/services/api';
-import type { CreateCommandeInput, CreateDevisInput, CreateFactureInput, ProduitService, Tiers, FactureType } from '@/types';
+import type { CreateCommandeInput, CreateDevisInput, CreateFactureInput, ProduitService, Tiers, FactureType, BonLivraison, CreateBonLivraisonInput, BonLivraisonStatut } from '@/types';
 import { useAuthStore } from '@/store/auth.store';
 import { cn } from '@/lib/utils';
 import {
@@ -84,6 +91,7 @@ import {
   formatMontant,
   formatDate,
   statusBadge,
+  STATUS_MAP,
 } from '@/lib/commerce-utils';
 
 // ============ TOTALS DISPLAY COMPONENT ============
@@ -1273,6 +1281,7 @@ function CommandeDetailDialog({
   canDelete,
   isValidating,
   isConverting,
+  onCreateBL,
 }: {
   open: boolean;
   commande: any;
@@ -1286,6 +1295,7 @@ function CommandeDetailDialog({
   canDelete: boolean;
   isValidating: boolean;
   isConverting: boolean;
+  onCreateBL?: () => void;
 }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showConvertConfirm, setShowConvertConfirm] = useState(false);
@@ -1534,6 +1544,111 @@ function CommandeDetailDialog({
               )}
             </div>
 
+            {/* Livraisons */}
+            {commande.bonsLivraison && commande.bonsLivraison.length > 0 && (() => {
+              type BLItem = NonNullable<typeof commande.bonsLivraison>[0];
+              type BLLigne = NonNullable<BLItem['lignes']>[0];
+              const bls = commande.bonsLivraison!;
+              // Utilise les lignes de la commande pour le total réel (évite le double-compte si plusieurs BLs)
+              const totalCmd = (commande.lignes || []).reduce((s: number, l: any) => s + (l.quantite || 0), 0);
+              const totalLivree = bls.reduce((s: number, bl: BLItem) => s + (bl.lignes || []).reduce((ss: number, l: BLLigne) => ss + l.quantiteLivree, 0), 0);
+              const totalRestante = Math.max(0, totalCmd - totalLivree);
+              const pct = totalCmd > 0 ? Math.round((totalLivree / totalCmd) * 100) : 0;
+              // BLs triés chronologiquement pour calcul cumulatif
+              const blsSorted = [...bls].sort((a: BLItem, b: BLItem) => new Date((a as any).dateBonLivraison || 0).getTime() - new Date((b as any).dateBonLivraison || 0).getTime());
+              return (
+                <>
+                  <Separator />
+                  <div className="space-y-3">
+                    <h4 className="font-semibold flex items-center gap-2">
+                      <Truck className="h-4 w-4 text-teal-600" />
+                      Livraisons
+                      <Badge variant="secondary" className="ml-1">{bls.length}</Badge>
+                    </h4>
+                    {/* Progression globale */}
+                    {totalCmd > 0 && (
+                      <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-3">
+                            <span className="text-gray-500">Total commandé : <span className="font-semibold text-gray-800">{totalCmd}</span></span>
+                            <span className="text-teal-600">Livré : <span className="font-bold">{totalLivree}</span></span>
+                            {totalRestante > 0 && <span className="text-orange-600">Restant : <span className="font-bold">{totalRestante}</span></span>}
+                          </div>
+                          <span className={`font-bold text-base ${pct >= 100 ? 'text-green-600' : 'text-teal-600'}`}>{pct}%</span>
+                        </div>
+                        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full transition-all ${pct >= 100 ? 'bg-green-500' : 'bg-teal-400'}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                        </div>
+                      </div>
+                    )}
+                    {/* Liste des BLs */}
+                    <div className="space-y-2">
+                      {blsSorted.map((bl: BLItem, blIdx: number) => {
+                        const blLivree = (bl.lignes || []).reduce((s: number, l: BLLigne) => s + l.quantiteLivree, 0);
+                        // Cumulatif = total livré par tous les BLs précédents + ce BL
+                        const cumulLivree = blsSorted.slice(0, blIdx + 1).reduce((s: number, b: BLItem) => s + (b.lignes || []).reduce((ss: number, l: BLLigne) => ss + l.quantiteLivree, 0), 0);
+                        const cumulPct = totalCmd > 0 ? Math.round((cumulLivree / totalCmd) * 100) : 0;
+                        const blCfg: Record<string, { label: string; cls: string }> = {
+                          BROUILLON: { label: 'Brouillon', cls: 'bg-gray-100 text-gray-700' },
+                          CONFIRME:  { label: 'Confirmé',  cls: 'bg-blue-100 text-blue-800' },
+                          LIVRE:     { label: 'Livré',     cls: 'bg-green-100 text-green-800' },
+                          ANNULE:    { label: 'Annulé',    cls: 'bg-red-100 text-red-700' },
+                        };
+                        const bc = blCfg[bl.statut] || blCfg['BROUILLON'];
+                        return (
+                          <div key={bl.id} className="border rounded-lg p-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-sm text-gray-900">{bl.ref}</span>
+                                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${bc.cls}`}>{bc.label}</span>
+                              </div>
+                              <div className="text-xs text-gray-400 flex items-center gap-3">
+                                {(bl as any).dateBonLivraison && <span>Émis le {new Date((bl as any).dateBonLivraison).toLocaleDateString('fr-FR')}</span>}
+                                {bl.dateLivraisonEffective && (
+                                  <span className="text-green-600 font-medium flex items-center gap-1">
+                                    <CheckCircle2 className="h-3 w-3" />
+                                    {new Date(bl.dateLivraisonEffective).toLocaleDateString('fr-FR')}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {totalCmd > 0 && (
+                              <div className="space-y-1">
+                                <div className="flex justify-between text-xs text-gray-500">
+                                  <span>Ce BL : <span className="font-semibold text-teal-700">{blLivree} unité{blLivree > 1 ? 's' : ''}</span></span>
+                                  <span className={`font-semibold ${cumulPct >= 100 ? 'text-green-600' : 'text-teal-600'}`}>Cumulé : {cumulLivree}/{totalCmd} ({cumulPct}%)</span>
+                                </div>
+                                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                  <div className={`h-full rounded-full ${cumulPct >= 100 ? 'bg-green-400' : 'bg-teal-400'}`} style={{ width: `${Math.min(cumulPct, 100)}%` }} />
+                                </div>
+                              </div>
+                            )}
+                            {(bl.lignes || []).length > 0 && (
+                              <div className="mt-1 space-y-0.5">
+                                {(bl.lignes || []).map((l: BLLigne, li: number) => {
+                                  const reste = Math.max(0, (l.quantiteCommandee || 0) - l.quantiteLivree);
+                                  return (
+                                    <div key={li} className="flex items-center justify-between text-xs text-gray-600 py-0.5 border-t border-gray-50">
+                                      <span className="text-gray-700 font-medium truncate max-w-[200px]">{l.libelle || `Ligne ${li + 1}`}</span>
+                                      <div className="flex items-center gap-3 shrink-0 ml-2">
+                                        <span className="text-teal-600 font-semibold">{l.quantiteLivree}{l.unite ? ` ${l.unite}` : ''}</span>
+                                        {reste > 0 && <span className="text-orange-500">({reste} restant{reste > 1 ? 's' : ''})</span>}
+                                        {reste === 0 && l.quantiteCommandee && <span className="text-green-500">✓</span>}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
+
             {/* Notes */}
             {commande.notes && (
               <>
@@ -1619,6 +1734,13 @@ function CommandeDetailDialog({
                 >
                   <Receipt className="h-4 w-4 mr-2" />
                   {isConverting ? 'Conversion...' : 'Convertir en facture'}
+                </Button>
+              )}
+
+              {canManage && onCreateBL && commande.statut !== 'BROUILLON' && commande.statut !== 'ANNULEE' && (
+                <Button variant="outline" onClick={onCreateBL} className="border-green-300 text-green-700 hover:bg-green-50">
+                  <Truck className="h-4 w-4 mr-2" />
+                  Créer un BL
                 </Button>
               )}
 
@@ -1910,6 +2032,7 @@ function FactureDetailDialog({
   onPayment,
   onRelance,
   onChequeAction,
+  onCreateAvoir,
   canManage,
   canDelete,
   isValidating,
@@ -1924,6 +2047,7 @@ function FactureDetailDialog({
   onPayment: () => void;
   onRelance: () => void;
   onChequeAction: (paiementId: string, newStatut: 'DEPOSE' | 'ENCAISSE' | 'REJETE', label: string) => void;
+  onCreateAvoir: () => void;
   canManage: boolean;
   canDelete: boolean;
   isValidating: boolean;
@@ -2456,6 +2580,17 @@ function FactureDetailDialog({
               </div>
 
               {/* Actions principales à droite */}
+              {canManage && !isAvoir && !isBrouillon && facture.statut !== 'ANNULEE' && (
+                <Button
+                  variant="outline"
+                  onClick={onCreateAvoir}
+                  className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Créer un avoir
+                </Button>
+              )}
+
               <Button
                 variant="outline"
                 onClick={onDownloadPdf}
@@ -2627,21 +2762,45 @@ export function CommercePage() {
   // Search states
   const [searchDevis, setSearchDevis] = useState('');
   const [searchCommandes, setSearchCommandes] = useState('');
+  const [searchBL, setSearchBL] = useState('');
   const [searchFactures, setSearchFactures] = useState('');
 
   // Sort states
   const [sortDevis, setSortDevis] = useState<string>('recent');
   const [sortCommandes, setSortCommandes] = useState<string>('recent');
+  const [statusFilterCommandes, setStatusFilterCommandes] = useState('all');
+  const [sortBL, setSortBL] = useState<string>('recent');
   const [sortFactures, setSortFactures] = useState<string>('recent');
   const [statusFilterFactures, setStatusFilterFactures] = useState<string>(
     () => new URLSearchParams(window.location.search).get('statut') || 'all'
   );
+
+  // Type filters (SERVICE / PRODUIT)
+  const [typeFilterDevis, setTypeFilterDevis] = useState<'all' | 'SERVICE' | 'PRODUIT'>('all');
+  const [typeFilterCommandes, setTypeFilterCommandes] = useState<'all' | 'SERVICE' | 'PRODUIT'>('all');
+  const [typeFilterBL, setTypeFilterBL] = useState<'all' | 'SERVICE' | 'PRODUIT'>('all');
+  const [typeFilterFactures, setTypeFilterFactures] = useState<'all' | 'SERVICE' | 'PRODUIT'>('all');
+
+  // Bulk selection
+  const [selectedDevis, setSelectedDevis] = useState<Set<string>>(new Set());
+  const [selectedCommandes, setSelectedCommandes] = useState<Set<string>>(new Set());
+  const [selectedBL, setSelectedBL] = useState<Set<string>>(new Set());
+  const [selectedFactures, setSelectedFactures] = useState<Set<string>>(new Set());
 
   // Detail sheet state
   const [viewingDocument, setViewingDocument] = useState<{
     type: 'devis' | 'commande' | 'facture';
     document: any;
   } | null>(null);
+
+  // BL states
+  const [viewingBL, setViewingBL] = useState<BonLivraison | null>(null);
+  const [viewingBLProgression, setViewingBLProgression] = useState<import('../types').CommandeProgressionLivraison | null>(null);
+  const [showBLDialog, setShowBLDialog] = useState(false);
+  const [blFromCommandeId, setBLFromCommandeId] = useState<string | null>(null);
+  const [blProgression, setBLProgression] = useState<import('../types').CommandeProgressionLivraison | null>(null);
+  const [blForm, setBLForm] = useState<CreateBonLivraisonInput>({ clientId: '', lignes: [] });
+  const [statusFilterBL, setStatusFilterBL] = useState<string>('all');
 
   // Relance dialog state
   const [relanceFacture, setRelanceFacture] = useState<any>(null);
@@ -2681,7 +2840,7 @@ export function CommercePage() {
   // Active tab state — synced with ?tab= query param
   const searchParams = new URLSearchParams(location.search);
   const tabFromUrl = searchParams.get('tab');
-  const validTabs = ['devis', 'commandes', 'factures'];
+  const validTabs = ['devis', 'commandes', 'bons-livraison', 'factures'];
   const activeTab = validTabs.includes(tabFromUrl ?? '') ? tabFromUrl! : 'devis';
   const setActiveTab = (tab: string) => {
     navigate(`${location.pathname}?tab=${tab}`, { replace: true });
@@ -2707,6 +2866,11 @@ export function CommercePage() {
   const { data: commandesData, isLoading: commandesLoading } = useQuery({
     queryKey: ['commerce', 'commandes'],
     queryFn: () => commerceApi.listCommandes({ limit: 100 }),
+  });
+
+  const { data: blData, isLoading: blLoading } = useQuery({
+    queryKey: ['commerce', 'bons-livraison'],
+    queryFn: () => commerceApi.listBonsLivraison({ limit: 100 }),
   });
 
   const { data: facturesData, isLoading: facturesLoading } = useQuery({
@@ -2765,30 +2929,45 @@ export function CommercePage() {
 
   // Filter lists based on search
   const filteredDevis = useMemo(() => {
-    const list = devisData?.devis || [];
+    let list = devisData?.devis || [];
+    if (typeFilterDevis !== 'all') list = list.filter((d) => d.typeDocument === typeFilterDevis);
     if (!searchDevis) return list;
     const search = searchDevis.toLowerCase();
     return list.filter((d) =>
       d.ref?.toLowerCase().includes(search) ||
       d.client?.nomEntreprise?.toLowerCase().includes(search)
     );
-  }, [devisData?.devis, searchDevis]);
+  }, [devisData?.devis, searchDevis, typeFilterDevis]);
 
   const filteredCommandes = useMemo(() => {
-    const list = commandesData?.commandes || [];
+    let list = commandesData?.commandes || [];
+    if (statusFilterCommandes !== 'all') list = list.filter((c) => c.statut === statusFilterCommandes);
+    if (typeFilterCommandes !== 'all') list = list.filter((c) => c.typeDocument === typeFilterCommandes);
     if (!searchCommandes) return list;
     const search = searchCommandes.toLowerCase();
     return list.filter((c) =>
       c.ref?.toLowerCase().includes(search) ||
       c.client?.nomEntreprise?.toLowerCase().includes(search)
     );
-  }, [commandesData?.commandes, searchCommandes]);
+  }, [commandesData?.commandes, searchCommandes, statusFilterCommandes, typeFilterCommandes]);
+
+  const filteredBL = useMemo(() => {
+    let list = blData?.items || [];
+    if (statusFilterBL !== 'all') list = list.filter((b) => b.statut === statusFilterBL);
+    if (typeFilterBL !== 'all') list = list.filter((b) => (b.commande as any)?.typeDocument === typeFilterBL);
+    if (!searchBL) return list;
+    const search = searchBL.toLowerCase();
+    return list.filter((b) =>
+      b.ref?.toLowerCase().includes(search) ||
+      b.client?.nomEntreprise?.toLowerCase().includes(search) ||
+      b.commande?.ref?.toLowerCase().includes(search)
+    );
+  }, [blData?.items, searchBL, statusFilterBL, typeFilterBL]);
 
   const filteredFactures = useMemo(() => {
     let list = facturesData?.factures || [];
-    if (statusFilterFactures !== 'all') {
-      list = list.filter((f) => f.statut === statusFilterFactures);
-    }
+    if (statusFilterFactures !== 'all') list = list.filter((f) => f.statut === statusFilterFactures);
+    if (typeFilterFactures !== 'all') list = list.filter((f) => (f as any).typeDocument === typeFilterFactures);
     if (!searchFactures) return list;
     const search = searchFactures.toLowerCase();
     return list.filter((f) =>
@@ -2796,7 +2975,7 @@ export function CommercePage() {
       f.client?.nomEntreprise?.toLowerCase().includes(search) ||
       f.site?.nom?.toLowerCase().includes(search)
     );
-  }, [facturesData?.factures, searchFactures, statusFilterFactures]);
+  }, [facturesData?.factures, searchFactures, statusFilterFactures, typeFilterFactures]);
 
   // Track which documents have been converted
   const convertedDevisIds = useMemo(() => {
@@ -2872,30 +3051,44 @@ export function CommercePage() {
     const state = location.state as {
       generateFacture?: boolean;
       clientId?: string;
+      siteId?: string;
       prestation?: string;
+      prixPrestation?: number;
       interventionId?: string;
       dateIntervention?: string;
+      contratType?: 'PONCTUEL' | 'ANNUEL';
+      contratNumeroBonCommande?: string;
+      contratDateDebut?: string;
     } | null;
 
     if (state?.generateFacture && state.clientId) {
-      // Basculer sur l'onglet Factures
       setActiveTab('factures');
 
-      // Pré-remplir le formulaire de facture avec les données de l'intervention
+      const dateDebutStr = state.contratDateDebut ? new Date(state.contratDateDebut).toLocaleDateString('fr-FR') : '';
+      let mentionSpeciale = '';
+      if (state.contratType === 'PONCTUEL' && state.contratNumeroBonCommande) {
+        mentionSpeciale = `Selon le bon de commande "${state.contratNumeroBonCommande}"${dateDebutStr ? ` du ${dateDebutStr}` : ''}`;
+      } else if (state.contratType === 'ANNUEL' && dateDebutStr) {
+        mentionSpeciale = `Selon la convention du ${dateDebutStr}`;
+      }
+
       setFactureForm({
         clientId: state.clientId,
-        siteId: undefined,
+        siteId: state.siteId || undefined,
         typeDocument: 'SERVICE',
         lignes: [{
           ...EMPTY_LINE,
           libelle: state.prestation || 'Prestation de service',
-          description: state.dateIntervention
-            ? `Intervention du ${new Date(state.dateIntervention).toLocaleDateString('fr-FR')}`
-            : '',
+          description: '',
           quantite: 1,
+          prixUnitaireHT: state.prixPrestation ?? 0,
         }],
         type: 'FACTURE',
-        notes: state.interventionId ? `Réf. intervention: ${state.interventionId}` : '',
+        notes: '',
+        mentionSpeciale,
+        dateFacture: new Date().toISOString().split('T')[0],
+        dateOperation: state.dateIntervention ? state.dateIntervention.split('T')[0] : undefined,
+        delaiPaiementJours: 45,
       });
       setShowFactureDialog(true);
 
@@ -2962,6 +3155,7 @@ export function CommercePage() {
       queryClient.invalidateQueries({ queryKey: ['commerce', 'factures'] });
       setFactureForm({ clientId: '', siteId: undefined, typeDocument: 'PRODUIT', lignes: [{ ...EMPTY_LINE }], type: 'FACTURE', dateFacture: new Date().toISOString().split('T')[0], delaiPaiementJours: 45 });
       setShowFactureDialog(false);
+      setActiveTab('factures');
     },
     onError: (error: any) => {
       toast.error(error?.response?.data?.error || 'Erreur lors de la création de la facture');
@@ -3195,6 +3389,130 @@ export function CommercePage() {
     },
   });
 
+  // ── BL Mutations ──────────────────────────────────────────────────────────
+  const createBLMutation = useMutation({
+    mutationFn: (payload: CreateBonLivraisonInput) => commerceApi.createBonLivraison(payload),
+    onSuccess: () => {
+      toast.success('Bon de livraison créé');
+      queryClient.invalidateQueries({ queryKey: ['commerce', 'bons-livraison'] });
+      queryClient.invalidateQueries({ queryKey: ['commerce', 'commandes'] });
+      setShowBLDialog(false);
+      setBLForm({ clientId: '', lignes: [] });
+      setBLFromCommandeId(null);
+      setBLProgression(null);
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la création'),
+  });
+
+  const openBLDetail = async (id: string) => {
+    try {
+      const full = await commerceApi.getBonLivraison(id);
+      setViewingBL(full);
+      if (full.commandeId) {
+        commerceApi.getCommandeProgressionLivraison(full.commandeId)
+          .then(setViewingBLProgression)
+          .catch(() => setViewingBLProgression(null));
+      } else {
+        setViewingBLProgression(null);
+      }
+    } catch {
+      toast.error('Erreur lors du chargement');
+    }
+  };
+
+  const validerBLMutation = useMutation({
+    mutationFn: (id: string) => commerceApi.validerBonLivraison(id),
+    onSuccess: () => {
+      toast.success('BL confirmé');
+      queryClient.invalidateQueries({ queryKey: ['commerce', 'bons-livraison'] });
+      if (viewingBL) openBLDetail(viewingBL.id);
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur'),
+  });
+
+  const livrerBLMutation = useMutation({
+    mutationFn: (id: string) => commerceApi.livrerBonLivraison(id),
+    onSuccess: () => {
+      toast.success('BL marqué comme livré');
+      queryClient.invalidateQueries({ queryKey: ['commerce', 'bons-livraison'] });
+      queryClient.invalidateQueries({ queryKey: ['commerce', 'commandes'] });
+      if (viewingBL) openBLDetail(viewingBL.id);
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur'),
+  });
+
+  const annulerBLMutation = useMutation({
+    mutationFn: (id: string) => commerceApi.annulerBonLivraison(id),
+    onSuccess: () => {
+      toast.success('BL annulé');
+      queryClient.invalidateQueries({ queryKey: ['commerce', 'bons-livraison'] });
+      if (viewingBL) openBLDetail(viewingBL.id);
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur'),
+  });
+
+  const deleteBLMutation = useMutation({
+    mutationFn: (id: string) => commerceApi.deleteBonLivraison(id),
+    onSuccess: () => {
+      toast.success('BL supprimé');
+      queryClient.invalidateQueries({ queryKey: ['commerce', 'bons-livraison'] });
+      setViewingBL(null);
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la suppression'),
+  });
+
+  const creerBLFromCommande = async (commandeId: string) => {
+    try {
+      const [commande, progression] = await Promise.all([
+        commerceApi.getCommande(commandeId),
+        commerceApi.getCommandeProgressionLivraison(commandeId),
+      ]);
+      setBLFromCommandeId(commandeId);
+      setBLProgression(progression);
+      setBLForm({
+        clientId: commande.clientId,
+        commandeId,
+        siteId: commande.siteId || undefined,
+        devise: commande.devise || 'DZD',
+        lignes: (commande.lignes || [])
+          .filter((l: any) => {
+            const prog = progression.lignes.find((p) => p.commandeLigneId === l.id);
+            return !prog || prog.quantiteRestante > 0;
+          })
+          .map((l: any) => {
+            const prog = progression.lignes.find((p) => p.commandeLigneId === l.id);
+            const restante = prog ? prog.quantiteRestante : l.quantite;
+            return {
+              commandeLigneId: l.id,
+              libelle: l.libelle,
+              description: l.description || '',
+              quantiteCommandee: l.quantite,
+              quantiteLivree: restante,
+              unite: l.unite || '',
+              prixUnitaireHT: l.prixUnitaireHT,
+              tauxTVA: l.tauxTVA,
+              remisePct: l.remisePct || 0,
+            };
+          }),
+      });
+      setShowBLDialog(true);
+    } catch {
+      toast.error('Erreur lors du chargement de la commande');
+    }
+  };
+
+  // BL badge helper
+  const blStatusBadge = (statut: BonLivraisonStatut) => {
+    const config: Record<BonLivraisonStatut, { label: string; className: string }> = {
+      BROUILLON: { label: 'Brouillon', className: 'bg-gray-100 text-gray-700' },
+      CONFIRME: { label: 'Confirmé', className: 'bg-blue-100 text-blue-800' },
+      LIVRE: { label: 'Livré', className: 'bg-green-100 text-green-800' },
+      ANNULE: { label: 'Annulé', className: 'bg-red-100 text-red-700' },
+    };
+    const c = config[statut] || { label: statut, className: 'bg-gray-100 text-gray-700' };
+    return <Badge className={c.className}>{c.label}</Badge>;
+  };
+
   // Helper function to check if a document can be deleted
   const canDeleteDevis = (devisId: string) => {
     // Can't delete if converted to commande
@@ -3224,113 +3542,161 @@ export function CommercePage() {
 
   // ============ RENDER ============
 
+  // KPI calculations
+  const kpiDevis          = devisData?.devis?.filter((d: any) => d.statut !== 'BROUILLON').length || 0;
+  const kpiCommandes      = commandesData?.commandes?.filter((c: any) => c.statut !== 'BROUILLON').length || 0;
+  const kpiBL             = blData?.items?.filter((b: any) => b.statut !== 'ANNULE').length || 0;
+  const kpiBLEnCours      = blData?.items?.filter((b: any) => b.statut === 'CONFIRME').length || 0;
+  const kpiFactures       = facturesData?.factures?.filter((f: any) => f.statut !== 'BROUILLON').length || 0;
+  const kpiEnRetard       = facturesData?.factures?.filter((f: any) => f.statut === 'EN_RETARD').length || 0;
+  const kpiDevisBrouillon = devisData?.devis?.filter((d: any) => d.statut === 'BROUILLON').length || 0;
+  const tabCounts = {
+    devis: devisData?.devis?.length || 0,
+    commandes: commandesData?.commandes?.length || 0,
+    'bons-livraison': blData?.items?.length || 0,
+    factures: facturesData?.factures?.length || 0,
+  };
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="min-h-screen bg-gray-50">
+    <div className="max-w-screen-xl mx-auto px-4 py-6 space-y-5">
+
+      {/* ── Header ── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Ventes</h1>
-          <p className="text-muted-foreground">Gestion des devis, commandes et factures clients</p>
+          <h1 className="text-2xl font-black text-gray-900 tracking-tight">Cycle de vente</h1>
+          <p className="text-sm text-gray-400 mt-0.5 flex items-center gap-1.5">
+            <FileText className="h-3.5 w-3.5" /><span>Devis</span>
+            <span className="text-gray-300">→</span>
+            <ShoppingCart className="h-3.5 w-3.5" /><span>Commandes</span>
+            <span className="text-gray-300">→</span>
+            <Truck className="h-3.5 w-3.5" /><span>Bons de livraison</span>
+            <span className="text-gray-300">→</span>
+            <Receipt className="h-3.5 w-3.5" /><span>Factures</span>
+          </p>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Devis</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{devisData?.devis?.filter((d: any) => d.statut !== 'BROUILLON').length || 0}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Commandes</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{commandesData?.commandes?.filter((c: any) => c.statut !== 'BROUILLON').length || 0}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Factures</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{facturesData?.factures?.filter((f: any) => f.statut !== 'BROUILLON').length || 0}</p>
-          </CardContent>
-        </Card>
+      {/* ── KPIs ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { tab: 'devis',          label: 'Devis',          value: kpiDevis,     sub: kpiDevisBrouillon > 0 ? `${kpiDevisBrouillon} brouillon${kpiDevisBrouillon > 1 ? 's' : ''}` : null, bar: 'bg-blue-500',   num: 'text-blue-700',   bg: 'bg-blue-50',   icon: FileText },
+          { tab: 'commandes',      label: 'Commandes',      value: kpiCommandes, sub: null,                                                                                                   bar: 'bg-amber-400',  num: 'text-amber-700',  bg: 'bg-amber-50',  icon: ShoppingCart },
+          { tab: 'bons-livraison', label: 'Bons de livr.',  value: kpiBL,        sub: kpiBLEnCours > 0 ? `${kpiBLEnCours} en cours` : null,                                                  bar: 'bg-teal-500',   num: 'text-teal-700',   bg: 'bg-teal-50',   icon: Truck },
+          { tab: 'factures',       label: 'Factures',       value: kpiFactures,  sub: kpiEnRetard > 0 ? `${kpiEnRetard} en retard` : null,                                                   bar: 'bg-green-500',  num: 'text-green-700',  bg: 'bg-green-50',  icon: Receipt },
+        ].map(({ tab, label, value, sub, bar, num, bg, icon: Icon }) => (
+          <div key={tab} onClick={() => setActiveTab(tab)}
+            className={cn(
+              'relative bg-white rounded-xl p-5 overflow-hidden cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-0.5',
+              activeTab === tab ? 'ring-2 ring-gray-300 shadow-sm' : 'shadow-sm'
+            )}>
+            <div className={`absolute bottom-0 left-0 right-0 h-1 ${bar} rounded-b-xl`} />
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-1">{label}</p>
+                <p className={`text-4xl font-black tabular-nums leading-none ${num}`}>{value}</p>
+                {sub && <p className={`text-xs font-semibold mt-1 ${sub.includes('retard') ? 'text-red-600' : 'text-gray-400'}`}>{sub}</p>}
+              </div>
+              <div className={`p-2.5 rounded-xl ${bg}`}>
+                <Icon className={`h-5 w-5 ${num}`} />
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
 
-      {/* Tabs */}
+      {/* ── Tabs ── */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="devis" className="flex items-center gap-2">
-            <FileText className="h-4 w-4" />
-            <span className="hidden sm:inline">Devis</span>
-          </TabsTrigger>
-          <TabsTrigger value="commandes" className="flex items-center gap-2">
-            <ShoppingCart className="h-4 w-4" />
-            <span className="hidden sm:inline">Commandes</span>
-          </TabsTrigger>
-          <TabsTrigger value="factures" className="flex items-center gap-2">
-            <Receipt className="h-4 w-4" />
-            <span className="hidden sm:inline">Factures</span>
-          </TabsTrigger>
+        <TabsList className="grid w-full grid-cols-4 bg-white rounded-xl shadow-sm p-1 h-auto">
+          {([
+            { value: 'devis',          icon: FileText,     label: 'Devis',               labelShort: 'Devis',  color: 'bg-blue-500' },
+            { value: 'commandes',      icon: ShoppingCart, label: 'Commandes',            labelShort: 'Cmd.',   color: 'bg-amber-400' },
+            { value: 'bons-livraison', icon: Truck,        label: 'Bons de livraison',    labelShort: 'BL',     color: 'bg-teal-500' },
+            { value: 'factures',       icon: Receipt,      label: 'Factures',             labelShort: 'Fact.',  color: 'bg-green-500' },
+          ] as const).map(({ value, icon: Icon, label, labelShort, color }) => (
+            <TabsTrigger key={value} value={value} className="group relative flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-sm">
+              <Icon className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">{label}</span>
+              <span className="sm:hidden">{labelShort}</span>
+              {tabCounts[value] > 0 && (
+                <span className={`hidden sm:inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold text-white ${color} group-data-[state=active]:bg-white/20 group-data-[state=active]:text-white`}>
+                  {tabCounts[value]}
+                </span>
+              )}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
         {/* DEVIS TAB */}
         <TabsContent value="devis">
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <CardTitle>Devis</CardTitle>
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1 sm:w-64">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Rechercher un devis..."
-                      value={searchDevis}
-                      onChange={(e) => setSearchDevis(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                  <Select value={sortDevis} onValueChange={setSortDevis}>
-                    <SelectTrigger className="w-[160px]">
-                      <ArrowUpDown className="h-4 w-4 mr-2" />
-                      <SelectValue placeholder="Trier par..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="recent">Plus récent</SelectItem>
-                      <SelectItem value="oldest">Plus ancien</SelectItem>
-                      <SelectItem value="client-az">Client A-Z</SelectItem>
-                      <SelectItem value="client-za">Client Z-A</SelectItem>
-                      <SelectItem value="montant-desc">Montant ↓</SelectItem>
-                      <SelectItem value="montant-asc">Montant ↑</SelectItem>
-                      <SelectItem value="ref-az">Référence A-Z</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {canManage && (
-                    <Button onClick={() => setShowDevisDialog(true)}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      <span className="hidden sm:inline">Nouveau devis</span>
-                    </Button>
-                  )}
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4 border-b border-gray-50">
+              <div className="flex items-center gap-3">
+                <p className="text-sm font-bold text-gray-900">{filteredDevis.length} devis</p>
+                <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+                  {(['all', 'SERVICE', 'PRODUIT'] as const).map((t) => (
+                    <button key={t} onClick={() => setTypeFilterDevis(t)} className={`text-xs px-2.5 py-1 rounded-md font-medium transition-all ${typeFilterDevis === t ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
+                      {t === 'all' ? 'Tous' : t === 'SERVICE' ? 'Service' : 'Produit'}
+                    </button>
+                  ))}
                 </div>
               </div>
-            </CardHeader>
-            <CardContent>
+              <div className="flex items-center gap-2">
+                {selectedDevis.size > 0 && (
+                  <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5">
+                    <SquareCheck className="h-3.5 w-3.5 text-blue-600" />
+                    <span className="text-xs font-semibold text-blue-700">{selectedDevis.size} sélectionné{selectedDevis.size > 1 ? 's' : ''}</span>
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-red-600 hover:bg-red-50" onClick={async () => {
+                      const ids = [...selectedDevis];
+                      await Promise.all(ids.map(id => commerceApi.deleteDevis(id)));
+                      queryClient.invalidateQueries({ queryKey: ['commerce', 'devis'] });
+                      setSelectedDevis(new Set());
+                      toast.success(`${ids.length} devis supprimé${ids.length > 1 ? 's' : ''}`);
+                    }}>
+                      <Trash2 className="h-3 w-3 mr-1" />Supprimer
+                    </Button>
+                    <button className="text-gray-400 hover:text-gray-600 text-xs" onClick={() => setSelectedDevis(new Set())}>✕</button>
+                  </div>
+                )}
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-gray-400" />
+                  <Input placeholder="Rechercher..." value={searchDevis} onChange={(e) => setSearchDevis(e.target.value)} className="pl-8 h-8 w-48 text-sm border-gray-200" />
+                </div>
+                <Select value={sortDevis} onValueChange={setSortDevis}>
+                  <SelectTrigger className="h-8 w-36 text-xs border-gray-200">
+                    <ArrowUpDown className="h-3.5 w-3.5 mr-1.5" /><SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="recent">Plus récent</SelectItem>
+                    <SelectItem value="oldest">Plus ancien</SelectItem>
+                    <SelectItem value="client-az">Client A-Z</SelectItem>
+                    <SelectItem value="montant-desc">Montant ↓</SelectItem>
+                    <SelectItem value="ref-az">Référence A-Z</SelectItem>
+                  </SelectContent>
+                </Select>
+                {canManage && (
+                  <Button size="sm" className="h-8 bg-green-600 hover:bg-green-700 text-white shadow-sm shadow-green-200" onClick={() => setShowDevisDialog(true)}>
+                    <Plus className="h-3.5 w-3.5 mr-1" />Nouveau devis
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div>
               {devisLoading ? (
-                <p className="text-muted-foreground text-center py-8">Chargement...</p>
+                <div className="py-12 text-center"><div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"/><p className="text-xs text-gray-400">Chargement...</p></div>
               ) : filteredDevis.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">
-                  {searchDevis ? 'Aucun devis trouvé' : 'Aucun devis'}
-                </p>
+                <div className="py-12 text-center"><FileText className="h-8 w-8 text-gray-200 mx-auto mb-2"/><p className="text-sm text-gray-400">{searchDevis ? 'Aucun devis trouvé' : 'Aucun devis'}</p></div>
               ) : (
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-8">
+                          <Checkbox checked={filteredDevis.length > 0 && filteredDevis.every(d => selectedDevis.has(d.id))} onCheckedChange={(checked) => {
+                            if (checked) setSelectedDevis(new Set(filteredDevis.map(d => d.id)));
+                            else setSelectedDevis(new Set());
+                          }} />
+                        </TableHead>
                         <TableHead>Référence</TableHead>
                         <TableHead className="hidden sm:table-cell">Type</TableHead>
                         <TableHead>Client</TableHead>
@@ -3345,7 +3711,7 @@ export function CommercePage() {
                       {sortDocuments(filteredDevis, sortDevis).map((d) => (
                         <TableRow
                           key={d.id}
-                          className="cursor-pointer hover:bg-gray-50"
+                          className={`cursor-pointer hover:bg-gray-50 ${selectedDevis.has(d.id) ? 'bg-blue-50' : ''}`}
                           onClick={async () => {
                             try {
                               const fullDevis = await commerceApi.getDevis(d.id);
@@ -3355,6 +3721,13 @@ export function CommercePage() {
                             }
                           }}
                         >
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Checkbox checked={selectedDevis.has(d.id)} onCheckedChange={(checked) => {
+                              const next = new Set(selectedDevis);
+                              if (checked) next.add(d.id); else next.delete(d.id);
+                              setSelectedDevis(next);
+                            }} />
+                          </TableCell>
                           <TableCell className="font-medium">{d.ref}</TableCell>
                           <TableCell className="hidden sm:table-cell">
                             {d.typeDocument ? (
@@ -3498,62 +3871,92 @@ export function CommercePage() {
                   </Table>
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
 
         {/* COMMANDES TAB */}
         <TabsContent value="commandes">
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <CardTitle>Commandes</CardTitle>
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1 sm:w-64">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Rechercher une commande..."
-                      value={searchCommandes}
-                      onChange={(e) => setSearchCommandes(e.target.value)}
-                      className="pl-10"
-                    />
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4 border-b border-gray-50">
+              <div className="flex items-center gap-3">
+                <p className="text-sm font-bold text-gray-900">{filteredCommandes.length} commande{filteredCommandes.length > 1 ? 's' : ''}</p>
+                <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+                  {(['all', 'SERVICE', 'PRODUIT'] as const).map((t) => (
+                    <button key={t} onClick={() => setTypeFilterCommandes(t)} className={`text-xs px-2.5 py-1 rounded-md font-medium transition-all ${typeFilterCommandes === t ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
+                      {t === 'all' ? 'Tous' : t === 'SERVICE' ? 'Service' : 'Produit'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {selectedCommandes.size > 0 && (
+                  <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5">
+                    <SquareCheck className="h-3.5 w-3.5 text-blue-600" />
+                    <span className="text-xs font-semibold text-blue-700">{selectedCommandes.size} sélectionné{selectedCommandes.size > 1 ? 's' : ''}</span>
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-red-600 hover:bg-red-50" onClick={async () => {
+                      const ids = [...selectedCommandes];
+                      await Promise.all(ids.map(id => commerceApi.deleteCommande(id)));
+                      queryClient.invalidateQueries({ queryKey: ['commerce', 'commandes'] });
+                      setSelectedCommandes(new Set());
+                      toast.success(`${ids.length} commande${ids.length > 1 ? 's' : ''} supprimée${ids.length > 1 ? 's' : ''}`);
+                    }}>
+                      <Trash2 className="h-3 w-3 mr-1" />Supprimer
+                    </Button>
+                    <button className="text-gray-400 hover:text-gray-600 text-xs" onClick={() => setSelectedCommandes(new Set())}>✕</button>
                   </div>
-                  <Select value={sortCommandes} onValueChange={setSortCommandes}>
-                    <SelectTrigger className="w-[160px]">
-                      <ArrowUpDown className="h-4 w-4 mr-2" />
-                      <SelectValue placeholder="Trier par..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="recent">Plus récent</SelectItem>
-                      <SelectItem value="oldest">Plus ancien</SelectItem>
-                      <SelectItem value="client-az">Client A-Z</SelectItem>
-                      <SelectItem value="client-za">Client Z-A</SelectItem>
-                      <SelectItem value="montant-desc">Montant ↓</SelectItem>
-                      <SelectItem value="montant-asc">Montant ↑</SelectItem>
-                      <SelectItem value="ref-az">Référence A-Z</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  {canManage && (
-                    <Button onClick={() => setShowCommandeDialog(true)}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      <span className="hidden sm:inline">Nouvelle commande</span>
+                )}
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-gray-400" />
+                  <Input placeholder="Rechercher..." value={searchCommandes} onChange={(e) => setSearchCommandes(e.target.value)} className="pl-8 h-8 w-48 text-sm border-gray-200" />
+                </div>
+                <Select value={sortCommandes} onValueChange={setSortCommandes}>
+                  <SelectTrigger className="h-8 w-36 text-xs border-gray-200">
+                    <ArrowUpDown className="h-3.5 w-3.5 mr-1.5" /><SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="recent">Plus récent</SelectItem>
+                    <SelectItem value="oldest">Plus ancien</SelectItem>
+                    <SelectItem value="client-az">Client A-Z</SelectItem>
+                    <SelectItem value="montant-desc">Montant ↓</SelectItem>
+                    <SelectItem value="ref-az">Référence A-Z</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={statusFilterCommandes} onValueChange={setStatusFilterCommandes}>
+                  <SelectTrigger className="h-8 w-36 text-xs border-gray-200"><SelectValue placeholder="Statut" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous les statuts</SelectItem>
+                    <SelectItem value="BROUILLON">Brouillon</SelectItem>
+                    <SelectItem value="VALIDEE">Validée</SelectItem>
+                    <SelectItem value="EN_PREPARATION">En préparation</SelectItem>
+                    <SelectItem value="EXPEDIEE">Expédiée</SelectItem>
+                    <SelectItem value="LIVREE">Livrée</SelectItem>
+                    <SelectItem value="ANNULEE">Annulée</SelectItem>
+                  </SelectContent>
+                </Select>
+                {canManage && (
+                    <Button size="sm" className="h-8 bg-green-600 hover:bg-green-700 text-white shadow-sm shadow-green-200" onClick={() => setShowCommandeDialog(true)}>
+                      <Plus className="h-3.5 w-3.5 mr-1" />Nouvelle commande
                     </Button>
                   )}
                 </div>
               </div>
-            </CardHeader>
-            <CardContent>
+            <div>
               {commandesLoading ? (
-                <p className="text-muted-foreground text-center py-8">Chargement...</p>
+                <div className="py-12 text-center"><div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"/><p className="text-xs text-gray-400">Chargement...</p></div>
               ) : filteredCommandes.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">
-                  {searchCommandes ? 'Aucune commande trouvée' : 'Aucune commande'}
-                </p>
+                <div className="py-12 text-center"><ShoppingCart className="h-8 w-8 text-gray-200 mx-auto mb-2"/><p className="text-sm text-gray-400">{searchCommandes || statusFilterCommandes !== 'all' ? 'Aucune commande trouvée' : 'Aucune commande'}</p></div>
               ) : (
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-8">
+                          <Checkbox checked={filteredCommandes.length > 0 && filteredCommandes.every(c => selectedCommandes.has(c.id))} onCheckedChange={(checked) => {
+                            if (checked) setSelectedCommandes(new Set(filteredCommandes.map(c => c.id)));
+                            else setSelectedCommandes(new Set());
+                          }} />
+                        </TableHead>
                         <TableHead>Référence</TableHead>
                         <TableHead className="hidden sm:table-cell">Type</TableHead>
                         <TableHead>Client</TableHead>
@@ -3568,7 +3971,7 @@ export function CommercePage() {
                       {sortDocuments(filteredCommandes, sortCommandes).map((c) => (
                         <TableRow
                           key={c.id}
-                          className="cursor-pointer hover:bg-gray-50"
+                          className={`cursor-pointer hover:bg-gray-50 ${selectedCommandes.has(c.id) ? 'bg-blue-50' : ''}`}
                           onClick={async () => {
                             try {
                               const fullCommande = await commerceApi.getCommande(c.id);
@@ -3578,6 +3981,13 @@ export function CommercePage() {
                             }
                           }}
                         >
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Checkbox checked={selectedCommandes.has(c.id)} onCheckedChange={(checked) => {
+                              const next = new Set(selectedCommandes);
+                              if (checked) next.add(c.id); else next.delete(c.id);
+                              setSelectedCommandes(next);
+                            }} />
+                          </TableCell>
                           <TableCell className="font-medium">{c.ref}</TableCell>
                           <TableCell className="hidden sm:table-cell">
                             {c.typeDocument ? (
@@ -3603,7 +4013,41 @@ export function CommercePage() {
                             )}
                           </TableCell>
                           <TableCell className="hidden md:table-cell">{formatDate(c.dateCommande)}</TableCell>
-                          <TableCell>{statusBadge(c.statut)}</TableCell>
+                          <TableCell>
+                            {(() => {
+                              const cfg = STATUS_MAP[c.statut] || { label: c.statut, variant: 'secondary' as const };
+                              const bls = c.bonsLivraison || [];
+                              const totalCmd = (c.lignes || []).reduce((s: number, l: any) => s + (l.quantite || 0), 0);
+                              const totalLivree = bls.reduce((s, bl) => s + (bl.lignes || []).reduce((ss, l) => ss + l.quantiteLivree, 0), 0);
+                              const pct = totalCmd > 0 ? Math.round((totalLivree / totalCmd) * 100) : 0;
+                              const lastDelivery = bls.filter(bl => bl.dateLivraisonEffective).sort((a, b) => new Date(b.dateLivraisonEffective!).getTime() - new Date(a.dateLivraisonEffective!).getTime())[0];
+                              return (
+                                <div className="flex flex-col items-start gap-1.5 min-w-[130px]">
+                                  <Badge variant={cfg.variant}>{cfg.label}</Badge>
+                                  {bls.length > 0 && (
+                                    <div className="w-full space-y-1">
+                                      <div className="flex items-center justify-between text-xs">
+                                        <span className="flex items-center gap-1 text-teal-700 font-medium">
+                                          <Truck className="h-3 w-3" />
+                                          {bls.length} BL
+                                        </span>
+                                        <span className={`font-semibold ${pct >= 100 ? 'text-green-600' : 'text-orange-600'}`}>{totalLivree}<span className="text-gray-400 font-normal">/{totalCmd}</span></span>
+                                      </div>
+                                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden w-full">
+                                        <div className={`h-full rounded-full transition-all ${pct >= 100 ? 'bg-green-500' : pct > 0 ? 'bg-teal-400' : 'bg-gray-300'}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                                      </div>
+                                      {lastDelivery?.dateLivraisonEffective && (
+                                        <p className="text-[10px] text-gray-400 flex items-center gap-0.5">
+                                          <Calendar className="h-2.5 w-2.5" />
+                                          {new Date(lastDelivery.dateLivraisonEffective).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })()}
+                          </TableCell>
                           <TableCell className="text-right font-medium">{formatMontant(c.totalTTC)}</TableCell>
                           <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                             <div className="flex justify-end gap-1">
@@ -3706,6 +4150,18 @@ export function CommercePage() {
                                   </Button>
                                 </Tooltip>
                               )}
+                              {canManage && c.statut !== 'BROUILLON' && c.statut !== 'ANNULEE' && (
+                                <Tooltip content="Créer un bon de livraison">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                    onClick={() => creerBLFromCommande(c.id)}
+                                  >
+                                    <Truck className="h-4 w-4" />
+                                  </Button>
+                                </Tooltip>
+                              )}
                               {canManage && canDeleteCommande(c.id) && (
                                 <Tooltip content="Supprimer">
                                   <Button
@@ -3726,41 +4182,267 @@ export function CommercePage() {
                   </Table>
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* BONS DE LIVRAISON TAB */}
+        <TabsContent value="bons-livraison">
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4 border-b border-gray-50">
+              <div className="flex items-center gap-3">
+                <p className="text-sm font-bold text-gray-900">{filteredBL.length} bon{filteredBL.length > 1 ? 's' : ''} de livraison</p>
+                <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+                  {(['all', 'SERVICE', 'PRODUIT'] as const).map((t) => (
+                    <button key={t} onClick={() => setTypeFilterBL(t)} className={`text-xs px-2.5 py-1 rounded-md font-medium transition-all ${typeFilterBL === t ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
+                      {t === 'all' ? 'Tous' : t === 'SERVICE' ? 'Service' : 'Produit'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {selectedBL.size > 0 && (
+                  <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5">
+                    <SquareCheck className="h-3.5 w-3.5 text-blue-600" />
+                    <span className="text-xs font-semibold text-blue-700">{selectedBL.size} sélectionné{selectedBL.size > 1 ? 's' : ''}</span>
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-blue-600 hover:bg-blue-100" onClick={async () => {
+                      const ids = [...selectedBL].filter(id => filteredBL.find(b => b.id === id)?.statut === 'BROUILLON');
+                      await Promise.all(ids.map(id => commerceApi.validerBonLivraison(id)));
+                      queryClient.invalidateQueries({ queryKey: ['commerce', 'bons-livraison'] });
+                      setSelectedBL(new Set());
+                      toast.success(`${ids.length} BL confirmé${ids.length > 1 ? 's' : ''}`);
+                    }}>
+                      <CheckCircle2 className="h-3 w-3 mr-1" />Confirmer
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-red-600 hover:bg-red-50" onClick={async () => {
+                      const ids = [...selectedBL];
+                      await Promise.all(ids.map(id => commerceApi.deleteBonLivraison(id)));
+                      queryClient.invalidateQueries({ queryKey: ['commerce', 'bons-livraison'] });
+                      setSelectedBL(new Set());
+                      toast.success(`${ids.length} BL supprimé${ids.length > 1 ? 's' : ''}`);
+                    }}>
+                      <Trash2 className="h-3 w-3 mr-1" />Supprimer
+                    </Button>
+                    <button className="text-gray-400 hover:text-gray-600 text-xs" onClick={() => setSelectedBL(new Set())}>✕</button>
+                  </div>
+                )}
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-gray-400" />
+                  <Input placeholder="Rechercher..." value={searchBL} onChange={(e) => setSearchBL(e.target.value)} className="pl-8 h-8 w-48 text-sm border-gray-200" />
+                </div>
+                <Select value={statusFilterBL} onValueChange={setStatusFilterBL}>
+                  <SelectTrigger className="h-8 w-36 text-xs border-gray-200"><SelectValue placeholder="Statut" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous les statuts</SelectItem>
+                    <SelectItem value="BROUILLON">Brouillon</SelectItem>
+                    <SelectItem value="CONFIRME">Confirmé</SelectItem>
+                    <SelectItem value="LIVRE">Livré</SelectItem>
+                    <SelectItem value="ANNULE">Annulé</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={sortBL} onValueChange={setSortBL}>
+                  <SelectTrigger className="h-8 w-36 text-xs border-gray-200">
+                    <ArrowUpDown className="h-3.5 w-3.5 mr-1.5" /><SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="recent">Plus récent</SelectItem>
+                    <SelectItem value="oldest">Plus ancien</SelectItem>
+                    <SelectItem value="client-az">Client A-Z</SelectItem>
+                    <SelectItem value="ref-az">Référence A-Z</SelectItem>
+                  </SelectContent>
+                </Select>
+                {canManage && (
+                  <Button size="sm" className="h-8 bg-green-600 hover:bg-green-700 text-white shadow-sm shadow-green-200" onClick={() => {
+                    setBLForm({ clientId: '', lignes: [] });
+                    setBLFromCommandeId(null);
+                    setBLProgression(null);
+                    setShowBLDialog(true);
+                  }}>
+                    <Plus className="h-3.5 w-3.5 mr-1" />Nouveau BL
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div>
+              {blLoading ? (
+                <div className="py-12 text-center"><div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"/><p className="text-xs text-gray-400">Chargement...</p></div>
+              ) : filteredBL.length === 0 ? (
+                <div className="py-12 text-center"><Truck className="h-8 w-8 text-gray-200 mx-auto mb-2"/><p className="text-sm text-gray-400">{searchBL ? 'Aucun BL trouvé' : 'Aucun bon de livraison'}</p></div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-8">
+                          <Checkbox checked={filteredBL.length > 0 && filteredBL.every(b => selectedBL.has(b.id))} onCheckedChange={(checked) => {
+                            if (checked) setSelectedBL(new Set(filteredBL.map(b => b.id)));
+                            else setSelectedBL(new Set());
+                          }} />
+                        </TableHead>
+                        <TableHead>Référence</TableHead>
+                        <TableHead>Client</TableHead>
+                        <TableHead className="hidden md:table-cell">Commande</TableHead>
+                        <TableHead className="hidden md:table-cell">Date</TableHead>
+                        <TableHead className="hidden lg:table-cell">Livraison</TableHead>
+                        <TableHead>Statut</TableHead>
+                        <TableHead></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredBL
+                        .slice()
+                        .sort((a, b) => {
+                          if (sortBL === 'oldest') return new Date(a.dateBonLivraison).getTime() - new Date(b.dateBonLivraison).getTime();
+                          if (sortBL === 'client-az') return (a.client?.nomEntreprise || '').localeCompare(b.client?.nomEntreprise || '');
+                          if (sortBL === 'ref-az') return a.ref.localeCompare(b.ref);
+                          return new Date(b.dateBonLivraison).getTime() - new Date(a.dateBonLivraison).getTime();
+                        })
+                        .map((bl) => {
+                          const totalCmd = (bl.lignes || []).reduce((s, l) => s + (l.quantiteCommandee || 0), 0);
+                          const totalLivree = (bl.lignes || []).reduce((s, l) => s + l.quantiteLivree, 0);
+                          const pct = totalCmd > 0 ? Math.round((totalLivree / totalCmd) * 100) : (totalLivree > 0 ? 100 : 0);
+                          return (
+                          <TableRow key={bl.id} className={`cursor-pointer hover:bg-gray-50 ${selectedBL.has(bl.id) ? 'bg-blue-50' : ''}`} onClick={async () => {
+                            openBLDetail(bl.id);
+                          }}>
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <Checkbox checked={selectedBL.has(bl.id)} onCheckedChange={(checked) => {
+                                const next = new Set(selectedBL);
+                                if (checked) next.add(bl.id); else next.delete(bl.id);
+                                setSelectedBL(next);
+                              }} />
+                            </TableCell>
+                            <TableCell className="font-medium text-gray-900">{bl.ref}</TableCell>
+                            <TableCell>
+                              <span className="font-medium text-gray-800">{bl.client?.nomEntreprise || '-'}</span>
+                              {bl.site && <p className="text-xs text-gray-400 flex items-center gap-0.5 mt-0.5"><MapPin className="h-3 w-3" />{bl.site.nom}</p>}
+                            </TableCell>
+                            <TableCell className="hidden md:table-cell">
+                              {bl.commande
+                                ? <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">{bl.commande.ref}</span>
+                                : <span className="text-gray-400 text-xs">—</span>}
+                            </TableCell>
+                            <TableCell className="hidden md:table-cell text-sm">
+                              <p className="text-gray-600">{new Date(bl.dateBonLivraison).toLocaleDateString('fr-FR')}</p>
+                              {bl.dateLivraisonEffective && (
+                                <p className="text-xs text-green-600 font-medium flex items-center gap-0.5 mt-0.5">
+                                  <CheckCircle2 className="h-3 w-3" />
+                                  {new Date(bl.dateLivraisonEffective).toLocaleDateString('fr-FR')}
+                                </p>
+                              )}
+                            </TableCell>
+                            <TableCell className="hidden lg:table-cell">
+                              {totalCmd > 0 ? (
+                                <div className="min-w-[120px]">
+                                  <div className="flex justify-between text-xs text-gray-500 mb-1">
+                                    <span>{totalLivree} / {totalCmd}</span>
+                                    <span className="font-semibold text-gray-700">{pct}%</span>
+                                  </div>
+                                  <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                    <div className={`h-full rounded-full transition-all ${pct >= 100 ? 'bg-green-500' : pct > 0 ? 'bg-blue-500' : 'bg-gray-300'}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                                  </div>
+                                </div>
+                              ) : <span className="text-gray-400 text-xs">—</span>}
+                            </TableCell>
+                            <TableCell>{blStatusBadge(bl.statut)}</TableCell>
+                            <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex justify-end gap-1">
+                                <Tooltip content="Voir les détails">
+                                  <Button variant="ghost" size="sm" onClick={() => openBLDetail(bl.id)}><Eye className="h-4 w-4" /></Button>
+                                </Tooltip>
+                                <Tooltip content="Télécharger PDF">
+                                  <Button variant="ghost" size="sm" onClick={() => commerceApi.downloadBonLivraisonPdf(bl.id).catch(() => toast.error('Erreur'))}><FileDown className="h-4 w-4" /></Button>
+                                </Tooltip>
+                                {canManage && bl.statut === 'BROUILLON' && (
+                                  <Tooltip content="Confirmer">
+                                    <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700 hover:bg-blue-50" onClick={() => validerBLMutation.mutate(bl.id)}>
+                                      <CheckCircle2 className="h-4 w-4" />
+                                    </Button>
+                                  </Tooltip>
+                                )}
+                                {canManage && bl.statut === 'CONFIRME' && (
+                                  <Tooltip content="Marquer livré">
+                                    <Button variant="ghost" size="sm" className="text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => livrerBLMutation.mutate(bl.id)}>
+                                      <PackageCheck className="h-4 w-4" />
+                                    </Button>
+                                  </Tooltip>
+                                )}
+                                {canManage && (bl.statut === 'BROUILLON' || bl.statut === 'CONFIRME') && (
+                                  <Tooltip content="Annuler">
+                                    <Button variant="ghost" size="sm" className="text-orange-500 hover:text-orange-600 hover:bg-orange-50" onClick={() => annulerBLMutation.mutate(bl.id)}>
+                                      <XCircle className="h-4 w-4" />
+                                    </Button>
+                                  </Tooltip>
+                                )}
+                                {canManage && bl.statut === 'BROUILLON' && (
+                                  <Tooltip content="Supprimer">
+                                    <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => deleteBLMutation.mutate(bl.id)}>
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </Tooltip>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )})}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
+          </div>
         </TabsContent>
 
         {/* FACTURES TAB */}
         <TabsContent value="factures">
-          <Card>
-            <CardHeader>
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <CardTitle>Factures</CardTitle>
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="relative flex-1 sm:w-64">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Rechercher une facture..."
-                      value={searchFactures}
-                      onChange={(e) => setSearchFactures(e.target.value)}
-                      className="pl-10"
-                    />
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4 border-b border-gray-50">
+              <div className="flex items-center gap-3">
+                <p className="text-sm font-bold text-gray-900">{filteredFactures.length} facture{filteredFactures.length > 1 ? 's' : ''}</p>
+                <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+                  {(['all', 'SERVICE', 'PRODUIT'] as const).map((t) => (
+                    <button key={t} onClick={() => setTypeFilterFactures(t)} className={`text-xs px-2.5 py-1 rounded-md font-medium transition-all ${typeFilterFactures === t ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
+                      {t === 'all' ? 'Tous' : t === 'SERVICE' ? 'Service' : 'Produit'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {selectedFactures.size > 0 && (
+                  <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5">
+                    <SquareCheck className="h-3.5 w-3.5 text-blue-600" />
+                    <span className="text-xs font-semibold text-blue-700">{selectedFactures.size} sélectionné{selectedFactures.size > 1 ? 's' : ''}</span>
+                    <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-red-600 hover:bg-red-50" onClick={async () => {
+                      const ids = [...selectedFactures];
+                      await Promise.all(ids.map(id => commerceApi.deleteFacture(id)));
+                      queryClient.invalidateQueries({ queryKey: ['commerce', 'factures'] });
+                      setSelectedFactures(new Set());
+                      toast.success(`${ids.length} facture${ids.length > 1 ? 's' : ''} supprimée${ids.length > 1 ? 's' : ''}`);
+                    }}>
+                      <Trash2 className="h-3 w-3 mr-1" />Supprimer
+                    </Button>
+                    <button className="text-gray-400 hover:text-gray-600 text-xs" onClick={() => setSelectedFactures(new Set())}>✕</button>
                   </div>
-                  <Select value={statusFilterFactures} onValueChange={setStatusFilterFactures}>
-                    <SelectTrigger className="w-[160px]">
-                      <SelectValue placeholder="Tous les statuts" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Tous les statuts</SelectItem>
-                      <SelectItem value="BROUILLON">Brouillon</SelectItem>
-                      <SelectItem value="VALIDEE">Validée</SelectItem>
-                      <SelectItem value="EN_RETARD">En retard</SelectItem>
-                      <SelectItem value="PARTIELLEMENT_PAYEE">Part. payée</SelectItem>
-                      <SelectItem value="EN_ATTENTE_ENCAISSEMENT">En att. encaissement</SelectItem>
-                      <SelectItem value="PAYEE">Payée</SelectItem>
-                      <SelectItem value="ANNULEE">Annulée</SelectItem>
-                    </SelectContent>
-                  </Select>
+                )}
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-gray-400" />
+                  <Input placeholder="Rechercher..." value={searchFactures} onChange={(e) => setSearchFactures(e.target.value)} className="pl-8 h-8 w-44 text-sm border-gray-200" />
+                </div>
+                <Select value={statusFilterFactures} onValueChange={setStatusFilterFactures}>
+                  <SelectTrigger className="h-8 w-44 text-xs border-gray-200">
+                    <SelectValue placeholder="Tous statuts" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Tous les statuts</SelectItem>
+                    <SelectItem value="BROUILLON">Brouillon</SelectItem>
+                    <SelectItem value="VALIDEE">Validée</SelectItem>
+                    <SelectItem value="EN_RETARD">En retard</SelectItem>
+                    <SelectItem value="PARTIELLEMENT_PAYEE">Part. payée</SelectItem>
+                    <SelectItem value="EN_ATTENTE_ENCAISSEMENT">En att. encaissement</SelectItem>
+                    <SelectItem value="PAYEE">Payée</SelectItem>
+                    <SelectItem value="ANNULEE">Annulée</SelectItem>
+                  </SelectContent>
+                </Select>
                   <Select value={sortFactures} onValueChange={setSortFactures}>
                     <SelectTrigger className="w-[160px]">
                       <ArrowUpDown className="h-4 w-4 mr-2" />
@@ -3784,19 +4466,22 @@ export function CommercePage() {
                   )}
                 </div>
               </div>
-            </CardHeader>
-            <CardContent>
+            <div>
               {facturesLoading ? (
-                <p className="text-muted-foreground text-center py-8">Chargement...</p>
+                <div className="py-12 text-center"><div className="w-6 h-6 border-2 border-green-600 border-t-transparent rounded-full animate-spin mx-auto mb-2"/><p className="text-xs text-gray-400">Chargement...</p></div>
               ) : filteredFactures.length === 0 ? (
-                <p className="text-muted-foreground text-center py-8">
-                  {searchFactures ? 'Aucune facture trouvée' : 'Aucune facture'}
-                </p>
+                <div className="py-12 text-center"><Receipt className="h-8 w-8 text-gray-200 mx-auto mb-2"/><p className="text-sm text-gray-400">{searchFactures ? 'Aucune facture trouvée' : 'Aucune facture'}</p></div>
               ) : (
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
+                        <TableHead className="w-8">
+                          <Checkbox checked={filteredFactures.length > 0 && filteredFactures.every(f => selectedFactures.has(f.id))} onCheckedChange={(checked) => {
+                            if (checked) setSelectedFactures(new Set(filteredFactures.map(f => f.id)));
+                            else setSelectedFactures(new Set());
+                          }} />
+                        </TableHead>
                         <TableHead className="w-32">Référence</TableHead>
                         <TableHead className="w-24">Type</TableHead>
                         <TableHead className="min-w-[160px]">Client</TableHead>
@@ -3812,7 +4497,7 @@ export function CommercePage() {
                       {sortDocuments(filteredFactures, sortFactures).map((f) => (
                         <TableRow
                           key={f.id}
-                          className="cursor-pointer hover:bg-gray-50"
+                          className={`cursor-pointer hover:bg-gray-50 ${selectedFactures.has(f.id) ? 'bg-blue-50' : ''}`}
                           onClick={async () => {
                             try {
                               const fullFacture = await commerceApi.getFacture(f.id);
@@ -3822,6 +4507,13 @@ export function CommercePage() {
                             }
                           }}
                         >
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Checkbox checked={selectedFactures.has(f.id)} onCheckedChange={(checked) => {
+                              const next = new Set(selectedFactures);
+                              if (checked) next.add(f.id); else next.delete(f.id);
+                              setSelectedFactures(next);
+                            }} />
+                          </TableCell>
                           <TableCell className="font-medium">{f.ref}</TableCell>
                           <TableCell>
                             {f.typeDocument ? (
@@ -3899,6 +4591,7 @@ export function CommercePage() {
                                           delaiPaiementJours: fullFacture.delaiPaiementJours ?? 45,
                                           notes: fullFacture.notes || '',
                                           conditions: fullFacture.conditions || '',
+                                          mentionSpeciale: fullFacture.mentionSpeciale || '',
                                           type: fullFacture.type || 'FACTURE',
                                           remiseGlobalPct: fullFacture.remiseGlobalPct || 0,
                                           remiseGlobalMontant: fullFacture.remiseGlobalMontant || 0,
@@ -3999,11 +4692,340 @@ export function CommercePage() {
                   </Table>
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </TabsContent>
 
       </Tabs>
+
+      {/* ── Sheet détail BL ─────────────────────────────────────────────────── */}
+      <Sheet open={!!viewingBL} onOpenChange={(open) => { if (!open) { setViewingBL(null); setViewingBLProgression(null); } }}>
+        <SheetContent className="w-full sm:max-w-2xl overflow-y-auto">
+          {viewingBL && (() => {
+            const lignes = viewingBL.lignes || [];
+            // Cumulative totals from commande progression (all BLs), fallback to this BL only
+            const prog = viewingBLProgression;
+            const totalCmd = prog
+              ? prog.lignes.reduce((s, l) => s + l.quantiteCommandee, 0)
+              : lignes.reduce((s, l) => s + (l.quantiteCommandee || 0), 0);
+            const totalLivree = prog
+              ? prog.lignes.reduce((s, l) => s + l.quantiteDejaLivree, 0)
+              : lignes.reduce((s, l) => s + l.quantiteLivree, 0);
+            const totalRestante = Math.max(0, totalCmd - totalLivree);
+            const pct = totalCmd > 0 ? Math.round((totalLivree / totalCmd) * 100) : (totalLivree > 0 ? 100 : 0);
+            // This BL's own contribution
+            const thisBLLivree = lignes.reduce((s, l) => s + l.quantiteLivree, 0);
+            return (
+            <>
+              <SheetHeader className="mb-5">
+                <SheetTitle className="flex items-center gap-2 text-lg">
+                  <Truck className="h-5 w-5 text-green-600" />
+                  {viewingBL.ref}
+                  <span className="ml-1">{blStatusBadge(viewingBL.statut)}</span>
+                </SheetTitle>
+              </SheetHeader>
+              <div className="space-y-5 text-sm">
+
+                {/* Section client */}
+                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Client</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-xs text-gray-500 mb-0.5">Entreprise</p>
+                      <p className="font-semibold text-gray-900">{viewingBL.client?.nomEntreprise || '—'}</p>
+                    </div>
+                    {viewingBL.site && (
+                      <div>
+                        <p className="text-xs text-gray-500 mb-0.5">Site</p>
+                        <p className="font-medium text-gray-800 flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-gray-400" />{viewingBL.site.nom}</p>
+                        {viewingBL.site.ville && <p className="text-xs text-gray-400">{viewingBL.site.ville}</p>}
+                      </div>
+                    )}
+                    {viewingBL.adresseLivraison && (
+                      <div className="col-span-2">
+                        <p className="text-xs text-gray-500 mb-0.5">Adresse de livraison</p>
+                        <p className="text-gray-700">{[viewingBL.adresseLivraison.adresse, viewingBL.adresseLivraison.codePostal, viewingBL.adresseLivraison.ville].filter(Boolean).join(', ')}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Section commande & dates */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-blue-50 rounded-lg p-3">
+                    <p className="text-xs text-blue-500 mb-1">Commande liée</p>
+                    <p className="font-semibold text-blue-800">{viewingBL.commande?.ref || '—'}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-500 mb-1">Date BL</p>
+                    <p className="font-semibold text-gray-800">{new Date(viewingBL.dateBonLivraison).toLocaleDateString('fr-FR')}</p>
+                  </div>
+                  {viewingBL.dateLivraisonEffective && (
+                    <div className="bg-green-50 rounded-lg p-3">
+                      <p className="text-xs text-green-500 mb-1">Date livraison effective</p>
+                      <p className="font-semibold text-green-800">{new Date(viewingBL.dateLivraisonEffective).toLocaleDateString('fr-FR')}</p>
+                    </div>
+                  )}
+                  {viewingBL.createdBy && (
+                    <div className="bg-gray-50 rounded-lg p-3">
+                      <p className="text-xs text-gray-500 mb-1">Créé par</p>
+                      <p className="font-medium text-gray-700">{viewingBL.createdBy.prenom} {viewingBL.createdBy.nom}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Progression — cumulative commande */}
+                {totalCmd > 0 && (
+                  <div className="border rounded-lg p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                        {prog ? 'Progression commande (cumulée)' : 'Progression livraison'}
+                      </p>
+                      <span className={`text-sm font-bold ${pct >= 100 ? 'text-green-600' : 'text-teal-600'}`}>{pct}%</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="bg-gray-50 rounded-lg p-2">
+                        <p className="text-[10px] text-gray-400 mb-0.5">Commandée</p>
+                        <p className="font-bold text-gray-800 text-xl">{totalCmd}</p>
+                      </div>
+                      <div className="bg-teal-50 rounded-lg p-2">
+                        <p className="text-[10px] text-teal-500 mb-0.5">Total livré</p>
+                        <p className="font-bold text-teal-700 text-xl">{totalLivree}</p>
+                        {prog && thisBLLivree > 0 && (
+                          <p className="text-[10px] text-teal-400">dont {thisBLLivree} ce BL</p>
+                        )}
+                      </div>
+                      <div className={`rounded-lg p-2 ${totalRestante > 0 ? 'bg-orange-50' : 'bg-green-50'}`}>
+                        <p className={`text-[10px] mb-0.5 ${totalRestante > 0 ? 'text-orange-400' : 'text-green-400'}`}>Restant</p>
+                        <p className={`font-bold text-xl ${totalRestante > 0 ? 'text-orange-700' : 'text-green-600'}`}>{totalRestante > 0 ? totalRestante : '✓'}</p>
+                      </div>
+                    </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full transition-all ${pct >= 100 ? 'bg-green-500' : 'bg-teal-400'}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Notes */}
+                {viewingBL.notes && (
+                  <div className="bg-amber-50 border border-amber-100 rounded-lg p-3 text-xs text-amber-800 flex gap-2">
+                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                    <span>{viewingBL.notes}</span>
+                  </div>
+                )}
+
+                {/* Lignes — with cumulative data from commande progression */}
+                {(lignes.length > 0 || (prog && prog.lignes.length > 0)) && (
+                  <div>
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                      Lignes {prog ? '(total cumulé par ligne)' : `(${lignes.length})`}
+                    </p>
+                    <div className="border rounded-lg overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-50 border-b">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-600">Désignation</th>
+                            <th className="px-3 py-2 text-center font-semibold text-gray-500">Cmd.</th>
+                            <th className="px-3 py-2 text-center font-semibold text-teal-600">Total livré</th>
+                            {prog && <th className="px-3 py-2 text-center font-semibold text-blue-500">Ce BL</th>}
+                            <th className="px-3 py-2 text-center font-semibold text-orange-500">Restant</th>
+                            <th className="px-3 py-2 text-center font-semibold text-gray-400">Unt.</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(prog ? prog.lignes : lignes.map(l => ({
+                            commandeLigneId: '',
+                            libelle: l.libelle || '',
+                            quantiteCommandee: l.quantiteCommandee || 0,
+                            quantiteDejaLivree: l.quantiteLivree,
+                            quantiteRestante: Math.max(0, (l.quantiteCommandee || 0) - l.quantiteLivree),
+                          }))).map((pl, i) => {
+                            const thisBLLigne = prog ? lignes.find(l => l.commandeLigneId === pl.commandeLigneId) : null;
+                            const linePct = pl.quantiteCommandee > 0 ? Math.round((pl.quantiteDejaLivree / pl.quantiteCommandee) * 100) : 0;
+                            return (
+                              <tr key={i} className={`border-t ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
+                                <td className="px-3 py-2">
+                                  <p className="font-medium text-gray-900">{pl.libelle}</p>
+                                  {pl.quantiteCommandee > 0 && (
+                                    <div className="mt-1 h-1 bg-gray-100 rounded-full overflow-hidden w-full max-w-[80px]">
+                                      <div className={`h-full rounded-full ${linePct >= 100 ? 'bg-green-400' : 'bg-teal-400'}`} style={{ width: `${Math.min(linePct, 100)}%` }} />
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 text-center text-gray-500">{pl.quantiteCommandee || '—'}</td>
+                                <td className="px-3 py-2 text-center font-semibold text-teal-700">{pl.quantiteDejaLivree}</td>
+                                {prog && <td className="px-3 py-2 text-center text-blue-600">{thisBLLigne?.quantiteLivree ?? 0}</td>}
+                                <td className="px-3 py-2 text-center font-semibold">
+                                  <span className={pl.quantiteRestante > 0 ? 'text-orange-600' : 'text-green-600'}>
+                                    {pl.quantiteRestante > 0 ? pl.quantiteRestante : '✓'}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2 text-center text-gray-400">
+                                  {(prog ? null : lignes[i]?.unite) || '—'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="flex gap-2 pt-2 flex-wrap border-t pt-4">
+                  <Button size="sm" variant="outline" onClick={() => commerceApi.downloadBonLivraisonPdf(viewingBL.id).catch(() => toast.error('Erreur'))}>
+                    <FileDown className="h-4 w-4 mr-1" />PDF
+                  </Button>
+                  {canManage && viewingBL.statut === 'BROUILLON' && (
+                    <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => validerBLMutation.mutate(viewingBL.id)}>
+                      <CheckCircle2 className="h-4 w-4 mr-1" />Confirmer
+                    </Button>
+                  )}
+                  {canManage && viewingBL.statut === 'CONFIRME' && (
+                    <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => livrerBLMutation.mutate(viewingBL.id)}>
+                      <PackageCheck className="h-4 w-4 mr-1" />Marquer livré
+                    </Button>
+                  )}
+                  {canManage && (viewingBL.statut === 'BROUILLON' || viewingBL.statut === 'CONFIRME') && (
+                    <Button size="sm" variant="outline" className="text-orange-600 border-orange-200 hover:bg-orange-50" onClick={() => annulerBLMutation.mutate(viewingBL.id)}>
+                      <XCircle className="h-4 w-4 mr-1" />Annuler
+                    </Button>
+                  )}
+                  {canManage && viewingBL.statut === 'BROUILLON' && (
+                    <Button size="sm" variant="outline" className="text-red-600 border-red-200 hover:bg-red-50" onClick={() => deleteBLMutation.mutate(viewingBL.id)}>
+                      <Trash2 className="h-4 w-4 mr-1" />Supprimer
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </>
+            );
+          })()}
+        </SheetContent>
+      </Sheet>
+
+      {/* ── Dialog création BL ───────────────────────────────────────────────── */}
+      <Dialog open={showBLDialog} onOpenChange={(open) => {
+        setShowBLDialog(open);
+        if (!open) { setBLForm({ clientId: '', lignes: [] }); setBLFromCommandeId(null); setBLProgression(null); }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Truck className="h-5 w-5 text-green-600" />
+              Nouveau bon de livraison
+              {blFromCommandeId && <span className="text-xs font-normal text-gray-500 ml-2">depuis commande</span>}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {!blFromCommandeId && (
+              <div>
+                <Label>Client *</Label>
+                <Select value={blForm.clientId} onValueChange={(v) => setBLForm({ ...blForm, clientId: v })}>
+                  <SelectTrigger><SelectValue placeholder="Sélectionner un client" /></SelectTrigger>
+                  <SelectContent>
+                    {clients.map((c) => <SelectItem key={c.id} value={c.id}>{c.nomEntreprise}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div>
+              <Label>Date du BL</Label>
+              <Input type="date" value={blForm.dateBonLivraison || new Date().toISOString().split('T')[0]} onChange={(e) => setBLForm({ ...blForm, dateBonLivraison: e.target.value })} />
+            </div>
+            <div>
+              <Label>Notes</Label>
+              <Textarea value={blForm.notes || ''} onChange={(e) => setBLForm({ ...blForm, notes: e.target.value })} rows={2} placeholder="Observations, instructions de livraison..." />
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label>Lignes *</Label>
+                {!blFromCommandeId && (
+                  <Button type="button" variant="outline" size="sm" onClick={() => setBLForm({ ...blForm, lignes: [...blForm.lignes, { libelle: '', quantiteLivree: 1, prixUnitaireHT: 0, tauxTVA: 0 }] })}>
+                    <Plus className="h-3.5 w-3.5 mr-1" />Ajouter
+                  </Button>
+                )}
+              </div>
+              <div className="border rounded overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-2 py-2 text-left font-semibold">Désignation</th>
+                      {blFromCommandeId && <th className="px-2 py-2 text-center font-semibold text-gray-500">Qté cmd.</th>}
+                      {blFromCommandeId && <th className="px-2 py-2 text-center font-semibold text-gray-500">Déjà livrée</th>}
+                      {blFromCommandeId && <th className="px-2 py-2 text-center font-semibold text-gray-500">Restante</th>}
+                      <th className="px-2 py-2 text-center font-semibold text-blue-700">Qté à livrer</th>
+                      {!blFromCommandeId && <th className="px-2 py-2 text-left font-semibold">Unité</th>}
+                      {!blFromCommandeId && <th></th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {blForm.lignes.map((l, i) => {
+                      const prog = blFromCommandeId && blProgression ? blProgression.lignes.find((p) => p.commandeLigneId === l.commandeLigneId) : null;
+                      const restante = prog ? prog.quantiteRestante : null;
+                      return (
+                        <tr key={i} className="border-t">
+                          <td className="px-2 py-1.5">
+                            {blFromCommandeId ? (
+                              <p className="font-medium">{l.libelle}</p>
+                            ) : (
+                              <Input value={l.libelle} onChange={(e) => {
+                                const updated = [...blForm.lignes]; updated[i] = { ...updated[i], libelle: e.target.value };
+                                setBLForm({ ...blForm, lignes: updated });
+                              }} placeholder="Désignation" className="h-7 text-xs" />
+                            )}
+                          </td>
+                          {blFromCommandeId && <td className="px-2 py-1.5 text-center text-gray-500">{l.quantiteCommandee ?? '—'}</td>}
+                          {blFromCommandeId && <td className="px-2 py-1.5 text-center text-gray-500">{prog ? prog.quantiteDejaLivree : '—'}</td>}
+                          {blFromCommandeId && <td className="px-2 py-1.5 text-center font-medium text-orange-600">{restante ?? '—'}</td>}
+                          <td className="px-2 py-1.5">
+                            <Input
+                              type="number" min="0" max={restante ?? undefined}
+                              value={l.quantiteLivree}
+                              onChange={(e) => {
+                                const updated = [...blForm.lignes];
+                                updated[i] = { ...updated[i], quantiteLivree: parseFloat(e.target.value) || 0 };
+                                setBLForm({ ...blForm, lignes: updated });
+                              }}
+                              className="h-7 text-xs w-20 text-center"
+                            />
+                          </td>
+                          {!blFromCommandeId && (
+                            <td className="px-2 py-1.5">
+                              <Input value={l.unite || ''} onChange={(e) => {
+                                const updated = [...blForm.lignes]; updated[i] = { ...updated[i], unite: e.target.value };
+                                setBLForm({ ...blForm, lignes: updated });
+                              }} placeholder="unité" className="h-7 text-xs w-16" />
+                            </td>
+                          )}
+                          {!blFromCommandeId && (
+                            <td className="px-2 py-1.5">
+                              <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-red-500" onClick={() => {
+                                setBLForm({ ...blForm, lignes: blForm.lignes.filter((_, j) => j !== i) });
+                              }}><Trash2 className="h-3 w-3" /></Button>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="mt-4">
+            <Button variant="outline" onClick={() => setShowBLDialog(false)}>Annuler</Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700 text-white"
+              disabled={!blForm.clientId || blForm.lignes.length === 0 || createBLMutation.isPending}
+              onClick={() => createBLMutation.mutate(blForm)}
+            >
+              {createBLMutation.isPending ? 'Création...' : 'Créer le BL'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ============ DIALOGS ============ */}
 
@@ -4447,11 +5469,15 @@ export function CommercePage() {
       }}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingFactureId ? 'Modifier la facture' : 'Créer une facture'}</DialogTitle>
+            <DialogTitle>
+              {editingFactureId ? 'Modifier la facture' : factureForm.type === 'AVOIR' ? 'Créer un avoir' : 'Créer une facture'}
+            </DialogTitle>
             <DialogDescription>
               {editingFactureId
                 ? 'Modifiez les informations de la facture en brouillon.'
-                : 'Remplissez les informations pour créer une nouvelle facture client.'}
+                : factureForm.type === 'AVOIR'
+                  ? 'Vérifiez et ajustez les lignes de l\'avoir avant de le valider.'
+                  : 'Remplissez les informations pour créer une nouvelle facture client.'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6">
@@ -4623,6 +5649,18 @@ export function CommercePage() {
               </div>
             </div>
 
+            <div className="space-y-2">
+              <Label>Mention spéciale (optionnel)</Label>
+              <Input
+                value={factureForm.mentionSpeciale || ''}
+                onChange={(e) => setFactureForm({ ...factureForm, mentionSpeciale: e.target.value })}
+                placeholder='Ex: Selon le bon de commande "1234" du 01/01/2026'
+              />
+              <p className="text-xs text-muted-foreground">
+                Affichée en gras sur le PDF, à la place de la mention "Opération du..."
+              </p>
+            </div>
+
             <LignesForm
               lignes={factureForm.lignes}
               setForm={setFactureForm}
@@ -4654,7 +5692,11 @@ export function CommercePage() {
             >
               {createFactureMutation.isPending || updateFactureMutation.isPending
                 ? (editingFactureId ? 'Mise à jour...' : 'Création...')
-                : (editingFactureId ? 'Enregistrer les modifications' : 'Créer la facture')}
+                : editingFactureId
+                  ? 'Enregistrer les modifications'
+                  : factureForm.type === 'AVOIR'
+                    ? 'Créer l\'avoir'
+                    : 'Créer la facture'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -4797,6 +5839,11 @@ export function CommercePage() {
         }}
         isValidating={validerCommande.isPending}
         isConverting={convertirCommande.isPending}
+        onCreateBL={viewingDocument?.type === 'commande' && canManage ? () => {
+          const commandeId = viewingDocument.document.id;
+          setViewingDocument(null);
+          creerBLFromCommande(commandeId);
+        } : undefined}
       />
 
       {/* Facture Detail Dialog - Design premium similaire à Devis/Commande */}
@@ -4837,6 +5884,7 @@ export function CommercePage() {
               delaiPaiementJours: fullFacture.delaiPaiementJours ?? 45,
               notes: fullFacture.notes || '',
               conditions: fullFacture.conditions || '',
+              mentionSpeciale: fullFacture.mentionSpeciale || '',
               type: fullFacture.type || 'FACTURE',
               remiseGlobalPct: fullFacture.remiseGlobalPct || 0,
               remiseGlobalMontant: fullFacture.remiseGlobalMontant || 0,
@@ -4887,6 +5935,39 @@ export function CommercePage() {
         onChequeAction={(paiementId, newStatut, label) => {
           setChequeActionDate(new Date().toISOString().split('T')[0]);
           setChequeActionModal({ paiementId, newStatut, label });
+        }}
+        onCreateAvoir={async () => {
+          if (viewingDocument?.type !== 'facture') return;
+          try {
+            const fullFacture = await commerceApi.getFacture(viewingDocument.document.id);
+            setEditingFactureId(null);
+            setFactureForm({
+              clientId: fullFacture.clientId,
+              siteId: fullFacture.siteId || undefined,
+              typeDocument: fullFacture.typeDocument || 'PRODUIT',
+              type: 'AVOIR',
+              dateFacture: new Date().toISOString().split('T')[0],
+              delaiPaiementJours: fullFacture.delaiPaiementJours ?? 45,
+              notes: `Avoir sur facture ${fullFacture.ref}`,
+              conditions: fullFacture.conditions || '',
+              remiseGlobalPct: fullFacture.remiseGlobalPct || 0,
+              remiseGlobalMontant: fullFacture.remiseGlobalMontant || 0,
+              lignes: fullFacture.lignes?.map((l: any) => ({
+                produitServiceId: l.produitServiceId || undefined,
+                libelle: l.libelle || '',
+                description: l.description || '',
+                quantite: l.quantite || 1,
+                unite: l.unite || '',
+                prixUnitaireHT: l.prixUnitaireHT || 0,
+                tauxTVA: l.tauxTVA ?? 19,
+                remisePct: l.remisePct || 0,
+              })) || [{ ...EMPTY_LINE }],
+            });
+            setViewingDocument(null);
+            setShowFactureDialog(true);
+          } catch {
+            toast.error('Erreur lors du chargement de la facture');
+          }
         }}
         isValidating={validerFacture.isPending}
       />
@@ -5668,6 +6749,7 @@ export function CommercePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
     </div>
   );
 }

@@ -1,8 +1,11 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import csvService from '../services/csv-import.service.js';
 import icsService from '../services/ics-export.service.js';
 import { parseISO, endOfDay } from 'date-fns';
+import logger from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
+
 
 export const importExportController = {
   // ============ EXPORT CSV ============
@@ -10,7 +13,7 @@ export const importExportController = {
   /**
    * GET /api/export/clients
    */
-  async exportClients(req: AuthRequest, res: Response) {
+  async exportClients(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const csv = await csvService.exportClients();
 
@@ -18,15 +21,15 @@ export const importExportController = {
       res.setHeader('Content-Disposition', 'attachment; filename=clients.csv');
       res.send('\ufeff' + csv); // BOM pour Excel
     } catch (error) {
-      console.error('Export clients error:', error);
-      res.status(500).json({ error: 'Erreur lors de l\'export' });
+      logger.error({ err: error }, 'Export clients error');
+      return next(new AppError(500, 'Erreur lors de l\'export'));
     }
   },
 
   /**
    * GET /api/export/contrats
    */
-  async exportContrats(req: AuthRequest, res: Response) {
+  async exportContrats(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const csv = await csvService.exportContrats();
 
@@ -34,15 +37,15 @@ export const importExportController = {
       res.setHeader('Content-Disposition', 'attachment; filename=contrats.csv');
       res.send('\ufeff' + csv);
     } catch (error) {
-      console.error('Export contrats error:', error);
-      res.status(500).json({ error: 'Erreur lors de l\'export' });
+      logger.error({ err: error }, 'Export contrats error');
+      return next(new AppError(500, 'Erreur lors de l\'export'));
     }
   },
 
   /**
    * GET /api/export/interventions
    */
-  async exportInterventions(req: AuthRequest, res: Response) {
+  async exportInterventions(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { dateDebut, dateFin } = req.query;
 
@@ -56,15 +59,15 @@ export const importExportController = {
       res.setHeader('Content-Disposition', 'attachment; filename=interventions.csv');
       res.send('\ufeff' + csv);
     } catch (error) {
-      console.error('Export interventions error:', error);
-      res.status(500).json({ error: 'Erreur lors de l\'export' });
+      logger.error({ err: error }, 'Export interventions error');
+      return next(new AppError(500, 'Erreur lors de l\'export'));
     }
   },
 
   /**
    * GET /api/export/employes
    */
-  async exportEmployes(req: AuthRequest, res: Response) {
+  async exportEmployes(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const csv = await csvService.exportEmployes();
 
@@ -72,15 +75,15 @@ export const importExportController = {
       res.setHeader('Content-Disposition', 'attachment; filename=employes.csv');
       res.send('\ufeff' + csv);
     } catch (error) {
-      console.error('Export employes error:', error);
-      res.status(500).json({ error: 'Erreur lors de l\'export' });
+      logger.error({ err: error }, 'Export employes error');
+      return next(new AppError(500, 'Erreur lors de l\'export'));
     }
   },
 
   /**
    * GET /api/export/google-calendar
    */
-  async exportGoogleCalendar(req: AuthRequest, res: Response) {
+  async exportGoogleCalendar(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { dateDebut, dateFin, statuts, clientId } = req.query;
 
@@ -96,8 +99,8 @@ export const importExportController = {
       res.setHeader('Content-Disposition', 'attachment; filename=rhs-planning.ics');
       res.send(ics);
     } catch (error) {
-      console.error('Export Google Calendar error:', error);
-      res.status(500).json({ error: 'Erreur lors de l\'export' });
+      logger.error({ err: error }, 'Export Google Calendar error');
+      return next(new AppError(500, 'Erreur lors de l\'export'));
     }
   },
 
@@ -106,7 +109,7 @@ export const importExportController = {
   /**
    * GET /api/import/templates/:type
    */
-  async getTemplate(req: AuthRequest, res: Response) {
+  async getTemplate(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { type } = req.params;
 
@@ -149,8 +152,8 @@ Yacine,Amrani,ADMINISTRATION`,
       res.setHeader('Content-Disposition', `attachment; filename=${template.filename}`);
       res.send('\ufeff' + template.content);
     } catch (error) {
-      console.error('Get template error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get template error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
@@ -159,7 +162,7 @@ Yacine,Amrani,ADMINISTRATION`,
   /**
    * POST /api/import/preview
    */
-  async preview(req: AuthRequest, res: Response) {
+  async preview(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { type, content } = req.body;
 
@@ -188,7 +191,7 @@ Yacine,Amrani,ADMINISTRATION`,
 
       res.json(result);
     } catch (error: any) {
-      console.error('Preview error:', error);
+      logger.error({ err: error }, 'Preview error');
       res.status(400).json({ error: error.message || 'Erreur lors de l\'analyse du fichier' });
     }
   },
@@ -196,7 +199,7 @@ Yacine,Amrani,ADMINISTRATION`,
   /**
    * POST /api/import/execute
    */
-  async execute(req: AuthRequest, res: Response) {
+  async execute(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { type, content } = req.body;
 
@@ -236,7 +239,7 @@ Yacine,Amrani,ADMINISTRATION`,
         updated: result.updated,
       });
     } catch (error: any) {
-      console.error('Import execute error:', error);
+      logger.error({ err: error }, 'Import execute error');
       res.status(400).json({ error: error.message || 'Erreur lors de l\'import' });
     }
   },

@@ -20,7 +20,8 @@ export function requireRole(...allowedRoles: Role[]) {
     if (!allowedRoles.includes(req.user.role)) {
       res.status(403).json({
         error: 'Accès refusé',
-        message: `Rôle requis: ${allowedRoles.join(' ou ')}`
+        details: `Rôle requis: ${allowedRoles.join(' ou ')}`,
+        timestamp: new Date().toISOString(),
       });
       return;
     }
@@ -42,7 +43,8 @@ export function requireMinRole(minRole: Role) {
     if (userLevel < requiredLevel) {
       res.status(403).json({
         error: 'Accès refusé',
-        message: `Niveau d'accès insuffisant`
+        details: `Niveau d'accès insuffisant`,
+        timestamp: new Date().toISOString(),
       });
       return;
     }

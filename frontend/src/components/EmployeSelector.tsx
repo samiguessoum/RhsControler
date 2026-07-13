@@ -12,12 +12,20 @@ import {
 } from '@/components/ui/select';
 import type { Employe, Poste, InterventionEmployeInput } from '@/types';
 
+interface CongeActif {
+  employeId: string;
+  dateDebut: string;
+  dateFin: string;
+}
+
 interface EmployeSelectorProps {
   employes: Employe[];
   postes: Poste[];
   value: InterventionEmployeInput[];
   onChange: (value: InterventionEmployeInput[]) => void;
   label?: string;
+  datePrevue?: string;
+  congesActifs?: CongeActif[];
 }
 
 // Ordre de priorité des postes (les autres seront à la fin par ordre alphabétique)
@@ -38,10 +46,23 @@ export function EmployeSelector({
   value,
   onChange,
   label = 'Equipe',
+  datePrevue,
+  congesActifs = [],
 }: EmployeSelectorProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [selectedPosteId, setSelectedPosteId] = useState<string>('');
   const [selectedEmployeId, setSelectedEmployeId] = useState<string>('');
+
+  // Employés en congé pour la date de l'intervention
+  const employesEnConge = useMemo(() => {
+    if (!datePrevue || !congesActifs.length) return new Set<string>();
+    const date = datePrevue.slice(0, 10);
+    return new Set(
+      congesActifs
+        .filter((c) => c.dateDebut.slice(0, 10) <= date && c.dateFin.slice(0, 10) >= date)
+        .map((c) => c.employeId)
+    );
+  }, [datePrevue, congesActifs]);
 
   // Postes actifs triés (Opérateur en premier, Chauffeur en deuxième)
   const sortedPostes = useMemo(() => {
@@ -65,20 +86,32 @@ export function EmployeSelector({
     );
   }, [value, selectedPosteId]);
 
-  // Employés filtrés par le poste sélectionné ET non déjà sélectionnés pour ce poste
+  // Employés filtrés par le poste sélectionné, non déjà sélectionnés, et non en congé
   const availableEmployes = useMemo(() => {
     if (!selectedPosteId) return [];
     return employes
       .filter((emp) =>
         emp.postes.some((p) => p.id === selectedPosteId) &&
-        !selectedEmployeIdsForCurrentPoste.has(emp.id)
+        !selectedEmployeIdsForCurrentPoste.has(emp.id) &&
+        !employesEnConge.has(emp.id)
       )
       .sort((a, b) => {
         const nameA = `${a.prenom} ${a.nom}`.toLowerCase();
         const nameB = `${b.prenom} ${b.nom}`.toLowerCase();
         return nameA.localeCompare(nameB);
       });
-  }, [employes, selectedPosteId, selectedEmployeIdsForCurrentPoste]);
+  }, [employes, selectedPosteId, selectedEmployeIdsForCurrentPoste, employesEnConge]);
+
+  // Count des employés masqués car en congé (pour ce poste)
+  const hiddenCongeCount = useMemo(() => {
+    if (!selectedPosteId || !employesEnConge.size) return 0;
+    return employes.filter(
+      (emp) =>
+        emp.postes.some((p) => p.id === selectedPosteId) &&
+        !selectedEmployeIdsForCurrentPoste.has(emp.id) &&
+        employesEnConge.has(emp.id)
+    ).length;
+  }, [employes, selectedPosteId, selectedEmployeIdsForCurrentPoste, employesEnConge]);
 
   // Regrouper les employés sélectionnés par poste
   const groupedByPoste = useMemo(() => {
@@ -250,6 +283,12 @@ export function EmployeSelector({
                       {emp.prenom} {emp.nom}
                     </SelectItem>
                   ))}
+                  {hiddenCongeCount > 0 && (
+                    <div className="px-2 py-1.5 text-xs text-orange-600 border-t border-gray-100 flex items-center gap-1">
+                      <span>⚠</span>
+                      <span>{hiddenCongeCount} employé{hiddenCongeCount > 1 ? 's' : ''} en congé ce jour</span>
+                    </div>
+                  )}
                 </SelectContent>
               </Select>
             </div>

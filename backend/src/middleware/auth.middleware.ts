@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../config/database.js';
 import { Role } from '@prisma/client';
+import logger from '../lib/logger.js';
+
 
 export interface AuthUser {
   id: string;
@@ -15,7 +17,11 @@ export interface AuthRequest extends Request {
   user?: AuthUser;
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+const _jwtRaw = process.env.JWT_SECRET;
+if (!_jwtRaw || _jwtRaw === 'dev-secret-change-in-production') {
+  throw new Error('FATAL: JWT_SECRET must be set to a strong, unique secret in environment variables');
+}
+const JWT_SECRET: string = _jwtRaw;
 
 export function generateToken(user: AuthUser): string {
   const expiresIn = (process.env.JWT_EXPIRES_IN || '7d') as jwt.SignOptions['expiresIn'];
@@ -43,7 +49,7 @@ export async function authMiddleware(
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      res.status(401).json({ error: 'Token d\'authentification manquant' });
+      res.status(401).json({ error: 'Token d\'authentification manquant', timestamp: new Date().toISOString() });
       return;
     }
 
@@ -51,7 +57,7 @@ export async function authMiddleware(
     const decoded = verifyToken(token);
 
     if (!decoded) {
-      res.status(401).json({ error: 'Token invalide ou expiré' });
+      res.status(401).json({ error: 'Token invalide ou expiré', timestamp: new Date().toISOString() });
       return;
     }
 
@@ -62,7 +68,7 @@ export async function authMiddleware(
     });
 
     if (!user || !user.actif) {
-      res.status(401).json({ error: 'Utilisateur non trouvé ou désactivé' });
+      res.status(401).json({ error: 'Utilisateur non trouvé ou désactivé', timestamp: new Date().toISOString() });
       return;
     }
 
@@ -76,8 +82,8 @@ export async function authMiddleware(
 
     next();
   } catch (error) {
-    console.error('Auth middleware error:', error);
-    res.status(500).json({ error: 'Erreur d\'authentification' });
+    logger.error({ err: error }, 'Auth middleware error');
+    res.status(500).json({ error: 'Erreur d\'authentification', timestamp: new Date().toISOString() });
   }
 }
 

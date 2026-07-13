@@ -4,6 +4,8 @@ import { fr } from 'date-fns/locale';
 import fs from 'node:fs';
 import path from 'node:path';
 import { PrismaClient } from '@prisma/client';
+import logger from '../lib/logger.js';
+
 
 const prisma = new PrismaClient();
 
@@ -34,6 +36,7 @@ interface DocumentBase {
     siegeNIF?: string | null;
     siegeAI?: string | null;
     siegeNIS?: string | null;
+    siegeNIN?: string | null;
   };
   totalHT: number;
   totalTVA: number;
@@ -61,7 +64,14 @@ interface DevisDocument extends DocumentBase {
 interface CommandeDocument extends DocumentBase {
   dateCommande: Date;
   dateLivraisonSouhaitee?: Date | null;
+  refBonCommandeClient?: string | null;
   statut: string;
+  typeDocument?: string | null;
+  site?: {
+    nom: string;
+    ville?: string | null;
+    adresse?: string | null;
+  } | null;
 }
 
 interface FactureDocument extends DocumentBase {
@@ -70,14 +80,35 @@ interface FactureDocument extends DocumentBase {
   statut: string;
   totalPaye: number;
   type?: string | null;
+  typeDocument?: string | null;
+  refBonCommandeClient?: string | null;
+  mentionSpeciale?: string | null;
+  dateOperation?: Date | null;
+  site?: {
+    nom: string;
+    ville?: string | null;
+    adresse?: string | null;
+  } | null;
+}
+
+interface FournisseurInfo {
+  nomEntreprise: string;
+  code?: string | null;
+  siegeAdresse?: string | null;
+  siegeVille?: string | null;
+  siegePays?: string | null;
+  siegeRC?: string | null;
+  siegeNIF?: string | null;
+  siegeAI?: string | null;
+  siegeNIS?: string | null;
+  siegeNIN?: string | null;
+  siegeTel?: string | null;
+  siegeEmail?: string | null;
 }
 
 interface FactureFournisseurDocument {
   ref: string;
-  fournisseur: {
-    nomEntreprise: string;
-    code?: string | null;
-  };
+  fournisseur: FournisseurInfo;
   refFournisseur?: string | null;
   totalHT: number;
   totalTVA: number;
@@ -96,10 +127,7 @@ interface FactureFournisseurDocument {
 }
 
 interface CommandeFournisseurDocument extends DocumentBase {
-  fournisseur: {
-    nomEntreprise: string;
-    code?: string | null;
-  };
+  fournisseur: FournisseurInfo;
   dateCommande: Date;
   dateLivraisonSouhaitee?: Date | null;
   statut: string;
@@ -114,6 +142,8 @@ interface AttestationPassageDocument {
   prestataireNom: string;
   garantieMois: number;
   garantieMoisLabel: string;
+  garantieJours: number;
+  garantieJoursLabel: string;
   dateProchaineOperationFr: string;
   bodyText: string;
   title: string;
@@ -126,6 +156,7 @@ const COMPANY_INFO_DEFAULT = {
   name: process.env.PDF_COMPANY_NAME || 'Rayan Hygiene Services',
   address: process.env.PDF_COMPANY_ADDRESS || '',
   city: process.env.PDF_COMPANY_CITY || '',
+  pays: process.env.PDF_COMPANY_PAYS || 'Algérie',
   phone: process.env.PDF_COMPANY_PHONE || '',
   email: process.env.PDF_COMPANY_EMAIL || '',
   website: process.env.PDF_COMPANY_WEBSITE || '',
@@ -133,8 +164,10 @@ const COMPANY_INFO_DEFAULT = {
   nis: process.env.PDF_COMPANY_NIS || '',
   rc: process.env.PDF_COMPANY_RC || '',
   ai: process.env.PDF_COMPANY_AI || '',
+  nin: process.env.PDF_COMPANY_NIN || '',
   rib: process.env.PDF_COMPANY_RIB || '',
   compte: process.env.PDF_COMPANY_COMPTE || '',
+  banque: process.env.PDF_COMPANY_BANQUE || '',
   logoPath: process.env.PDF_COMPANY_LOGO_PATH || process.env.COMPANY_LOGO_PATH || '',
 };
 
@@ -150,6 +183,7 @@ export async function getCompanySettings() {
         name: settings.nomEntreprise || COMPANY_INFO_DEFAULT.name,
         address: settings.adresse || COMPANY_INFO_DEFAULT.address,
         city: [settings.codePostal, settings.ville].filter(Boolean).join(' ') || COMPANY_INFO_DEFAULT.city,
+        pays: settings.pays || COMPANY_INFO_DEFAULT.pays,
         phone: settings.telephone || COMPANY_INFO_DEFAULT.phone,
         email: settings.email || COMPANY_INFO_DEFAULT.email,
         website: settings.siteWeb || COMPANY_INFO_DEFAULT.website,
@@ -157,6 +191,7 @@ export async function getCompanySettings() {
         nis: settings.nis || COMPANY_INFO_DEFAULT.nis,
         rc: settings.rc || COMPANY_INFO_DEFAULT.rc,
         ai: settings.ai || COMPANY_INFO_DEFAULT.ai,
+        nin: settings.nin || COMPANY_INFO_DEFAULT.nin,
         rib: settings.rib || COMPANY_INFO_DEFAULT.rib,
         compte: settings.compteBancaire || COMPANY_INFO_DEFAULT.compte,
         logoPath: settings.logoPath || COMPANY_INFO_DEFAULT.logoPath,
@@ -165,7 +200,7 @@ export async function getCompanySettings() {
     }
     return COMPANY_INFO_DEFAULT;
   } catch (error) {
-    console.error('Erreur lors de la récupération des paramètres entreprise:', error);
+    logger.error({ err: error }, 'Erreur lors de la récupération des paramètres entreprise');
     return COMPANY_INFO_DEFAULT;
   }
 }
@@ -295,7 +330,7 @@ function formatCurrency(amount: number, devise?: string | null): string {
   return formatted.replace(/[\u202F\u00A0]/g, ' ') + ' ' + currency;
 }
 
-// Format montant sans devise (pour devis où on indique déjà "Montants exprimés en Algérie Dinar")
+// Format montant sans devise (pour devis où on indique déjà "Montants exprimés en Dinar Algérien")
 function formatMontant(amount: number): string {
   const formatted = new Intl.NumberFormat('fr-FR', {
     style: 'decimal',
@@ -444,6 +479,13 @@ function drawLinesTable(doc: PDFKit.PDFDocument, lignes: DocumentLigne[], devise
 
   let y = 220;
 
+  // "Montants exprimés en Dinar Algérien" au-dessus du tableau, aligné à droite
+  doc.font('Helvetica')
+    .fontSize(8)
+    .fillColor(COLORS.lightText)
+    .text('Montants exprimés en Dinar Algérien', margin, y, { width: tableWidth, align: 'right' });
+  y += 14;
+
   // En-tête du tableau
   doc.rect(margin, y, tableWidth, 25)
     .fillColor(COLORS.headerBg)
@@ -496,7 +538,7 @@ function drawLinesTable(doc: PDFKit.PDFDocument, lignes: DocumentLigne[], devise
     doc.text(qteText, cols.quantite.x + 5, y + 5, { width: cols.quantite.width - 10, align: 'center' });
 
     // Prix unitaire
-    doc.text(formatCurrency(ligne.prixUnitaireHT, devise), cols.prixUnit.x + 5, y + 5, { width: cols.prixUnit.width - 10, align: 'right' });
+    doc.text(formatMontant(ligne.prixUnitaireHT), cols.prixUnit.x + 5, y + 5, { width: cols.prixUnit.width - 10, align: 'right' });
 
     // TVA
     doc.text(`${ligne.tauxTVA}%`, cols.tva.x + 5, y + 5, { width: cols.tva.width - 10, align: 'center' });
@@ -504,8 +546,8 @@ function drawLinesTable(doc: PDFKit.PDFDocument, lignes: DocumentLigne[], devise
     // Remise
     doc.text(ligne.remisePct ? `${ligne.remisePct}%` : '-', cols.remise.x + 5, y + 5, { width: cols.remise.width - 10, align: 'center' });
 
-    // Total
-    doc.text(formatCurrency(ligne.totalHT, devise), cols.total.x + 5, y + 5, { width: cols.total.width - 10, align: 'right' });
+    // Total HT — valeur numérique sans devise
+    doc.text(formatMontant(ligne.totalHT), cols.total.x + 5, y + 5, { width: cols.total.width - 10, align: 'right' });
 
     // Ligne de séparation
     doc.moveTo(margin, y + rowHeight)
@@ -548,7 +590,7 @@ function drawTotals(
     .fillColor(COLORS.lightText)
     .text('Sous-total HT:', boxX, y, { width: boxWidth - 70, align: 'right' });
   doc.fillColor(COLORS.text)
-    .text(formatCurrency(totalHT, devise), boxX + boxWidth - 70, y, { width: 70, align: 'right' });
+    .text(formatMontant(totalHT), boxX + boxWidth - 70, y, { width: 70, align: 'right' });
   y += 18;
 
   // Remise globale
@@ -557,7 +599,7 @@ function drawTotals(
     doc.fillColor(COLORS.lightText)
       .text(remiseText, boxX, y, { width: boxWidth - 70, align: 'right' });
     doc.fillColor('#dc2626')
-      .text('-' + formatCurrency(remiseGlobalMontant || (totalHT * (remiseGlobalPct || 0) / 100), devise), boxX + boxWidth - 70, y, { width: 70, align: 'right' });
+      .text('-' + formatMontant(remiseGlobalMontant || (totalHT * (remiseGlobalPct || 0) / 100)), boxX + boxWidth - 70, y, { width: 70, align: 'right' });
     y += 18;
   }
 
@@ -565,7 +607,7 @@ function drawTotals(
   doc.fillColor(COLORS.lightText)
     .text('TVA:', boxX, y, { width: boxWidth - 70, align: 'right' });
   doc.fillColor(COLORS.text)
-    .text(formatCurrency(totalTVA, devise), boxX + boxWidth - 70, y, { width: 70, align: 'right' });
+    .text(formatMontant(totalTVA), boxX + boxWidth - 70, y, { width: 70, align: 'right' });
   y += 18;
 
   // Ligne de séparation
@@ -581,7 +623,7 @@ function drawTotals(
     .font('Helvetica-Bold')
     .fillColor(COLORS.primary)
     .text('Total TTC:', boxX, y, { width: boxWidth - 70, align: 'right' });
-  doc.text(formatCurrency(totalTTC, devise), boxX + boxWidth - 70, y, { width: 70, align: 'right' });
+  doc.text(formatMontant(totalTTC), boxX + boxWidth - 70, y, { width: 70, align: 'right' });
   y += 25;
 
   // Montant payé (pour factures)
@@ -591,14 +633,14 @@ function drawTotals(
       .fillColor(COLORS.lightText)
       .text('Déjà payé:', boxX, y, { width: boxWidth - 70, align: 'right' });
     doc.fillColor('#16a34a')
-      .text(formatCurrency(totalPaye, devise), boxX + boxWidth - 70, y, { width: 70, align: 'right' });
+      .text(formatMontant(totalPaye), boxX + boxWidth - 70, y, { width: 70, align: 'right' });
     y += 18;
 
     const resteAPayer = totalTTC - totalPaye;
     doc.font('Helvetica-Bold')
       .fillColor(resteAPayer > 0 ? '#dc2626' : '#16a34a')
       .text('Reste à payer:', boxX, y, { width: boxWidth - 70, align: 'right' });
-    doc.text(formatCurrency(resteAPayer, devise), boxX + boxWidth - 70, y, { width: 70, align: 'right' });
+    doc.text(formatMontant(resteAPayer), boxX + boxWidth - 70, y, { width: 70, align: 'right' });
   }
 
   doc.font('Helvetica');
@@ -712,7 +754,7 @@ function amountToWordsDZD(amount: number): string {
   return `${intText} dinars`;
 }
 
-function drawInvoiceHeader(doc: PDFKit.PDFDocument, facture: FactureDocument, title: string) {
+function drawInvoiceHeader(doc: PDFKit.PDFDocument, facture: FactureDocument, title: string): number {
   const pageWidth = doc.page.width;
   const margin = 28;
   const logoBoxWidth = 260;
@@ -734,71 +776,111 @@ function drawInvoiceHeader(doc: PDFKit.PDFDocument, facture: FactureDocument, ti
     .fillColor('#0b1b55')
     .text(facture.ref, rightBoxX, 50, { width: 190, align: 'right' });
 
+  let dateY = 70;
+  if (facture.typeDocument) {
+    const typeLabel = facture.typeDocument === 'SERVICE' ? 'Prestation de service' : 'Vente de produits';
+    doc.font('Helvetica-Bold')
+      .fontSize(9)
+      .fillColor('#0b1b55')
+      .text(`Type : ${typeLabel}`, rightBoxX, dateY, { width: 190, align: 'right' });
+    dateY += 14;
+  }
+
   doc.font('Helvetica')
     .fontSize(9)
     .fillColor('#111827')
-    .text(`Date facturation : ${formatDate(facture.dateFacture)}`, rightBoxX, 70, { width: 190, align: 'right' });
+    .text(`Date facturation : ${formatDate(facture.dateFacture)}`, rightBoxX, dateY, { width: 190, align: 'right' });
 
+  dateY += 13;
   if (facture.dateEcheance) {
-    doc.text(`Date echeance : ${formatDate(facture.dateEcheance)}`, rightBoxX, 83, { width: 190, align: 'right' });
+    doc.text(`Date echeance : ${formatDate(facture.dateEcheance)}`, rightBoxX, dateY, { width: 190, align: 'right' });
+    dateY += 13;
   }
+
+  return dateY;
 }
 
-function drawInvoiceParties(doc: PDFKit.PDFDocument, facture: FactureDocument): number {
+// Affiche une liste de champs "Label : valeur" avec le label en gras et la valeur en police normale,
+// pour une lecture plus rapide des identifiants légaux dans les rectangles Émetteur / Adressé à.
+function drawLabeledFields(
+  doc: PDFKit.PDFDocument,
+  fields: Array<{ label: string; value?: string | null }>,
+  x: number,
+  startY: number,
+  width: number,
+  fontSize = 8,
+  lineHeight = 11
+): number {
+  let curY = startY;
+  for (const f of fields) {
+    if (!f.value) continue;
+    doc.font('Helvetica').fontSize(fontSize);
+    const textHeight = doc.heightOfString(`${f.label} : ${f.value}`, { width, lineGap: 1 });
+    doc.font('Helvetica-Bold').fontSize(fontSize).fillColor('#111827')
+      .text(`${f.label} : `, x, curY, { continued: true, width, lineGap: 1 });
+    doc.font('Helvetica').fontSize(fontSize).fillColor('#111827')
+      .text(f.value, { width, lineGap: 1 });
+    curY += Math.max(lineHeight, textHeight + 2);
+  }
+  return curY;
+}
+
+function buildCompteLabel(): string {
+  return COMPANY_INFO.banque ? `Compte ${COMPANY_INFO.banque}` : 'Compte';
+}
+
+function drawInvoiceParties(doc: PDFKit.PDFDocument, facture: FactureDocument, startY: number): number {
   const margin = 28;
-  const y = 104;
+  const y = Math.max(104, startY + 10);
   const leftW = 230;
   const rightW = doc.page.width - margin * 2 - leftW - 20;
   const rightX = margin + leftW + 20;
-  const boxH = 150;
+  const boxH = 165;
 
   doc.rect(margin, y, leftW, boxH).fillColor('#e5e7eb').fill();
   doc.rect(rightX, y, rightW, boxH).lineWidth(1).strokeColor('#6b7280').stroke();
 
-  doc.font('Helvetica').fontSize(8).fillColor('#374151').text('Emetteur', margin + 8, y - 12);
-  doc.font('Helvetica').fontSize(8).fillColor('#374151').text('Adresse a', rightX + 8, y - 12);
-
-  const leftLines = [
-    COMPANY_INFO.name,
-    COMPANY_INFO.address,
-    COMPANY_INFO.city,
-    COMPANY_INFO.nif ? `NIF : ${COMPANY_INFO.nif}` : '',
-    COMPANY_INFO.nis ? `NIS : ${COMPANY_INFO.nis}` : '',
-    COMPANY_INFO.rc ? `RC : ${COMPANY_INFO.rc}` : '',
-    COMPANY_INFO.ai ? `AI : ${COMPANY_INFO.ai}` : '',
-    COMPANY_INFO.compte ? `Compte : ${COMPANY_INFO.compte}` : '',
-    COMPANY_INFO.rib ? `RIB : ${COMPANY_INFO.rib}` : '',
-  ].filter(Boolean);
+  doc.font('Helvetica').fontSize(8).fillColor('#374151').text('Émetteur', margin + 8, y - 12);
+  doc.font('Helvetica').fontSize(8).fillColor('#374151').text('Adressé à', rightX + 8, y - 12);
 
   doc.font('Helvetica-Bold')
     .fontSize(10)
     .fillColor('#0b1b55')
-    .text(leftLines[0] || COMPANY_INFO.name, margin + 8, y + 10, { width: leftW - 16 });
+    .text(COMPANY_INFO.name, margin + 8, y + 10, { width: leftW - 16 });
 
   doc.font('Helvetica')
     .fontSize(8)
     .fillColor('#111827')
-    .text(leftLines.slice(1).join('\n'), margin + 8, y + 25, { width: leftW - 16, lineGap: 1 });
+    .text([COMPANY_INFO.address, [COMPANY_INFO.city, COMPANY_INFO.pays].filter(Boolean).join(', ')].filter(Boolean).join('\n'), margin + 8, y + 25, { width: leftW - 16, lineGap: 1 });
+
+  drawLabeledFields(doc, [
+    { label: 'RC', value: COMPANY_INFO.rc },
+    { label: 'NIF', value: COMPANY_INFO.nif },
+    { label: 'AI', value: COMPANY_INFO.ai },
+    { label: 'NIS', value: COMPANY_INFO.nis },
+    { label: 'NIN', value: (COMPANY_INFO as any).nin },
+    { label: buildCompteLabel(), value: COMPANY_INFO.compte },
+    { label: 'RIB', value: COMPANY_INFO.rib },
+  ], margin + 8, y + 53, leftW - 16);
 
   const client = facture.client;
-  const rightLines = [
-    client.nomEntreprise,
-    [client.siegeAdresse, client.siegeVille, client.siegePays].filter(Boolean).join(' - '),
-    client.siegeRC ? `RC: ${client.siegeRC}` : '',
-    client.siegeNIF ? `NIF: ${client.siegeNIF}` : '',
-    client.siegeAI ? `AI: ${client.siegeAI}` : '',
-    client.siegeNIS ? `NIS: ${client.siegeNIS}` : '',
-  ].filter(Boolean);
-
   doc.font('Helvetica-Bold')
     .fontSize(11)
     .fillColor('#111827')
-    .text(rightLines[0] || '-', rightX + 8, y + 10, { width: rightW - 16 });
+    .text(client.nomEntreprise || '-', rightX + 8, y + 10, { width: rightW - 16 });
 
   doc.font('Helvetica')
     .fontSize(9)
     .fillColor('#111827')
-    .text(rightLines.slice(1).join('\n'), rightX + 8, y + 30, { width: rightW - 16, lineGap: 1 });
+    .text([client.siegeAdresse, client.siegeVille, client.siegePays].filter(Boolean).join(' - '), rightX + 8, y + 30, { width: rightW - 16, lineGap: 1 });
+
+  drawLabeledFields(doc, [
+    { label: 'RC', value: client.siegeRC },
+    { label: 'NIF', value: client.siegeNIF },
+    { label: 'AI', value: client.siegeAI },
+    { label: 'NIS', value: client.siegeNIS },
+    { label: 'NIN', value: client.siegeNIN },
+  ], rightX + 8, y + 55, rightW - 16, 9, 13);
 
   return y + boxH + 16;
 }
@@ -824,6 +906,13 @@ function drawInvoiceLinesTable(doc: PDFKit.PDFDocument, facture: FactureDocument
 
   let y = startY;
 
+  // "Montants exprimés en Dinar Algérien" au-dessus du tableau, aligné à droite
+  doc.font('Helvetica')
+    .fontSize(8)
+    .fillColor('#6b7280')
+    .text('Montants exprimés en Dinar Algérien', margin, y, { width: tableW, align: 'right' });
+  y += 14;
+
   doc.rect(margin, y, tableW, 22).fillColor('#e5e7eb').fill();
   doc.lineWidth(1).strokeColor('#6b7280').rect(margin, y, tableW, 22).stroke();
   doc.moveTo(x.tva, y).lineTo(x.tva, y + 22).stroke();
@@ -831,26 +920,26 @@ function drawInvoiceLinesTable(doc: PDFKit.PDFDocument, facture: FactureDocument
   doc.moveTo(x.qte, y).lineTo(x.qte, y + 22).stroke();
   doc.moveTo(x.total, y).lineTo(x.total, y + 22).stroke();
 
-  doc.font('Helvetica')
-    .fontSize(8)
-    .fillColor('#111827')
-    .text('Montants exprimes en Algerie Dinar', x.pu, y + 2, { width: cols.pu + cols.qte + cols.total - 6, align: 'right' });
-
-  doc.font('Helvetica-Bold').fontSize(9);
-  doc.text('Designation', x.designation + 5, y + 11, { width: cols.designation - 10 });
-  doc.text('TVA', x.tva + 5, y + 11, { width: cols.tva - 10, align: 'center' });
-  doc.text('P.U HT', x.pu + 5, y + 11, { width: cols.pu - 10, align: 'center' });
-  doc.text('Qte', x.qte + 5, y + 11, { width: cols.qte - 10, align: 'center' });
-  doc.text('Total HT', x.total + 5, y + 11, { width: cols.total - 10, align: 'right' });
+  doc.font('Helvetica-Bold').fontSize(9).fillColor('#111827');
+  doc.text('Designation', x.designation + 5, y + 7, { width: cols.designation - 10 });
+  doc.text('TVA', x.tva + 5, y + 7, { width: cols.tva - 10, align: 'center' });
+  doc.text('P.U HT', x.pu + 5, y + 7, { width: cols.pu - 10, align: 'center' });
+  doc.text('Qte', x.qte + 5, y + 7, { width: cols.qte - 10, align: 'center' });
+  doc.text('Total HT', x.total + 5, y + 7, { width: cols.total - 10, align: 'right' });
 
   y += 22;
   const minHeight = 230;
   const tableBodyStart = y;
 
   for (const ligne of facture.lignes) {
-    const desc = `${ligne.libelle}${ligne.description ? `\n${ligne.description}` : ''}`;
-    const descHeight = doc.heightOfString(desc, { width: cols.designation - 10 });
-    const rowHeight = Math.max(24, descHeight + 8);
+    doc.font('Helvetica-Bold').fontSize(9);
+    const libelleHeight = doc.heightOfString(ligne.libelle, { width: cols.designation - 10, lineGap: 1 });
+    let descHeight = 0;
+    if (ligne.description) {
+      doc.font('Helvetica').fontSize(8);
+      descHeight = doc.heightOfString(ligne.description, { width: cols.designation - 10, lineGap: 1 });
+    }
+    const rowHeight = Math.max(28, libelleHeight + descHeight + 22);
 
     doc.rect(margin, y, tableW, rowHeight).lineWidth(0.8).strokeColor('#9ca3af').stroke();
     doc.moveTo(x.tva, y).lineTo(x.tva, y + rowHeight).stroke();
@@ -858,14 +947,21 @@ function drawInvoiceLinesTable(doc: PDFKit.PDFDocument, facture: FactureDocument
     doc.moveTo(x.qte, y).lineTo(x.qte, y + rowHeight).stroke();
     doc.moveTo(x.total, y).lineTo(x.total, y + rowHeight).stroke();
 
-    doc.font('Helvetica').fontSize(9).fillColor('#111827').text(desc, x.designation + 5, y + 4, {
+    doc.font('Helvetica-Bold').fontSize(9).fillColor('#111827').text(ligne.libelle, x.designation + 5, y + 7, {
       width: cols.designation - 10,
-      lineGap: 1,
     });
-    doc.text(`${n(ligne.tauxTVA)}%`, x.tva + 5, y + 4, { width: cols.tva - 10, align: 'center' });
-    doc.text(formatCurrency(n(ligne.prixUnitaireHT), facture.devise), x.pu + 4, y + 4, { width: cols.pu - 8, align: 'right' });
-    doc.text(String(n(ligne.quantite)), x.qte + 5, y + 4, { width: cols.qte - 10, align: 'center' });
-    doc.text(formatCurrency(n(ligne.totalHT), facture.devise), x.total + 4, y + 4, { width: cols.total - 8, align: 'right' });
+    if (ligne.description) {
+      doc.font('Helvetica').fontSize(8).fillColor('#6b7280').text(ligne.description, x.designation + 5, y + 7 + libelleHeight + 2, {
+        width: cols.designation - 10,
+        lineGap: 1,
+      });
+    }
+
+    doc.font('Helvetica').fontSize(9).fillColor('#111827');
+    doc.text(`${n(ligne.tauxTVA)}%`, x.tva + 5, y + 7, { width: cols.tva - 10, align: 'center' });
+    doc.text(formatMontant(n(ligne.prixUnitaireHT)), x.pu + 4, y + 7, { width: cols.pu - 8, align: 'right' });
+    doc.text(String(n(ligne.quantite)), x.qte + 5, y + 7, { width: cols.qte - 10, align: 'center' });
+    doc.text(formatMontant(n(ligne.totalHT)), x.total + 4, y + 7, { width: cols.total - 8, align: 'right' });
 
     y += rowHeight;
   }
@@ -890,9 +986,9 @@ function drawInvoiceTotals(doc: PDFKit.PDFDocument, facture: FactureDocument, y:
   let curY = y + 4;
 
   const rows = [
-    { label: 'Total HT', value: formatCurrency(n(facture.totalHT), facture.devise), bold: false },
-    { label: `Total TVA ${n(facture.totalHT) > 0 ? Math.round((n(facture.totalTVA) / n(facture.totalHT)) * 100) : 0}%`, value: formatCurrency(n(facture.totalTVA), facture.devise), bold: false },
-    { label: 'Total TTC', value: formatCurrency(n(facture.totalTTC), facture.devise), bold: true },
+    { label: 'Total HT', value: formatMontant(n(facture.totalHT)), bold: false },
+    { label: `Total TVA ${n(facture.totalHT) > 0 ? Math.round((n(facture.totalTVA) / n(facture.totalHT)) * 100) : 0}%`, value: formatMontant(n(facture.totalTVA)), bold: false },
+    { label: 'Total TTC', value: formatMontant(n(facture.totalTTC)), bold: true },
   ];
 
   for (const row of rows) {
@@ -930,7 +1026,7 @@ function drawInvoiceFooter(doc: PDFKit.PDFDocument) {
 
 // ============ Nouveau template professionnel pour Devis ============
 
-function drawDevisHeader(doc: PDFKit.PDFDocument, devis: DevisDocument) {
+function drawDevisHeader(doc: PDFKit.PDFDocument, title: string, ref: string, date: Date, extraLine?: string, typeLabel?: string): number {
   const pageWidth = doc.page.width;
   const margin = 28;
   const logoBoxWidth = 260;
@@ -946,30 +1042,43 @@ function drawDevisHeader(doc: PDFKit.PDFDocument, devis: DevisDocument) {
   doc.font('Helvetica-Bold')
     .fontSize(20)
     .fillColor('#0b1b55')
-    .text('Devis', rightBoxX, 28, { width: 190, align: 'right' });
+    .text(title, rightBoxX, 28, { width: 190, align: 'right' });
 
   doc.font('Helvetica-Bold')
     .fontSize(12)
     .fillColor('#0b1b55')
-    .text(`Réf. : ${devis.ref}`, rightBoxX, 52, { width: 190, align: 'right' });
+    .text(`Réf. : ${ref}`, rightBoxX, 52, { width: 190, align: 'right' });
+
+  let dateY = 70;
+  if (typeLabel) {
+    doc.font('Helvetica-Bold')
+      .fontSize(9)
+      .fillColor('#0b1b55')
+      .text(`Type : ${typeLabel}`, rightBoxX, dateY, { width: 190, align: 'right' });
+    dateY += 14;
+  }
 
   doc.font('Helvetica')
     .fontSize(9)
     .fillColor('#111827')
-    .text(`Date : ${formatDate(devis.dateDevis)}`, rightBoxX, 70, { width: 190, align: 'right' });
+    .text(`Date : ${formatDate(date)}`, rightBoxX, dateY, { width: 190, align: 'right' });
 
-  if (devis.dateValidite) {
-    doc.text(`Date de fin de validité : ${formatDate(devis.dateValidite)}`, rightBoxX, 83, { width: 190, align: 'right' });
+  dateY += 13;
+  if (extraLine) {
+    doc.text(extraLine, rightBoxX, dateY, { width: 190, align: 'right' });
+    dateY += 13;
   }
+
+  return dateY;
 }
 
-function drawDevisParties(doc: PDFKit.PDFDocument, devis: DevisDocument): number {
+function drawDevisParties(doc: PDFKit.PDFDocument, devis: DocumentBase, startY: number): number {
   const margin = 28;
-  const y = 104;
+  const y = Math.max(104, startY + 10);
   const leftW = 230;
   const rightW = doc.page.width - margin * 2 - leftW - 20;
   const rightX = margin + leftW + 20;
-  const boxH = 150;
+  const boxH = 165;
 
   // Box Émetteur (fond gris)
   doc.rect(margin, y, leftW, boxH).fillColor('#e5e7eb').fill();
@@ -981,55 +1090,179 @@ function drawDevisParties(doc: PDFKit.PDFDocument, devis: DevisDocument): number
   doc.font('Helvetica').fontSize(8).fillColor('#374151').text('Adressé à', rightX + 8, y - 12);
 
   // Infos émetteur
-  const leftLines = [
-    COMPANY_INFO.name,
-    COMPANY_INFO.address,
-    COMPANY_INFO.city,
-    '',
-    COMPANY_INFO.rc ? `RC : ${COMPANY_INFO.rc}` : '',
-    COMPANY_INFO.nif ? `NIF : ${COMPANY_INFO.nif}` : '',
-    COMPANY_INFO.ai ? `AI : ${COMPANY_INFO.ai}` : '',
-    COMPANY_INFO.nis ? `NIS : ${COMPANY_INFO.nis}` : '',
-    COMPANY_INFO.compte ? `Compte CCP/CPA : ${COMPANY_INFO.compte}` : '',
-    COMPANY_INFO.rib ? `RIB : ${COMPANY_INFO.rib}` : '',
-  ].filter(Boolean);
-
   doc.font('Helvetica-Bold')
     .fontSize(10)
     .fillColor('#0b1b55')
-    .text(leftLines[0] || COMPANY_INFO.name, margin + 8, y + 10, { width: leftW - 16 });
+    .text(COMPANY_INFO.name, margin + 8, y + 10, { width: leftW - 16 });
 
   doc.font('Helvetica')
     .fontSize(8)
     .fillColor('#111827')
-    .text(leftLines.slice(1).join('\n'), margin + 8, y + 25, { width: leftW - 16, lineGap: 1 });
+    .text([COMPANY_INFO.address, [COMPANY_INFO.city, COMPANY_INFO.pays].filter(Boolean).join(', ')].filter(Boolean).join('\n'), margin + 8, y + 25, { width: leftW - 16, lineGap: 1 });
 
-  // Infos client (tout en gras)
+  drawLabeledFields(doc, [
+    { label: 'RC', value: COMPANY_INFO.rc },
+    { label: 'NIF', value: COMPANY_INFO.nif },
+    { label: 'AI', value: COMPANY_INFO.ai },
+    { label: 'NIS', value: COMPANY_INFO.nis },
+    { label: 'NIN', value: (COMPANY_INFO as any).nin },
+    { label: buildCompteLabel(), value: COMPANY_INFO.compte },
+    { label: 'RIB', value: COMPANY_INFO.rib },
+  ], margin + 8, y + 53, leftW - 16);
+
+  // Infos client
   const client = devis.client;
-  const rightLines = [
-    client.nomEntreprise,
-    [client.siegeAdresse, client.siegeVille, client.siegePays].filter(Boolean).join(' - '),
-    '',
-    client.siegeRC ? `RC: ${client.siegeRC}` : '',
-    client.siegeNIF ? `NIF: ${client.siegeNIF}` : '',
-    client.siegeAI ? `AI: ${client.siegeAI}` : '',
-    client.siegeNIS ? `NIS: ${client.siegeNIS}` : '',
-  ].filter(Boolean);
-
   doc.font('Helvetica-Bold')
     .fontSize(11)
     .fillColor('#111827')
-    .text(rightLines[0] || '-', rightX + 8, y + 10, { width: rightW - 16 });
+    .text(client.nomEntreprise || '-', rightX + 8, y + 10, { width: rightW - 16 });
 
   doc.font('Helvetica-Bold')
     .fontSize(9)
     .fillColor('#111827')
-    .text(rightLines.slice(1).join('\n'), rightX + 8, y + 30, { width: rightW - 16, lineGap: 1 });
+    .text([client.siegeAdresse, client.siegeVille, client.siegePays].filter(Boolean).join(' - '), rightX + 8, y + 30, { width: rightW - 16, lineGap: 1 });
+
+  drawLabeledFields(doc, [
+    { label: 'RC', value: client.siegeRC },
+    { label: 'NIF', value: client.siegeNIF },
+    { label: 'AI', value: client.siegeAI },
+    { label: 'NIS', value: client.siegeNIS },
+    { label: 'NIN', value: client.siegeNIN },
+  ], rightX + 8, y + 55, rightW - 16, 9, 13);
 
   return y + boxH + 16;
 }
 
-function drawDevisLinesTable(doc: PDFKit.PDFDocument, devis: DevisDocument, startY: number): number {
+function drawFournisseurParties(doc: PDFKit.PDFDocument, fournisseur: FournisseurInfo, startY: number): number {
+  const margin = 28;
+  const y = Math.max(104, startY + 10);
+  const leftW = 230;
+  const rightW = doc.page.width - margin * 2 - leftW - 20;
+  const rightX = margin + leftW + 20;
+  const boxH = 165;
+
+  // Box Émetteur (fond gris)
+  doc.rect(margin, y, leftW, boxH).fillColor('#e5e7eb').fill();
+  // Box Fournisseur (bordure)
+  doc.rect(rightX, y, rightW, boxH).lineWidth(1).strokeColor('#6b7280').stroke();
+
+  // Labels
+  doc.font('Helvetica').fontSize(8).fillColor('#374151').text('Émetteur', margin + 8, y - 12);
+  doc.font('Helvetica').fontSize(8).fillColor('#374151').text('Fournisseur', rightX + 8, y - 12);
+
+  // Infos émetteur (notre entreprise)
+  doc.font('Helvetica-Bold')
+    .fontSize(10)
+    .fillColor('#0b1b55')
+    .text(COMPANY_INFO.name, margin + 8, y + 10, { width: leftW - 16 });
+
+  doc.font('Helvetica')
+    .fontSize(8)
+    .fillColor('#111827')
+    .text([COMPANY_INFO.address, [COMPANY_INFO.city, COMPANY_INFO.pays].filter(Boolean).join(', ')].filter(Boolean).join('\n'), margin + 8, y + 25, { width: leftW - 16, lineGap: 1 });
+
+  drawLabeledFields(doc, [
+    { label: 'RC', value: COMPANY_INFO.rc },
+    { label: 'NIF', value: COMPANY_INFO.nif },
+    { label: 'AI', value: COMPANY_INFO.ai },
+    { label: 'NIS', value: COMPANY_INFO.nis },
+    { label: 'NIN', value: (COMPANY_INFO as any).nin },
+    { label: buildCompteLabel(), value: COMPANY_INFO.compte },
+    { label: 'RIB', value: COMPANY_INFO.rib },
+  ], margin + 8, y + 53, leftW - 16);
+
+  // Infos fournisseur
+  doc.font('Helvetica-Bold')
+    .fontSize(11)
+    .fillColor('#111827')
+    .text(fournisseur.nomEntreprise || '-', rightX + 8, y + 10, { width: rightW - 16 });
+
+  const adresseLine = [fournisseur.siegeAdresse, fournisseur.siegeVille, fournisseur.siegePays].filter(Boolean).join(' - ');
+  if (adresseLine) {
+    doc.font('Helvetica-Bold')
+      .fontSize(9)
+      .fillColor('#111827')
+      .text(adresseLine, rightX + 8, y + 30, { width: rightW - 16, lineGap: 1 });
+  }
+
+  drawLabeledFields(doc, [
+    { label: 'RC', value: fournisseur.siegeRC },
+    { label: 'NIF', value: fournisseur.siegeNIF },
+    { label: 'AI', value: fournisseur.siegeAI },
+    { label: 'NIS', value: fournisseur.siegeNIS },
+    { label: 'NIN', value: fournisseur.siegeNIN },
+  ], rightX + 8, y + 55, rightW - 16, 9, 13);
+
+  return y + boxH + 16;
+}
+
+function renderFournisseurDocumentPDF(opts: {
+  title: string;
+  ref: string;
+  date: Date;
+  extraHeaderLine?: string;
+  fournisseur: FournisseurInfo;
+  document: {
+    totalHT: number;
+    totalTVA: number;
+    totalTTC: number;
+    remiseGlobalPct?: number | null;
+    remiseGlobalMontant?: number | null;
+    notes?: string | null;
+    conditions?: string | null;
+    lignes: DocumentLigne[];
+  };
+  amountLeadText: string;
+}): Promise<Buffer> {
+  const { title, ref, date, extraHeaderLine, fournisseur, document, amountLeadText } = opts;
+
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margin: 28 });
+      const chunks: Buffer[] = [];
+
+      doc.on('data', (chunk) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const headerEndY = drawDevisHeader(doc, title, ref, date, extraHeaderLine);
+      const afterPartiesY = drawFournisseurParties(doc, fournisseur, headerEndY);
+      const tableEndY = drawDevisLinesTable(doc, document.lignes, afterPartiesY);
+      const totalsEndY = drawDevisTotals(doc, document as any, tableEndY);
+
+      const amountWords = amountToWordsDZD(n(document.totalTTC));
+      doc.font('Helvetica')
+        .fontSize(9)
+        .fillColor('#111827')
+        .text(amountLeadText, 28, totalsEndY + 12, { width: 480 });
+      doc.font('Helvetica-Bold')
+        .fontSize(9)
+        .text(`${amountWords.charAt(0).toUpperCase() + amountWords.slice(1)} en toutes taxes comprises.`, 28, totalsEndY + 26, { width: 520 });
+
+      let notesY = totalsEndY + 50;
+      if (document.notes) {
+        doc.font('Helvetica')
+          .fontSize(8)
+          .fillColor('#374151')
+          .text(`Notes : ${document.notes}`, 28, notesY, { width: 520 });
+        notesY = doc.y + 10;
+      }
+      if (document.conditions) {
+        doc.font('Helvetica')
+          .fontSize(8)
+          .fillColor('#374151')
+          .text(`Conditions : ${document.conditions}`, 28, notesY, { width: 520 });
+      }
+
+      drawDevisFooter(doc);
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+function drawDevisLinesTable(doc: PDFKit.PDFDocument, lignes: DocumentLigne[], startY: number): number {
   const margin = 28;
   const tableW = doc.page.width - margin * 2;
   const cols = {
@@ -1050,11 +1283,11 @@ function drawDevisLinesTable(doc: PDFKit.PDFDocument, devis: DevisDocument, star
 
   let y = startY;
 
-  // "Montants exprimés en Algérie Dinar" au-dessus du tableau, aligné à droite
+  // "Montants exprimés en Dinar Algérien" au-dessus du tableau, aligné à droite
   doc.font('Helvetica')
     .fontSize(8)
     .fillColor('#111827')
-    .text('Montants exprimés en Algérie Dinar', margin, y, { width: tableW, align: 'right' });
+    .text('Montants exprimés en Dinar Algérien', margin, y, { width: tableW, align: 'right' });
   y += 14;
 
   // En-tête du tableau
@@ -1077,7 +1310,7 @@ function drawDevisLinesTable(doc: PDFKit.PDFDocument, devis: DevisDocument, star
   const tableBodyStart = y;
 
   // Lignes du tableau
-  for (const ligne of devis.lignes) {
+  for (const ligne of lignes) {
     // Calculer la hauteur nécessaire pour le libellé (gras) et la description (petit/gris)
     doc.font('Helvetica-Bold').fontSize(9);
     const libelleHeight = doc.heightOfString(ligne.libelle, { width: cols.designation - 10 });
@@ -1135,19 +1368,19 @@ function drawDevisLinesTable(doc: PDFKit.PDFDocument, devis: DevisDocument, star
   return y;
 }
 
-function drawDevisTotals(doc: PDFKit.PDFDocument, devis: DevisDocument, y: number): number {
+function drawDevisTotals(doc: PDFKit.PDFDocument, document: DocumentBase, y: number): number {
   const margin = 28;
   const rightW = 220;
   const x = doc.page.width - margin - rightW;
   let curY = y + 4;
 
   // Calcul du taux TVA moyen pour affichage
-  const tvaRate = n(devis.totalHT) > 0 ? Math.round((n(devis.totalTVA) / n(devis.totalHT)) * 100) : 19;
+  const tvaRate = n(document.totalHT) > 0 ? Math.round((n(document.totalTVA) / n(document.totalHT)) * 100) : 19;
 
   const rows = [
-    { label: 'Total HT', value: formatMontant(n(devis.totalHT)), bold: false },
-    { label: `Total TVA ${tvaRate}%`, value: formatMontant(n(devis.totalTVA)), bold: false },
-    { label: 'Total TTC', value: formatMontant(n(devis.totalTTC)), bold: true },
+    { label: 'Total HT', value: formatMontant(n(document.totalHT)), bold: false },
+    { label: `Total TVA ${tvaRate}%`, value: formatMontant(n(document.totalTVA)), bold: false },
+    { label: 'Total TTC', value: formatMontant(n(document.totalTTC)), bold: true },
   ];
 
   for (const row of rows) {
@@ -1181,9 +1414,15 @@ function drawDevisFooter(doc: PDFKit.PDFDocument) {
   doc.text('1/1', doc.page.width - margin - 24, pageY - 8, { width: 24, align: 'right' });
 }
 
-export async function generateDevisPDF(devis: DevisDocument): Promise<Buffer> {
-  // Rafraîchir les infos entreprise depuis la DB
-  await refreshCompanyInfo();
+function renderStandardDocumentPDF(opts: {
+  title: string;
+  ref: string;
+  date: Date;
+  extraHeaderLine?: string;
+  document: DocumentBase & { site?: DevisDocument['site']; typeDocument?: string | null; refBonCommandeClient?: string | null };
+  amountLeadText: string;
+}): Promise<Buffer> {
+  const { title, ref, date, extraHeaderLine, document, amountLeadText } = opts;
 
   return new Promise((resolve, reject) => {
     try {
@@ -1195,69 +1434,69 @@ export async function generateDevisPDF(devis: DevisDocument): Promise<Buffer> {
       doc.on('error', reject);
 
       // En-tête avec logo et référence
-      drawDevisHeader(doc, devis);
+      const typeLabel = document.typeDocument ? (document.typeDocument === 'SERVICE' ? 'Prestation de service' : 'Vente de produits') : undefined;
+      const headerEndY = drawDevisHeader(doc, title, ref, date, extraHeaderLine, typeLabel);
 
       // Blocs Émetteur / Client
-      const afterPartiesY = drawDevisParties(doc, devis);
+      const afterPartiesY = drawDevisParties(doc, document, headerEndY);
 
       // Info sur le site si disponible
       let tableStartY = afterPartiesY;
-      if (devis.site) {
+      if (document.site) {
         doc.font('Helvetica-Bold')
           .fontSize(10)
           .fillColor('#111827')
-          .text(`Site d'intervention : ${devis.site.nom}${devis.site.ville ? ` - ${devis.site.ville}` : ''}`, 28, afterPartiesY);
-        if (devis.site.adresse) {
+          .text(`Site d'intervention : ${document.site.nom}${document.site.ville ? ` - ${document.site.ville}` : ''}`, 28, afterPartiesY);
+        if (document.site.adresse) {
           doc.font('Helvetica')
             .fontSize(9)
-            .text(devis.site.adresse, 28, afterPartiesY + 14);
+            .text(document.site.adresse, 28, afterPartiesY + 14);
           tableStartY = afterPartiesY + 32;
         } else {
           tableStartY = afterPartiesY + 20;
         }
       }
 
-      // Type de document (SERVICE / PRODUIT)
-      if (devis.typeDocument) {
-        const typeLabel = devis.typeDocument === 'SERVICE' ? 'Prestation de service' : 'Vente de produits';
-        doc.font('Helvetica')
+      // Mention du bon de commande client
+      if (document.refBonCommandeClient) {
+        doc.font('Helvetica-Bold')
           .fontSize(9)
-          .fillColor('#6b7280')
-          .text(`Type : ${typeLabel}`, 28, tableStartY);
+          .fillColor('#111827')
+          .text(`Selon le bon de commande "${document.refBonCommandeClient}"`, 28, tableStartY);
         tableStartY += 18;
       }
 
       // Tableau des lignes
-      const tableEndY = drawDevisLinesTable(doc, devis, tableStartY);
+      const tableEndY = drawDevisLinesTable(doc, document.lignes, tableStartY);
 
       // Totaux
-      const totalsEndY = drawDevisTotals(doc, devis, tableEndY);
+      const totalsEndY = drawDevisTotals(doc, document, tableEndY);
 
       // Montant en lettres
-      const amountWords = amountToWordsDZD(n(devis.totalTTC));
+      const amountWords = amountToWordsDZD(n(document.totalTTC));
       doc.font('Helvetica')
         .fontSize(9)
         .fillColor('#111827')
-        .text('Arrêté le présent devis à la somme de :', 28, totalsEndY + 12, { width: 480 });
+        .text(amountLeadText, 28, totalsEndY + 12, { width: 480 });
       doc.font('Helvetica-Bold')
         .fontSize(9)
         .text(`${amountWords.charAt(0).toUpperCase() + amountWords.slice(1)} en toutes taxes comprises.`, 28, totalsEndY + 26, { width: 520 });
 
       // Notes et conditions
       let notesY = totalsEndY + 50;
-      if (devis.notes) {
+      if (document.notes) {
         doc.font('Helvetica')
           .fontSize(8)
           .fillColor('#374151')
-          .text(`Notes : ${devis.notes}`, 28, notesY, { width: 520 });
+          .text(`Notes : ${document.notes}`, 28, notesY, { width: 520 });
         notesY = doc.y + 10;
       }
 
-      if (devis.conditions) {
+      if (document.conditions) {
         doc.font('Helvetica')
           .fontSize(8)
           .fillColor('#374151')
-          .text(`Conditions : ${devis.conditions}`, 28, notesY, { width: 520 });
+          .text(`Conditions : ${document.conditions}`, 28, notesY, { width: 520 });
       }
 
       // Pied de page
@@ -1270,57 +1509,31 @@ export async function generateDevisPDF(devis: DevisDocument): Promise<Buffer> {
   });
 }
 
+export async function generateDevisPDF(devis: DevisDocument): Promise<Buffer> {
+  // Rafraîchir les infos entreprise depuis la DB
+  await refreshCompanyInfo();
+
+  return renderStandardDocumentPDF({
+    title: 'Devis',
+    ref: devis.ref,
+    date: devis.dateDevis,
+    extraHeaderLine: devis.dateValidite ? `Date de fin de validité : ${formatDate(devis.dateValidite)}` : undefined,
+    document: devis,
+    amountLeadText: 'Arrêté le présent devis à la somme de :',
+  });
+}
+
 export async function generateCommandePDF(commande: CommandeDocument): Promise<Buffer> {
   // Rafraîchir les infos entreprise depuis la DB
   await refreshCompanyInfo();
 
-  return new Promise((resolve, reject) => {
-    try {
-      const doc = new PDFDocument({ size: 'A4', margin: 50 });
-      const chunks: Buffer[] = [];
-
-      doc.on('data', (chunk) => chunks.push(chunk));
-      doc.on('end', () => resolve(Buffer.concat(chunks)));
-      doc.on('error', reject);
-
-      // En-tête
-      drawHeader(doc, 'BON DE COMMANDE', commande.ref, commande.dateCommande);
-
-      // Infos client
-      drawClientInfo(doc, commande.client);
-
-      // Infos document
-      const infos = [
-        { label: 'Statut', value: getStatusLabel(commande.statut, 'commande') },
-        { label: 'Date commande', value: formatDate(commande.dateCommande) },
-      ];
-      if (commande.dateLivraisonSouhaitee) {
-        infos.push({ label: 'Livraison souhaitée', value: formatDate(commande.dateLivraisonSouhaitee) });
-      }
-      drawDocumentInfo(doc, infos);
-
-      // Tableau des lignes
-      const tableEndY = drawLinesTable(doc, commande.lignes, commande.devise);
-
-      // Totaux
-      drawTotals(
-        doc,
-        tableEndY,
-        commande.totalHT,
-        commande.totalTVA,
-        commande.totalTTC,
-        commande.devise,
-        commande.remiseGlobalPct,
-        commande.remiseGlobalMontant
-      );
-
-      // Pied de page
-      drawFooter(doc, commande.notes, commande.conditions);
-
-      doc.end();
-    } catch (error) {
-      reject(error);
-    }
+  return renderStandardDocumentPDF({
+    title: 'Bon de commande',
+    ref: commande.ref,
+    date: commande.dateCommande,
+    extraHeaderLine: commande.dateLivraisonSouhaitee ? `Livraison souhaitée : ${formatDate(commande.dateLivraisonSouhaitee)}` : undefined,
+    document: commande,
+    amountLeadText: 'Arrêté le présent bon de commande à la somme de :',
   });
 }
 
@@ -1338,19 +1551,51 @@ export async function generateFacturePDF(facture: FactureDocument): Promise<Buff
       doc.on('error', reject);
 
       const title = facture.type === 'AVOIR' ? 'AVOIR' : 'FACTURE';
-      drawInvoiceHeader(doc, facture, title);
-      const afterPartiesY = drawInvoiceParties(doc, facture);
+      const headerEndY = drawInvoiceHeader(doc, facture, title);
+      const afterPartiesY = drawInvoiceParties(doc, facture, headerEndY);
+
+      if (facture.site) {
+        doc.font('Helvetica-Bold')
+          .fontSize(11)
+          .fillColor('#111827')
+          .text(`Site : ${facture.site.nom}${facture.site.ville ? ` — ${facture.site.ville}` : ''}`, 28, afterPartiesY, { width: 420 });
+      }
+      let mentionY = afterPartiesY + (facture.site ? 16 : 0);
+      if (facture.mentionSpeciale) {
+        doc.font('Helvetica-Bold')
+          .fontSize(10)
+          .fillColor('#111827')
+          .text(facture.mentionSpeciale, 28, mentionY, { width: 420 });
+        mentionY += 14;
+      }
+
+      // Date de l'opération : utilise la date réelle de l'opération (renseignée depuis le Planning)
+      // si disponible, sinon tente de l'extraire de la description de la 1ère ligne, sinon la date de facture.
+      let dateOperationStr: string;
+      if (facture.dateOperation) {
+        dateOperationStr = formatDate(facture.dateOperation);
+      } else {
+        const firstLigneDesc = facture.lignes?.[0]?.description ?? '';
+        const dateMatch = firstLigneDesc.match(/(\d{2}\/\d{2}\/\d{4})/);
+        dateOperationStr = dateMatch ? dateMatch[1] : formatDate(facture.dateFacture);
+      }
 
       doc.font('Helvetica-Bold')
-        .fontSize(11)
-        .fillColor('#111827')
-        .text(facture.client?.siegeNom ? `Site: ${facture.client.siegeNom}` : `Client: ${facture.client.nomEntreprise}`, 28, afterPartiesY, { width: 420 });
-      doc.font('Helvetica')
         .fontSize(10)
         .fillColor('#111827')
-        .text(`Operation du ${formatDate(facture.dateFacture)}`, 28, afterPartiesY + 16, { width: 420 });
+        .text(`Opération du ${dateOperationStr}`, 28, mentionY, { width: 420 });
+      mentionY += 16;
 
-      const tableEndY = drawInvoiceLinesTable(doc, facture, afterPartiesY + 38);
+      let factureTableStartY = mentionY + 6;
+      if (facture.refBonCommandeClient) {
+        doc.font('Helvetica-Bold')
+          .fontSize(9)
+          .fillColor('#111827')
+          .text(`Selon le bon de commande "${facture.refBonCommandeClient}"`, 28, factureTableStartY, { width: 420 });
+        factureTableStartY += 16;
+      }
+
+      const tableEndY = drawInvoiceLinesTable(doc, facture, factureTableStartY);
       const totalsEndY = drawInvoiceTotals(doc, facture, tableEndY);
 
       const amountWords = amountToWordsDZD(n(facture.totalTTC));
@@ -1379,117 +1624,38 @@ export async function generateFacturePDF(facture: FactureDocument): Promise<Buff
 }
 
 export async function generateCommandeFournisseurPDF(commande: CommandeFournisseurDocument): Promise<Buffer> {
-  // Rafraîchir les infos entreprise depuis la DB
   await refreshCompanyInfo();
 
-  return new Promise((resolve, reject) => {
-    try {
-      const doc = new PDFDocument({ size: 'A4', margin: 50 });
-      const chunks: Buffer[] = [];
+  const extraLine = commande.dateLivraisonSouhaitee
+    ? `Livraison souhaitée : ${formatDate(commande.dateLivraisonSouhaitee)}`
+    : undefined;
 
-      doc.on('data', (chunk) => chunks.push(chunk));
-      doc.on('end', () => resolve(Buffer.concat(chunks)));
-      doc.on('error', reject);
-
-      // En-tête
-      drawHeader(doc, 'COMMANDE FOURNISSEUR', commande.ref, commande.dateCommande);
-
-      // Infos fournisseur
-      drawClientInfo(doc, commande.fournisseur, 'Fournisseur');
-
-      // Infos document
-      const infos = [
-        { label: 'Statut', value: getStatusLabel(commande.statut, 'commande_fournisseur') },
-        { label: 'Date commande', value: formatDate(commande.dateCommande) },
-      ];
-      if (commande.dateLivraisonSouhaitee) {
-        infos.push({ label: 'Livraison souhaitée', value: formatDate(commande.dateLivraisonSouhaitee) });
-      }
-      drawDocumentInfo(doc, infos);
-
-      // Tableau des lignes
-      const tableEndY = drawLinesTable(doc, commande.lignes, commande.devise);
-
-      // Totaux
-      drawTotals(
-        doc,
-        tableEndY,
-        commande.totalHT,
-        commande.totalTVA,
-        commande.totalTTC,
-        commande.devise,
-        commande.remiseGlobalPct,
-        commande.remiseGlobalMontant
-      );
-
-      // Pied de page
-      drawFooter(doc, commande.notes, commande.conditions);
-
-      doc.end();
-    } catch (error) {
-      reject(error);
-    }
+  return renderFournisseurDocumentPDF({
+    title: 'Commande Fournisseur',
+    ref: commande.ref,
+    date: commande.dateCommande,
+    extraHeaderLine: extraLine,
+    fournisseur: commande.fournisseur,
+    document: commande,
+    amountLeadText: 'Arrêté la présente commande fournisseur à la somme de :',
   });
 }
 
 export async function generateFactureFournisseurPDF(facture: FactureFournisseurDocument): Promise<Buffer> {
-  // Rafraîchir les infos entreprise depuis la DB
   await refreshCompanyInfo();
 
-  return new Promise((resolve, reject) => {
-    try {
-      const doc = new PDFDocument({ size: 'A4', margin: 50 });
-      const chunks: Buffer[] = [];
+  const extraLines: string[] = [];
+  if (facture.refFournisseur) extraLines.push(`Réf. fournisseur : ${facture.refFournisseur}`);
+  if (facture.dateEcheance) extraLines.push(`Échéance : ${formatDate(facture.dateEcheance)}`);
 
-      doc.on('data', (chunk) => chunks.push(chunk));
-      doc.on('end', () => resolve(Buffer.concat(chunks)));
-      doc.on('error', reject);
-
-      // En-tête
-      drawHeader(doc, 'FACTURE FOURNISSEUR', facture.ref, facture.dateFacture);
-
-      // Infos fournisseur
-      drawClientInfo(doc, facture.fournisseur, 'Fournisseur');
-
-      // Infos document
-      const infos = [
-        { label: 'Statut', value: getStatusLabel(facture.statut, 'facture_fournisseur') },
-        { label: 'Date facture', value: formatDate(facture.dateFacture) },
-      ];
-      if (facture.refFournisseur) {
-        infos.push({ label: 'Réf. fournisseur', value: facture.refFournisseur });
-      }
-      if (facture.dateReception) {
-        infos.push({ label: 'Date réception', value: formatDate(facture.dateReception) });
-      }
-      if (facture.dateEcheance) {
-        infos.push({ label: 'Échéance', value: formatDate(facture.dateEcheance) });
-      }
-      drawDocumentInfo(doc, infos);
-
-      // Tableau des lignes
-      const tableEndY = drawLinesTable(doc, facture.lignes, facture.devise);
-
-      // Totaux
-      drawTotals(
-        doc,
-        tableEndY,
-        facture.totalHT,
-        facture.totalTVA,
-        facture.totalTTC,
-        facture.devise,
-        facture.remiseGlobalPct,
-        facture.remiseGlobalMontant,
-        facture.totalPaye
-      );
-
-      // Pied de page
-      drawFooter(doc, facture.notes, facture.conditions);
-
-      doc.end();
-    } catch (error) {
-      reject(error);
-    }
+  return renderFournisseurDocumentPDF({
+    title: 'Facture Fournisseur',
+    ref: facture.ref,
+    date: facture.dateFacture,
+    extraHeaderLine: extraLines.join('  |  ') || undefined,
+    fournisseur: facture.fournisseur,
+    document: facture,
+    amountLeadText: 'Arrêtée la présente facture fournisseur à la somme de :',
   });
 }
 
@@ -1566,7 +1732,7 @@ export async function generateAttestationPassagePDF(attestation: AttestationPass
 
       if (attestation.showGuaranteeSection) {
         doc.text(
-          `Les opérations citées ci-dessus sont garanties pour une période de ${attestation.garantieMoisLabel} mois à compter de la date d’exécution des opérations.`,
+          `Les opérations citées ci-dessus sont garanties pour une période de ${attestation.garantieJoursLabel} jours à compter de la date d’exécution des opérations.`,
           margin,
           y,
           { width: contentWidth, align: 'justify', lineGap: 3 }
@@ -1602,6 +1768,318 @@ export async function generateAttestationPassagePDF(attestation: AttestationPass
           .text(attestation.prestataireNom, margin, signatureY, { width: signWidth, align: 'left' })
           .text(attestation.clientDisplayName, margin + signWidth + gap, signatureY, { width: signWidth, align: 'right' });
       }
+
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}
+
+// ── Bon de Livraison PDF ──────────────────────────────────────────────────────
+
+interface BonLivraisonClientDoc {
+  nomEntreprise: string;
+  code?: string | null;
+  siegeAdresse?: string | null;
+  siegeVille?: string | null;
+  siegePays?: string | null;
+  siegeRC?: string | null;
+  siegeNIF?: string | null;
+  siegeAI?: string | null;
+  siegeNIS?: string | null;
+  siegeNIN?: string | null;
+}
+
+interface BonLivraisonLigneDoc {
+  libelle: string;
+  description?: string | null;
+  quantiteCommandee?: number;
+  quantiteLivree: number;
+  unite?: string | null;
+  prixUnitaireHT: number;
+  tauxTVA: number;
+}
+
+interface BonLivraisonDoc {
+  ref: string;
+  client: BonLivraisonClientDoc;
+  commande?: { ref: string; refBonCommandeClient?: string | null; typeDocument?: string | null } | null;
+  site?: { nom: string; ville?: string | null; adresse?: string | null } | null;
+  dateBonLivraison: Date;
+  dateLivraisonEffective?: Date | null;
+  statut: string;
+  notes?: string | null;
+  lignes: BonLivraisonLigneDoc[];
+  adresseLivraison?: { adresse?: string; ville?: string; codePostal?: string } | null;
+}
+
+function getStatutBLLabel(statut: string): string {
+  const labels: Record<string, string> = {
+    BROUILLON: 'Brouillon',
+    CONFIRME: 'Confirmé',
+    LIVRE: 'Livré',
+    ANNULE: 'Annulé',
+  };
+  return labels[statut] || statut;
+}
+
+export async function generateBonLivraisonPDF(bl: BonLivraisonDoc): Promise<Buffer> {
+  await refreshCompanyInfo();
+
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margin: 28 });
+      const chunks: Buffer[] = [];
+      const margin = 28;
+      const pageW = doc.page.width;
+      const tableW = pageW - margin * 2;
+
+      doc.on('data', (chunk) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      // ── En-tête ──────────────────────────────────────────────────────────────
+      const logoPath = resolveAttestationLogoPath();
+      const logoBoxW = 260;
+      const rightBoxX = pageW - margin - 190;
+
+      if (logoPath) {
+        doc.image(logoPath, margin, 22, { fit: [logoBoxW, 58] });
+      } else {
+        doc.font('Helvetica-Bold').fontSize(18).fillColor('#0b1b55')
+          .text(COMPANY_INFO.name, margin, 30, { width: logoBoxW });
+      }
+
+      doc.font('Helvetica-Bold').fontSize(18).fillColor('#0b1b55')
+        .text('BON DE LIVRAISON', rightBoxX, 28, { width: 190, align: 'right' });
+      doc.font('Helvetica-Bold').fontSize(11).fillColor('#374151')
+        .text(`Réf. : ${bl.ref}`, rightBoxX, 54, { width: 190, align: 'right' });
+
+      let blHeaderY = 74;
+      if (bl.commande?.typeDocument) {
+        const typeLabel = bl.commande.typeDocument === 'SERVICE' ? 'Prestation de service' : 'Vente de produits';
+        doc.font('Helvetica-Bold').fontSize(9).fillColor('#0b1b55')
+          .text(`Type : ${typeLabel}`, rightBoxX, blHeaderY, { width: 190, align: 'right' });
+        blHeaderY += 14;
+      }
+
+      doc.font('Helvetica').fontSize(9).fillColor('#111827')
+        .text(`Date BL : ${formatDate(bl.dateBonLivraison)}`, rightBoxX, blHeaderY, { width: 190, align: 'right' });
+      blHeaderY += 13;
+
+      if (bl.commande) {
+        doc.text(`Commande : ${bl.commande.ref}`, rightBoxX, blHeaderY, { width: 190, align: 'right' });
+        blHeaderY += 13;
+      }
+      if (bl.dateLivraisonEffective) {
+        doc.text(`Livraison : ${formatDate(bl.dateLivraisonEffective)}`, rightBoxX, blHeaderY, { width: 190, align: 'right' });
+        blHeaderY += 13;
+      }
+
+      // ── Blocs Émetteur / Client ──────────────────────────────────────────────
+      const y = Math.max(118, blHeaderY + 16);
+      const leftW = 230;
+      const rightW = tableW - leftW - 20;
+      const rightX = margin + leftW + 20;
+      const boxH = 165;
+
+      doc.rect(margin, y, leftW, boxH).fillColor('#e5e7eb').fill();
+      doc.rect(rightX, y, rightW, boxH).lineWidth(1).strokeColor('#6b7280').stroke();
+
+      doc.font('Helvetica').fontSize(8).fillColor('#374151')
+        .text('Émetteur', margin + 8, y - 12)
+        .text('Adressé à', rightX + 8, y - 12);
+
+      doc.font('Helvetica-Bold').fontSize(10).fillColor('#0b1b55')
+        .text(COMPANY_INFO.name, margin + 8, y + 10, { width: leftW - 16 });
+      doc.font('Helvetica').fontSize(8).fillColor('#111827')
+        .text([COMPANY_INFO.address, [COMPANY_INFO.city, COMPANY_INFO.pays].filter(Boolean).join(', ')].filter(Boolean).join('\n'), margin + 8, y + 25, { width: leftW - 16, lineGap: 1 });
+
+      drawLabeledFields(doc, [
+        { label: 'RC', value: COMPANY_INFO.rc },
+        { label: 'NIF', value: COMPANY_INFO.nif },
+        { label: 'AI', value: COMPANY_INFO.ai },
+        { label: 'NIS', value: COMPANY_INFO.nis },
+        { label: 'NIN', value: (COMPANY_INFO as any).nin },
+        { label: buildCompteLabel(), value: COMPANY_INFO.compte },
+        { label: 'RIB', value: COMPANY_INFO.rib },
+      ], margin + 8, y + 53, leftW - 16);
+
+      const client = bl.client;
+      doc.font('Helvetica-Bold').fontSize(11).fillColor('#111827')
+        .text(client.nomEntreprise || '-', rightX + 8, y + 10, { width: rightW - 16 });
+      doc.font('Helvetica').fontSize(9).fillColor('#111827')
+        .text([client.siegeAdresse, client.siegeVille, client.siegePays].filter(Boolean).join(' - '), rightX + 8, y + 30, { width: rightW - 16, lineGap: 1 });
+
+      drawLabeledFields(doc, [
+        { label: 'RC', value: client.siegeRC },
+        { label: 'NIF', value: client.siegeNIF },
+        { label: 'AI', value: client.siegeAI },
+        { label: 'NIS', value: client.siegeNIS },
+        { label: 'NIN', value: client.siegeNIN },
+      ], rightX + 8, y + 55, rightW - 16, 9, 13);
+
+      let afterPartiesY = y + boxH + 8;
+
+      // ── Site / Adresse de livraison ──────────────────────────────────────────
+      if (bl.site || bl.adresseLivraison) {
+        const infoLigne = bl.site
+          ? `Site : ${bl.site.nom}${bl.site.ville ? ` — ${bl.site.ville}` : ''}${bl.site.adresse ? `, ${bl.site.adresse}` : ''}`
+          : `Adresse de livraison : ${[bl.adresseLivraison?.adresse, bl.adresseLivraison?.codePostal, bl.adresseLivraison?.ville].filter(Boolean).join(', ')}`;
+        doc.font('Helvetica').fontSize(9).fillColor('#374151')
+          .text(infoLigne, margin, afterPartiesY, { width: tableW });
+        afterPartiesY = doc.y + 6;
+      }
+
+      if (bl.commande?.refBonCommandeClient) {
+        doc.font('Helvetica-Bold').fontSize(9).fillColor('#111827')
+          .text(`Selon le bon de commande "${bl.commande.refBonCommandeClient}"`, margin, afterPartiesY, { width: tableW });
+        afterPartiesY = doc.y + 6;
+      }
+
+      // ── Tableau des lignes ───────────────────────────────────────────────────
+      // Colonnes : Désignation | Qté commandée | Qté ce BL | Restant | Unité
+      const cols = { designation: 270, qteCmd: 65, qteLiv: 65, qteRest: 65, unite: tableW - 270 - 65 - 65 - 65 };
+      const xCols = {
+        designation: margin,
+        qteCmd: margin + cols.designation,
+        qteLiv: margin + cols.designation + cols.qteCmd,
+        qteRest: margin + cols.designation + cols.qteCmd + cols.qteLiv,
+        unite: margin + cols.designation + cols.qteCmd + cols.qteLiv + cols.qteRest,
+      };
+
+      let tableY = afterPartiesY + 10;
+
+      doc.font('Helvetica').fontSize(8).fillColor('#6b7280')
+        .text('Quantités exprimées en unités contractuelles', margin, tableY, { width: tableW, align: 'right' });
+      tableY += 14;
+
+      // En-tête tableau
+      doc.rect(margin, tableY, tableW, 22).fillColor('#e5e7eb').fill();
+      doc.lineWidth(1).strokeColor('#6b7280').rect(margin, tableY, tableW, 22).stroke();
+      doc.moveTo(xCols.qteCmd, tableY).lineTo(xCols.qteCmd, tableY + 22).stroke();
+      doc.moveTo(xCols.qteLiv, tableY).lineTo(xCols.qteLiv, tableY + 22).stroke();
+      doc.moveTo(xCols.qteRest, tableY).lineTo(xCols.qteRest, tableY + 22).stroke();
+      doc.moveTo(xCols.unite, tableY).lineTo(xCols.unite, tableY + 22).stroke();
+
+      doc.font('Helvetica-Bold').fontSize(9).fillColor('#111827');
+      doc.text('Désignation', xCols.designation + 5, tableY + 7, { width: cols.designation - 10 });
+      doc.text('Qté cmd.', xCols.qteCmd + 5, tableY + 7, { width: cols.qteCmd - 10, align: 'center' });
+      doc.text('Qté livrée', xCols.qteLiv + 5, tableY + 7, { width: cols.qteLiv - 10, align: 'center' });
+      doc.text('Restant', xCols.qteRest + 5, tableY + 7, { width: cols.qteRest - 10, align: 'center' });
+      doc.text('Unité', xCols.unite + 5, tableY + 7, { width: cols.unite - 10, align: 'center' });
+
+      tableY += 22;
+      const minTableH = 180;
+      const tableBodyStart = tableY;
+
+      for (const ligne of bl.lignes) {
+        doc.font('Helvetica-Bold').fontSize(9);
+        const libelleH = doc.heightOfString(ligne.libelle, { width: cols.designation - 10, lineGap: 1 });
+        let descH = 0;
+        if (ligne.description) {
+          doc.font('Helvetica').fontSize(8);
+          descH = doc.heightOfString(ligne.description, { width: cols.designation - 10, lineGap: 1 });
+        }
+        const rowH = Math.max(28, libelleH + descH + 16);
+
+        doc.rect(margin, tableY, tableW, rowH).lineWidth(0.8).strokeColor('#9ca3af').stroke();
+        doc.moveTo(xCols.qteCmd, tableY).lineTo(xCols.qteCmd, tableY + rowH).stroke();
+        doc.moveTo(xCols.qteLiv, tableY).lineTo(xCols.qteLiv, tableY + rowH).stroke();
+        doc.moveTo(xCols.qteRest, tableY).lineTo(xCols.qteRest, tableY + rowH).stroke();
+        doc.moveTo(xCols.unite, tableY).lineTo(xCols.unite, tableY + rowH).stroke();
+
+        doc.font('Helvetica-Bold').fontSize(9).fillColor('#111827')
+          .text(ligne.libelle, xCols.designation + 5, tableY + 7, { width: cols.designation - 10 });
+        if (ligne.description) {
+          doc.font('Helvetica').fontSize(8).fillColor('#6b7280')
+            .text(ligne.description, xCols.designation + 5, tableY + 7 + libelleH + 2, { width: cols.designation - 10 });
+        }
+
+        const qteCmd = ligne.quantiteCommandee ?? ligne.quantiteLivree;
+        const qteRestante = Math.max(0, qteCmd - n(ligne.quantiteLivree));
+
+        doc.font('Helvetica').fontSize(9).fillColor('#111827');
+        doc.text(qteCmd != null ? String(n(qteCmd)) : '—', xCols.qteCmd + 5, tableY + 7, { width: cols.qteCmd - 10, align: 'center' });
+        doc.font('Helvetica-Bold').fillColor('#0b1b55')
+          .text(String(n(ligne.quantiteLivree)), xCols.qteLiv + 5, tableY + 7, { width: cols.qteLiv - 10, align: 'center' });
+        doc.font('Helvetica').fillColor(qteRestante === 0 ? '#16a34a' : '#6b7280')
+          .text(String(qteRestante), xCols.qteRest + 5, tableY + 7, { width: cols.qteRest - 10, align: 'center' });
+        doc.fillColor('#111827')
+          .text(ligne.unite || '—', xCols.unite + 5, tableY + 7, { width: cols.unite - 10, align: 'center' });
+
+        tableY += rowH;
+
+        if (tableY > doc.page.height - 160) {
+          doc.addPage();
+          tableY = 50;
+        }
+      }
+
+      // Remplir hauteur minimale
+      if (tableY < tableBodyStart + minTableH) {
+        const remaining = tableBodyStart + minTableH - tableY;
+        doc.rect(margin, tableY, tableW, remaining).lineWidth(0.8).strokeColor('#9ca3af').stroke();
+        doc.moveTo(xCols.qteCmd, tableY).lineTo(xCols.qteCmd, tableY + remaining).stroke();
+        doc.moveTo(xCols.qteLiv, tableY).lineTo(xCols.qteLiv, tableY + remaining).stroke();
+        doc.moveTo(xCols.qteRest, tableY).lineTo(xCols.qteRest, tableY + remaining).stroke();
+        doc.moveTo(xCols.unite, tableY).lineTo(xCols.unite, tableY + remaining).stroke();
+        tableY += remaining;
+      }
+
+      // ── Notes ────────────────────────────────────────────────────────────────
+      if (bl.notes) {
+        tableY += 10;
+        doc.font('Helvetica').fontSize(8).fillColor('#374151')
+          .text(`Notes : ${bl.notes}`, margin, tableY, { width: tableW });
+        tableY = doc.y + 12;
+      } else {
+        tableY += 16;
+      }
+
+      // ── Zones de signature ───────────────────────────────────────────────────
+      const signH = 70;
+      const signGap = 20;
+      const signW = (tableW - signGap) / 2;
+      const maxSignY = doc.page.height - signH - 50;
+
+      if (tableY + signH > maxSignY) {
+        doc.addPage();
+        tableY = 50;
+      }
+
+      const signY = Math.min(tableY + 10, maxSignY);
+
+      // Boîte Émetteur
+      doc.rect(margin, signY, signW, signH).lineWidth(0.8).strokeColor('#9ca3af').stroke();
+      doc.font('Helvetica-Bold').fontSize(9).fillColor('#374151')
+        .text('Signature Émetteur', margin + 8, signY + 6, { width: signW - 16 });
+      doc.font('Helvetica').fontSize(8).fillColor('#6b7280')
+        .text(COMPANY_INFO.name, margin + 8, signY + 20, { width: signW - 16 });
+      doc.text('Date : _______________', margin + 8, signY + signH - 18, { width: signW - 16 });
+
+      // Boîte Récepteur
+      const signRX = margin + signW + signGap;
+      doc.rect(signRX, signY, signW, signH).lineWidth(0.8).strokeColor('#9ca3af').stroke();
+      doc.font('Helvetica-Bold').fontSize(9).fillColor('#374151')
+        .text('Signature Récepteur', signRX + 8, signY + 6, { width: signW - 16 });
+      doc.font('Helvetica').fontSize(8).fillColor('#6b7280')
+        .text(bl.client.nomEntreprise, signRX + 8, signY + 20, { width: signW - 16 });
+      doc.text('Date : _______________', signRX + 8, signY + signH - 18, { width: signW - 16 });
+
+      // ── Pied de page ─────────────────────────────────────────────────────────
+      const pageY = doc.page.height - 36;
+      const legalLine = [
+        COMPANY_INFO.name,
+        COMPANY_INFO.phone ? `Tél : ${COMPANY_INFO.phone}` : '',
+        COMPANY_INFO.email ? `Email : ${COMPANY_INFO.email}` : '',
+      ].filter(Boolean).join('  |  ');
+
+      doc.moveTo(margin, pageY - 14).lineTo(pageW - margin, pageY - 14).lineWidth(0.7).strokeColor('#d1d5db').stroke();
+      doc.font('Helvetica').fontSize(7).fillColor('#374151')
+        .text(legalLine, margin, pageY - 8, { width: pageW - margin * 2 - 50, align: 'center' });
+      doc.text('1/1', pageW - margin - 24, pageY - 8, { width: 24, align: 'right' });
 
       doc.end();
     } catch (error) {

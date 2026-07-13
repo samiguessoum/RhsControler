@@ -1,4 +1,4 @@
-import { addMonths, format } from 'date-fns';
+import { addDays, format } from 'date-fns';
 import { prisma } from '../config/database.js';
 
 type BuildAttestationOptions = {
@@ -19,6 +19,8 @@ type AttestationData = {
     prestataireNom: string;
     garantieMois: number;
     garantieMoisLabel: string;
+    garantieJours: number;
+    garantieJoursLabel: string;
     dateProchaineOperationFr: string;
     bodyTemplate: string;
     bodyText: string;
@@ -114,8 +116,16 @@ export const attestationService = {
             prestations: true,
             nombreOperations: true,
             frequenceOperations: true,
+            frequenceOperationsJours: true,
             attestationMessageTemplate: true,
             attestationControleMessageTemplate: true,
+            contratSites: {
+              select: {
+                siteId: true,
+                frequenceOperationsJours: true,
+                nombreOperations: true,
+              },
+            },
           },
         },
       },
@@ -132,66 +142,47 @@ export const attestationService = {
       throw new Error("Cette attestation est disponible uniquement pour les interventions de type OPERATION");
     }
 
-    const garantieMois = typeof options.garantieMois === 'number' && Number.isFinite(options.garantieMois) && options.garantieMois > 0
-      ? Math.floor(options.garantieMois)
-      : 2;
     const ville = options.ville?.trim() || 'Alger';
     const prestataireNom = options.prestataireNom?.trim() || 'RAYAN HYGIENE SERVICES';
     const clientNom = intervention.client?.nomEntreprise?.trim() || 'CLIENT';
     const clientFormeJuridique = intervention.client?.formeJuridique?.trim() || '';
     const clientDisplayName = normalizeClientDisplayName([clientFormeJuridique, clientNom].filter(Boolean).join(' '));
-    const dateReference = intervention.datePrevue;
+
+    // Date de référence = date de réalisation effective (pas la date planifiée)
+    const dateReference = intervention.dateRealisee || intervention.datePrevue;
+
     const contratPrestations = intervention.contrat?.prestations || [];
     const operationsLabel = contratPrestations.length > 0
       ? contratPrestations.join(', ')
       : (intervention.prestation?.trim() || 'prestation technique');
 
-    const prochaineIntervention = await prisma.intervention.findFirst({
-      where: {
-        id: { not: intervention.id },
-        clientId: intervention.clientId,
-        type: 'OPERATION',
-        statut: { not: 'ANNULEE' },
-        datePrevue: { gt: dateReference },
-        ...(intervention.contratId ? { contratId: intervention.contratId } : {}),
-        ...(intervention.siteId ? { siteId: intervention.siteId } : {}),
-      },
-      orderBy: [{ datePrevue: 'asc' }],
-      select: { datePrevue: true },
-    });
-
-    const dateProchaineOperation = prochaineIntervention?.datePrevue || addMonths(dateReference, garantieMois);
-
-    let garantieMoisComputed: number | null = null;
-    if (prochaineIntervention?.datePrevue) {
-      const diffMs = prochaineIntervention.datePrevue.getTime() - dateReference.getTime();
-      const diffDays = diffMs / (1000 * 60 * 60 * 24);
-      if (diffDays > 0) {
-        garantieMoisComputed = Math.max(1, Math.round((diffDays / 30) * 10) / 10);
-      }
+    // Fréquence en jours : depuis le ContratSite du site concerné, sinon contrat, sinon enum legacy
+    let frequenceJours: number | null = null;
+    if (intervention.siteId && intervention.contrat?.contratSites) {
+      const cs = intervention.contrat.contratSites.find((s) => s.siteId === intervention.siteId);
+      if (cs?.frequenceOperationsJours) frequenceJours = cs.frequenceOperationsJours;
     }
-
-    if (garantieMoisComputed == null && intervention.contrat?.nombreOperations && intervention.contrat.nombreOperations > 0) {
-      garantieMoisComputed = Math.max(1, Math.round((12 / intervention.contrat.nombreOperations) * 10) / 10);
+    if (frequenceJours == null && intervention.contrat?.frequenceOperationsJours) {
+      frequenceJours = intervention.contrat.frequenceOperationsJours;
     }
-
-    if (garantieMoisComputed == null && intervention.contrat?.frequenceOperations) {
-      const freqToMonths: Record<string, number> = {
-        HEBDOMADAIRE: 0.25,
-        MENSUELLE: 1,
-        TRIMESTRIELLE: 3,
-        SEMESTRIELLE: 6,
-        ANNUELLE: 12,
+    if (frequenceJours == null && intervention.contrat?.frequenceOperations) {
+      const freqToJours: Record<string, number> = {
+        HEBDOMADAIRE: 7,
+        MENSUELLE: 30,
+        TRIMESTRIELLE: 92,
+        SEMESTRIELLE: 182,
+        ANNUELLE: 365,
       };
-      const byFreq = freqToMonths[intervention.contrat.frequenceOperations];
-      if (byFreq) {
-        garantieMoisComputed = byFreq;
-      }
+      frequenceJours = freqToJours[intervention.contrat.frequenceOperations] ?? null;
     }
+    // Fallback : 30 jours
+    const garantieJours = frequenceJours ?? 30;
 
-    if (garantieMoisComputed == null) {
-      garantieMoisComputed = garantieMois;
-    }
+    // Date de prochaine opération = date de réalisation effective + fréquence en jours
+    const dateProchaineOperation = addDays(dateReference, garantieJours);
+
+    // Compatibilité : conserver garantieMois (arrondi) pour les anciens champs
+    const garantieMoisComputed = Math.max(1, Math.round((garantieJours / 30) * 10) / 10);
 
     const vars: AttestationVariables = {
       date_reference_fr: format(dateReference, 'dd/MM/yyyy'),
@@ -216,6 +207,8 @@ export const attestationService = {
         prestataireNom,
         garantieMois: garantieMoisComputed,
         garantieMoisLabel: formatMoisLabel(garantieMoisComputed),
+        garantieJours,
+        garantieJoursLabel: String(garantieJours),
         dateProchaineOperationFr: format(dateProchaineOperation, 'dd/MM/yyyy'),
         bodyTemplate,
         bodyText,

@@ -1,9 +1,12 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import { prisma } from '../config/database.js';
 import { FactureFournisseurStatut } from '@prisma/client';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
 import { facturationEvents } from '../services/events.service.js';
+import logger from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
+
 
 const DEFAULT_PREFIX = 'FF';
 
@@ -130,7 +133,7 @@ function determineStatut(totalTTC: number, totalPaye: number, dateEcheance?: Dat
 
 export const factureFournisseurController = {
   // Liste des factures fournisseurs
-  async list(req: AuthRequest, res: Response) {
+  async list(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { search, fournisseurId, statut, dateDebut, dateFin, page = '1', limit = '50' } = req.query;
 
@@ -179,13 +182,13 @@ export const factureFournisseurController = {
         },
       });
     } catch (error) {
-      console.error('List factures fournisseur error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List factures fournisseur error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   // Détail d'une facture
-  async get(req: AuthRequest, res: Response) {
+  async get(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const facture = await prisma.factureFournisseur.findUnique({
@@ -214,13 +217,13 @@ export const factureFournisseurController = {
 
       res.json({ facture });
     } catch (error) {
-      console.error('Get facture fournisseur error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Get facture fournisseur error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   // Créer une facture
-  async create(req: AuthRequest, res: Response) {
+  async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const data = req.body;
 
@@ -291,13 +294,13 @@ export const factureFournisseurController = {
 
       res.status(201).json({ facture });
     } catch (error) {
-      console.error('Create facture fournisseur error:', error);
-      res.status(500).json({ error: 'Erreur lors de la création de la facture fournisseur' });
+      logger.error({ err: error }, 'Create facture fournisseur error');
+      return next(new AppError(500, 'Erreur lors de la création de la facture fournisseur'));
     }
   },
 
   // Mettre à jour une facture
-  async update(req: AuthRequest, res: Response) {
+  async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const data = req.body;
@@ -366,13 +369,13 @@ export const factureFournisseurController = {
 
       res.json({ facture });
     } catch (error) {
-      console.error('Update facture fournisseur error:', error);
-      res.status(500).json({ error: 'Erreur lors de la mise à jour de la facture fournisseur' });
+      logger.error({ err: error }, 'Update facture fournisseur error');
+      return next(new AppError(500, 'Erreur lors de la mise à jour de la facture fournisseur'));
     }
   },
 
   // Supprimer une facture
-  async delete(req: AuthRequest, res: Response) {
+  async delete(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -398,13 +401,13 @@ export const factureFournisseurController = {
 
       res.json({ message: 'Facture fournisseur supprimée' });
     } catch (error) {
-      console.error('Delete facture fournisseur error:', error);
-      res.status(500).json({ error: 'Erreur lors de la suppression de la facture fournisseur' });
+      logger.error({ err: error }, 'Delete facture fournisseur error');
+      return next(new AppError(500, 'Erreur lors de la suppression de la facture fournisseur'));
     }
   },
 
   // Ajouter un paiement
-  async createPaiement(req: AuthRequest, res: Response) {
+  async createPaiement(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const { montant, datePaiement, modePaiementId, reference, banque, notes } = req.body;
@@ -485,13 +488,13 @@ export const factureFournisseurController = {
 
       res.status(201).json({ paiement, nouveauStatut, montantPaye: nouveauMontantPaye });
     } catch (error) {
-      console.error('Create paiement fournisseur error:', error);
-      res.status(500).json({ error: 'Erreur lors de la création du paiement' });
+      logger.error({ err: error }, 'Create paiement fournisseur error');
+      return next(new AppError(500, 'Erreur lors de la création du paiement'));
     }
   },
 
   // Supprimer un paiement
-  async deletePaiement(req: AuthRequest, res: Response) {
+  async deletePaiement(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id, paiementId } = req.params;
 
@@ -524,13 +527,13 @@ export const factureFournisseurController = {
 
       res.json({ message: 'Paiement supprimé', nouveauStatut, montantPaye: nouveauMontantPaye });
     } catch (error) {
-      console.error('Delete paiement fournisseur error:', error);
-      res.status(500).json({ error: 'Erreur lors de la suppression du paiement' });
+      logger.error({ err: error }, 'Delete paiement fournisseur error');
+      return next(new AppError(500, 'Erreur lors de la suppression du paiement'));
     }
   },
 
   // Créer une facture depuis une commande fournisseur
-  async convertirFromCommande(req: AuthRequest, res: Response) {
+  async convertirFromCommande(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { commandeId } = req.params;
       const data = req.body;
@@ -617,13 +620,13 @@ export const factureFournisseurController = {
 
       res.status(201).json({ facture });
     } catch (error) {
-      console.error('Convertir commande en facture error:', error);
-      res.status(500).json({ error: 'Erreur lors de la conversion de la commande en facture' });
+      logger.error({ err: error }, 'Convertir commande en facture error');
+      return next(new AppError(500, 'Erreur lors de la conversion de la commande en facture'));
     }
   },
 
   // Valider une facture fournisseur (passer de BROUILLON à VALIDEE)
-  async valider(req: AuthRequest, res: Response) {
+  async valider(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
 
@@ -675,19 +678,19 @@ export const factureFournisseurController = {
 
       res.json({ facture, message: 'Facture fournisseur validée avec succès' });
     } catch (error) {
-      console.error('Valider facture fournisseur error:', error);
-      res.status(500).json({ error: 'Erreur lors de la validation de la facture fournisseur' });
+      logger.error({ err: error }, 'Valider facture fournisseur error');
+      return next(new AppError(500, 'Erreur lors de la validation de la facture fournisseur'));
     }
   },
 
   // Export PDF
-  async exportPDF(req: AuthRequest, res: Response) {
+  async exportPDF(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const facture = await prisma.factureFournisseur.findUnique({
         where: { id },
         include: {
-          fournisseur: { select: { id: true, nomEntreprise: true, code: true, siegeAdresse: true, siegeEmail: true, siegeTel: true } },
+          fournisseur: { select: { id: true, nomEntreprise: true, code: true, siegeAdresse: true, siegeVille: true, siegePays: true, siegeRC: true, siegeNIF: true, siegeAI: true, siegeNIS: true, siegeNIN: true, siegeTel: true, siegeEmail: true } },
           lignes: { orderBy: { ordre: 'asc' } },
           paiements: {
             orderBy: { datePaiement: 'desc' },
@@ -708,8 +711,8 @@ export const factureFournisseurController = {
       res.setHeader('Content-Length', pdfBuffer.length);
       res.send(pdfBuffer);
     } catch (error) {
-      console.error('Export facture fournisseur PDF error:', error);
-      res.status(500).json({ error: 'Erreur lors de la génération du PDF' });
+      logger.error({ err: error }, 'Export facture fournisseur PDF error');
+      return next(new AppError(500, 'Erreur lors de la génération du PDF'));
     }
   },
 };

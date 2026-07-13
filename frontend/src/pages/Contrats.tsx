@@ -2,9 +2,9 @@ import { useMemo, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Plus, MoreVertical, FileText, CalendarClock, MapPin, Trash2, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, MoreVertical, FileText, CalendarClock, MapPin, Trash2, X, ChevronDown, ChevronUp, Search, Clock, CheckCircle2, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -211,6 +211,18 @@ export function ContratsPage() {
     const [type, setType] = useState<ContratType>(contrat?.type || 'ANNUEL');
     const [responsablePlanningId, setResponsablePlanningId] = useState<string | undefined>(contrat?.responsablePlanningId || undefined);
     const [statut, setStatut] = useState<ContratStatut>(contrat?.statut || 'ACTIF');
+    const [dateDebut, setDateDebut] = useState(contrat?.dateDebut?.split('T')[0] || '');
+    const [dateFin, setDateFin] = useState(contrat?.dateFin?.split('T')[0] || '');
+
+    const handleDateDebutChange = (value: string) => {
+      setDateDebut(value);
+      // Pour un contrat annuel, suggérer automatiquement la date de fin à +1 an
+      if (type === 'ANNUEL' && value) {
+        const fin = new Date(value);
+        fin.setFullYear(fin.getFullYear() + 1);
+        setDateFin(fin.toISOString().split('T')[0]);
+      }
+    };
 
     // State pour le select d'ajout de site (permet de réinitialiser après sélection)
     const [siteSelectKey, setSiteSelectKey] = useState(0);
@@ -220,6 +232,7 @@ export function ContratsPage() {
       contrat?.contratSites?.map(cs => ({
         siteId: cs.siteId,
         prestations: cs.prestations || [],
+        prixPrestations: (cs.prixPrestations as Record<string, number>) || {},
         frequenceOperations: cs.frequenceOperations || undefined,
         frequenceOperationsJours: cs.frequenceOperationsJours ?? undefined,
         frequenceControle: cs.frequenceControle || undefined,
@@ -342,10 +355,20 @@ export function ContratsPage() {
                 toast.error(`Sélectionnez au moins une prestation pour ${siteName}`);
                 return;
               }
-              if (!cs.frequenceOperations && !cs.frequenceControle) {
-                const siteName = availableSites.find(s => s.id === cs.siteId)?.nom || 'Site';
-                toast.error(`Configurez au moins une fréquence pour ${siteName}`);
-                return;
+              if (isPonctuel) {
+                // Pour les ponctuels : au moins un nombre d'opérations ou de contrôles
+                if (!cs.nombreOperations && !cs.nombreVisitesControle) {
+                  const siteName = availableSites.find(s => s.id === cs.siteId)?.nom || 'Site';
+                  toast.error(`Indiquez le nombre d'opérations ou de contrôles pour ${siteName}`);
+                  return;
+                }
+              } else {
+                // Pour les annuels : au moins une fréquence
+                if (!cs.frequenceOperations && !cs.frequenceControle) {
+                  const siteName = availableSites.find(s => s.id === cs.siteId)?.nom || 'Site';
+                  toast.error(`Configurez au moins une fréquence pour ${siteName}`);
+                  return;
+                }
               }
             }
           }
@@ -374,8 +397,8 @@ export function ContratsPage() {
           const data: CreateContratInput = {
             clientId: clientId as string,
             type,
-            dateDebut: formData.get('dateDebut') as string,
-            dateFin: (formData.get('dateFin') as string) || undefined,
+            dateDebut: dateDebut,
+            dateFin: dateFin || undefined,
             reconductionAuto: formData.get('reconductionAuto') === 'on',
             prestations: allSitePrestations, // Toutes les prestations de tous les sites
             responsablePlanningId,
@@ -436,17 +459,22 @@ export function ContratsPage() {
               <Label>Date début *</Label>
               <Input
                 type="date"
-                name="dateDebut"
-                defaultValue={contrat?.dateDebut?.split('T')[0]}
+                value={dateDebut}
+                onChange={(e) => handleDateDebutChange(e.target.value)}
                 required
               />
             </div>
             <div className="space-y-2">
-              <Label>{isPonctuel ? 'Date fin (optionnel)' : 'Date fin'}</Label>
+              <Label>
+                {isPonctuel ? 'Date fin (optionnel)' : 'Date fin'}
+                {!isPonctuel && dateFin && (
+                  <span className="ml-2 text-xs font-normal text-green-600">← suggérée automatiquement</span>
+                )}
+              </Label>
               <Input
                 type="date"
-                name="dateFin"
-                defaultValue={contrat?.dateFin?.split('T')[0]}
+                value={dateFin}
+                onChange={(e) => setDateFin(e.target.value)}
               />
             </div>
           </div>
@@ -558,53 +586,98 @@ export function ContratsPage() {
                               </Select>
                             )}
                             {sitePrestations.length > 0 && (
-                              <div className="flex flex-wrap gap-1">
+                              <div className="space-y-1.5">
                                 {sitePrestations.map((nom) => (
-                                  <Badge key={nom} variant="outline" className="pl-2 pr-1 py-0.5 text-xs flex items-center gap-1">
-                                    {nom}
+                                  <div key={nom} className="flex items-center gap-2 p-1.5 bg-white rounded border border-gray-100">
+                                    {/* Nom */}
+                                    <span className="text-xs font-medium text-gray-700 flex-1 min-w-0 truncate">{nom}</span>
+                                    {/* Prix */}
+                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                      <Input
+                                        type="number"
+                                        min={0}
+                                        step={100}
+                                        className="h-6 w-24 text-xs px-2"
+                                        placeholder="Prix DA"
+                                        value={(cs.prixPrestations?.[nom]) ?? ''}
+                                        onChange={(e) => {
+                                          const prix = e.target.value ? Number(e.target.value) : undefined;
+                                          updateSite(cs.siteId, {
+                                            prixPrestations: {
+                                              ...(cs.prixPrestations || {}),
+                                              ...(prix !== undefined ? { [nom]: prix } : Object.fromEntries(
+                                                Object.entries(cs.prixPrestations || {}).filter(([k]) => k !== nom)
+                                              )),
+                                            },
+                                          });
+                                        }}
+                                      />
+                                      <span className="text-[10px] text-gray-400">DA</span>
+                                    </div>
                                     <button
                                       type="button"
                                       onClick={() => removePrestationFromSite(cs.siteId, nom)}
-                                      className="hover:bg-gray-200 rounded-full p-0.5"
+                                      className="hover:bg-gray-100 rounded-full p-0.5 flex-shrink-0"
                                     >
-                                      <X className="h-3 w-3" />
+                                      <X className="h-3 w-3 text-gray-400" />
                                     </button>
-                                  </Badge>
+                                  </div>
                                 ))}
                               </div>
                             )}
                           </div>
 
-                          {/* Fréquences et dates */}
+                          {/* Opérations + Contrôles — affichage selon le type de contrat */}
                           <div className="grid grid-cols-2 gap-3">
-                            {/* Opérations */}
-                            <div className="space-y-2 p-2 bg-gray-50 rounded">
-                              <Label className="text-xs font-medium text-gray-600">Opérations</Label>
-                              <Select
-                                value={cs.frequenceOperations || ''}
-                                onValueChange={(v) => updateSite(cs.siteId, { frequenceOperations: v as Frequence || undefined })}
-                              >
-                                <SelectTrigger className="h-8">
-                                  <SelectValue placeholder="Fréquence" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {FREQUENCES.map((f) => (
-                                    <SelectItem key={f} value={f}>{FREQUENCE_LABELS[f]}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              {cs.frequenceOperations === 'PERSONNALISEE' && (
-                                <Input
-                                  type="number"
-                                  className="h-8"
-                                  min={1}
-                                  placeholder="Intervalle en jours"
-                                  value={cs.frequenceOperationsJours || ''}
-                                  onChange={(e) => updateSite(cs.siteId, { frequenceOperationsJours: e.target.value ? Number(e.target.value) : undefined })}
-                                />
+
+                            {/* ─── Opérations ─── */}
+                            <div className={`space-y-2 p-3 rounded-lg border ${isPonctuel ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'}`}>
+                              <p className={`text-xs font-semibold ${isPonctuel ? 'text-amber-700' : 'text-gray-600'}`}>
+                                Opérations {isPonctuel ? '— quota' : '— fréquence'}
+                              </p>
+
+                              {isPonctuel ? (
+                                /* PONCTUEL : nombre total d'opérations à réaliser */
+                                <div className="space-y-1.5">
+                                  <span className="text-xs text-gray-500">Nombre d'opérations prévu *</span>
+                                  <Input
+                                    type="number"
+                                    className="h-8"
+                                    min={1}
+                                    placeholder="Ex : 4"
+                                    value={cs.nombreOperations || ''}
+                                    onChange={(e) => updateSite(cs.siteId, { nombreOperations: e.target.value ? Number(e.target.value) : undefined })}
+                                  />
+                                </div>
+                              ) : (
+                                /* ANNUEL : intervalle en jours */
+                                <div className="space-y-1.5">
+                                  <span className="text-xs text-gray-500">Toutes les X jours *</span>
+                                  <div className="flex items-center gap-2">
+                                    <Input
+                                      type="number"
+                                      className="h-8"
+                                      min={1}
+                                      placeholder="Ex : 30"
+                                      value={cs.frequenceOperationsJours || ''}
+                                      onChange={(e) => updateSite(cs.siteId, {
+                                        frequenceOperationsJours: e.target.value ? Number(e.target.value) : undefined,
+                                        frequenceOperations: e.target.value ? 'PERSONNALISEE' : undefined,
+                                      })}
+                                    />
+                                    <span className="text-xs text-gray-400 whitespace-nowrap">jours</span>
+                                  </div>
+                                  {cs.frequenceOperationsJours && (
+                                    <p className="text-xs text-green-700 font-medium">
+                                      ≈ {Math.round(365 / cs.frequenceOperationsJours)}x / an
+                                    </p>
+                                  )}
+                                </div>
                               )}
+
+                              {/* Date première opération — commun aux deux types */}
                               <div className="space-y-1">
-                                <span className="text-xs text-gray-500">1ère opération</span>
+                                <span className="text-xs text-gray-500">Date de la 1ère opération</span>
                                 <Input
                                   type="date"
                                   className="h-8"
@@ -612,44 +685,56 @@ export function ContratsPage() {
                                   onChange={(e) => updateSite(cs.siteId, { premiereDateOperation: e.target.value })}
                                 />
                               </div>
-                              <Input
-                                type="number"
-                                className="h-8"
-                                min={1}
-                                placeholder="Nb opérations"
-                                value={cs.nombreOperations || ''}
-                                onChange={(e) => updateSite(cs.siteId, { nombreOperations: e.target.value ? Number(e.target.value) : undefined })}
-                              />
                             </div>
 
-                            {/* Contrôles */}
-                            <div className="space-y-2 p-2 bg-gray-50 rounded">
-                              <Label className="text-xs font-medium text-gray-600">Visites de contrôle</Label>
-                              <Select
-                                value={cs.frequenceControle || ''}
-                                onValueChange={(v) => updateSite(cs.siteId, { frequenceControle: v as Frequence || undefined })}
-                              >
-                                <SelectTrigger className="h-8">
-                                  <SelectValue placeholder="Fréquence" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {FREQUENCES.map((f) => (
-                                    <SelectItem key={f} value={f}>{FREQUENCE_LABELS[f]}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              {cs.frequenceControle === 'PERSONNALISEE' && (
-                                <Input
-                                  type="number"
-                                  className="h-8"
-                                  min={1}
-                                  placeholder="Intervalle en jours"
-                                  value={cs.frequenceControleJours || ''}
-                                  onChange={(e) => updateSite(cs.siteId, { frequenceControleJours: e.target.value ? Number(e.target.value) : undefined })}
-                                />
+                            {/* ─── Contrôles ─── */}
+                            <div className={`space-y-2 p-3 rounded-lg border ${isPonctuel ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'}`}>
+                              <p className={`text-xs font-semibold ${isPonctuel ? 'text-amber-700' : 'text-gray-600'}`}>
+                                Contrôles {isPonctuel ? '— quota' : '— fréquence'}
+                              </p>
+
+                              {isPonctuel ? (
+                                /* PONCTUEL : nombre total de contrôles */
+                                <div className="space-y-1.5">
+                                  <span className="text-xs text-gray-500">Nombre de contrôles prévu</span>
+                                  <Input
+                                    type="number"
+                                    className="h-8"
+                                    min={1}
+                                    placeholder="Ex : 1"
+                                    value={cs.nombreVisitesControle || ''}
+                                    onChange={(e) => updateSite(cs.siteId, { nombreVisitesControle: e.target.value ? Number(e.target.value) : undefined })}
+                                  />
+                                </div>
+                              ) : (
+                                /* ANNUEL : intervalle en jours */
+                                <div className="space-y-1.5">
+                                  <span className="text-xs text-gray-500">Toutes les X jours</span>
+                                  <div className="flex items-center gap-2">
+                                    <Input
+                                      type="number"
+                                      className="h-8"
+                                      min={1}
+                                      placeholder="Ex : 90"
+                                      value={cs.frequenceControleJours || ''}
+                                      onChange={(e) => updateSite(cs.siteId, {
+                                        frequenceControleJours: e.target.value ? Number(e.target.value) : undefined,
+                                        frequenceControle: e.target.value ? 'PERSONNALISEE' : undefined,
+                                      })}
+                                    />
+                                    <span className="text-xs text-gray-400 whitespace-nowrap">jours</span>
+                                  </div>
+                                  {cs.frequenceControleJours && (
+                                    <p className="text-xs text-green-700 font-medium">
+                                      ≈ {Math.round(365 / cs.frequenceControleJours)}x / an
+                                    </p>
+                                  )}
+                                </div>
                               )}
+
+                              {/* Date première visite de contrôle — commun aux deux types */}
                               <div className="space-y-1">
-                                <span className="text-xs text-gray-500">1ère visite de contrôle</span>
+                                <span className="text-xs text-gray-500">Date de la 1ère visite</span>
                                 <Input
                                   type="date"
                                   className="h-8"
@@ -657,15 +742,8 @@ export function ContratsPage() {
                                   onChange={(e) => updateSite(cs.siteId, { premiereDateControle: e.target.value })}
                                 />
                               </div>
-                              <Input
-                                type="number"
-                                className="h-8"
-                                min={1}
-                                placeholder="Nb contrôles"
-                                value={cs.nombreVisitesControle || ''}
-                                onChange={(e) => updateSite(cs.siteId, { nombreVisitesControle: e.target.value ? Number(e.target.value) : undefined })}
-                              />
                             </div>
+
                           </div>
                         </div>
                       )}
@@ -739,200 +817,225 @@ export function ContratsPage() {
     );
   };
 
+  // KPI counts
+  const kpiActifs   = contrats.filter(c => c.statut === 'ACTIF').length;
+  const kpiAnnuels  = contrats.filter(c => c.type === 'ANNUEL').length;
+  const kpiPonctuel = contrats.filter(c => c.type === 'PONCTUEL').length;
+
+  const STATUT_STYLE: Record<string, { bar: string; dot: string; text: string; bg: string }> = {
+    ACTIF:    { bar: 'bg-green-500',  dot: 'bg-green-500',  text: 'text-green-700',  bg: 'bg-green-50' },
+    SUSPENDU: { bar: 'bg-amber-400',  dot: 'bg-amber-400',  text: 'text-amber-700',  bg: 'bg-amber-50' },
+    TERMINE:  { bar: 'bg-gray-300',   dot: 'bg-gray-400',   text: 'text-gray-500',   bg: 'bg-gray-100' },
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="min-h-screen bg-gray-50">
+    <div className="max-w-7xl mx-auto px-4 py-6 space-y-5">
+
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Contrats</h1>
-          <p className="text-muted-foreground">
-            Gestion des contrats et fréquences
-          </p>
+          <h1 className="text-2xl font-black text-gray-900 tracking-tight">Contrats</h1>
+          <p className="text-sm text-gray-400 mt-0.5">{contrats.length} contrat{contrats.length > 1 ? 's' : ''} au total</p>
         </div>
         {canDo('createContrat') && (
-          <Button onClick={() => setIsCreateOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
+          <Button
+            className="bg-green-600 hover:bg-green-700 text-white font-semibold shadow-sm shadow-green-200 h-9"
+            onClick={() => setIsCreateOpen(true)}
+          >
+            <Plus className="h-4 w-4 mr-1.5" />
             Nouveau contrat
           </Button>
         )}
       </div>
 
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col lg:flex-row lg:items-end gap-4">
-            <div className="flex-1">
-              <Label htmlFor="search-contrats">Recherche</Label>
-              <Input
-                id="search-contrats"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Entreprise, prestation, BC..."
-              />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full lg:w-auto">
-              <div className="space-y-1">
-                <Label>Statut</Label>
-                <Select
-                  value={statutFilter}
-                  onValueChange={(v) => setStatutFilter(v as ContratStatut | 'ALL')}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Statut" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">Tous</SelectItem>
-                    <SelectItem value="ACTIF">Actif</SelectItem>
-                    <SelectItem value="SUSPENDU">Suspendu</SelectItem>
-                    <SelectItem value="TERMINE">Terminé</SelectItem>
-                  </SelectContent>
-                </Select>
+      {/* ── KPIs ── */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: 'Actifs',    value: kpiActifs,   bar: 'bg-green-500', num: 'text-green-700',  bg: 'bg-green-50',  icon: CheckCircle2, filter: () => setStatutFilter('ACTIF') },
+          { label: 'Annuels',   value: kpiAnnuels,  bar: 'bg-blue-500',  num: 'text-blue-700',   bg: 'bg-blue-50',   icon: Calendar,     filter: () => setTypeFilter('ANNUEL') },
+          { label: 'Ponctuels', value: kpiPonctuel, bar: 'bg-amber-400', num: 'text-amber-700',  bg: 'bg-amber-50',  icon: Clock,        filter: () => setTypeFilter('PONCTUEL') },
+        ].map(({ label, value, bar, num, bg, icon: Icon, filter }) => (
+          <div key={label} onClick={filter}
+            className="relative bg-white rounded-xl p-5 overflow-hidden cursor-pointer shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
+            <div className={`absolute bottom-0 left-0 right-0 h-1 ${bar} rounded-b-xl`} />
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-1">{label}</p>
+                <p className={`text-4xl font-black tabular-nums leading-none ${num}`}>{value}</p>
               </div>
-              <div className="space-y-1">
-                <Label>Type</Label>
-                <Select
-                  value={typeFilter}
-                  onValueChange={(v) => setTypeFilter(v as ContratType | 'ALL')}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">Tous</SelectItem>
-                    <SelectItem value="ANNUEL">Annuel</SelectItem>
-                    <SelectItem value="PONCTUEL">Ponctuel</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label>Entreprise</Label>
-                <Select
-                  value={clientFilter}
-                  onValueChange={(v) => setClientFilter(v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Toutes" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">Toutes</SelectItem>
-                    {clients.map((client) => (
-                      <SelectItem key={client.id} value={client.id}>
-                        {client.nomEntreprise}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className={`p-2.5 rounded-xl ${bg}`}>
+                <Icon className={`h-5 w-5 ${num}`} />
               </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        ))}
+      </div>
 
+      {/* ── Barre filtres ── */}
+      <div className="bg-white rounded-xl shadow-sm px-4 py-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Statut pills */}
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+            {[
+              { value: 'ALL', label: 'Tous' },
+              { value: 'ACTIF', label: 'Actifs' },
+              { value: 'SUSPENDU', label: 'Suspendus' },
+              { value: 'TERMINE', label: 'Terminés' },
+            ].map(opt => (
+              <button key={opt.value} onClick={() => setStatutFilter(opt.value as ContratStatut | 'ALL')}
+                className={`h-7 px-3 rounded-md text-xs font-semibold transition-all ${
+                  statutFilter === opt.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          {/* Type pills */}
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+            {[
+              { value: 'ALL', label: 'Tous types' },
+              { value: 'ANNUEL', label: 'Annuel' },
+              { value: 'PONCTUEL', label: 'Ponctuel' },
+            ].map(opt => (
+              <button key={opt.value} onClick={() => setTypeFilter(opt.value as ContratType | 'ALL')}
+                className={`h-7 px-3 rounded-md text-xs font-semibold transition-all ${
+                  typeFilter === opt.value ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Recherche */}
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-gray-400" />
+            <Input value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+              placeholder="Entreprise, prestation, BC..."
+              className="pl-8 h-8 w-52 text-sm border-gray-200" />
+            {searchTerm && (
+              <button onClick={() => setSearchTerm('')} className="absolute right-2 top-2">
+                <X className="h-3.5 w-3.5 text-gray-400 hover:text-gray-600" />
+              </button>
+            )}
+          </div>
+          {/* Filtre client */}
+          <Select value={clientFilter} onValueChange={setClientFilter}>
+            <SelectTrigger className="h-8 w-44 text-xs border-gray-200">
+              <SelectValue placeholder="Toutes entreprises" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Toutes entreprises</SelectItem>
+              {clients.map(c => (
+                <SelectItem key={c.id} value={c.id}>{c.nomEntreprise}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* ── Contenu ── */}
       {isLoading ? (
-        <div className="text-center py-8 text-muted-foreground">Chargement...</div>
+        <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+          <div className="w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-gray-400 font-medium">Chargement...</p>
+        </div>
       ) : filteredContrats.length === 0 ? (
-        <Card>
-          <CardContent className="py-8 text-center text-muted-foreground">
-            Aucun contrat enregistré
-          </CardContent>
-        </Card>
+        <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+          <FileText className="h-10 w-10 text-gray-200 mx-auto mb-3" />
+          <p className="font-semibold text-gray-600">Aucun contrat trouvé</p>
+          <p className="text-sm text-gray-400 mt-1">
+            {searchTerm ? `Aucun résultat pour "${searchTerm}"` : 'Créez votre premier contrat'}
+          </p>
+        </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {filteredContrats.map((contrat) => (
-            <Card
-              key={contrat.id}
-              className="hover:shadow-md transition-shadow cursor-pointer"
-              onClick={() => setSelectedContrat(contrat)}
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <FileText className="h-5 w-5 text-primary" />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          {filteredContrats.map((contrat) => {
+            const sty = STATUT_STYLE[contrat.statut] || STATUT_STYLE.ACTIF;
+            const initials = (contrat.client?.nomEntreprise || clientMap.get(contrat.clientId) || '??').slice(0, 2).toUpperCase();
+            return (
+              <div key={contrat.id}
+                className="bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer overflow-hidden hover:-translate-y-0.5"
+                onClick={() => setSelectedContrat(contrat)}
+              >
+                <div className={`h-1 ${sty.bar}`} />
+                <div className="p-4 space-y-3">
+                  {/* Header */}
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center flex-shrink-0 font-black text-sm text-green-700">
+                        {initials}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-bold text-gray-900 truncate">
+                          {contrat.client?.nomEntreprise || clientMap.get(contrat.clientId)}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${sty.bg} ${sty.text}`}>
+                            {contrat.statut}
+                          </span>
+                          <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${contrat.type === 'PONCTUEL' ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
+                            {contrat.type === 'PONCTUEL' ? 'Ponctuel' : 'Annuel'}
+                          </span>
+                          {contrat.numeroBonCommande && (
+                            <span className="text-[11px] text-gray-400">BC: {contrat.numeroBonCommande}</span>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <CardTitle className="text-base">
-                        {contrat.client?.nomEntreprise || clientMap.get(contrat.clientId)}
-                      </CardTitle>
-                      <p className="text-sm text-muted-foreground">
-                        {contrat.type === 'PONCTUEL' ? (
-                          <span className="text-yellow-600 font-medium">Ponctuel</span>
-                        ) : (
-                          'Annuel'
-                        )} • {contrat.statut}
-                        {contrat.numeroBonCommande && (
-                          <span className="ml-2 text-xs">BC: {contrat.numeroBonCommande}</span>
-                        )}
-                      </p>
+                    <div onClick={e => e.stopPropagation()}>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-50 transition-colors">
+                            <MoreVertical className="h-4 w-4" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => setSelectedContrat(contrat)}>Voir détail</DropdownMenuItem>
+                          {canDo('editContrat') && (
+                            <DropdownMenuItem onClick={() => setEditingContrat(contrat)}>Modifier</DropdownMenuItem>
+                          )}
+                          {canDo('deleteContrat') && (
+                            <DropdownMenuItem className="text-red-600" onClick={() => setDeleteTarget(contrat)}>Supprimer</DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedContrat(contrat);
-                        }}
-                      >
-                        Voir détail
-                      </DropdownMenuItem>
-                      {canDo('editContrat') && (
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEditingContrat(contrat);
-                          }}
-                        >
-                          Modifier
-                        </DropdownMenuItem>
-                      )}
-                      {canDo('deleteContrat') && (
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setDeleteTarget(contrat);
-                          }}
-                        >
-                          Supprimer
-                        </DropdownMenuItem>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="text-sm text-muted-foreground">
-                  <CalendarClock className="h-4 w-4 inline mr-2" />
-                  Début: {formatDate(contrat.dateDebut)} {contrat.dateFin && `• Fin: ${formatDate(contrat.dateFin)}`}
-                </div>
-                {contrat.contratSites && contrat.contratSites.length > 0 && (
-                  <div className="text-sm text-muted-foreground">
-                    <MapPin className="h-4 w-4 inline mr-2" />
-                    {contrat.contratSites.length} site(s): {contrat.contratSites.map(cs => cs.site?.nom).join(', ')}
+
+                  {/* Dates */}
+                  <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                    <CalendarClock className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span>{formatDate(contrat.dateDebut)}</span>
+                    {contrat.dateFin && <><span className="text-gray-300">→</span><span>{formatDate(contrat.dateFin)}</span></>}
                   </div>
-                )}
-                <div className="flex flex-wrap gap-2">
-                  {contrat.prestations.slice(0, 4).map((p) => (
-                    <Badge key={p} variant="outline" className="text-xs">
-                      {p}
-                    </Badge>
-                  ))}
-                  {contrat.prestations.length > 4 && (
-                    <Badge variant="outline" className="text-xs">
-                      +{contrat.prestations.length - 4}
-                    </Badge>
+
+                  {/* Sites */}
+                  {contrat.contratSites && contrat.contratSites.length > 0 && (
+                    <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                      <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
+                      <span className="truncate">{contrat.contratSites.map(cs => cs.site?.nom).filter(Boolean).join(', ')}</span>
+                      <span className="flex-shrink-0 text-gray-300">({contrat.contratSites.length})</span>
+                    </div>
+                  )}
+
+                  {/* Prestations */}
+                  {contrat.prestations.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1 border-t border-gray-50">
+                      {contrat.prestations.slice(0, 4).map(p => (
+                        <span key={p} className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{p}</span>
+                      ))}
+                      {contrat.prestations.length > 4 && (
+                        <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-400">+{contrat.prestations.length - 4}</span>
+                      )}
+                    </div>
                   )}
                 </div>
-              </CardContent>
-            </Card>
-          ))}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -1165,6 +1268,7 @@ export function ContratsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
     </div>
   );
 }

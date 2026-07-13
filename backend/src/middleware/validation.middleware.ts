@@ -15,6 +15,7 @@ export function validate(schema: ZodSchema) {
         res.status(400).json({
           error: 'Données invalides',
           details: errors,
+          timestamp: new Date().toISOString(),
         });
         return;
       }
@@ -37,6 +38,7 @@ export function validateQuery(schema: ZodSchema) {
         res.status(400).json({
           error: 'Paramètres invalides',
           details: errors,
+          timestamp: new Date().toISOString(),
         });
         return;
       }
@@ -59,6 +61,7 @@ export function validateParams(schema: ZodSchema) {
         res.status(400).json({
           error: 'Paramètres URL invalides',
           details: errors,
+          timestamp: new Date().toISOString(),
         });
         return;
       }

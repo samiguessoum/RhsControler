@@ -68,6 +68,9 @@ import {
   Calendar,
   TrendingUp,
   Search,
+  Truck,
+  PackageCheck,
+  Map,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -107,15 +110,28 @@ import {
   importExportApi,
   employesApi,
   postesApi,
+  commerceApi,
+  rhApi,
 } from '@/services/api';
 import { cn, formatDate, getStatutColor, getStatutLabel } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
 import { EmployeSelector } from '@/components/EmployeSelector';
-import type { Intervention, CreateInterventionInput, Client, Employe, Poste, InterventionEmployeInput } from '@/types';
+import { PlanningMap } from '@/components/PlanningMap';
+import type { Intervention, CreateInterventionInput, Client, Employe, Poste, InterventionEmployeInput, Conge } from '@/types';
 
 // ============ TYPES ============
 type ViewMode = 'day' | 'week' | 'biweek' | 'month' | 'quarter' | 'year' | 'list';
 type FilterStatut = 'ALL' | 'A_PLANIFIER' | 'PLANIFIEE' | 'REALISEE' | 'REPORTEE' | 'ANNULEE' | 'EN_RETARD';
+type PlanningFilters = {
+  clientId: string;
+  siteId: string;
+  prestation: string;
+  statut: FilterStatut;
+  type: string;
+  responsable: string;
+  employeId: string;
+  searchClient: string;
+};
 
 // ============ PLANNING STAT CARD ============
 function PlanningStatCard({
@@ -139,49 +155,41 @@ function PlanningStatCard({
   progressValue?: number;
   subtitle?: string;
 }) {
-  const colors = {
-    default: 'bg-blue-50 text-blue-600',
-    warning: 'bg-yellow-50 text-yellow-600',
-    error: 'bg-red-50 text-red-600',
-    success: 'bg-green-50 text-green-600',
-    orange: 'bg-orange-50 text-orange-600',
+  const palette = {
+    default: { bar: 'bg-blue-500',   icon: 'text-blue-500',   num: 'text-blue-700',   bg: 'bg-blue-50',   ring: 'ring-blue-300' },
+    warning: { bar: 'bg-amber-400',  icon: 'text-amber-500',  num: 'text-amber-700',  bg: 'bg-amber-50',  ring: 'ring-amber-300' },
+    error:   { bar: 'bg-red-500',    icon: 'text-red-500',    num: 'text-red-700',    bg: 'bg-red-50',    ring: 'ring-red-300' },
+    success: { bar: 'bg-green-500',  icon: 'text-green-600',  num: 'text-green-700',  bg: 'bg-green-50',  ring: 'ring-green-300' },
+    orange:  { bar: 'bg-orange-400', icon: 'text-orange-500', num: 'text-orange-700', bg: 'bg-orange-50', ring: 'ring-orange-300' },
   };
-
-  const borderColors = {
-    default: 'border-blue-200',
-    warning: 'border-yellow-200',
-    error: 'border-red-200',
-    success: 'border-green-200',
-    orange: 'border-orange-200',
-  };
+  const p = palette[variant];
 
   return (
-    <Card
+    <div
       className={cn(
-        'cursor-pointer transition-all hover:shadow-md',
-        isActive && `ring-2 ring-offset-1 ${borderColors[variant]}`,
-        onClick && 'hover:scale-[1.02]'
+        'relative bg-white rounded-xl p-4 overflow-hidden transition-all duration-200',
+        onClick && 'cursor-pointer hover:shadow-md hover:-translate-y-0.5',
+        isActive ? `ring-2 ${p.ring} shadow-sm` : 'shadow-sm'
       )}
       onClick={onClick}
     >
-      <CardContent className="p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium text-muted-foreground truncate">{title}</p>
-            <p className="text-2xl font-bold mt-0.5">{value}</p>
-            {subtitle && <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>}
-            {showProgress && progressValue !== undefined && (
-              <div className="mt-2">
-                <Progress value={progressValue} className="h-1.5" />
-              </div>
-            )}
-          </div>
-          <div className={cn('p-2.5 rounded-full ml-3', colors[variant])}>
-            <Icon className="h-5 w-5" />
-          </div>
+      <div className={`absolute bottom-0 left-0 right-0 h-1 ${p.bar} rounded-b-xl`} />
+      <div className="flex items-start justify-between">
+        <div className="flex-1 min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 mb-1 truncate">{title}</p>
+          <p className={`text-3xl font-black tabular-nums leading-none ${p.num}`}>{value}</p>
+          {subtitle && <p className="text-[11px] text-gray-400 mt-1">{subtitle}</p>}
+          {showProgress && progressValue !== undefined && (
+            <div className="mt-2">
+              <Progress value={progressValue} className="h-1.5" />
+            </div>
+          )}
         </div>
-      </CardContent>
-    </Card>
+        <div className={cn('p-2 rounded-xl ml-3 flex-shrink-0', p.bg)}>
+          <Icon className={cn('h-4 w-4', p.icon)} />
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -494,13 +502,18 @@ function DroppableDayCell({
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         className={cn(
-          'border rounded p-1 min-h-[60px] transition-colors hover:border-green-500',
-          isOver && 'bg-primary/10 border-primary',
-          !isCurrentMonth && 'bg-gray-50 opacity-50',
-          isToday && 'ring-2 ring-primary'
+          'rounded-xl p-1.5 min-h-[64px] transition-all border border-transparent hover:border-green-400 hover:shadow-sm',
+          isOver && 'bg-green-50 border-green-400',
+          !isCurrentMonth && 'opacity-35',
+          isToday ? 'bg-green-50 border-green-300' : 'bg-white'
         )}
       >
-        <div className="text-[10px] font-medium mb-1">{format(date, 'd')}</div>
+        <div className={cn(
+          'text-[11px] font-bold mb-1 w-6 h-6 flex items-center justify-center rounded-full',
+          isToday ? 'bg-green-600 text-white' : 'text-gray-500'
+        )}>
+          {format(date, 'd')}
+        </div>
         <div className="space-y-0.5">
           {interventions.map((intervention) => (
             <DraggableInterventionCard
@@ -516,24 +529,25 @@ function DroppableDayCell({
   }
 
   return (
-    <Card
+    <div
       ref={setNodeRef}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       className={cn(
-        'min-h-[150px] transition-colors hover:border-green-500',
-        isOver && 'bg-primary/10 border-primary',
-        !isCurrentMonth && 'bg-gray-50 opacity-60',
-        isToday && 'ring-2 ring-primary'
+        'rounded-xl p-3 min-h-[150px] transition-all border border-transparent hover:border-green-400 hover:shadow-sm',
+        isOver && 'bg-green-50 border-green-400',
+        !isCurrentMonth && 'opacity-40',
+        isToday ? 'bg-green-50 border-green-300' : 'bg-white shadow-sm'
       )}
     >
-      <CardHeader className="p-2 pb-1">
-        <CardTitle className="text-sm font-medium">{format(date, 'EEE d', { locale: fr })}</CardTitle>
-      </CardHeader>
-      <CardContent className="p-2 space-y-1">
-        {interventions.length === 0 ? (
-          <p className="text-xs text-muted-foreground text-center py-2">Aucune</p>
-        ) : (
+      <div className={cn(
+        'text-sm font-bold mb-2 w-7 h-7 flex items-center justify-center rounded-full',
+        isToday ? 'bg-green-600 text-white' : 'text-gray-600'
+      )}>
+        {format(date, 'd')}
+      </div>
+      <div className="space-y-1">
+        {interventions.length === 0 ? null : (
           interventions.map((intervention) => (
             <DraggableInterventionCard
               key={intervention.id}
@@ -542,8 +556,8 @@ function DroppableDayCell({
             />
           ))
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -1189,11 +1203,13 @@ function InterventionDetailDialog({
   onDownloadAttestation,
   onDownloadAttestationGarantie,
   onDownloadAttestationControle,
+  onCreateBL,
   canRealiser,
   canManage,
   canExport,
   employes,
   postes,
+  congesActifs = [],
 }: {
   intervention: Intervention | null;
   onClose: () => void;
@@ -1206,11 +1222,13 @@ function InterventionDetailDialog({
   onDownloadAttestation: () => void;
   onDownloadAttestationGarantie: () => void;
   onDownloadAttestationControle: () => void;
+  onCreateBL: () => void;
   canRealiser: boolean;
   canManage: boolean;
   canExport: boolean;
   employes: Employe[];
   postes: Poste[];
+  congesActifs?: Pick<Conge, 'employeId' | 'dateDebut' | 'dateFin'>[];
 }) {
   // Tous les hooks doivent être appelés AVANT tout return conditionnel
   const [showContacts, setShowContacts] = useState(false);
@@ -1504,6 +1522,8 @@ function InterventionDetailDialog({
                   value={selectedEmployes}
                   onChange={handleEmployesChange}
                   label="Equipe assignée"
+                  datePrevue={intervention.datePrevue?.slice(0, 10)}
+                  congesActifs={congesActifs}
                 />
                 {employesModified && (
                   <Button variant="outline" size="sm" onClick={saveEmployes}>
@@ -1797,14 +1817,24 @@ function InterventionDetailDialog({
               </Button>
             )}
             {canManage && intervention.statut !== 'ANNULEE' && intervention.type === 'OPERATION' && (
-              <Button
-                variant="secondary"
-                onClick={onGenerateFacture}
-                className="text-green-700 bg-green-100 hover:bg-green-200"
-              >
-                <Receipt className="h-4 w-4 mr-2" />
-                Générer facture
-              </Button>
+              <>
+                <Button
+                  variant="secondary"
+                  onClick={onCreateBL}
+                  className="text-blue-700 bg-blue-100 hover:bg-blue-200"
+                >
+                  <Truck className="h-4 w-4 mr-2" />
+                  Créer un BL
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={onGenerateFacture}
+                  className="text-green-700 bg-green-100 hover:bg-green-200"
+                >
+                  <Receipt className="h-4 w-4 mr-2" />
+                  Générer facture
+                </Button>
+              </>
             )}
             {intervention.statut !== 'REALISEE' &&
               intervention.statut !== 'ANNULEE' &&
@@ -2260,6 +2290,7 @@ function CreateInterventionDialog({
   prestations,
   employes,
   postes,
+  congesActifs = [],
   onSubmit,
   isPending,
 }: {
@@ -2269,6 +2300,7 @@ function CreateInterventionDialog({
   prestations: { id: string; nom: string }[];
   employes: Employe[];
   postes: Poste[];
+  congesActifs?: Pick<Conge, 'employeId' | 'dateDebut' | 'dateFin'>[];
   onSubmit: (data: CreateInterventionInput) => void;
   isPending: boolean;
 }) {
@@ -2541,6 +2573,8 @@ function CreateInterventionDialog({
             value={selectedEmployes}
             onChange={setSelectedEmployes}
             label="Equipe"
+            datePrevue={datePrevue}
+            congesActifs={congesActifs}
           />
 
           <div className="space-y-2">
@@ -2578,16 +2612,8 @@ function FiltersSheet({
   clients: Client[];
   prestations: { id: string; nom: string }[];
   employes: Employe[];
-  filters: {
-    clientId: string;
-    siteId: string;
-    prestation: string;
-    statut: FilterStatut;
-    type: string;
-    responsable: string;
-    employeId: string;
-  };
-  onFiltersChange: (filters: any) => void;
+  filters: PlanningFilters;
+  onFiltersChange: (filters: PlanningFilters) => void;
 }) {
   const selectedClient = clients.find((c) => c.id === filters.clientId);
   const sites = selectedClient?.sites || [];
@@ -2627,7 +2653,7 @@ function FiltersSheet({
               <Label>Statut</Label>
               <Select
                 value={filters.statut}
-                onValueChange={(v) => onFiltersChange({ ...filters, statut: v })}
+                onValueChange={(v) => onFiltersChange({ ...filters, statut: v as FilterStatut })}
               >
                 <SelectTrigger className="focus:outline-none focus-visible:outline-none focus:ring-0 focus-visible:ring-0 ring-0 focus-visible:ring-offset-0 data-[state=open]:ring-0 data-[state=open]:ring-offset-0 hover:border-input">
                   <SelectValue placeholder="Tous statuts" />
@@ -2969,15 +2995,16 @@ export function PlanningPage() {
 
   // View state
   const [viewMode, setViewMode] = useState<ViewMode>('month');
+  const [showMap, setShowMap] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [dayPreviewDate, setDayPreviewDate] = useState<Date | null>(null);
 
   // Filters state
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = useState<PlanningFilters>({
     clientId: '',
     siteId: '',
     prestation: '',
-    statut: 'ALL' as FilterStatut,
+    statut: 'ALL',
     type: 'ALL',
     responsable: '',
     employeId: '',
@@ -2992,6 +3019,10 @@ export function PlanningPage() {
   const [annulerIntervention, setAnnulerIntervention] = useState<Intervention | null>(null);
   const [attestationIntervention, setAttestationIntervention] = useState<Intervention | null>(null);
   const [attestationKind, setAttestationKind] = useState<'passage' | 'garantie' | 'controle'>('passage');
+  const [blDialogIntervention, setBLDialogIntervention] = useState<Intervention | null>(null);
+  const [blDialogCommandes, setBLDialogCommandes] = useState<Array<{ id: string; ref: string }>>([]);
+  const [blDialogLoading, setBLDialogLoading] = useState(false);
+  const [blCreating, setBLCreating] = useState(false);
   const [attestationBody, setAttestationBody] = useState('');
   const [attestationInitialBody, setAttestationInitialBody] = useState('');
   const [attestationLoading, setAttestationLoading] = useState(false);
@@ -3177,6 +3208,13 @@ export function PlanningPage() {
     queryKey: ['postes'],
     queryFn: () => postesApi.list(true),
   });
+
+  const { data: congesApprouves } = useQuery({
+    queryKey: ['conges-approuves-planning'],
+    queryFn: () => rhApi.listConges({ statut: 'APPROUVE' }),
+    enabled: canDo('viewEmployes'),
+  });
+  const congesActifs: Pick<Conge, 'employeId' | 'dateDebut' | 'dateFin'>[] = congesApprouves?.conges || [];
 
   // Stats queries
   const { data: interventionsEnRetard = [] } = useQuery({
@@ -3409,10 +3447,13 @@ export function PlanningPage() {
       nouvelleDatePrevue: string;
       raison: string;
     }) => interventionsApi.reporter(id, nouvelleDatePrevue, raison),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['interventions'] });
       queryClient.refetchQueries({ queryKey: ['interventions'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      // Invalider le cache de l'intervention individuelle pour que le dialog
+      // Réaliser reçoive la nouvelle datePrevue (date de report) et non l'ancienne.
+      queryClient.invalidateQueries({ queryKey: ['intervention', variables.id] });
       toast.success('Intervention reportée avec succès');
       setReporterIntervention(null);
       setSelectedIntervention(null);
@@ -3472,6 +3513,37 @@ export function PlanningPage() {
       setAttestationIntervention(null);
     } finally {
       setAttestationLoading(false);
+    }
+  };
+
+  const openBLDialog = async (intervention: Intervention) => {
+    setBLDialogIntervention(intervention);
+    setBLDialogLoading(true);
+    setBLDialogCommandes([]);
+    try {
+      // Fetch commandes du client
+      const commandesResult = await commerceApi.listCommandes({ clientId: intervention.clientId, limit: 50 });
+      const commandes = (commandesResult.commandes || []).filter((c: any) => c.statut !== 'ANNULEE' && c.statut !== 'LIVREE');
+      setBLDialogCommandes(commandes.map((c: any) => ({ id: c.id, ref: c.ref })));
+    } catch {
+      toast.error('Erreur lors du chargement des commandes');
+      setBLDialogIntervention(null);
+    } finally {
+      setBLDialogLoading(false);
+    }
+  };
+
+  const handleCreerBLFromCommande = async (commandeId: string) => {
+    setBLCreating(true);
+    try {
+      const bl = await commerceApi.creerBLFromCommande(commandeId);
+      toast.success(`Bon de livraison ${bl.ref} créé`);
+      setBLDialogIntervention(null);
+      setBLDialogCommandes([]);
+    } catch (error: any) {
+      toast.error(error?.response?.data?.error || 'Erreur lors de la création du BL');
+    } finally {
+      setBLCreating(false);
     }
   };
 
@@ -3607,7 +3679,8 @@ export function PlanningPage() {
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
-      <div className="space-y-6">
+      <div className="min-h-screen bg-gray-50">
+      <div className="max-w-screen-2xl mx-auto px-4 py-6 space-y-5">
         {employeNames.length > 0 && (
           <datalist id="employes-list">
             {employeNames.map((name) => (
@@ -3615,37 +3688,40 @@ export function PlanningPage() {
             ))}
           </datalist>
         )}
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Planning</h1>
-            <p className="text-muted-foreground">Gestion des interventions et du calendrier</p>
+            <h1 className="text-2xl font-black text-gray-900 tracking-tight">Planning</h1>
+            <p className="text-sm text-gray-400 mt-0.5 capitalize">
+              {format(new Date(), 'EEEE d MMMM yyyy', { locale: fr })}
+            </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleExportCalendar}>
-              <Calendar className="h-4 w-4 mr-2" />
+            <Button variant="outline" size="sm" className="h-9 text-gray-600 border-gray-200" onClick={handleExportCalendar}>
+              <Calendar className="h-4 w-4 mr-1.5" />
               Exporter
             </Button>
             {canDo('createIntervention') && (
-              <Button onClick={() => setIsCreateOpen(true)}>
-                <Plus className="h-4 w-4 mr-2" />
+              <Button
+                className="bg-green-600 hover:bg-green-700 text-white font-semibold shadow-sm shadow-green-200 h-9"
+                onClick={() => setIsCreateOpen(true)}
+              >
+                <Plus className="h-4 w-4 mr-1.5" />
                 Nouvelle intervention
               </Button>
             )}
           </div>
         </div>
 
-        {/* Stats Section */}
+        {/* ── Stats ── */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <PlanningStatCard
             title="Aujourd'hui"
             value={planningStats.aujourdhui}
             icon={Calendar}
             variant="default"
-            onClick={() => {
-              setCurrentDate(new Date());
-              setViewMode('day');
-            }}
+            onClick={() => { setCurrentDate(new Date()); setViewMode('day'); }}
             isActive={viewMode === 'day' && isSameDay(currentDate, new Date())}
           />
           <PlanningStatCard
@@ -3653,10 +3729,7 @@ export function PlanningPage() {
             value={planningStats.cetteSemaine}
             icon={CalendarDays}
             variant="default"
-            onClick={() => {
-              setCurrentDate(new Date());
-              setViewMode('week');
-            }}
+            onClick={() => { setCurrentDate(new Date()); setViewMode('week'); }}
             isActive={viewMode === 'week'}
           />
           <PlanningStatCard
@@ -3664,7 +3737,7 @@ export function PlanningPage() {
             value={interventionsAPlanifier7j.length}
             icon={Clock}
             variant="warning"
-            subtitle="prochains 7 jours"
+            subtitle="7 prochains jours"
             onClick={() => setFilters({ ...filters, statut: 'A_PLANIFIER' })}
             isActive={filters.statut === 'A_PLANIFIER'}
           />
@@ -3696,126 +3769,145 @@ export function PlanningPage() {
           />
         </div>
 
-        {/* Controls */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-              {/* Navigation */}
-              <div className="flex items-center gap-2">
-                <Button variant="outline" size="icon" onClick={() => navigate('prev')}>
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                <div className="text-sm font-medium min-w-[200px] text-center">
-                  {getDateRangeLabel()}
-                </div>
-                <Button variant="outline" size="icon" onClick={() => navigate('next')}>
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="sm" onClick={() => navigate('today')}>
-                  Aujourd'hui
-                </Button>
-              </div>
+        {/* ── Barre de contrôles ── */}
+        <div className="bg-white rounded-xl shadow-sm px-4 py-3">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
 
-              {/* View selector and filters */}
-              <div className="flex items-center gap-2 flex-wrap">
-                {/* Search client */}
-                <div className="relative">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Rechercher client..."
-                    className="pl-9 w-[180px] h-9"
-                    value={filters.searchClient || ''}
-                    onChange={(e) => setFilters({ ...filters, searchClient: e.target.value })}
-                  />
-                </div>
-
-                {/* Quick status filters with badges */}
-                <div className="flex items-center gap-1 border rounded-lg p-1 bg-muted/30">
-                  {[
-                    { value: 'ALL', label: 'Tous', count: interventions.length },
-                    { value: 'A_PLANIFIER', label: 'À planifier', count: planningStats.aPlanifier },
-                    { value: 'PLANIFIEE', label: 'Planifiées', count: planningStats.planifiees },
-                    { value: 'EN_RETARD', label: 'En retard', count: planningStats.enRetard },
-                    { value: 'REALISEE', label: 'Réalisées', count: planningStats.realisees },
-                  ].map((item) => (
-                    <Button
-                      key={item.value}
-                      variant={filters.statut === item.value ? 'default' : 'ghost'}
-                      size="sm"
-                      onClick={() => setFilters({ ...filters, statut: item.value as FilterStatut })}
-                      className={cn(
-                        'h-7 px-2 text-xs',
-                        filters.statut === item.value && 'shadow-sm'
-                      )}
-                    >
-                      {item.label}
-                      {item.value !== 'ALL' && (
-                        <Badge
-                          variant={filters.statut === item.value ? 'secondary' : 'outline'}
-                          className="ml-1.5 h-5 min-w-5 px-1.5 text-[10px]"
-                        >
-                          {item.count}
-                        </Badge>
-                      )}
-                    </Button>
-                  ))}
-                </div>
-
-                <Select
-                  value={filters.type}
-                  onValueChange={(v) => setFilters({ ...filters, type: v })}
-                >
-                  <SelectTrigger className="w-[140px]">
-                    <SelectValue placeholder="Type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">Tous types</SelectItem>
-                    <SelectItem value="OPERATION">Opération</SelectItem>
-                    <SelectItem value="CONTROLE">Contrôle</SelectItem>
-                    <SelectItem value="RECLAMATION">Réclamation</SelectItem>
-                    <SelectItem value="PREMIERE_VISITE">Première visite</SelectItem>
-                    <SelectItem value="DEPLACEMENT_COMMERCIAL">Dépl. commercial</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                {/* Advanced filters */}
-                <FiltersSheet
-                  clients={clients}
-                  prestations={prestations}
-                  employes={employes as Employe[]}
-                  filters={filters}
-                  onFiltersChange={setFilters}
-                />
-
-                {/* View mode selector */}
-                <Select value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
-                  <SelectTrigger className="w-[130px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="day">Jour</SelectItem>
-                    <SelectItem value="week">Semaine</SelectItem>
-                    <SelectItem value="biweek">2 semaines</SelectItem>
-                    <SelectItem value="month">Mois</SelectItem>
-                    <SelectItem value="quarter">Trimestre</SelectItem>
-                    <SelectItem value="year">Année</SelectItem>
-                    <SelectItem value="list">Liste</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            {/* Navigation date */}
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => navigate('prev')}
+                className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="text-sm font-bold text-gray-900 min-w-[180px] text-center capitalize">
+                {getDateRangeLabel()}
+              </span>
+              <button
+                onClick={() => navigate('next')}
+                className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:border-gray-300 transition-colors"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => navigate('today')}
+                className="h-8 px-3 rounded-lg text-xs font-semibold text-green-700 bg-green-50 hover:bg-green-100 transition-colors"
+              >
+                Aujourd'hui
+              </button>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Calendar/List Views */}
+            {/* Filtres + vue */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Recherche client */}
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-gray-400" />
+                <Input
+                  placeholder="Rechercher client..."
+                  className="pl-8 w-[160px] h-8 text-sm border-gray-200"
+                  value={filters.searchClient || ''}
+                  onChange={(e) => setFilters({ ...filters, searchClient: e.target.value })}
+                />
+              </div>
+
+              {/* Quick status pills */}
+              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+                {[
+                  { value: 'ALL',        label: 'Tous',       count: null },
+                  { value: 'A_PLANIFIER',label: 'À planifier',count: planningStats.aPlanifier },
+                  { value: 'PLANIFIEE',  label: 'Planif.',    count: planningStats.planifiees },
+                  { value: 'EN_RETARD',  label: 'Retard',     count: planningStats.enRetard },
+                  { value: 'REALISEE',   label: 'Réalisées',  count: planningStats.realisees },
+                ].map((item) => (
+                  <button
+                    key={item.value}
+                    onClick={() => setFilters({ ...filters, statut: item.value as FilterStatut })}
+                    className={cn(
+                      'h-6 px-2.5 rounded-md text-[11px] font-semibold transition-all flex items-center gap-1',
+                      filters.statut === item.value
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-gray-500 hover:text-gray-700'
+                    )}
+                  >
+                    {item.label}
+                    {item.count !== null && item.count > 0 && (
+                      <span className={cn(
+                        'text-[10px] font-bold px-1 rounded',
+                        filters.statut === item.value ? 'text-green-600' : 'text-gray-400'
+                      )}>
+                        {item.count}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              {/* Type filter */}
+              <Select value={filters.type} onValueChange={(v) => setFilters({ ...filters, type: v })}>
+                <SelectTrigger className="w-[130px] h-8 text-xs border-gray-200">
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">Tous types</SelectItem>
+                  <SelectItem value="OPERATION">Opération</SelectItem>
+                  <SelectItem value="CONTROLE">Contrôle</SelectItem>
+                  <SelectItem value="RECLAMATION">Réclamation</SelectItem>
+                  <SelectItem value="PREMIERE_VISITE">1ère visite</SelectItem>
+                  <SelectItem value="DEPLACEMENT_COMMERCIAL">Dépl. comm.</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {/* Advanced filters */}
+              <FiltersSheet
+                clients={clients}
+                prestations={prestations}
+                employes={employes as Employe[]}
+                filters={filters}
+                onFiltersChange={setFilters}
+              />
+
+              {/* Vue selector */}
+              <Select value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
+                <SelectTrigger className="w-[110px] h-8 text-xs border-gray-200">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="day">Jour</SelectItem>
+                  <SelectItem value="week">Semaine</SelectItem>
+                  <SelectItem value="biweek">2 semaines</SelectItem>
+                  <SelectItem value="month">Mois</SelectItem>
+                  <SelectItem value="quarter">Trimestre</SelectItem>
+                  <SelectItem value="year">Année</SelectItem>
+                  <SelectItem value="list">Liste</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <button
+                onClick={() => setShowMap((v) => !v)}
+                className={cn(
+                  'h-8 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 border transition-all',
+                  showMap
+                    ? 'bg-green-600 text-white border-green-600 shadow-sm'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                )}
+              >
+                <Map className="h-3.5 w-3.5" />
+                Carte
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Vue calendrier / liste ── */}
         {isLoading ? (
-          <Card>
-            <CardContent className="p-8 text-center">
-              <p className="text-muted-foreground">Chargement...</p>
-            </CardContent>
-          </Card>
+          <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+            <div className="w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-sm text-gray-400 font-medium">Chargement du planning...</p>
+          </div>
         ) : (
-          <>
+          <div className={cn(showMap && 'grid grid-cols-2 gap-4 items-start')}>
+            <div>
             {viewMode === 'day' && (
               <DayView
                 date={currentDate}
@@ -3904,7 +3996,16 @@ export function PlanningPage() {
                 onInterventionClick={setSelectedIntervention}
               />
             )}
-          </>
+            </div>
+            {showMap && (
+              <div className={cn(showMap ? 'block' : 'hidden')}>
+                <PlanningMap
+                  interventions={interventions}
+                  onInterventionClick={setSelectedIntervention}
+                />
+              </div>
+            )}
+          </div>
         )}
 
         {/* Drag Overlay */}
@@ -4039,8 +4140,17 @@ export function PlanningPage() {
           onGenerateFacture={() => {
             const intervention = selectedInterventionDetail || selectedIntervention;
             if (!intervention) return;
-            // Naviguer vers Commerce avec les données pré-remplies
             const site = intervention.site || intervention.client?.sites?.[0];
+
+            // Chercher le prix de la prestation dans le ContratSite correspondant
+            let prixPrestation: number | undefined;
+            if (intervention.contrat?.contratSites && intervention.siteId && intervention.prestation) {
+              const cs = intervention.contrat.contratSites.find((s: any) => s.siteId === intervention.siteId);
+              if (cs?.prixPrestations && typeof cs.prixPrestations === 'object') {
+                prixPrestation = (cs.prixPrestations as Record<string, number>)[intervention.prestation];
+              }
+            }
+
             routerNavigate('/commerce', {
               state: {
                 generateFacture: true,
@@ -4049,9 +4159,13 @@ export function PlanningPage() {
                 siteId: site?.id,
                 siteNom: site?.nom,
                 prestation: intervention.prestation,
+                prixPrestation,
                 interventionId: intervention.id,
                 interventionRef: intervention.type,
                 dateIntervention: intervention.dateRealisee || intervention.datePrevue,
+                contratType: intervention.contrat?.type,
+                contratNumeroBonCommande: intervention.contrat?.numeroBonCommande,
+                contratDateDebut: intervention.contrat?.dateDebut,
               },
             });
             setSelectedIntervention(null);
@@ -4083,11 +4197,17 @@ export function PlanningPage() {
             }
             await openAttestationDialog(intervention, 'controle');
           }}
+          onCreateBL={async () => {
+            const intervention = selectedInterventionDetail || selectedIntervention;
+            if (!intervention) return;
+            await openBLDialog(intervention);
+          }}
           canRealiser={canDo('realiserIntervention')}
           canManage={canDo('manageCommerce')}
           canExport={canDo('exportData')}
           employes={employes as Employe[]}
           postes={postes as Poste[]}
+          congesActifs={congesActifs}
         />
 
         {/* Export Calendar Dialog */}
@@ -4168,6 +4288,51 @@ export function PlanningPage() {
           onGenerate={generateAttestationWithBody}
         />
 
+        {/* BL Creation Dialog */}
+        <Dialog open={!!blDialogIntervention} onOpenChange={(open) => { if (!open) { setBLDialogIntervention(null); setBLDialogCommandes([]); } }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Truck className="h-5 w-5 text-blue-600" />
+                Créer un Bon de Livraison
+              </DialogTitle>
+              <DialogDescription>
+                Sélectionnez la commande client pour laquelle générer un BL.
+              </DialogDescription>
+            </DialogHeader>
+            {blDialogLoading ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+              </div>
+            ) : blDialogCommandes.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <PackageCheck className="h-10 w-10 mx-auto mb-2 text-gray-300" />
+                <p className="text-sm">Aucune commande ouverte pour ce client.</p>
+              </div>
+            ) : (
+              <div className="space-y-2 py-2">
+                {blDialogCommandes.map((commande) => (
+                  <Button
+                    key={commande.id}
+                    variant="outline"
+                    className="w-full justify-start text-left h-auto py-3"
+                    disabled={blCreating}
+                    onClick={() => handleCreerBLFromCommande(commande.id)}
+                  >
+                    <Truck className="h-4 w-4 mr-3 text-blue-500 shrink-0" />
+                    <span className="font-medium">{commande.ref}</span>
+                  </Button>
+                ))}
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => { setBLDialogIntervention(null); setBLDialogCommandes([]); }}>
+                Annuler
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Create Intervention Dialog */}
         <CreateInterventionDialog
           open={isCreateOpen}
@@ -4176,10 +4341,12 @@ export function PlanningPage() {
           prestations={prestations}
           employes={employes as Employe[]}
           postes={postes as Poste[]}
+          congesActifs={congesActifs}
           onSubmit={(data) => createMutation.mutate(data)}
           isPending={createMutation.isPending}
         />
-      </div>
+      </div>{/* inner max-w container */}
+      </div>{/* bg-gray-50 wrapper */}
     </DndContext>
   );
 }

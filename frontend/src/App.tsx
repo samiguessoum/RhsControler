@@ -13,7 +13,6 @@ const ImportExportPage = lazy(() => import('@/pages/ImportExport').then((m) => (
 const ParametresPage = lazy(() => import('@/pages/Parametres').then((m) => ({ default: m.ParametresPage })));
 const LoginPage = lazy(() => import('@/pages/Login').then((m) => ({ default: m.LoginPage })));
 const PrestationsPage = lazy(() => import('@/pages/Prestations').then((m) => ({ default: m.PrestationsPage })));
-const StocksPage = lazy(() => import('@/pages/Stocks'));
 const RHPage = lazy(() => import('@/pages/RH'));
 const TiersPage = lazy(() => import('@/pages/Tiers'));
 const ProduitsServicesPage = lazy(() => import('@/pages/ProduitsServices'));
@@ -108,7 +107,6 @@ export default function App() {
             <Route path="/contrats/:id" element={<Suspense fallback={<PageFallback />}><ContratDetailPage /></Suspense>} />
             <Route path="/import-export" element={<Suspense fallback={<PageFallback />}><ImportExportPage /></Suspense>} />
             <Route path="/prestations" element={<Suspense fallback={<PageFallback />}><PrestationsPage /></Suspense>} />
-            <Route path="/stocks" element={<Suspense fallback={<PageFallback />}><StocksPage /></Suspense>} />
             <Route path="/entrepots" element={<Suspense fallback={<PageFallback />}><EntrepotsPage /></Suspense>} />
             <Route path="/produits-services" element={<Suspense fallback={<PageFallback />}><ProduitsServicesPage /></Suspense>} />
             <Route path="/commerce" element={<Suspense fallback={<PageFallback />}><CommercePage /></Suspense>} />

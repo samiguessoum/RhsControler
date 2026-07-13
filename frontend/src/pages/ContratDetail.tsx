@@ -184,10 +184,10 @@ export function ContratDetailPage() {
 
   if (isLoading || !contrat) {
     return (
-      <div className="flex items-center justify-center py-12">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Chargement du contrat...</p>
+          <div className="w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-gray-400 font-medium">Chargement du contrat...</p>
         </div>
       </div>
     );
@@ -197,50 +197,45 @@ export function ContratDetailPage() {
   const StatutIcon = statutConfig.icon;
 
   return (
-    <div className="space-y-6">
-      {/* Header amélioré */}
+    <div className="min-h-screen bg-gray-50">
+    <div className="max-w-7xl mx-auto px-4 py-6 space-y-5">
+
+      {/* ── Header ── */}
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-4">
           <Link to="/contrats">
-            <Button variant="outline" size="icon" className="mt-1">
+            <button className="w-9 h-9 rounded-xl border border-gray-200 bg-white flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:border-gray-300 transition-colors mt-0.5 shadow-sm">
               <ArrowLeft className="h-4 w-4" />
-            </Button>
+            </button>
           </Link>
           <div>
-            <div className="flex items-center gap-3 mb-1">
-              <h1 className="text-2xl font-bold">{contrat.client?.nomEntreprise}</h1>
-              <Badge variant="outline" className={cn('font-medium', statutConfig.color)}>
-                <StatutIcon className="h-3 w-3 mr-1" />
+            <div className="flex items-center gap-3 mb-1 flex-wrap">
+              <h1 className="text-2xl font-black text-gray-900 tracking-tight">{contrat.client?.nomEntreprise}</h1>
+              <span className={cn('text-xs font-semibold px-2.5 py-1 rounded-full border', statutConfig.color)}>
+                <StatutIcon className="h-3 w-3 inline mr-1" />
                 {statutConfig.label}
-              </Badge>
-              <Badge variant={isPonctuel ? 'secondary' : 'default'} className="font-medium">
+              </span>
+              <span className={cn('text-xs font-semibold px-2.5 py-1 rounded-full', isPonctuel ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700')}>
                 {isPonctuel ? 'Ponctuel' : 'Annuel'}
-              </Badge>
-            </div>
-            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <Calendar className="h-4 w-4" />
-                {formatDate(contrat.dateDebut)}
-                {contrat.dateFin && ` → ${formatDate(contrat.dateFin)}`}
               </span>
               {contractDuration && (
-                <span
-                  className={cn(
-                    'flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium',
-                    contractDuration.isExpired
-                      ? 'bg-red-100 text-red-700'
-                      : contractDuration.isUrgent
-                        ? 'bg-orange-100 text-orange-700'
-                        : 'bg-blue-100 text-blue-700'
-                  )}
-                >
+                <span className={cn('text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1',
+                  contractDuration.isExpired ? 'bg-red-100 text-red-700' : contractDuration.isUrgent ? 'bg-orange-100 text-orange-700' : 'bg-blue-50 text-blue-600'
+                )}>
                   <Clock className="h-3 w-3" />
                   {contractDuration.isExpired ? 'Expiré' : `Reste ${contractDuration.label}`}
                 </span>
               )}
+            </div>
+            <div className="flex items-center gap-3 text-sm text-gray-400">
+              <span className="flex items-center gap-1">
+                <Calendar className="h-3.5 w-3.5" />
+                {formatDate(contrat.dateDebut)}
+                {contrat.dateFin && <><span className="text-gray-300 mx-1">→</span>{formatDate(contrat.dateFin)}</>}
+              </span>
               {isPonctuel && contrat.numeroBonCommande && (
                 <span className="flex items-center gap-1">
-                  <FileText className="h-4 w-4" />
+                  <FileText className="h-3.5 w-3.5" />
                   BC: {contrat.numeroBonCommande}
                 </span>
               )}
@@ -248,17 +243,17 @@ export function ContratDetailPage() {
           </div>
         </div>
         <Link to="/planning">
-          <Button>
-            <Plus className="h-4 w-4 mr-2" />
+          <Button className="bg-green-600 hover:bg-green-700 text-white font-semibold shadow-sm shadow-green-200 h-9">
+            <Plus className="h-4 w-4 mr-1.5" />
             Nouvelle intervention
           </Button>
         </Link>
       </div>
 
       {/* Grille principale */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {/* Colonne gauche - Détails */}
-        <div className="lg:col-span-2 space-y-6">
+        <div className="lg:col-span-2 space-y-5">
           {/* Carte Détails du contrat */}
           <Card>
             <CardHeader className="pb-3">
@@ -937,6 +932,7 @@ export function ContratDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
     </div>
   );
 }

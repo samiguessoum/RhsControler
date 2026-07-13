@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO, startOfYear, endOfYear } from 'date-fns';
 import {
@@ -9,9 +9,14 @@ import {
   Plus,
   Trash2,
   RefreshCw,
+  Users,
+  UserCheck,
+  Award,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
-import { rhApi, employesApi } from '@/services/api';
+import { rhApi, employesApi, interventionsApi } from '@/services/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -48,6 +53,7 @@ import type {
   Employe,
   CreateCongeInput,
   CreateWeekendTravailleInput,
+  RecuperationEmploye,
 } from '@/types';
 
 // ============ CONFIGURATION ============
@@ -72,40 +78,59 @@ export default function RHPage() {
   const anneeActuelle = new Date().getFullYear();
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Ressources Humaines</h1>
-          <p className="text-muted-foreground">
-            Gestion des congés et jours de récupération
-          </p>
-        </div>
+    <div className="min-h-screen bg-gray-50">
+    <div className="max-w-7xl mx-auto px-4 py-6 space-y-5">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-black text-gray-900 tracking-tight">Ressources Humaines</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Gestion des congés, récupérations et soldes employés</p>
       </div>
 
-      <Tabs defaultValue="dashboard" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-          <TabsTrigger value="conges">Congés</TabsTrigger>
-          <TabsTrigger value="weekends">Weekends travaillés</TabsTrigger>
-          <TabsTrigger value="soldes">Soldes</TabsTrigger>
+      <Tabs defaultValue="dashboard">
+        <TabsList className="grid w-full grid-cols-5 bg-white border border-gray-200 rounded-xl p-1 shadow-sm h-auto">
+          <TabsTrigger value="dashboard" className="flex items-center gap-2 rounded-lg data-[state=active]:bg-green-600 data-[state=active]:text-white">
+            <Users className="h-4 w-4" />
+            <span className="hidden sm:inline">Vue d'ensemble</span>
+          </TabsTrigger>
+          <TabsTrigger value="conges" className="flex items-center gap-2 rounded-lg data-[state=active]:bg-green-600 data-[state=active]:text-white">
+            <Calendar className="h-4 w-4" />
+            <span className="hidden sm:inline">Congés</span>
+          </TabsTrigger>
+          <TabsTrigger value="weekends" className="flex items-center gap-2 rounded-lg data-[state=active]:bg-green-600 data-[state=active]:text-white">
+            <Clock className="h-4 w-4" />
+            <span className="hidden sm:inline">Weekends</span>
+          </TabsTrigger>
+          <TabsTrigger value="soldes" className="flex items-center gap-2 rounded-lg data-[state=active]:bg-green-600 data-[state=active]:text-white">
+            <UserCheck className="h-4 w-4" />
+            <span className="hidden sm:inline">Soldes</span>
+          </TabsTrigger>
+          <TabsTrigger value="recuperation" className="flex items-center gap-2 rounded-lg data-[state=active]:bg-green-600 data-[state=active]:text-white">
+            <Award className="h-4 w-4" />
+            <span className="hidden sm:inline">Récupération</span>
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="dashboard">
+        <TabsContent value="dashboard" className="mt-4">
           <RHDashboardTab />
         </TabsContent>
 
-        <TabsContent value="conges">
+        <TabsContent value="conges" className="mt-4">
           <CongesTab canManage={canManageRH} />
         </TabsContent>
 
-        <TabsContent value="weekends">
+        <TabsContent value="weekends" className="mt-4">
           <WeekendsTab canManage={canManageRH} annee={anneeActuelle} />
         </TabsContent>
 
-        <TabsContent value="soldes">
+        <TabsContent value="soldes" className="mt-4">
           <SoldesTab canManage={canManageRH} annee={anneeActuelle} />
         </TabsContent>
+
+        <TabsContent value="recuperation" className="mt-4">
+          <RecuperationTab canManage={canManageRH} annee={anneeActuelle} />
+        </TabsContent>
       </Tabs>
+    </div>
     </div>
   );
 }
@@ -118,113 +143,132 @@ function RHDashboardTab() {
   });
 
   if (isLoading) {
-    return <div className="text-center py-8">Chargement...</div>;
+    return (
+      <div className="grid gap-4 md:grid-cols-3">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="bg-white rounded-xl p-5 shadow-sm h-28 animate-pulse" />
+        ))}
+      </div>
+    );
   }
 
   if (!dashboard) return null;
 
   return (
-    <div className="space-y-6">
-      {/* Stats */}
+    <div className="space-y-5">
+      {/* KPI Cards */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Congés en attente</CardTitle>
-            <Clock className="h-4 w-4 text-yellow-600" />
+        <div className="relative bg-white rounded-xl p-5 shadow-sm overflow-hidden">
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-yellow-400" />
+          <div className="flex items-start justify-between mb-3">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Demandes en attente</p>
+            <div className="w-8 h-8 rounded-lg bg-yellow-50 flex items-center justify-center">
+              <Clock className="w-4 h-4 text-yellow-600" />
+            </div>
+          </div>
+          <p className="text-3xl font-black text-gray-900">{dashboard.stats.congesEnAttente}</p>
+          <p className="text-xs text-gray-400 mt-1">congés à traiter</p>
+        </div>
+
+        <div className="relative bg-white rounded-xl p-5 shadow-sm overflow-hidden">
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-500" />
+          <div className="flex items-start justify-between mb-3">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">En congé aujourd'hui</p>
+            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+              <Calendar className="w-4 h-4 text-blue-600" />
+            </div>
+          </div>
+          <p className="text-3xl font-black text-gray-900">{dashboard.stats.employesEnConge}</p>
+          <p className="text-xs text-gray-400 mt-1">sur {dashboard.stats.totalEmployes} employés actifs</p>
+        </div>
+
+        <div className="relative bg-white rounded-xl p-5 shadow-sm overflow-hidden">
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-green-500" />
+          <div className="flex items-start justify-between mb-3">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Récupérations dispo</p>
+            <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
+              <RefreshCw className="w-4 h-4 text-green-600" />
+            </div>
+          </div>
+          <p className="text-3xl font-black text-gray-900">{dashboard.employesAvecRecup.length}</p>
+          <p className="text-xs text-gray-400 mt-1">employés avec jours disponibles</p>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* Congés en cours */}
+        <Card className="shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-bold text-gray-900">
+              Employés en congé aujourd'hui
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{dashboard.stats.congesEnAttente}</div>
-            <p className="text-xs text-muted-foreground">demandes à traiter</p>
+            {dashboard.congesEnCours.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-4">Aucun employé en congé aujourd'hui</p>
+            ) : (
+              <div className="space-y-2">
+                {dashboard.congesEnCours.map((conge) => (
+                  <div key={conge.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-xs">
+                        {conge.employe?.prenom?.[0]}{conge.employe?.nom?.[0]}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900">
+                          {conge.employe?.prenom} {conge.employe?.nom}
+                        </p>
+                        <Badge className={`text-xs ${TYPE_CONGE_CONFIG[conge.type].bgColor} ${TYPE_CONGE_CONFIG[conge.type].color} border-0`}>
+                          {TYPE_CONGE_CONFIG[conge.type].label}
+                        </Badge>
+                      </div>
+                    </div>
+                    <span className="text-xs text-gray-400">
+                      jusqu'au {format(parseISO(conge.dateFin), 'dd/MM')}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">En congé aujourd'hui</CardTitle>
-            <Calendar className="h-4 w-4 text-blue-600" />
+        {/* Récupérations disponibles */}
+        <Card className="shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-bold text-gray-900">
+              Jours de récupération disponibles
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{dashboard.stats.employesEnConge}</div>
-            <p className="text-xs text-muted-foreground">
-              sur {dashboard.stats.totalEmployes} employés
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Récup. à prendre</CardTitle>
-            <RefreshCw className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{dashboard.employesAvecRecup.length}</div>
-            <p className="text-xs text-muted-foreground">employés avec jours disponibles</p>
+            {dashboard.employesAvecRecup.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-4">Aucune récupération à prendre</p>
+            ) : (
+              <div className="space-y-2">
+                {dashboard.employesAvecRecup.map((solde) => (
+                  <div key={solde.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold text-xs">
+                        {solde.employe?.prenom?.[0]}{solde.employe?.nom?.[0]}
+                      </div>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {solde.employe?.prenom} {solde.employe?.nom}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-gray-500">
+                      <span>{solde.joursAcquis} acquis</span>
+                      <span className="text-gray-300">|</span>
+                      <span>{solde.joursPris} pris</span>
+                      <span className="text-gray-300">|</span>
+                      <span className="font-black text-green-600 text-sm">{solde.joursRestants}j</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
-
-      {/* Congés en cours */}
-      {dashboard.congesEnCours.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Employés en congé aujourd'hui</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {dashboard.congesEnCours.map((conge) => (
-                <div key={conge.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                  <div>
-                    <span className="font-medium">
-                      {conge.employe?.prenom} {conge.employe?.nom}
-                    </span>
-                    <Badge className={`ml-2 ${TYPE_CONGE_CONFIG[conge.type].bgColor} ${TYPE_CONGE_CONFIG[conge.type].color}`}>
-                      {TYPE_CONGE_CONFIG[conge.type].label}
-                    </Badge>
-                  </div>
-                  <span className="text-sm text-muted-foreground">
-                    Jusqu'au {format(parseISO(conge.dateFin), 'dd/MM/yyyy')}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Récupérations disponibles */}
-      {dashboard.employesAvecRecup.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Jours de récupération disponibles</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Employé</TableHead>
-                  <TableHead className="text-right">Jours acquis</TableHead>
-                  <TableHead className="text-right">Jours pris</TableHead>
-                  <TableHead className="text-right">Restants</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {dashboard.employesAvecRecup.map((solde) => (
-                  <TableRow key={solde.id}>
-                    <TableCell className="font-medium">
-                      {solde.employe?.prenom} {solde.employe?.nom}
-                    </TableCell>
-                    <TableCell className="text-right">{solde.joursAcquis}</TableCell>
-                    <TableCell className="text-right">{solde.joursPris}</TableCell>
-                    <TableCell className="text-right font-bold text-green-600">
-                      {solde.joursRestants}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }
@@ -273,10 +317,10 @@ function CongesTab({ canManage }: { canManage: boolean }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-3">
           <Select value={filterEmploye} onValueChange={setFilterEmploye}>
-            <SelectTrigger className="w-48">
+            <SelectTrigger className="w-48 bg-white shadow-sm">
               <SelectValue placeholder="Tous les employés" />
             </SelectTrigger>
             <SelectContent>
@@ -290,7 +334,7 @@ function CongesTab({ canManage }: { canManage: boolean }) {
           </Select>
 
           <Select value={filterStatut} onValueChange={setFilterStatut}>
-            <SelectTrigger className="w-40">
+            <SelectTrigger className="w-44 bg-white shadow-sm">
               <SelectValue placeholder="Tous les statuts" />
             </SelectTrigger>
             <SelectContent>
@@ -304,16 +348,16 @@ function CongesTab({ canManage }: { canManage: boolean }) {
           </Select>
         </div>
 
-        <Button onClick={() => setShowCreateDialog(true)}>
+        <Button onClick={() => setShowCreateDialog(true)} className="bg-green-600 hover:bg-green-700">
           <Plus className="h-4 w-4 mr-2" />
           Nouvelle demande
         </Button>
       </div>
 
       {isLoading ? (
-        <div className="text-center py-8">Chargement...</div>
+        <div className="bg-white rounded-xl shadow-sm p-8 text-center text-gray-400">Chargement...</div>
       ) : (
-        <Card>
+        <Card className="shadow-sm">
           <Table>
             <TableHeader>
               <TableRow>
@@ -635,6 +679,7 @@ function WeekendsTab({ canManage, annee }: { canManage: boolean; annee: number }
   const queryClient = useQueryClient();
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [filterEmploye, setFilterEmploye] = useState<string>('all');
+  const [confirmingKeys, setConfirmingKeys] = useState<Set<string>>(new Set());
 
   const { data: employes } = useQuery({
     queryKey: ['employes'],
@@ -651,6 +696,94 @@ function WeekendsTab({ canManage, annee }: { canManage: boolean; annee: number }
       }),
   });
 
+  // Fetch recent interventions to suggest weekend entries
+  const dateDebut90 = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 90);
+    return format(d, 'yyyy-MM-dd');
+  }, []);
+
+  const { data: recentInterventionsData } = useQuery({
+    queryKey: ['interventions-weekend-suggestions', dateDebut90],
+    queryFn: () =>
+      interventionsApi.list({
+        dateDebut: dateDebut90,
+        dateFin: format(new Date(), 'yyyy-MM-dd'),
+        limit: 500,
+      }),
+  });
+
+  // Compute suggestions: weekend interventions not yet in weekendTravaille
+  const suggestions = useMemo(() => {
+    const interventions = recentInterventionsData?.interventions || [];
+    const registeredKeys = new Set(
+      (weekendsData?.jours || []).map((j) => `${j.employeId}_${j.date.slice(0, 10)}`)
+    );
+
+    const result: Array<{
+      key: string;
+      employeId: string;
+      employe: { prenom: string; nom: string } | undefined;
+      date: string;
+      estVendredi: boolean;
+      clientNom: string;
+      heurePrevue?: string;
+      heureFin?: string;
+      notes: string;
+    }> = [];
+
+    for (const intervention of interventions) {
+      if (intervention.statut === 'ANNULEE') continue;
+      const dateStr = (intervention.dateRealisee || intervention.datePrevue || '').slice(0, 10);
+      if (!dateStr) continue;
+      const dayOfWeek = new Date(`${dateStr}T12:00:00`).getDay();
+      if (dayOfWeek !== 5 && dayOfWeek !== 6) continue; // Vendredi=5, Samedi=6
+
+      const estVendredi = dayOfWeek === 5;
+
+      for (const ie of intervention.interventionEmployes || []) {
+        const key = `${ie.employeId}_${dateStr}`;
+        if (registeredKeys.has(key)) continue;
+
+        let heureFin: string | undefined;
+        if (intervention.heurePrevue && intervention.duree) {
+          const [h, m] = intervention.heurePrevue.split(':').map(Number);
+          const total = h * 60 + m + intervention.duree;
+          heureFin = `${Math.floor(total / 60).toString().padStart(2, '0')}:${(total % 60).toString().padStart(2, '0')}`;
+        }
+
+        const clientNom = (intervention as any).client?.nomEntreprise || 'Client';
+        const horaireStr = intervention.heurePrevue
+          ? ` de ${intervention.heurePrevue}${heureFin ? ` à ${heureFin}` : ''}`
+          : '';
+        const notes = `Intervention ${clientNom}${horaireStr}`;
+
+        result.push({
+          key,
+          employeId: ie.employeId,
+          employe: ie.employe,
+          date: dateStr,
+          estVendredi,
+          clientNom,
+          heurePrevue: intervention.heurePrevue,
+          heureFin,
+          notes,
+        });
+      }
+    }
+
+    return result;
+  }, [recentInterventionsData, weekendsData]);
+
+  const createWeekendMutation = useMutation({
+    mutationFn: rhApi.createWeekendTravaille,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['weekends'] });
+      queryClient.invalidateQueries({ queryKey: ['soldes'] });
+      queryClient.invalidateQueries({ queryKey: ['rh-dashboard'] });
+    },
+  });
+
   const deleteMutation = useMutation({
     mutationFn: rhApi.deleteWeekendTravaille,
     onSuccess: () => {
@@ -662,10 +795,69 @@ function WeekendsTab({ canManage, annee }: { canManage: boolean; annee: number }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex gap-4">
+      {/* Suggestions de récupération depuis le planning */}
+      {suggestions.length > 0 && canManage && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <RefreshCw className="h-4 w-4 text-amber-600" />
+            <p className="text-sm font-bold text-amber-800">
+              {suggestions.length} intervention{suggestions.length > 1 ? 's' : ''} de weekend sans récupération enregistrée
+            </p>
+          </div>
+          <div className="space-y-2">
+            {suggestions.map((s) => {
+              const isPending = confirmingKeys.has(s.key);
+              return (
+                <div key={s.key} className="flex items-center justify-between bg-white border border-amber-100 rounded-lg px-3 py-2">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-2 h-2 rounded-full ${s.estVendredi ? 'bg-blue-500' : 'bg-purple-500'}`} />
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {s.employe?.prenom} {s.employe?.nom}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        <span className="font-medium">{s.estVendredi ? 'Vendredi' : 'Samedi'}</span>
+                        {' '}{format(new Date(`${s.date}T12:00:00`), 'dd/MM/yyyy')}
+                        {' — '}{s.clientNom}
+                        {s.heurePrevue && <span> · {s.heurePrevue}{s.heureFin ? `–${s.heureFin}` : ''}</span>}
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-green-600 text-green-700 hover:bg-green-50 text-xs"
+                    disabled={isPending}
+                    onClick={async () => {
+                      setConfirmingKeys((prev) => new Set(prev).add(s.key));
+                      try {
+                        await createWeekendMutation.mutateAsync({
+                          employeId: s.employeId,
+                          date: s.date,
+                          notes: s.notes,
+                        });
+                      } finally {
+                        setConfirmingKeys((prev) => {
+                          const next = new Set(prev);
+                          next.delete(s.key);
+                          return next;
+                        });
+                      }
+                    }}
+                  >
+                    {isPending ? 'Enregistrement...' : 'Enregistrer récup'}
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex gap-3">
           <Select value={filterEmploye} onValueChange={setFilterEmploye}>
-            <SelectTrigger className="w-48">
+            <SelectTrigger className="w-48 bg-white shadow-sm">
               <SelectValue placeholder="Tous les employés" />
             </SelectTrigger>
             <SelectContent>
@@ -680,16 +872,16 @@ function WeekendsTab({ canManage, annee }: { canManage: boolean; annee: number }
         </div>
 
         {canManage && (
-          <Button onClick={() => setShowAddDialog(true)}>
+          <Button onClick={() => setShowAddDialog(true)} className="bg-green-600 hover:bg-green-700">
             <Plus className="h-4 w-4 mr-2" />
-            Ajouter un jour
+            Ajouter manuellement
           </Button>
         )}
       </div>
 
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
-          <CardTitle className="text-lg">
+          <CardTitle className="text-base font-bold text-gray-900">
             Jours de weekend travaillés en {annee}
           </CardTitle>
         </CardHeader>
@@ -889,9 +1081,9 @@ function SoldesTab({ canManage, annee }: { canManage: boolean; annee: number }) 
 
   return (
     <div className="space-y-4">
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
-          <CardTitle className="text-lg">Soldes de congés {annee}</CardTitle>
+          <CardTitle className="text-base font-bold text-gray-900">Soldes de congés {annee}</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -928,12 +1120,12 @@ function SoldesTab({ canManage, annee }: { canManage: boolean; annee: number }) 
                     </TableCell>
                     <TableCell className="text-center">{item.annuel?.joursAcquis || 0}</TableCell>
                     <TableCell className="text-center">{item.annuel?.joursPris || 0}</TableCell>
-                    <TableCell className="text-center font-bold">
+                    <TableCell className="text-center font-black text-blue-700">
                       {item.annuel?.joursRestants || 0}
                     </TableCell>
                     <TableCell className="text-center">{item.recuperation?.joursAcquis || 0}</TableCell>
                     <TableCell className="text-center">{item.recuperation?.joursPris || 0}</TableCell>
-                    <TableCell className="text-center font-bold text-green-600">
+                    <TableCell className="text-center font-black text-green-600">
                       {item.recuperation?.joursRestants || 0}
                     </TableCell>
                     {canManage && (
@@ -941,6 +1133,7 @@ function SoldesTab({ canManage, annee }: { canManage: boolean; annee: number }) 
                         <Button
                           size="sm"
                           variant="outline"
+                          className="border-green-600 text-green-700 hover:bg-green-50"
                           onClick={() => {
                             setSelectedEmploye(item.employe);
                             setShowEditDialog(true);
@@ -1067,5 +1260,276 @@ function EditSoldeDialog({
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ============ RECUPERATION TAB ============
+function RecuperationTab({ canManage, annee }: { canManage: boolean; annee: number }) {
+  const queryClient = useQueryClient();
+  const [expandedEmployeId, setExpandedEmployeId] = useState<string | null>(null);
+  const [accordDialog, setAccordDialog] = useState<{ open: boolean; employeId: string; employeNom: string } | null>(null);
+  const [accordForm, setAccordForm] = useState({ nbJours: 1, motif: '' });
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['recuperations', annee],
+    queryFn: () => rhApi.listRecuperations({ annee }),
+  });
+
+  const accorderMutation = useMutation({
+    mutationFn: rhApi.accorderRecuperation,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['recuperations'] });
+      queryClient.invalidateQueries({ queryKey: ['soldes'] });
+      queryClient.invalidateQueries({ queryKey: ['rh-dashboard'] });
+      setAccordDialog(null);
+      setAccordForm({ nbJours: 1, motif: '' });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: rhApi.deleteRecuperationAccordee,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['recuperations'] });
+      queryClient.invalidateQueries({ queryKey: ['soldes'] });
+    },
+  });
+
+  const recuperations: RecuperationEmploye[] = data?.recuperations || [];
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-24 bg-white rounded-xl animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Dialog accorder récupération */}
+      <Dialog open={!!accordDialog?.open} onOpenChange={(open) => !open && setAccordDialog(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Accorder des jours de récupération</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-gray-600">
+              Employé : <span className="font-semibold">{accordDialog?.employeNom}</span>
+            </p>
+            <div className="space-y-1">
+              <Label>Nombre de jours *</Label>
+              <Input
+                type="number"
+                min={0.5}
+                step={0.5}
+                value={accordForm.nbJours}
+                onChange={(e) => setAccordForm((f) => ({ ...f, nbJours: parseFloat(e.target.value) || 0 }))}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Motif</Label>
+              <Input
+                placeholder="Ex: travail exceptionnel, astreinte..."
+                value={accordForm.motif}
+                onChange={(e) => setAccordForm((f) => ({ ...f, motif: e.target.value }))}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setAccordDialog(null)}>Annuler</Button>
+            <Button
+              onClick={() => {
+                if (!accordDialog || accordForm.nbJours <= 0) return;
+                accorderMutation.mutate({
+                  employeId: accordDialog.employeId,
+                  nbJours: accordForm.nbJours,
+                  motif: accordForm.motif || undefined,
+                  annee,
+                });
+              }}
+              disabled={accorderMutation.isPending || accordForm.nbJours <= 0}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              <Award className="h-4 w-4 mr-1" />
+              Accorder
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Liste des employés */}
+      {recuperations.length === 0 ? (
+        <div className="bg-white rounded-xl p-8 text-center text-gray-500 shadow-sm">
+          Aucun employé trouvé
+        </div>
+      ) : (
+        recuperations.map((rec) => {
+          const { employe, weekends, accordees, congesRecup, solde } = rec;
+          const isExpanded = expandedEmployeId === employe.id;
+          const joursWeekend = weekends.length; // nb weekends travaillés
+          const joursAccordes = accordees.reduce((s, a) => s + a.nbJours, 0);
+          const joursConsommes = congesRecup
+            .filter((c) => c.statut === 'APPROUVE')
+            .reduce((s, c) => s + c.nbJours, 0);
+          const joursRestants = (solde?.joursRestants ?? 0);
+          const initiales = `${employe.prenom[0]}${employe.nom[0]}`.toUpperCase();
+
+          // Timeline combinée (weekends + accordées + congés récup), triée par date desc
+          const timeline: Array<{ date: string; label: string; type: 'weekend' | 'accord' | 'conge'; jours?: number; id: string; statut?: string }> = [
+            ...weekends.map((w) => ({
+              date: w.date,
+              label: `Weekend travaillé — ${w.estVendredi ? 'Vendredi' : 'Samedi'}${w.notes ? ` (${w.notes})` : ''}`,
+              type: 'weekend' as const,
+              id: w.id,
+            })),
+            ...accordees.map((a) => ({
+              date: a.dateAccordee,
+              label: `+${a.nbJours}j accordé${a.motif ? ` — ${a.motif}` : ''}`,
+              type: 'accord' as const,
+              jours: a.nbJours,
+              id: a.id,
+            })),
+            ...congesRecup.map((c) => ({
+              date: c.dateDebut,
+              label: `${c.nbJours}j récup pris${c.motif ? ` — ${c.motif}` : ''}`,
+              type: 'conge' as const,
+              jours: c.nbJours,
+              id: c.id,
+              statut: c.statut,
+            })),
+          ].sort((a, b) => b.date.localeCompare(a.date));
+
+          return (
+            <div key={employe.id} className="bg-white rounded-xl shadow-sm overflow-hidden">
+              {/* Header de la carte employé */}
+              <div
+                className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition-colors"
+                onClick={() => setExpandedEmployeId(isExpanded ? null : employe.id)}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold text-sm">
+                    {initiales}
+                  </div>
+                  <div>
+                    <div className="font-semibold text-gray-900">{employe.prenom} {employe.nom}</div>
+                    <div className="text-xs text-gray-500">{employe.postes.map((p) => p.nom).join(', ')}</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  {/* KPIs inline */}
+                  <div className="hidden sm:flex items-center gap-4 text-xs text-gray-500 mr-2">
+                    <span>{joursWeekend} weekend{joursWeekend > 1 ? 's' : ''}</span>
+                    {joursAccordes > 0 && <span className="text-blue-600">+{joursAccordes}j accordé{joursAccordes > 1 ? 's' : ''}</span>}
+                    {joursConsommes > 0 && <span className="text-red-500">−{joursConsommes}j pris</span>}
+                  </div>
+
+                  {/* Solde badge */}
+                  <div className={`px-3 py-1 rounded-full text-sm font-black ${
+                    joursRestants > 0 ? 'bg-green-100 text-green-700' :
+                    joursRestants < 0 ? 'bg-red-100 text-red-700' :
+                    'bg-gray-100 text-gray-600'
+                  }`}>
+                    {joursRestants > 0 ? '+' : ''}{joursRestants}j
+                  </div>
+
+                  {canManage && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-green-700 border-green-300 hover:bg-green-50 h-8 text-xs"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAccordDialog({ open: true, employeId: employe.id, employeNom: `${employe.prenom} ${employe.nom}` });
+                        setAccordForm({ nbJours: 1, motif: '' });
+                      }}
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Accorder
+                    </Button>
+                  )}
+
+                  {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                </div>
+              </div>
+
+              {/* Section dépliée : historique + stats */}
+              {isExpanded && (
+                <div className="border-t border-gray-100 p-4 space-y-4">
+                  {/* Résumé du solde */}
+                  <div className="grid grid-cols-4 gap-3">
+                    <div className="bg-orange-50 rounded-lg p-3 text-center">
+                      <div className="text-xl font-black text-orange-600">{joursWeekend}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">Weekends travaillés</div>
+                    </div>
+                    <div className="bg-blue-50 rounded-lg p-3 text-center">
+                      <div className="text-xl font-black text-blue-600">+{joursAccordes}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">Jours accordés</div>
+                    </div>
+                    <div className="bg-red-50 rounded-lg p-3 text-center">
+                      <div className="text-xl font-black text-red-600">−{joursConsommes}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">Jours consommés</div>
+                    </div>
+                    <div className={`rounded-lg p-3 text-center ${joursRestants > 0 ? 'bg-green-50' : 'bg-gray-50'}`}>
+                      <div className={`text-xl font-black ${joursRestants > 0 ? 'text-green-600' : 'text-gray-500'}`}>
+                        {joursRestants > 0 ? '+' : ''}{joursRestants}
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5">Solde restant</div>
+                    </div>
+                  </div>
+
+                  {/* Timeline */}
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Historique</h4>
+                    {timeline.length === 0 ? (
+                      <p className="text-sm text-gray-400 italic">Aucun événement</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {timeline.map((event) => (
+                          <div key={`${event.type}-${event.id}`} className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-2">
+                              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                event.type === 'weekend' ? 'bg-orange-400' :
+                                event.type === 'accord' ? 'bg-blue-400' : 'bg-red-400'
+                              }`} />
+                              <span className="text-gray-500 text-xs w-20 flex-shrink-0">
+                                {format(parseISO(event.date), 'dd/MM/yyyy')}
+                              </span>
+                              <span className="text-gray-700">{event.label}</span>
+                              {event.statut && (
+                                <Badge variant="secondary" className={`text-xs ${
+                                  event.statut === 'APPROUVE' ? 'bg-green-100 text-green-700' :
+                                  event.statut === 'EN_ATTENTE' ? 'bg-yellow-100 text-yellow-700' :
+                                  'bg-gray-100 text-gray-600'
+                                }`}>
+                                  {event.statut === 'APPROUVE' ? 'Approuvé' : event.statut === 'EN_ATTENTE' ? 'En attente' : event.statut}
+                                </Badge>
+                              )}
+                            </div>
+                            {event.type === 'accord' && canManage && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 text-red-400 hover:text-red-600"
+                                onClick={() => deleteMutation.mutate(event.id)}
+                                disabled={deleteMutation.isPending}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })
+      )}
+    </div>
   );
 }

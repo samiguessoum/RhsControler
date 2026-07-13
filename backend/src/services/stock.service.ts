@@ -1,6 +1,8 @@
 import { prisma } from '../config/database.js';
 import { facturationEvents } from './events.service.js';
 import { Prisma, TypeMouvement } from '@prisma/client';
+import logger from '../lib/logger.js';
+
 
 export interface MouvementStockInput {
   produitServiceId: string;
@@ -249,7 +251,7 @@ export const stockService = {
 
       return { success: true, nouveauStock: nouveauStockGlobal };
     } catch (error) {
-      console.error('Erreur création mouvement stock:', error);
+      logger.error({ err: error }, 'Erreur création mouvement stock');
       return { success: false, error: 'Erreur lors de la mise à jour du stock' };
     }
   },

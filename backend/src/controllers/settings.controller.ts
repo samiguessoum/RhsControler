@@ -1,12 +1,26 @@
-import { Response } from 'express';
+import path from 'path';
+import { Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { AuthRequest } from '../middleware/auth.middleware.js';
+import logger from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
+
+const UPLOADS_DIR = path.resolve('uploads');
+
+function assertSafePath(filePath: string | undefined): void {
+  if (!filePath) return;
+  const resolved = path.resolve(filePath);
+  if (!resolved.startsWith(UPLOADS_DIR + path.sep) && resolved !== UPLOADS_DIR) {
+    throw new AppError(400, 'Chemin de fichier non autorisé');
+  }
+}
+
 
 const prisma = new PrismaClient();
 
 export const settingsController = {
   // Récupérer les paramètres (créer si inexistants)
-  async getSettings(req: AuthRequest, res: Response) {
+  async getSettings(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       let settings = await prisma.companySettings.findFirst();
 
@@ -21,13 +35,13 @@ export const settingsController = {
 
       res.json({ settings });
     } catch (error) {
-      console.error('Get settings error:', error);
-      res.status(500).json({ error: 'Erreur lors de la récupération des paramètres' });
+      logger.error({ err: error }, 'Get settings error');
+      return next(new AppError(500, 'Erreur lors de la récupération des paramètres'));
     }
   },
 
   // Mettre à jour les paramètres
-  async updateSettings(req: AuthRequest, res: Response) {
+  async updateSettings(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const {
         // Informations générales
@@ -49,6 +63,7 @@ export const settingsController = {
         nif,
         ai,
         nis,
+        nin,
         compteBancaire,
         rib,
         banque,
@@ -88,6 +103,10 @@ export const settingsController = {
         offsetProspect,
       } = req.body;
 
+      // Valider les chemins de fichiers contre le path traversal
+      assertSafePath(logoPath);
+      assertSafePath(logoCarrePath);
+
       // Récupérer ou créer les settings
       let settings = await prisma.companySettings.findFirst();
 
@@ -108,6 +127,7 @@ export const settingsController = {
         nif,
         ai,
         nis,
+        nin,
         compteBancaire,
         rib,
         banque,
@@ -161,13 +181,13 @@ export const settingsController = {
 
       res.json({ settings, message: 'Paramètres mis à jour avec succès' });
     } catch (error) {
-      console.error('Update settings error:', error);
-      res.status(500).json({ error: 'Erreur lors de la mise à jour des paramètres' });
+      logger.error({ err: error }, 'Update settings error');
+      return next(new AppError(500, 'Erreur lors de la mise à jour des paramètres'));
     }
   },
 
   // Upload du logo principal
-  async uploadLogo(req: AuthRequest, res: Response) {
+  async uploadLogo(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       if (!req.file) {
         return res.status(400).json({ error: 'Aucun fichier fourni' });
@@ -191,15 +211,15 @@ export const settingsController = {
         });
       }
 
-      res.json({ settings, logoPath, message: 'Logo mis à jour avec succès' });
+      res.json({ settings, message: 'Logo mis à jour avec succès' });
     } catch (error) {
-      console.error('Upload logo error:', error);
-      res.status(500).json({ error: 'Erreur lors de l\'upload du logo' });
+      logger.error({ err: error }, 'Upload logo error');
+      return next(new AppError(500, 'Erreur lors de l\'upload du logo'));
     }
   },
 
   // Upload du logo carré
-  async uploadLogoCarre(req: AuthRequest, res: Response) {
+  async uploadLogoCarre(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       if (!req.file) {
         return res.status(400).json({ error: 'Aucun fichier fourni' });
@@ -223,10 +243,10 @@ export const settingsController = {
         });
       }
 
-      res.json({ settings, logoCarrePath, message: 'Logo carré mis à jour avec succès' });
+      res.json({ settings, message: 'Logo carré mis à jour avec succès' });
     } catch (error) {
-      console.error('Upload logo carre error:', error);
-      res.status(500).json({ error: 'Erreur lors de l\'upload du logo carré' });
+      logger.error({ err: error }, 'Upload logo carre error');
+      return next(new AppError(500, 'Erreur lors de l\'upload du logo carré'));
     }
   },
 };

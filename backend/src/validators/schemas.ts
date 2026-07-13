@@ -77,6 +77,7 @@ export const createClientSchema = z.object({
   siegeNIF: z.string().optional(),
   siegeAI: z.string().optional(),
   siegeNIS: z.string().optional(),
+  siegeNIN: z.string().optional(),
   siegeTIN: z.string().optional(),
   siegeContacts: z.array(z.object({
     nom: z.string().optional(),
@@ -125,6 +126,7 @@ export const frequenceEnum = z.enum([
 const contratSiteSchema = z.object({
   siteId: z.string().uuid('ID site invalide'),
   prestations: z.array(z.string()).min(1, 'Au moins une prestation requise').optional(),
+  prixPrestations: z.record(z.string(), z.number().min(0)).optional(),
   frequenceOperations: frequenceEnum.optional(),
   frequenceOperationsJours: z.number().int().positive().optional(),
   frequenceControle: frequenceEnum.optional(),
@@ -496,6 +498,7 @@ export const createTiersSchema = z.object({
   siegeNIF: z.string().optional(),
   siegeAI: z.string().optional(),
   siegeNIS: z.string().optional(),
+  siegeNIN: z.string().optional(),
   siegeTIN: z.string().optional(),
   tvaIntracom: z.string().optional(),
   capital: z.number().optional(),
@@ -912,16 +915,18 @@ export const createFactureSchema = z.object({
   adresseFacturationId: z.string().uuid().optional(),
   adresseLivraisonId: z.string().uuid().optional(),
   dateFacture: z.string().optional(),
+  dateOperation: z.string().optional().nullable(),
   dateEcheance: z.string().optional(),
   delaiPaiementJours: z.number().int().optional(),
   ref: z.string().optional(),
-  statut: z.enum(['BROUILLON', 'VALIDEE', 'EN_RETARD', 'PARTIELLEMENT_PAYEE', 'PAYEE', 'ANNULEE']).optional(),
+  statut: z.enum(['BROUILLON', 'VALIDEE', 'EN_RETARD', 'PARTIELLEMENT_PAYEE', 'EN_ATTENTE_ENCAISSEMENT', 'PAYEE', 'ANNULEE']).optional(),
   type: z.enum(['FACTURE', 'AVOIR']).optional(),
   remiseGlobalPct: z.number().min(0).max(100).optional(),
   remiseGlobalMontant: z.number().min(0).optional(),
   devise: z.string().optional(),
   notes: z.string().optional(),
   conditions: z.string().optional(),
+  mentionSpeciale: z.string().optional().nullable(),
   lignes: z.array(commerceLigneSchema).min(1, 'Au moins une ligne requise'),
 });
 
@@ -1129,3 +1134,37 @@ export type UpdateChargeInput = z.infer<typeof updateChargeSchema>;
 export type CreatePaiementChargeInput = z.infer<typeof createPaiementChargeSchema>;
 export type CreatePaiementDiversInput = z.infer<typeof createPaiementDiversSchema>;
 export type UpdatePaiementDiversInput = z.infer<typeof updatePaiementDiversSchema>;
+
+// ── Bon de Livraison ──────────────────────────────────────────────────────────
+
+export const bonLivraisonLigneSchema = z.object({
+  commandeLigneId: z.string().uuid().optional().nullable(),
+  produitServiceId: z.string().uuid().optional().nullable(),
+  libelle: z.string().min(1, 'Libellé requis'),
+  description: z.string().optional().nullable(),
+  quantiteCommandee: z.number().min(0).optional().nullable(),
+  quantiteLivree: z.number().min(0, 'Quantité livrée doit être positive'),
+  unite: z.string().optional().nullable(),
+  prixUnitaireHT: z.number().min(0).default(0),
+  tauxTVA: z.number().min(0).default(0),
+  remisePct: z.number().min(0).max(100).optional().nullable(),
+  ordre: z.number().int().optional(),
+});
+
+export const createBonLivraisonSchema = z.object({
+  clientId: z.string().uuid('ID client invalide'),
+  commandeId: z.string().uuid().optional().nullable(),
+  adresseLivraisonId: z.string().uuid().optional().nullable(),
+  siteId: z.string().uuid().optional().nullable(),
+  dateBonLivraison: z.string().optional(),
+  notes: z.string().optional().nullable(),
+  devise: z.string().optional(),
+  lignes: z.array(bonLivraisonLigneSchema).min(1, 'Au moins une ligne requise'),
+});
+
+export const updateBonLivraisonSchema = createBonLivraisonSchema.partial().extend({
+  lignes: z.array(bonLivraisonLigneSchema).optional(),
+});
+
+export type CreateBonLivraisonInput = z.infer<typeof createBonLivraisonSchema>;
+export type UpdateBonLivraisonInput = z.infer<typeof updateBonLivraisonSchema>;

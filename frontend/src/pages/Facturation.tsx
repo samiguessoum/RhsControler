@@ -371,6 +371,9 @@ export function FacturationPage() {
     montantHT: 0,
     tauxTVA: 0,
   });
+  const [chargeInputMode, setChargeInputMode] = useState<'ht' | 'ttc'>('ht');
+  const [chargeTTCInput, setChargeTTCInput] = useState<number>(0);
+
   const [paiementDiversForm, setPaiementDiversForm] = useState<CreatePaiementDiversInput>({
     libelle: '',
     typeOperation: 'DECAISSEMENT',
@@ -390,6 +393,11 @@ export function FacturationPage() {
 
   const totalsCommandeFournisseur = useMemo(() => computeTotals(commandeFournisseurForm.lignes), [commandeFournisseurForm.lignes]);
   const totalsFacture = useMemo(() => computeTotals(factureForm.lignes), [factureForm.lignes]);
+
+  const kpiAchatsHT = useMemo(() => (commandesFournisseursData?.commandes || []).reduce((s: number, c: any) => s + (c.totalHT || 0), 0), [commandesFournisseursData]);
+  const kpiFacturesFournisseur = useMemo(() => (facturesData?.factures || []).reduce((s: number, f: any) => s + (f.totalTTC || 0), 0), [facturesData]);
+  const kpiChargesTotal = useMemo(() => (chargesData?.charges || []).reduce((s: number, c: any) => s + (c.montantHT || 0) * (1 + (c.tauxTVA || 0) / 100), 0), [chargesData]);
+  const kpiPaiementsDivers = useMemo(() => (paiementsDiversData?.paiements || []).reduce((s: number, p: any) => s + (p.montant || 0), 0), [paiementsDiversData]);
 
   // ============ MUTATIONS ============
 
@@ -526,67 +534,85 @@ export function FacturationPage() {
   // ============ RENDER ============
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-gray-50">
+    <div className="max-w-7xl mx-auto px-4 py-6 space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Achats & Dépenses</h1>
-          <p className="text-muted-foreground">Commandes fournisseurs, factures, charges et paiements</p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-black text-gray-900 tracking-tight">Achats & Dépenses</h1>
+        <p className="text-sm text-gray-500 mt-0.5">Commandes fournisseurs, factures, charges et paiements</p>
       </div>
 
-      {/* Stats Cards */}
+      {/* KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Cmd Fournisseurs</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{commandesFournisseursData?.commandes?.length || 0}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Factures</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{facturesData?.factures?.length || 0}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Charges</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{chargesData?.charges?.length || 0}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Paiements Divers</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-2xl font-bold">{paiementsDiversData?.paiements?.length || 0}</p>
-          </CardContent>
-        </Card>
+        {/* Commandes fournisseurs */}
+        <div className="relative bg-white rounded-xl p-5 shadow-sm overflow-hidden">
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-blue-500" />
+          <div className="flex items-start justify-between mb-3">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Commandes fournisseurs</p>
+            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+              <Truck className="w-4 h-4 text-blue-600" />
+            </div>
+          </div>
+          <p className="text-3xl font-black text-gray-900">{commandesFournisseursData?.commandes?.length || 0}</p>
+          <p className="text-xs text-gray-400 mt-1">{formatMontant(kpiAchatsHT)} HT</p>
+        </div>
+
+        {/* Factures fournisseurs */}
+        <div className="relative bg-white rounded-xl p-5 shadow-sm overflow-hidden">
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-orange-500" />
+          <div className="flex items-start justify-between mb-3">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Factures fournisseurs</p>
+            <div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center flex-shrink-0">
+              <Receipt className="w-4 h-4 text-orange-600" />
+            </div>
+          </div>
+          <p className="text-3xl font-black text-gray-900">{facturesData?.factures?.length || 0}</p>
+          <p className="text-xs text-gray-400 mt-1">{formatMontant(kpiFacturesFournisseur)} TTC</p>
+        </div>
+
+        {/* Charges */}
+        <div className="relative bg-white rounded-xl p-5 shadow-sm overflow-hidden">
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-red-500" />
+          <div className="flex items-start justify-between mb-3">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Charges</p>
+            <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center flex-shrink-0">
+              <Wallet className="w-4 h-4 text-red-600" />
+            </div>
+          </div>
+          <p className="text-3xl font-black text-gray-900">{chargesData?.charges?.length || 0}</p>
+          <p className="text-xs text-gray-400 mt-1">{formatMontant(kpiChargesTotal)} TTC</p>
+        </div>
+
+        {/* Paiements divers */}
+        <div className="relative bg-white rounded-xl p-5 shadow-sm overflow-hidden">
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-purple-500" />
+          <div className="flex items-start justify-between mb-3">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Paiements divers</p>
+            <div className="w-8 h-8 rounded-lg bg-purple-50 flex items-center justify-center flex-shrink-0">
+              <Landmark className="w-4 h-4 text-purple-600" />
+            </div>
+          </div>
+          <p className="text-3xl font-black text-gray-900">{paiementsDiversData?.paiements?.length || 0}</p>
+          <p className="text-xs text-gray-400 mt-1">{formatMontant(kpiPaiementsDivers)}</p>
+        </div>
       </div>
 
       {/* Tabs */}
       <Tabs defaultValue="commandes">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="commandes" className="flex items-center gap-2">
+        <TabsList className="grid w-full grid-cols-4 bg-white border border-gray-200 rounded-xl p-1 shadow-sm h-auto">
+          <TabsTrigger value="commandes" className="flex items-center gap-2 rounded-lg data-[state=active]:bg-green-600 data-[state=active]:text-white">
             <Truck className="h-4 w-4" />
             <span className="hidden sm:inline">Commandes</span>
           </TabsTrigger>
-          <TabsTrigger value="factures" className="flex items-center gap-2">
+          <TabsTrigger value="factures" className="flex items-center gap-2 rounded-lg data-[state=active]:bg-green-600 data-[state=active]:text-white">
             <Receipt className="h-4 w-4" />
             <span className="hidden sm:inline">Factures</span>
           </TabsTrigger>
-          <TabsTrigger value="charges" className="flex items-center gap-2">
+          <TabsTrigger value="charges" className="flex items-center gap-2 rounded-lg data-[state=active]:bg-green-600 data-[state=active]:text-white">
             <Wallet className="h-4 w-4" />
             <span className="hidden sm:inline">Charges</span>
           </TabsTrigger>
-          <TabsTrigger value="divers" className="flex items-center gap-2">
+          <TabsTrigger value="divers" className="flex items-center gap-2 rounded-lg data-[state=active]:bg-green-600 data-[state=active]:text-white">
             <Landmark className="h-4 w-4" />
             <span className="hidden sm:inline">Paiements</span>
           </TabsTrigger>
@@ -1202,7 +1228,13 @@ export function FacturationPage() {
       </Dialog>
 
       {/* Charge Dialog */}
-      <Dialog open={showChargeDialog} onOpenChange={setShowChargeDialog}>
+      <Dialog open={showChargeDialog} onOpenChange={(open) => {
+        setShowChargeDialog(open);
+        if (!open) {
+          setChargeInputMode('ht');
+          setChargeTTCInput(0);
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Créer une charge</DialogTitle>
@@ -1238,30 +1270,108 @@ export function FacturationPage() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2">
-                <Label>Montant HT</Label>
-                <Input
-                  type="number"
-                  value={chargeForm.montantHT || 0}
-                  onChange={(e) => setChargeForm({ ...chargeForm, montantHT: parseFloat(e.target.value) || 0 })}
-                />
+
+            {/* Mode saisie HT / TTC */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Label className="text-sm">Saisir le montant en :</Label>
+                <div className="flex rounded-lg border border-gray-200 overflow-hidden text-sm">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChargeInputMode('ht');
+                      setChargeTTCInput(0);
+                    }}
+                    className={cn('px-3 py-1.5 font-medium transition-colors', chargeInputMode === 'ht' ? 'bg-green-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50')}
+                  >
+                    HT
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setChargeInputMode('ttc');
+                      setChargeTTCInput((chargeForm.montantHT || 0) * (1 + (chargeForm.tauxTVA || 0) / 100));
+                    }}
+                    className={cn('px-3 py-1.5 font-medium transition-colors', chargeInputMode === 'ttc' ? 'bg-green-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50')}
+                  >
+                    TTC
+                  </button>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>TVA %</Label>
-                <Input
-                  type="number"
-                  value={chargeForm.tauxTVA || 0}
-                  onChange={(e) => setChargeForm({ ...chargeForm, tauxTVA: parseFloat(e.target.value) || 0 })}
-                />
+
+              <div className="grid grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label>{chargeInputMode === 'ht' ? 'Montant HT' : 'Montant TTC'}</Label>
+                  {chargeInputMode === 'ht' ? (
+                    <Input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={chargeForm.montantHT || 0}
+                      onChange={(e) => setChargeForm({ ...chargeForm, montantHT: parseFloat(e.target.value) || 0 })}
+                    />
+                  ) : (
+                    <Input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={chargeTTCInput}
+                      onChange={(e) => {
+                        const ttc = parseFloat(e.target.value) || 0;
+                        setChargeTTCInput(ttc);
+                        const ht = chargeForm.tauxTVA ? ttc / (1 + chargeForm.tauxTVA / 100) : ttc;
+                        setChargeForm({ ...chargeForm, montantHT: Math.round(ht * 100) / 100 });
+                      }}
+                    />
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label>TVA %</Label>
+                  <Select
+                    value={String(chargeForm.tauxTVA ?? 0)}
+                    onValueChange={(value) => {
+                      const tva = parseInt(value);
+                      setChargeForm({ ...chargeForm, tauxTVA: tva });
+                      if (chargeInputMode === 'ttc' && chargeTTCInput > 0) {
+                        const ht = tva ? chargeTTCInput / (1 + tva / 100) : chargeTTCInput;
+                        setChargeForm((prev) => ({ ...prev, tauxTVA: tva, montantHT: Math.round(ht * 100) / 100 }));
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TVA_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={String(opt.value)}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Date</Label>
+                  <Input
+                    type="date"
+                    value={chargeForm.dateCharge || ''}
+                    onChange={(e) => setChargeForm({ ...chargeForm, dateCharge: e.target.value })}
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Date</Label>
-                <Input
-                  type="date"
-                  value={chargeForm.dateCharge || ''}
-                  onChange={(e) => setChargeForm({ ...chargeForm, dateCharge: e.target.value })}
-                />
+
+              {/* Résumé HT / TVA / TTC */}
+              <div className="bg-gray-50 rounded-lg p-3 grid grid-cols-3 gap-2 text-sm">
+                <div className="text-center">
+                  <p className="text-gray-500 text-xs mb-0.5">Montant HT</p>
+                  <p className="font-bold text-gray-900">{formatMontant(chargeForm.montantHT || 0)}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-gray-500 text-xs mb-0.5">TVA ({chargeForm.tauxTVA || 0}%)</p>
+                  <p className="font-bold text-gray-600">{formatMontant((chargeForm.montantHT || 0) * (chargeForm.tauxTVA || 0) / 100)}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-gray-500 text-xs mb-0.5">Total TTC</p>
+                  <p className="font-bold text-green-700">{formatMontant((chargeForm.montantHT || 0) * (1 + (chargeForm.tauxTVA || 0) / 100))}</p>
+                </div>
               </div>
             </div>
           </div>
@@ -1336,6 +1446,7 @@ export function FacturationPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
     </div>
   );
 }

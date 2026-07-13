@@ -1,10 +1,13 @@
-import { Response } from 'express';
+import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { facturationEvents, checkOverdueInvoices, checkLowStock } from '../services/events.service.js';
+import logger from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
+
 
 export const notificationsController = {
   // Liste des notifications
-  async list(req: AuthRequest, res: Response) {
+  async list(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { unreadOnly } = req.query;
       const notifications = facturationEvents.getNotifications(
@@ -17,13 +20,13 @@ export const notificationsController = {
         unreadCount: notifications.filter(n => !n.read).length,
       });
     } catch (error) {
-      console.error('List notifications error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'List notifications error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   // Marquer une notification comme lue
-  async markAsRead(req: AuthRequest, res: Response) {
+  async markAsRead(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const success = facturationEvents.markAsRead(id);
@@ -34,41 +37,41 @@ export const notificationsController = {
 
       res.json({ message: 'Notification marquée comme lue' });
     } catch (error) {
-      console.error('Mark notification as read error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Mark notification as read error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   // Marquer toutes les notifications comme lues
-  async markAllAsRead(req: AuthRequest, res: Response) {
+  async markAllAsRead(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const count = facturationEvents.markAllAsRead(req.user?.id);
       res.json({ message: `${count} notifications marquées comme lues` });
     } catch (error) {
-      console.error('Mark all notifications as read error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Mark all notifications as read error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   // Déclencher manuellement la vérification des retards
-  async checkOverdue(req: AuthRequest, res: Response) {
+  async checkOverdue(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       await checkOverdueInvoices();
       res.json({ message: 'Vérification des retards effectuée' });
     } catch (error) {
-      console.error('Check overdue error:', error);
-      res.status(500).json({ error: 'Erreur lors de la vérification' });
+      logger.error({ err: error }, 'Check overdue error');
+      return next(new AppError(500, 'Erreur lors de la vérification'));
     }
   },
 
   // Déclencher manuellement la vérification des stocks bas
-  async checkStock(req: AuthRequest, res: Response) {
+  async checkStock(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       await checkLowStock();
       res.json({ message: 'Vérification des stocks effectuée' });
     } catch (error) {
-      console.error('Check stock error:', error);
-      res.status(500).json({ error: 'Erreur lors de la vérification' });
+      logger.error({ err: error }, 'Check stock error');
+      return next(new AppError(500, 'Erreur lors de la vérification'));
     }
   },
 };

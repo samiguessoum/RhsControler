@@ -31,6 +31,8 @@ import type {
   UpdateSoldeInput,
   RHDashboard,
   EmployeRecap,
+  RecuperationEmploye,
+  RecuperationAccordee,
   // Tiers
   Tiers,
   Contact,
@@ -660,63 +662,6 @@ export const importExportApi = {
   },
 };
 
-// ============ STOCK ============
-export const stockApi = {
-  // Produits
-  listProduits: async (params?: { search?: string; actif?: boolean; stockBas?: boolean }): Promise<Produit[]> => {
-    const { data } = await api.get('/produits', { params });
-    return data.produits;
-  },
-
-  getProduit: async (id: string): Promise<Produit> => {
-    const { data } = await api.get(`/produits/${id}`);
-    return data.produit;
-  },
-
-  createProduit: async (produitData: CreateProduitInput): Promise<Produit> => {
-    const { data } = await api.post('/produits', produitData);
-    return data.produit;
-  },
-
-  updateProduit: async (id: string, produitData: Partial<CreateProduitInput & { actif: boolean }>): Promise<Produit> => {
-    const { data } = await api.put(`/produits/${id}`, produitData);
-    return data.produit;
-  },
-
-  deleteProduit: async (id: string): Promise<void> => {
-    await api.delete(`/produits/${id}`);
-  },
-
-  // Mouvements
-  listMouvements: async (params?: {
-    produitId?: string;
-    type?: string;
-    dateDebut?: string;
-    dateFin?: string;
-    page?: number;
-    limit?: number;
-  }) => {
-    const { data } = await api.get('/mouvements-stock', { params });
-    return { mouvements: data.mouvements as MouvementStock[], pagination: data.pagination };
-  },
-
-  createMouvement: async (mouvementData: CreateMouvementInput): Promise<MouvementStock> => {
-    const { data } = await api.post('/mouvements-stock', mouvementData);
-    return data.mouvement;
-  },
-
-  // Stats & Alertes
-  getStats: async (): Promise<StockStats> => {
-    const { data } = await api.get('/stock/stats');
-    return data.stats;
-  },
-
-  getAlertes: async (): Promise<{ alertes: StockAlerte[]; count: number }> => {
-    const { data } = await api.get('/stock/alertes');
-    return data;
-  },
-};
-
 // ============ RH ============
 export const rhApi = {
   // Dashboard
@@ -787,6 +732,21 @@ export const rhApi = {
   getEmployeRecap: async (employeId: string, annee?: number): Promise<EmployeRecap> => {
     const { data } = await api.get(`/rh/employes/${employeId}/recap`, { params: { annee } });
     return data;
+  },
+
+  // Récupérations accordées
+  listRecuperations: async (params?: { annee?: number; employeId?: string }): Promise<{ recuperations: RecuperationEmploye[]; annee: number }> => {
+    const { data } = await api.get('/rh/recuperations', { params });
+    return data;
+  },
+
+  accorderRecuperation: async (payload: { employeId: string; nbJours: number; motif?: string; annee?: number }): Promise<{ accordee: RecuperationAccordee }> => {
+    const { data } = await api.post('/rh/recuperations/accorder', payload);
+    return data;
+  },
+
+  deleteRecuperationAccordee: async (id: string): Promise<void> => {
+    await api.delete(`/rh/recuperations/accordees/${id}`);
   },
 };
 
@@ -1196,19 +1156,86 @@ export const commerceApi = {
     const response = await api.get(`/commerce/devis/${id}/pdf`, { responseType: 'blob' });
     const blob = new Blob([response.data], { type: 'application/pdf' });
     const url = window.URL.createObjectURL(blob);
-    window.open(url, '_blank');
+    const cd = response.headers['content-disposition'] || '';
+    const match = cd.match(/filename="(.+?)"/);
+    const filename = match ? match[1] : `devis.pdf`;
+    const a = document.createElement('a'); a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
   },
   downloadCommandePdf: async (id: string): Promise<void> => {
     const response = await api.get(`/commerce/commandes/${id}/pdf`, { responseType: 'blob' });
     const blob = new Blob([response.data], { type: 'application/pdf' });
     const url = window.URL.createObjectURL(blob);
-    window.open(url, '_blank');
+    const cd = response.headers['content-disposition'] || '';
+    const match = cd.match(/filename="(.+?)"/);
+    const filename = match ? match[1] : `commande.pdf`;
+    const a = document.createElement('a'); a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
   },
   downloadFacturePdf: async (id: string): Promise<void> => {
     const response = await api.get(`/commerce/factures/${id}/pdf`, { responseType: 'blob' });
     const blob = new Blob([response.data], { type: 'application/pdf' });
     const url = window.URL.createObjectURL(blob);
-    window.open(url, '_blank');
+    const cd = response.headers['content-disposition'] || '';
+    const match = cd.match(/filename="(.+?)"/);
+    const filename = match ? match[1] : `facture.pdf`;
+    const a = document.createElement('a'); a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  },
+
+  // ── Bons de Livraison ──────────────────────────────────────────────────────
+  listBonsLivraison: async (params?: { clientId?: string; commandeId?: string; statut?: string; search?: string; page?: number; limit?: number }) => {
+    const { data } = await api.get('/commerce/bons-livraison', { params });
+    return data as { items: import('../types').BonLivraison[]; total: number; page: number; limit: number };
+  },
+  getBonLivraison: async (id: string) => {
+    const { data } = await api.get(`/commerce/bons-livraison/${id}`);
+    return data as import('../types').BonLivraison;
+  },
+  createBonLivraison: async (payload: import('../types').CreateBonLivraisonInput) => {
+    const { data } = await api.post('/commerce/bons-livraison', payload);
+    return data as import('../types').BonLivraison;
+  },
+  updateBonLivraison: async (id: string, payload: Partial<import('../types').CreateBonLivraisonInput>) => {
+    const { data } = await api.put(`/commerce/bons-livraison/${id}`, payload);
+    return data as import('../types').BonLivraison;
+  },
+  deleteBonLivraison: async (id: string): Promise<void> => {
+    await api.delete(`/commerce/bons-livraison/${id}`);
+  },
+  validerBonLivraison: async (id: string) => {
+    const { data } = await api.post(`/commerce/bons-livraison/${id}/valider`);
+    return data as import('../types').BonLivraison;
+  },
+  livrerBonLivraison: async (id: string) => {
+    const { data } = await api.post(`/commerce/bons-livraison/${id}/livrer`);
+    return data as import('../types').BonLivraison;
+  },
+  annulerBonLivraison: async (id: string) => {
+    const { data } = await api.post(`/commerce/bons-livraison/${id}/annuler`);
+    return data as import('../types').BonLivraison;
+  },
+  creerBLFromCommande: async (commandeId: string) => {
+    const { data } = await api.post(`/commerce/commandes/${commandeId}/creer-bl`);
+    return data as import('../types').BonLivraison;
+  },
+  getCommandeProgressionLivraison: async (commandeId: string) => {
+    const { data } = await api.get(`/commerce/commandes/${commandeId}/progression-livraison`);
+    return data as import('../types').CommandeProgressionLivraison;
+  },
+  downloadBonLivraisonPdf: async (id: string): Promise<void> => {
+    const response = await api.get(`/commerce/bons-livraison/${id}/pdf`, { responseType: 'blob' });
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
+    const cd = response.headers['content-disposition'] || '';
+    const match = cd.match(/filename="(.+?)"/);
+    const filename = match ? match[1] : `bon-livraison.pdf`;
+    const a = document.createElement('a'); a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
   },
 };
 
@@ -1405,6 +1432,14 @@ export const facturationStatsApi = {
   },
   getG50: async (annee?: number): Promise<any> => {
     const { data } = await api.get('/facturation/tva/g50', { params: { annee } });
+    return data;
+  },
+  getMensuel: async (annee?: number): Promise<any> => {
+    const { data } = await api.get('/facturation/stats/mensuel', { params: { annee } });
+    return data;
+  },
+  getTopClients: async (annee?: number): Promise<any> => {
+    const { data } = await api.get('/facturation/stats/top-clients', { params: { annee } });
     return data;
   },
 };

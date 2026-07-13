@@ -1,13 +1,16 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../config/database.js';
 import { generateToken, AuthRequest } from '../middleware/auth.middleware.js';
+import logger from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
+
 
 export const authController = {
   /**
    * POST /api/auth/login
    */
-  async login(req: Request, res: Response) {
+  async login(req: Request, res: Response, next: NextFunction) {
     try {
       const { email, password } = req.body;
 
@@ -48,15 +51,15 @@ export const authController = {
         },
       });
     } catch (error) {
-      console.error('Login error:', error);
-      res.status(500).json({ error: 'Erreur de connexion' });
+      logger.error({ err: error }, 'Login error');
+      return next(new AppError(500, 'Erreur de connexion'));
     }
   },
 
   /**
    * GET /api/auth/me
    */
-  async me(req: AuthRequest, res: Response) {
+  async me(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       if (!req.user) {
         return res.status(401).json({ error: 'Non authentifié' });
@@ -81,15 +84,15 @@ export const authController = {
 
       res.json({ user });
     } catch (error) {
-      console.error('Me error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Me error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 
   /**
    * POST /api/auth/logout
    */
-  async logout(req: AuthRequest, res: Response) {
+  async logout(req: AuthRequest, res: Response, next: NextFunction) {
     // Avec JWT, le logout est géré côté client en supprimant le token
     res.json({ message: 'Déconnexion réussie' });
   },
@@ -97,7 +100,7 @@ export const authController = {
   /**
    * POST /api/auth/change-password
    */
-  async changePassword(req: AuthRequest, res: Response) {
+  async changePassword(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       if (!req.user) {
         return res.status(401).json({ error: 'Non authentifié' });
@@ -128,8 +131,8 @@ export const authController = {
 
       res.json({ message: 'Mot de passe modifié avec succès' });
     } catch (error) {
-      console.error('Change password error:', error);
-      res.status(500).json({ error: 'Erreur serveur' });
+      logger.error({ err: error }, 'Change password error');
+      return next(new AppError(500, 'Erreur serveur'));
     }
   },
 };
