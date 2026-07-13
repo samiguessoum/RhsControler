@@ -1,4 +1,4 @@
-{$DOMAIN} {
+:80 {
     # API backend
     handle /api/* {
         reverse_proxy backend:3000
@@ -12,13 +12,5 @@
     # Frontend React (tout le reste)
     handle {
         reverse_proxy frontend:80
-    }
-
-    # Logs d'accès
-    log {
-        output file /data/logs/access.log {
-            roll_size 10mb
-            roll_keep 5
-        }
     }
 }

@@ -23,7 +23,6 @@ command -v docker &>/dev/null || fail "Docker n'est pas installé."
 log "Chargement des variables d'environnement..."
 set -a; source .env.prod; set +a
 
-[ -n "${DOMAIN:-}" ]           || fail "DOMAIN non défini dans .env.prod"
 [ -n "${JWT_SECRET:-}" ]       || fail "JWT_SECRET non défini dans .env.prod"
 [ -n "${POSTGRES_PASSWORD:-}" ] || fail "POSTGRES_PASSWORD non défini dans .env.prod"
 
@@ -49,4 +48,4 @@ log "Nettoyage des anciennes images..."
 docker image prune -f
 
 echo ""
-log "Déploiement terminé ! Application disponible sur : https://${DOMAIN}"
+log "Déploiement terminé ! Application disponible sur : http://${DOMAIN:-72.62.188.28}"
