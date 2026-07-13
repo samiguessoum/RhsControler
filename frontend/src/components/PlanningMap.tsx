@@ -228,7 +228,7 @@ export function PlanningMap({ interventions, onInterventionClick }: Props) {
 
   const total = interventions.length;
   const realisees = interventions.filter((i) => i.statut === 'REALISEE').length;
-  const enRetard = interventions.filter((i) => i.statut === 'EN_RETARD').length;
+  const enRetard = interventions.filter((i) => (i.statut as string) === 'EN_RETARD').length;
   const sites = siteGroups.length;
 
   return (

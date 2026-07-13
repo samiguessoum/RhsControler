@@ -1827,10 +1827,10 @@ function TiersDetailDialog({
                           <Badge className="bg-purple-100 text-purple-700 text-xs">Par défaut</Badge>
                         )}
                       </div>
-                      {(compte.iban || compte.rib) && (
+                      {(compte.iban || compte.cleRib) && (
                         <div className="mt-3 ml-13 space-y-1 text-sm font-mono bg-white p-2 rounded border">
                           {compte.iban && <p><span className="text-muted-foreground">IBAN:</span> {compte.iban}</p>}
-                          {compte.rib && <p><span className="text-muted-foreground">RIB:</span> {compte.rib}</p>}
+                          {compte.cleRib && <p><span className="text-muted-foreground">RIB:</span> {compte.cleRib}</p>}
                         </div>
                       )}
                     </div>
