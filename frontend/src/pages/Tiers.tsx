@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { GeocoderSearch } from '@/components/AddressAutocomplete';
 import type { GeoSelection } from '@/components/AddressAutocomplete';
 import { useSearchParams } from 'react-router-dom';
@@ -90,6 +90,149 @@ const FORME_JURIDIQUE_OPTIONS: { value: FormeJuridique; label: string }[] = [
   { value: 'PARTICULIER', label: 'Particulier' },
   { value: 'AUTRE', label: 'Autre' },
 ];
+
+const SECTEURS_ACTIVITE = [
+  // Industrie
+  { groupe: 'Industrie', label: 'Industrie pharmaceutique' },
+  { groupe: 'Industrie', label: 'Industrie agroalimentaire' },
+  { groupe: 'Industrie', label: 'Industrie chimique & pétrochimique' },
+  { groupe: 'Industrie', label: 'Industrie métallurgique & sidérurgie' },
+  { groupe: 'Industrie', label: 'Industrie mécanique & automobile' },
+  { groupe: 'Industrie', label: 'Industrie électronique & électrique' },
+  { groupe: 'Industrie', label: 'Industrie textile & habillement' },
+  { groupe: 'Industrie', label: 'Industrie du bois & ameublement' },
+  { groupe: 'Industrie', label: 'Industrie plastique & caoutchouc' },
+  { groupe: 'Industrie', label: 'Industrie cosmétique & hygiène' },
+  { groupe: 'Industrie', label: 'Industrie du verre & céramique' },
+  { groupe: 'Industrie', label: 'Industrie papier & imprimerie' },
+  { groupe: 'Industrie', label: 'Industrie des matériaux de construction' },
+  // BTP & Énergie
+  { groupe: 'BTP & Énergie', label: 'Bâtiment & Travaux Publics (BTP)' },
+  { groupe: 'BTP & Énergie', label: 'Génie civil & Infrastructure' },
+  { groupe: 'BTP & Énergie', label: 'Énergie & Hydrocarbures' },
+  { groupe: 'BTP & Énergie', label: 'Mines & Carrières' },
+  { groupe: 'BTP & Énergie', label: 'Énergies renouvelables' },
+  { groupe: 'BTP & Énergie', label: 'Eau, assainissement & environnement' },
+  // Commerce & Distribution
+  { groupe: 'Commerce', label: 'Commerce de gros & distribution' },
+  { groupe: 'Commerce', label: 'Commerce de détail' },
+  { groupe: 'Commerce', label: 'Import / Export' },
+  { groupe: 'Commerce', label: 'Grande distribution & supermarchés' },
+  // Services
+  { groupe: 'Services', label: 'Transport & Logistique' },
+  { groupe: 'Services', label: 'Services informatiques & télécom' },
+  { groupe: 'Services', label: 'Services financiers & assurances' },
+  { groupe: 'Services', label: 'Services de santé & médical' },
+  { groupe: 'Services', label: 'Éducation & Formation' },
+  { groupe: 'Services', label: 'Hôtellerie & Restauration' },
+  { groupe: 'Services', label: 'Tourisme & Voyages' },
+  { groupe: 'Services', label: 'Immobilier & Promotion immobilière' },
+  { groupe: 'Services', label: 'Audit, conseil & expertise comptable' },
+  { groupe: 'Services', label: 'Communication, marketing & médias' },
+  { groupe: 'Services', label: 'Sécurité & Gardiennage' },
+  { groupe: 'Services', label: 'Nettoyage & Facilities management' },
+  { groupe: 'Services', label: 'Bureautique & Fournitures de bureau' },
+  // Agriculture
+  { groupe: 'Agriculture', label: 'Agriculture & Maraîchage' },
+  { groupe: 'Agriculture', label: 'Élevage & Aviculture' },
+  { groupe: 'Agriculture', label: 'Pêche & Aquaculture' },
+  { groupe: 'Agriculture', label: 'Agro-industrie & transformation agricole' },
+  // Autre
+  { groupe: 'Autre', label: 'Administration publique & collectivités' },
+  { groupe: 'Autre', label: 'Association & ONG' },
+  { groupe: 'Autre', label: 'Autre' },
+];
+
+function SecteurCombobox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const filtered = search.trim()
+    ? SECTEURS_ACTIVITE.filter((s) => s.label.toLowerCase().includes(search.toLowerCase()))
+    : SECTEURS_ACTIVITE;
+
+  const grouped = filtered.reduce<Record<string, string[]>>((acc, s) => {
+    if (!acc[s.groupe]) acc[s.groupe] = [];
+    acc[s.groupe].push(s.label);
+    return acc;
+  }, {});
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => { setOpen((o) => !o); setSearch(''); }}
+        className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <span className={value ? 'text-foreground' : 'text-muted-foreground'}>
+          {value || 'Sélectionner un secteur...'}
+        </span>
+        <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full rounded-md border bg-white shadow-lg">
+          <div className="p-2 border-b">
+            <div className="relative">
+              <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
+              <input
+                autoFocus
+                className="w-full pl-7 pr-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-1 focus:ring-ring"
+                placeholder="Rechercher un secteur..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="max-h-60 overflow-y-auto py-1">
+            {Object.keys(grouped).length === 0 ? (
+              <p className="px-3 py-2 text-sm text-muted-foreground">Aucun résultat</p>
+            ) : (
+              Object.entries(grouped).map(([groupe, items]) => (
+                <div key={groupe}>
+                  <p className="px-3 pt-2 pb-0.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{groupe}</p>
+                  {items.map((item) => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => { onChange(item); setOpen(false); }}
+                      className={cn(
+                        'w-full text-left px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground',
+                        value === item && 'bg-accent font-medium'
+                      )}
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+              ))
+            )}
+          </div>
+          {value && (
+            <div className="p-2 border-t">
+              <button
+                type="button"
+                onClick={() => { onChange(''); setOpen(false); }}
+                className="w-full text-left px-2 py-1 text-xs text-muted-foreground hover:text-destructive"
+              >
+                ✕ Effacer la sélection
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 const PROSPECT_NIVEAUX = [
   { value: 2, label: 'Chaud', icon: Flame, color: 'text-red-600', bgColor: 'bg-red-100' },
@@ -1325,14 +1468,14 @@ function TiersFormDialog({
                   </div>
                   <div className="space-y-2">
                     <Label>Secteur d'activité</Label>
-                    <Input
+                    <SecteurCombobox
                       value={formData.secteur || ''}
-                      onChange={(e) => setFormData({ ...formData, secteur: e.target.value })}
-                      placeholder="Ex: BTP, Agroalimentaire..."
+                      onChange={(v) => setFormData({ ...formData, secteur: v })}
                     />
                   </div>
                 </div>
 
+                {/* RC / NIF */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Registre du Commerce (RC)</Label>
@@ -1341,9 +1484,7 @@ function TiersFormDialog({
                       onChange={(e) => setFormData({ ...formData, siegeRC: e.target.value })}
                       placeholder="Ex: 16/00-0123456B99"
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Numéro d'immatriculation au registre du commerce
-                    </p>
+                    <p className="text-xs text-muted-foreground">Immatriculation au registre du commerce</p>
                   </div>
                   <div className="space-y-2">
                     <Label>Numéro d'Identification Fiscale (NIF)</Label>
@@ -1352,27 +1493,11 @@ function TiersFormDialog({
                       onChange={(e) => setFormData({ ...formData, siegeNIF: e.target.value })}
                       placeholder="Ex: 001516123456789"
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Identifiant fiscal unique délivré par les impôts
-                    </p>
+                    <p className="text-xs text-muted-foreground">Identifiant fiscal délivré par les impôts</p>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Tax Identification Number (TIN)</Label>
-                    <Input
-                      value={formData.siegeTIN || ''}
-                      onChange={(e) => setFormData({ ...formData, siegeTIN: e.target.value })}
-                      placeholder="Ex: 123456789"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Identifiant fiscal utilisé pour les échanges internationaux
-                    </p>
-                  </div>
-                  <div />
-                </div>
-
+                {/* AI / NIS */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Article d'Imposition (AI)</Label>
@@ -1381,9 +1506,7 @@ function TiersFormDialog({
                       onChange={(e) => setFormData({ ...formData, siegeAI: e.target.value })}
                       placeholder="Ex: 16123456789"
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Numéro d'article fiscal pour la TVA
-                    </p>
+                    <p className="text-xs text-muted-foreground">Numéro d'article fiscal pour la TVA</p>
                   </div>
                   <div className="space-y-2">
                     <Label>Numéro d'Identification Statistique (NIS)</Label>
@@ -1392,13 +1515,21 @@ function TiersFormDialog({
                       onChange={(e) => setFormData({ ...formData, siegeNIS: e.target.value })}
                       placeholder="Ex: 001516123456789123"
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Identifiant statistique délivré par l'ONS
-                    </p>
+                    <p className="text-xs text-muted-foreground">Identifiant statistique délivré par l'ONS</p>
                   </div>
                 </div>
 
+                {/* TIN / NIN */}
                 <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Tax Identification Number (TIN)</Label>
+                    <Input
+                      value={formData.siegeTIN || ''}
+                      onChange={(e) => setFormData({ ...formData, siegeTIN: e.target.value })}
+                      placeholder="Ex: 123456789"
+                    />
+                    <p className="text-xs text-muted-foreground">Identifiant fiscal pour les échanges internationaux</p>
+                  </div>
                   <div className="space-y-2">
                     <Label>Numéro d'Identification Nationale (NIN)</Label>
                     <Input
@@ -1406,11 +1537,8 @@ function TiersFormDialog({
                       onChange={(e) => setFormData({ ...formData, siegeNIN: e.target.value })}
                       placeholder="Ex: 123456789012345"
                     />
-                    <p className="text-xs text-muted-foreground">
-                      NIN du gérant
-                    </p>
+                    <p className="text-xs text-muted-foreground">NIN du gérant</p>
                   </div>
-                  <div />
                 </div>
               </div>
             </CollapsibleSection>
