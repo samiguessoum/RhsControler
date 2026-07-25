@@ -7,9 +7,18 @@ import './index.css'
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutes
+      staleTime: 1000 * 60 * 5,
       retry: 1,
       refetchOnWindowFocus: false,
+    },
+    mutations: {
+      onSettled: () => {
+        // Après toute mutation (ajout, modif, suppression),
+        // invalide toutes les queries :
+        // - les onglets actifs se refreshent immédiatement
+        // - les onglets inactifs se refreshent à la prochaine visite
+        queryClient.invalidateQueries();
+      },
     },
   },
 })
