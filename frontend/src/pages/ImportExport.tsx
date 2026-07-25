@@ -85,11 +85,11 @@ const IMPORT_TYPES: {
 ];
 
 const EXPORT_ITEMS = [
-  { key: 'clients', label: 'Clients & Tiers', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50', getUrl: () => importExportApi.exportClients(), filename: 'clients.csv' },
-  { key: 'contrats', label: 'Contrats', icon: ClipboardList, color: 'text-violet-600', bg: 'bg-violet-50', getUrl: () => importExportApi.exportContrats(), filename: 'contrats.csv' },
-  { key: 'interventions', label: 'Interventions', icon: Calendar, color: 'text-orange-600', bg: 'bg-orange-50', getUrl: () => importExportApi.exportInterventions(), filename: 'interventions.csv' },
-  { key: 'employes', label: 'Employés', icon: Briefcase, color: 'text-green-600', bg: 'bg-green-50', getUrl: () => importExportApi.exportEmployes(), filename: 'employes.csv' },
-  { key: 'calendar', label: 'Planning (ICS)', icon: CalendarDays, color: 'text-rose-600', bg: 'bg-rose-50', getUrl: () => importExportApi.exportGoogleCalendar(), filename: 'planning.ics' },
+  { key: 'clients', label: 'Clients & Tiers', icon: Users, color: 'text-blue-600', bg: 'bg-blue-50', path: '/export/clients', filename: 'clients.csv' },
+  { key: 'contrats', label: 'Contrats', icon: ClipboardList, color: 'text-violet-600', bg: 'bg-violet-50', path: '/export/contrats', filename: 'contrats.csv' },
+  { key: 'interventions', label: 'Interventions', icon: Calendar, color: 'text-orange-600', bg: 'bg-orange-50', path: '/export/interventions', filename: 'interventions.csv' },
+  { key: 'employes', label: 'Employés', icon: Briefcase, color: 'text-green-600', bg: 'bg-green-50', path: '/export/employes', filename: 'employes.csv' },
+  { key: 'calendar', label: 'Planning (ICS)', icon: CalendarDays, color: 'text-rose-600', bg: 'bg-rose-50', path: '/export/google-calendar', filename: 'planning.ics' },
 ];
 
 // ─── Étapes de l'import ───────────────────────────────────────────────────
@@ -112,15 +112,15 @@ export function ImportExportPage() {
   const selectedType = IMPORT_TYPES.find((t) => t.value === importType)!;
 
   // ── Export handler ──────────────────────────────────────────────────────
-  const handleExport = async (key: string, getUrl: () => string, filename: string) => {
+  const handleExport = async (key: string, path: string, filename: string) => {
     setLoadingExport(key);
-    await downloadBlob(getUrl(), filename);
+    await downloadBlob(path, filename);
     setLoadingExport(null);
   };
 
   // ── Template handler ────────────────────────────────────────────────────
   const handleTemplate = async (type: ImportType, filename: string) => {
-    await downloadBlob(`/api/import/templates/${type}`, filename);
+    await downloadBlob(`/import/templates/${type}`, filename);
   };
 
   // ── File reading ────────────────────────────────────────────────────────
@@ -205,7 +205,7 @@ export function ImportExportPage() {
               return (
                 <button
                   key={item.key}
-                  onClick={() => handleExport(item.key, item.getUrl, item.filename)}
+                  onClick={() => handleExport(item.key, item.path, item.filename)}
                   disabled={isLoading}
                   className="group flex flex-col items-center gap-2 p-4 rounded-xl border bg-white hover:border-gray-300 hover:shadow-sm transition-all disabled:opacity-60 text-center"
                 >
