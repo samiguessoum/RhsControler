@@ -66,10 +66,10 @@ export const permissions = {
   deleteContrat: [Role.SUPER_ADMIN, Role.DIRECTION],
 
   // ── Interventions ──
-  createIntervention:  [Role.SUPER_ADMIN, Role.DIRECTION, Role.COORDINATEUR, Role.SUPER_CHEF_EQUIPE],
-  editIntervention:    [Role.SUPER_ADMIN, Role.DIRECTION, Role.COORDINATEUR, Role.SUPER_CHEF_EQUIPE],
+  createIntervention:  [Role.SUPER_ADMIN, Role.DIRECTION, Role.COORDINATEUR],
+  editIntervention:    [Role.SUPER_ADMIN, Role.DIRECTION, Role.COORDINATEUR],
   deleteIntervention:  [Role.SUPER_ADMIN, Role.DIRECTION, Role.COORDINATEUR],
-  realiserIntervention:[Role.SUPER_ADMIN, Role.DIRECTION, Role.COORDINATEUR, Role.SUPER_CHEF_EQUIPE, Role.EQUIPE],
+  realiserIntervention:[Role.SUPER_ADMIN, Role.DIRECTION, Role.COORDINATEUR],
   // viewInterventions : tous les rôles authentifiés (le filtre EQUIPE se fait dans le controller)
 
   // ── Import / Export ──

@@ -1207,6 +1207,7 @@ function InterventionDetailDialog({
   canRealiser,
   canManage,
   canExport,
+  canEdit,
   employes,
   postes,
   congesActifs = [],
@@ -1226,6 +1227,7 @@ function InterventionDetailDialog({
   canRealiser: boolean;
   canManage: boolean;
   canExport: boolean;
+  canEdit: boolean;
   employes: Employe[];
   postes: Poste[];
   congesActifs?: Pick<Conge, 'employeId' | 'dateDebut' | 'dateFin'>[];
@@ -1516,19 +1518,43 @@ function InterventionDetailDialog({
             <>
               <Separator />
               <div className="space-y-3">
-                <EmployeSelector
-                  employes={employes}
-                  postes={postes}
-                  value={selectedEmployes}
-                  onChange={handleEmployesChange}
-                  label="Equipe assignée"
-                  datePrevue={intervention.datePrevue?.slice(0, 10)}
-                  congesActifs={congesActifs}
-                />
-                {employesModified && (
-                  <Button variant="outline" size="sm" onClick={saveEmployes}>
-                    Enregistrer l'équipe
-                  </Button>
+                {canEdit ? (
+                  <>
+                    <EmployeSelector
+                      employes={employes}
+                      postes={postes}
+                      value={selectedEmployes}
+                      onChange={handleEmployesChange}
+                      label="Equipe assignée"
+                      datePrevue={intervention.datePrevue?.slice(0, 10)}
+                      congesActifs={congesActifs}
+                    />
+                    {employesModified && (
+                      <Button variant="outline" size="sm" onClick={saveEmployes}>
+                        Enregistrer l'équipe
+                      </Button>
+                    )}
+                  </>
+                ) : (
+                  <div className="space-y-2">
+                    <h4 className="font-semibold flex items-center gap-2">
+                      <User className="h-4 w-4" /> Équipe assignée
+                    </h4>
+                    {selectedEmployes.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Aucun employé assigné</p>
+                    ) : (
+                      selectedEmployes.map((e, i) => {
+                        const emp = employes.find((em) => em.id === e.employeId);
+                        const poste = postes.find((p) => p.id === e.posteId);
+                        return (
+                          <p key={i} className="text-sm">
+                            {emp ? `${emp.prenom} ${emp.nom}` : e.employeId}
+                            {poste && <span className="text-muted-foreground ml-1">({poste.nom})</span>}
+                          </p>
+                        );
+                      })
+                    )}
+                  </div>
                 )}
               </div>
             </>
@@ -1718,30 +1744,40 @@ function InterventionDetailDialog({
               <Separator />
               <div className="space-y-3">
                 <h4 className="font-semibold">Horaire</h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label>De</Label>
-                    <Input
-                      type="time"
-                      value={horaireDebut}
-                      onChange={(e) => setHoraireDebut(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>À</Label>
-                    <Input
-                      type="time"
-                      value={horaireFin}
-                      onChange={(e) => setHoraireFin(e.target.value)}
-                    />
-                  </div>
-                </div>
-                {horaireError && (
-                  <p className="text-xs text-red-600">{horaireError}</p>
+                {canEdit ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label>De</Label>
+                        <Input
+                          type="time"
+                          value={horaireDebut}
+                          onChange={(e) => setHoraireDebut(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>À</Label>
+                        <Input
+                          type="time"
+                          value={horaireFin}
+                          onChange={(e) => setHoraireFin(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    {horaireError && (
+                      <p className="text-xs text-red-600">{horaireError}</p>
+                    )}
+                    <Button variant="outline" size="sm" onClick={saveHoraire}>
+                      Enregistrer l'horaire
+                    </Button>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {horaireDebut && horaireFin
+                      ? `${horaireDebut} - ${horaireFin}`
+                      : 'Non defini'}
+                  </p>
                 )}
-                <Button variant="outline" size="sm" onClick={saveHoraire}>
-                  Enregistrer l’horaire
-                </Button>
               </div>
             </>
           )}
@@ -3508,7 +3544,7 @@ export function PlanningPage() {
       setAttestationBody(data.bodyText || '');
       setAttestationInitialBody(data.bodyText || '');
     } catch (error: any) {
-      const message = error?.response?.data?.error || 'Erreur lors du chargement du message de l’attestation';
+      const message = error?.response?.data?.error || "Erreur lors du chargement du message de l'attestation";
       toast.error(message);
       setAttestationIntervention(null);
     } finally {
@@ -3584,7 +3620,7 @@ export function PlanningPage() {
       toast.success('Attestation générée avec succès');
       closeAttestationDialog();
     } catch (error: any) {
-      const message = error?.response?.data?.error || 'Erreur lors de la génération de l’attestation';
+      const message = error?.response?.data?.error || "Erreur lors de la generation de l'attestation";
       toast.error(message);
     } finally {
       setAttestationSaving(false);
@@ -4202,6 +4238,7 @@ export function PlanningPage() {
             if (!intervention) return;
             await openBLDialog(intervention);
           }}
+          canEdit={canDo('editIntervention')}
           canRealiser={canDo('realiserIntervention')}
           canManage={canDo('manageCommerce')}
           canExport={canDo('exportData')}

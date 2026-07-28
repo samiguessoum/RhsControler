@@ -28,10 +28,10 @@ const permissions: Record<string, Role[]> = {
   deleteContrat: ['SUPER_ADMIN', 'DIRECTION'],
 
   // Interventions
-  createIntervention:   ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR', 'SUPER_CHEF_EQUIPE'],
-  editIntervention:     ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR', 'SUPER_CHEF_EQUIPE'],
+  createIntervention:   ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR'],
+  editIntervention:     ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR'],
   deleteIntervention:   ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR'],
-  realiserIntervention: ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR', 'SUPER_CHEF_EQUIPE', 'EQUIPE'],
+  realiserIntervention: ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR'],
 
   // Import / Export
   importData: ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR'],
