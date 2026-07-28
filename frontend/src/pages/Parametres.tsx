@@ -40,6 +40,8 @@ export function ParametresPage() {
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const [newUserRole, setNewUserRole] = useState<Role>('COORDINATEUR');
   const [newUserEmployeId, setNewUserEmployeId] = useState<string>('');
+  const [newUserCreateEmploye, setNewUserCreateEmploye] = useState(false);
+  const [newUserPosteIds, setNewUserPosteIds] = useState<string[]>([]);
   const [editUserRole, setEditUserRole] = useState<Role>('COORDINATEUR');
   const [editUserEmployeId, setEditUserEmployeId] = useState<string>('');
   const [isCreateEmployeOpen, setIsCreateEmployeOpen] = useState(false);
@@ -256,12 +258,28 @@ export function ParametresPage() {
       toast.error(error.response?.data?.error || 'Erreur lors de la suppression');
     },
   });
+  const ROLES_WITH_EMPLOYE: Role[] = ['DIRECTION', 'COORDINATEUR', 'SUPER_CHEF_EQUIPE', 'EQUIPE'];
+
   const createUserMutation = useMutation({
-    mutationFn: usersApi.create,
+    mutationFn: async (userData: Parameters<typeof usersApi.create>[0]) => {
+      const user = await usersApi.create(userData);
+      if (newUserCreateEmploye && newUserPosteIds.length > 0) {
+        const employe = await employesApi.create({
+          prenom: userData.prenom!,
+          nom: userData.nom!,
+          posteIds: newUserPosteIds,
+        });
+        await usersApi.update(user.id, { employeId: employe.id });
+      }
+      return user;
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      queryClient.invalidateQueries({ queryKey: ['employes'] });
       toast.success('Utilisateur créé');
       setIsCreateUserOpen(false);
+      setNewUserCreateEmploye(false);
+      setNewUserPosteIds([]);
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Erreur lors de la création');
@@ -1634,7 +1652,7 @@ export function ParametresPage() {
         open={isCreateUserOpen}
         onOpenChange={(open) => {
           setIsCreateUserOpen(open);
-          if (!open) { setNewUserRole('COORDINATEUR'); setNewUserEmployeId(''); }
+          if (!open) { setNewUserRole('COORDINATEUR'); setNewUserEmployeId(''); setNewUserCreateEmploye(false); setNewUserPosteIds([]); }
         }}
       >
         <DialogContent>
@@ -1699,27 +1717,64 @@ export function ParametresPage() {
                 </Select>
               </div>
             </div>
-            {newUserRole === 'EQUIPE' && (
-              <div className="space-y-2">
-                <Label>Lier à un employé <span className="text-xs text-muted-foreground">(pour filtrer ses interventions)</span></Label>
-                <Select value={newUserEmployeId} onValueChange={setNewUserEmployeId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Choisir un employé..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {employes.map((e) => (
-                      <SelectItem key={e.id} value={e.id}>{e.prenom} {e.nom}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            {/* Section fiche employé — proposée pour tous les rôles opérationnels */}
+            {ROLES_WITH_EMPLOYE.includes(newUserRole) && (
+              <div className="rounded-lg border p-4 space-y-3 bg-gray-50">
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    id="createEmploye"
+                    checked={newUserCreateEmploye}
+                    onCheckedChange={(v) => {
+                      setNewUserCreateEmploye(!!v);
+                      setNewUserPosteIds([]);
+                    }}
+                  />
+                  <Label htmlFor="createEmploye" className="cursor-pointer font-medium">
+                    Créer aussi une fiche employé
+                    <span className="block text-xs font-normal text-muted-foreground">
+                      Permet d'affecter cet utilisateur à des interventions
+                    </span>
+                  </Label>
+                </div>
+
+                {newUserCreateEmploye && (
+                  <div className="space-y-2 pt-1">
+                    <Label className="text-sm">Poste(s) <span className="text-red-500">*</span></Label>
+                    <div className="flex flex-wrap gap-2">
+                      {postes.filter(p => p.actif).map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => setNewUserPosteIds(prev =>
+                            prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]
+                          )}
+                          className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+                            newUserPosteIds.includes(p.id)
+                              ? 'bg-primary text-white border-primary'
+                              : 'bg-white border-gray-200 hover:border-gray-300'
+                          }`}
+                        >
+                          {p.nom}
+                        </button>
+                      ))}
+                    </div>
+                    {newUserPosteIds.length === 0 && (
+                      <p className="text-xs text-amber-600">Sélectionnez au moins un poste</p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
+
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsCreateUserOpen(false)}>
                 Annuler
               </Button>
-              <Button type="submit" disabled={createUserMutation.isPending}>
-                Créer
+              <Button
+                type="submit"
+                disabled={createUserMutation.isPending || (newUserCreateEmploye && newUserPosteIds.length === 0)}
+              >
+                {createUserMutation.isPending ? 'Création...' : 'Créer'}
               </Button>
             </DialogFooter>
           </form>
