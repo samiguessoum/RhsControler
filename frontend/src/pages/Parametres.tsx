@@ -38,8 +38,10 @@ export function ParametresPage() {
   const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
-  const [newUserRole, setNewUserRole] = useState<Role>('PLANNING');
-  const [editUserRole, setEditUserRole] = useState<Role>('PLANNING');
+  const [newUserRole, setNewUserRole] = useState<Role>('COORDINATEUR');
+  const [newUserEmployeId, setNewUserEmployeId] = useState<string>('');
+  const [editUserRole, setEditUserRole] = useState<Role>('COORDINATEUR');
+  const [editUserEmployeId, setEditUserEmployeId] = useState<string>('');
   const [isCreateEmployeOpen, setIsCreateEmployeOpen] = useState(false);
   const [editingEmploye, setEditingEmploye] = useState<Employe | null>(null);
   const [viewingEmploye, setViewingEmploye] = useState<Employe | null>(null);
@@ -367,6 +369,7 @@ export function ParametresPage() {
   useEffect(() => {
     if (editingUser) {
       setEditUserRole(editingUser.role);
+      setEditUserEmployeId(editingUser.employeId || '');
     }
   }, [editingUser]);
 
@@ -1056,7 +1059,7 @@ export function ParametresPage() {
                               Réactiver
                             </DropdownMenuItem>
                           )}
-                          {currentUser?.role === 'DIRECTION' && u.id !== currentUser.id && (
+                          {currentUser?.role === 'SUPER_ADMIN' && u.id !== currentUser.id && (
                             <DropdownMenuItem
                               className="text-red-600 focus:text-red-600"
                               onClick={() => setDeletingUser(u)}
@@ -1631,7 +1634,7 @@ export function ParametresPage() {
         open={isCreateUserOpen}
         onOpenChange={(open) => {
           setIsCreateUserOpen(open);
-          if (!open) setNewUserRole('PLANNING');
+          if (!open) { setNewUserRole('COORDINATEUR'); setNewUserEmployeId(''); }
         }}
       >
         <DialogContent>
@@ -1650,6 +1653,7 @@ export function ParametresPage() {
                 prenom: formData.get('prenom') as string,
                 tel: (formData.get('tel') as string) || undefined,
                 role: newUserRole,
+                employeId: newUserEmployeId || undefined,
               };
               createUserMutation.mutate(data);
             }}
@@ -1685,14 +1689,31 @@ export function ParametresPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="DIRECTION">Direction</SelectItem>
-                    <SelectItem value="PLANNING">Planning</SelectItem>
-                    <SelectItem value="EQUIPE">Équipe</SelectItem>
-                    <SelectItem value="LECTURE">Lecture</SelectItem>
+                    <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
+                    <SelectItem value="DIRECTION">Direction (admin + finance)</SelectItem>
+                    <SelectItem value="COORDINATEUR">Coordinateur (admin sans finance)</SelectItem>
+                    <SelectItem value="SUPER_CHEF_EQUIPE">Super Chef d'équipe</SelectItem>
+                    <SelectItem value="EQUIPE">Équipe (ses interventions seulement)</SelectItem>
+                    <SelectItem value="LECTURE">Lecture seule</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
+            {newUserRole === 'EQUIPE' && (
+              <div className="space-y-2">
+                <Label>Lier à un employé <span className="text-xs text-muted-foreground">(pour filtrer ses interventions)</span></Label>
+                <Select value={newUserEmployeId} onValueChange={setNewUserEmployeId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choisir un employé..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {employes.map((e) => (
+                      <SelectItem key={e.id} value={e.id}>{e.prenom} {e.nom}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsCreateUserOpen(false)}>
                 Annuler
@@ -1721,6 +1742,7 @@ export function ParametresPage() {
                 prenom: formData.get('prenom') as string,
                 tel: (formData.get('tel') as string) || undefined,
                 role: editUserRole,
+                employeId: editUserEmployeId || null,
               };
               updateUserMutation.mutate({ id: editingUser.id, data });
             }}
@@ -1752,14 +1774,32 @@ export function ParametresPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                      <SelectItem value="DIRECTION">Direction</SelectItem>
-                      <SelectItem value="PLANNING">Planning</SelectItem>
-                      <SelectItem value="EQUIPE">Équipe</SelectItem>
-                      <SelectItem value="LECTURE">Lecture</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                    <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
+                    <SelectItem value="DIRECTION">Direction (admin + finance)</SelectItem>
+                    <SelectItem value="COORDINATEUR">Coordinateur (admin sans finance)</SelectItem>
+                    <SelectItem value="SUPER_CHEF_EQUIPE">Super Chef d'équipe</SelectItem>
+                    <SelectItem value="EQUIPE">Équipe (ses interventions seulement)</SelectItem>
+                    <SelectItem value="LECTURE">Lecture seule</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
+            </div>
+            {editUserRole === 'EQUIPE' && (
+              <div className="space-y-2">
+                <Label>Lier à un employé <span className="text-xs text-muted-foreground">(pour filtrer ses interventions)</span></Label>
+                <Select value={editUserEmployeId} onValueChange={setEditUserEmployeId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choisir un employé..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">— Aucun —</SelectItem>
+                    {employes.map((e) => (
+                      <SelectItem key={e.id} value={e.id}>{e.prenom} {e.nom}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setEditingUser(null)}>
                   Annuler

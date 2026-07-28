@@ -11,6 +11,7 @@ export interface AuthUser {
   nom: string;
   prenom: string;
   role: Role;
+  employeId?: string | null;
 }
 
 export interface AuthRequest extends Request {
@@ -64,7 +65,7 @@ export async function authMiddleware(
     // Verify user still exists and is active
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
-      select: { id: true, email: true, nom: true, prenom: true, role: true, actif: true }
+      select: { id: true, email: true, nom: true, prenom: true, role: true, actif: true, employeId: true }
     });
 
     if (!user || !user.actif) {
@@ -77,7 +78,8 @@ export async function authMiddleware(
       email: user.email,
       nom: user.nom,
       prenom: user.prenom,
-      role: user.role
+      role: user.role,
+      employeId: user.employeId,
     };
 
     next();

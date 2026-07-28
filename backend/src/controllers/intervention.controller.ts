@@ -29,6 +29,13 @@ export const interventionController = {
 
       const where: any = {};
 
+      // EQUIPE : ne voit que les interventions qui lui sont assignées
+      if (req.user?.role === 'EQUIPE' && req.user?.employeId) {
+        where.interventionEmployes = {
+          some: { employeId: req.user.employeId },
+        };
+      }
+
       if (clientId) where.clientId = clientId;
       if (contratId) where.contratId = contratId;
       if (type) where.type = type;

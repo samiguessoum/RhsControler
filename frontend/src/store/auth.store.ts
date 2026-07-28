@@ -14,31 +14,53 @@ interface AuthState {
 }
 
 const permissions: Record<string, Role[]> = {
-  manageUsers: ['DIRECTION'],
-  createClient: ['DIRECTION', 'PLANNING'],
-  editClient: ['DIRECTION', 'PLANNING'],
-  deleteClient: ['DIRECTION'],
-  createContrat: ['DIRECTION', 'PLANNING'],
-  editContrat: ['DIRECTION', 'PLANNING'],
-  deleteContrat: ['DIRECTION'],
-  createIntervention: ['DIRECTION', 'PLANNING', 'EQUIPE'],
-  editIntervention: ['DIRECTION', 'PLANNING', 'EQUIPE'],
-  deleteIntervention: ['DIRECTION', 'PLANNING'],
-  realiserIntervention: ['DIRECTION', 'PLANNING', 'EQUIPE'],
-  importData: ['DIRECTION', 'PLANNING'],
-  exportData: ['DIRECTION', 'PLANNING', 'EQUIPE'],
-  manageSettings: ['DIRECTION'],
-  viewEmployes: ['DIRECTION', 'PLANNING', 'EQUIPE'],
-  manageEmployes: ['DIRECTION'],
-  viewPostes: ['DIRECTION', 'PLANNING', 'EQUIPE'],
-  managePostes: ['DIRECTION'],
-  managePrestations: ['DIRECTION', 'PLANNING'],
-  manageStock: ['DIRECTION', 'PLANNING'],
-  viewRH: ['DIRECTION', 'PLANNING'],
-  manageRH: ['DIRECTION'],
-  manageCommerce: ['DIRECTION', 'PLANNING'],
-  viewFacturation: ['DIRECTION', 'PLANNING'],
-  manageFacturation: ['DIRECTION', 'PLANNING'],
+  // Utilisateurs
+  manageUsers: ['SUPER_ADMIN'],
+
+  // Clients / Tiers
+  createClient: ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR'],
+  editClient:   ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR'],
+  deleteClient: ['SUPER_ADMIN', 'DIRECTION'],
+
+  // Contrats
+  createContrat: ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR'],
+  editContrat:   ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR'],
+  deleteContrat: ['SUPER_ADMIN', 'DIRECTION'],
+
+  // Interventions
+  createIntervention:   ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR', 'SUPER_CHEF_EQUIPE'],
+  editIntervention:     ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR', 'SUPER_CHEF_EQUIPE'],
+  deleteIntervention:   ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR'],
+  realiserIntervention: ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR', 'SUPER_CHEF_EQUIPE', 'EQUIPE'],
+
+  // Import / Export
+  importData: ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR'],
+  exportData: ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR', 'SUPER_CHEF_EQUIPE'],
+
+  // Paramètres
+  manageSettings:   ['SUPER_ADMIN'],
+  managePrestations:['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR'],
+
+  // Employés
+  viewEmployes:   ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR', 'SUPER_CHEF_EQUIPE'],
+  manageEmployes: ['SUPER_ADMIN', 'DIRECTION'],
+  viewPostes:     ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR', 'SUPER_CHEF_EQUIPE'],
+  managePostes:   ['SUPER_ADMIN', 'DIRECTION'],
+
+  // Stock
+  manageStock: ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR'],
+
+  // RH
+  viewRH:   ['SUPER_ADMIN', 'DIRECTION'],
+  manageRH: ['SUPER_ADMIN', 'DIRECTION'],
+
+  // Commerce
+  manageCommerce: ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR'],
+
+  // Facturation
+  manageFacturation:    ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR'],
+  viewFacturation:      ['SUPER_ADMIN', 'DIRECTION'],
+  viewDashboardFinance: ['SUPER_ADMIN', 'DIRECTION'],
 };
 
 export const useAuthStore = create<AuthState>()(

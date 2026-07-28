@@ -8,8 +8,10 @@ datasource db {
 }
 
 enum Role {
+  SUPER_ADMIN
   DIRECTION
-  PLANNING
+  COORDINATEUR
+  SUPER_CHEF_EQUIPE
   EQUIPE
   LECTURE
 }
@@ -182,11 +184,15 @@ model User {
   password  String
   nom       String
   prenom    String
-  tel       String?
-  role      Role     @default(EQUIPE)
-  actif     Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  tel        String?
+  role       Role     @default(EQUIPE)
+  actif      Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Lien vers la fiche employé (pour le rôle EQUIPE : filtre ses propres interventions)
+  employeId  String?  @unique
+  employe    Employe? @relation(fields: [employeId], references: [id])
 
   contratsResponsable Contrat[]        @relation("ResponsablePlanning")
   interventionsCrees  Intervention[]   @relation("CreatedBy")
@@ -227,6 +233,7 @@ model Employe {
   createdAt DateTime             @default(now())
   updatedAt DateTime             @updatedAt
 
+  user                     User?
   interventionEmployes     InterventionEmploye[]
   conges                   Conge[]
   joursWeekendTravailles   JourWeekendTravaille[]

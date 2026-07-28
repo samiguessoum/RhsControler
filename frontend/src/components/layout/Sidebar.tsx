@@ -84,7 +84,7 @@ export function Sidebar({ stats }: SidebarProps) {
     { to: '/produits-services', icon: ShoppingBag, label: 'Produits & Services', show: true },
     { to: '/entrepots', icon: Warehouse, label: 'Entrepôts', show: true },
     { to: '/facturation', icon: Wallet, label: 'Fournisseurs & Charges', show: canDo('viewFacturation') },
-    { to: '/finance', icon: Landmark, label: 'Finance & Trésorerie', show: canDo('viewFacturation') },
+    { to: '/finance', icon: Landmark, label: 'Finance & Trésorerie', show: canDo('viewDashboardFinance') },
   ];
 
   const bottomItems: NavItem[] = [

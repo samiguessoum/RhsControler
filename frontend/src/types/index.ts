@@ -1,5 +1,5 @@
 // ============ ENUMS ============
-export type Role = 'DIRECTION' | 'PLANNING' | 'EQUIPE' | 'LECTURE';
+export type Role = 'SUPER_ADMIN' | 'DIRECTION' | 'COORDINATEUR' | 'SUPER_CHEF_EQUIPE' | 'EQUIPE' | 'LECTURE';
 export type ContratType = 'ANNUEL' | 'PONCTUEL';
 export type ContratStatut = 'ACTIF' | 'SUSPENDU' | 'TERMINE';
 export type Frequence = 'HEBDOMADAIRE' | 'MENSUELLE' | 'TRIMESTRIELLE' | 'SEMESTRIELLE' | 'ANNUELLE' | 'PERSONNALISEE';
@@ -15,6 +15,7 @@ export interface User {
   tel?: string;
   role: Role;
   actif: boolean;
+  employeId?: string | null;
   createdAt: string;
   updatedAt?: string;
 }

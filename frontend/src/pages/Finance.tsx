@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
 import { facturationStatsApi, commerceApi } from '@/services/api';
+import { useAuthStore } from '@/store/auth.store';
 import { cn } from '@/lib/utils';
 
 // ── Formatters ──────────────────────────────────────────
@@ -147,8 +148,19 @@ function exportAnnuelG50Csv(g50Data: any) {
 
 // ═══════════════════════════════════════════════════════
 export function FinancePage() {
+  const { canDo } = useAuthStore();
   const navigate = useNavigate();
   const location = useLocation();
+
+  if (!canDo('viewDashboardFinance')) {
+    return (
+      <div className="flex flex-col items-center justify-center h-96 text-center text-muted-foreground gap-3">
+        <TrendingUp className="h-10 w-10 opacity-20" />
+        <p className="font-medium text-base">Accès restreint</p>
+        <p className="text-sm">Vous n'avez pas accès au tableau de bord financier.</p>
+      </div>
+    );
+  }
   const currentYear = new Date().getFullYear();
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [expandedMois, setExpandedMois] = useState<number | null>(null);
