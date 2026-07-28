@@ -28,7 +28,7 @@ import type { Prestation, User, Role, Employe, Poste, CompanySettings, UpdateCom
 
 export function ParametresPage() {
   const queryClient = useQueryClient();
-  const { canDo } = useAuthStore();
+  const { canDo, user: currentUser } = useAuthStore();
 
   const [isCreatePrestationOpen, setIsCreatePrestationOpen] = useState(false);
   const [editingPrestation, setEditingPrestation] = useState<Prestation | null>(null);
@@ -37,6 +37,7 @@ export function ParametresPage() {
   const [deletePrestationTarget, setDeletePrestationTarget] = useState<Prestation | null>(null);
   const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const [newUserRole, setNewUserRole] = useState<Role>('PLANNING');
   const [editUserRole, setEditUserRole] = useState<Role>('PLANNING');
   const [isCreateEmployeOpen, setIsCreateEmployeOpen] = useState(false);
@@ -274,6 +275,18 @@ export function ParametresPage() {
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Erreur lors de la mise à jour');
+    },
+  });
+
+  const permanentDeleteUserMutation = useMutation({
+    mutationFn: (id: string) => usersApi.permanentDelete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast.success('Utilisateur supprimé définitivement');
+      setDeletingUser(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de la suppression');
     },
   });
 
@@ -1036,6 +1049,21 @@ export function ParametresPage() {
                               Désactiver
                             </DropdownMenuItem>
                           )}
+                          {!u.actif && (
+                            <DropdownMenuItem
+                              onClick={() => updateUserMutation.mutate({ id: u.id, data: { actif: true } })}
+                            >
+                              Réactiver
+                            </DropdownMenuItem>
+                          )}
+                          {currentUser?.role === 'DIRECTION' && u.id !== currentUser.id && (
+                            <DropdownMenuItem
+                              className="text-red-600 focus:text-red-600"
+                              onClick={() => setDeletingUser(u)}
+                            >
+                              Supprimer définitivement
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
@@ -1744,6 +1772,29 @@ export function ParametresPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Dialog confirmation suppression définitive */}
+      <AlertDialog open={!!deletingUser} onOpenChange={(open) => { if (!open) setDeletingUser(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer définitivement cet utilisateur ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong>{deletingUser?.prenom} {deletingUser?.nom}</strong> ({deletingUser?.email}) sera supprimé de façon irréversible.
+              Cette action ne peut pas être annulée.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => deletingUser && permanentDeleteUserMutation.mutate(deletingUser.id)}
+              disabled={permanentDeleteUserMutation.isPending}
+            >
+              {permanentDeleteUserMutation.isPending ? 'Suppression...' : 'Supprimer définitivement'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 import { requireRole, canDo } from '../middleware/role.middleware.js';
+import { Role } from '@prisma/client';
 import { validate } from '../middleware/validation.middleware.js';
 import {
   loginSchema,
@@ -176,6 +177,7 @@ router.get('/users/:id', authMiddleware, canDo('manageUsers'), userController.ge
 router.post('/users', authMiddleware, canDo('manageUsers'), validate(createUserSchema), userController.create);
 router.put('/users/:id', authMiddleware, canDo('manageUsers'), validate(updateUserSchema), userController.update);
 router.delete('/users/:id', authMiddleware, canDo('manageUsers'), userController.delete);
+router.delete('/users/:id/permanent', authMiddleware, requireRole(Role.DIRECTION), userController.permanentDelete);
 
 // ============ CLIENTS ============
 router.get('/clients', authMiddleware, clientController.list);

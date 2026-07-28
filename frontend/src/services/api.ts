@@ -173,6 +173,10 @@ export const usersApi = {
   delete: async (id: string): Promise<void> => {
     await api.delete(`/users/${id}`);
   },
+
+  permanentDelete: async (id: string): Promise<void> => {
+    await api.delete(`/users/${id}/permanent`);
+  },
 };
 
 // ============ EMPLOYES ============

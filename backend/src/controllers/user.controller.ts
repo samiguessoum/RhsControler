@@ -210,6 +210,34 @@ export const userController = {
       return next(new AppError(500, 'Erreur serveur'));
     }
   },
+
+  /**
+   * DELETE /api/users/:id/permanent — suppression définitive (DIRECTION uniquement)
+   */
+  async permanentDelete(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+
+      if (id === req.user?.id) {
+        return res.status(400).json({ error: 'Vous ne pouvez pas supprimer votre propre compte' });
+      }
+
+      const existing = await prisma.user.findUnique({ where: { id } });
+
+      if (!existing) {
+        return res.status(404).json({ error: 'Utilisateur non trouvé' });
+      }
+
+      await prisma.user.delete({ where: { id } });
+
+      await createAuditLog(req.user!.id, 'DELETE', 'User', id);
+
+      res.json({ message: 'Utilisateur supprimé définitivement' });
+    } catch (error) {
+      logger.error({ err: error }, 'Permanent delete user error');
+      return next(new AppError(500, 'Erreur serveur'));
+    }
+  },
 };
 
 export default userController;
