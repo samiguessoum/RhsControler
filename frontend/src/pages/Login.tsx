@@ -39,7 +39,8 @@ export function LoginPage() {
       const response = await authApi.login(data.email, data.password);
       login(response.token, response.user);
       toast.success('Connexion réussie');
-      navigate('/');
+      const teamOnly = response.user.role === 'EQUIPE' || response.user.role === 'SUPER_CHEF_EQUIPE';
+      navigate(teamOnly ? '/planning' : '/');
     } catch (error: any) {
       const message = error.response?.data?.error || 'Erreur de connexion';
       toast.error(message);

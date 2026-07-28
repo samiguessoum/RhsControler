@@ -24,10 +24,21 @@ const EntrepotsPage = lazy(() => import('@/pages/Entrepots'));
 const AUTH_BOOT_TIMEOUT_MS = 2500;
 
 function RequireAuth() {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  return <Outlet />;
+}
+
+function RequireFullAccess() {
+  const { user } = useAuthStore();
+  const isTeamOnly = user?.role === 'EQUIPE' || user?.role === 'SUPER_CHEF_EQUIPE';
+
+  if (isTeamOnly) {
+    return <Navigate to="/planning" replace />;
   }
 
   return <Outlet />;
@@ -99,25 +110,30 @@ export default function App() {
 
         <Route element={<RequireAuth />}>
           <Route element={<MainLayout />}>
-            <Route index element={<Suspense fallback={<PageFallback />}><DashboardPage /></Suspense>} />
+            {/* Planning : accessible à tous les rôles */}
             <Route path="/planning" element={<Suspense fallback={<PageFallback />}><PlanningPage /></Suspense>} />
-            <Route path="/clients" element={<Suspense fallback={<PageFallback />}><ClientsPage /></Suspense>} />
-            <Route path="/tiers" element={<Suspense fallback={<PageFallback />}><TiersPage /></Suspense>} />
-            <Route path="/contrats" element={<Suspense fallback={<PageFallback />}><ContratsPage /></Suspense>} />
-            <Route path="/contrats/:id" element={<Suspense fallback={<PageFallback />}><ContratDetailPage /></Suspense>} />
-            <Route path="/import-export" element={<Suspense fallback={<PageFallback />}><ImportExportPage /></Suspense>} />
-            <Route path="/prestations" element={<Suspense fallback={<PageFallback />}><PrestationsPage /></Suspense>} />
-            <Route path="/entrepots" element={<Suspense fallback={<PageFallback />}><EntrepotsPage /></Suspense>} />
-            <Route path="/produits-services" element={<Suspense fallback={<PageFallback />}><ProduitsServicesPage /></Suspense>} />
-            <Route path="/commerce" element={<Suspense fallback={<PageFallback />}><CommercePage /></Suspense>} />
-            <Route path="/facturation" element={<Suspense fallback={<PageFallback />}><FacturationPage /></Suspense>} />
-            <Route path="/finance" element={<Suspense fallback={<PageFallback />}><FinancePage /></Suspense>} />
-            <Route path="/rh" element={<Suspense fallback={<PageFallback />}><RHPage /></Suspense>} />
-            <Route path="/parametres" element={<Suspense fallback={<PageFallback />}><ParametresPage /></Suspense>} />
+
+            {/* Pages réservées aux rôles non-terrain */}
+            <Route element={<RequireFullAccess />}>
+              <Route index element={<Suspense fallback={<PageFallback />}><DashboardPage /></Suspense>} />
+              <Route path="/clients" element={<Suspense fallback={<PageFallback />}><ClientsPage /></Suspense>} />
+              <Route path="/tiers" element={<Suspense fallback={<PageFallback />}><TiersPage /></Suspense>} />
+              <Route path="/contrats" element={<Suspense fallback={<PageFallback />}><ContratsPage /></Suspense>} />
+              <Route path="/contrats/:id" element={<Suspense fallback={<PageFallback />}><ContratDetailPage /></Suspense>} />
+              <Route path="/import-export" element={<Suspense fallback={<PageFallback />}><ImportExportPage /></Suspense>} />
+              <Route path="/prestations" element={<Suspense fallback={<PageFallback />}><PrestationsPage /></Suspense>} />
+              <Route path="/entrepots" element={<Suspense fallback={<PageFallback />}><EntrepotsPage /></Suspense>} />
+              <Route path="/produits-services" element={<Suspense fallback={<PageFallback />}><ProduitsServicesPage /></Suspense>} />
+              <Route path="/commerce" element={<Suspense fallback={<PageFallback />}><CommercePage /></Suspense>} />
+              <Route path="/facturation" element={<Suspense fallback={<PageFallback />}><FacturationPage /></Suspense>} />
+              <Route path="/finance" element={<Suspense fallback={<PageFallback />}><FinancePage /></Suspense>} />
+              <Route path="/rh" element={<Suspense fallback={<PageFallback />}><RHPage /></Suspense>} />
+              <Route path="/parametres" element={<Suspense fallback={<PageFallback />}><ParametresPage /></Suspense>} />
+            </Route>
           </Route>
         </Route>
 
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/planning" replace />} />
       </Routes>
     </BrowserRouter>
   );
