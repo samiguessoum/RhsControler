@@ -228,9 +228,44 @@ export const userController = {
         return res.status(404).json({ error: 'Utilisateur non trouvé' });
       }
 
-      await prisma.user.delete({ where: { id } });
+      const adminId = req.user!.id;
 
-      await createAuditLog(req.user!.id, 'DELETE', 'User', id);
+      await prisma.$transaction(async (tx) => {
+        // FK requises (non nullable) → supprimer ou réassigner à l'admin
+        await tx.auditLog.deleteMany({ where: { userId: id } });
+        await tx.mouvementStock.deleteMany({ where: { userId: id } });
+        await tx.intervention.updateMany({ where: { createdById: id }, data: { createdById: adminId } });
+
+        // FK optionnelles → mettre à null
+        await tx.intervention.updateMany({ where: { updatedById: id }, data: { updatedById: null } });
+        await tx.contrat.updateMany({ where: { responsablePlanningId: id }, data: { responsablePlanningId: null } });
+        await tx.conge.updateMany({ where: { approuveParId: id }, data: { approuveParId: null } });
+
+        // Commerce
+        await tx.devis.updateMany({ where: { createdById: id }, data: { createdById: null } });
+        await tx.devis.updateMany({ where: { updatedById: id }, data: { updatedById: null } });
+        await tx.commande.updateMany({ where: { createdById: id }, data: { createdById: null } });
+        await tx.commande.updateMany({ where: { updatedById: id }, data: { updatedById: null } });
+        await tx.bonLivraison.updateMany({ where: { createdById: id }, data: { createdById: null } });
+        await tx.bonLivraison.updateMany({ where: { updatedById: id }, data: { updatedById: null } });
+        await tx.facture.updateMany({ where: { createdById: id }, data: { createdById: null } });
+        await tx.facture.updateMany({ where: { updatedById: id }, data: { updatedById: null } });
+        await tx.paiement.updateMany({ where: { createdById: id }, data: { createdById: null } });
+        await tx.factureRelance.updateMany({ where: { createdById: id }, data: { createdById: null } });
+        await tx.commandeFournisseur.updateMany({ where: { createdById: id }, data: { createdById: null } });
+        await tx.commandeFournisseur.updateMany({ where: { updatedById: id }, data: { updatedById: null } });
+        await tx.factureFournisseur.updateMany({ where: { createdById: id }, data: { createdById: null } });
+        await tx.factureFournisseur.updateMany({ where: { updatedById: id }, data: { updatedById: null } });
+        await tx.paiementFournisseur.updateMany({ where: { createdById: id }, data: { createdById: null } });
+        await tx.charge.updateMany({ where: { createdById: id }, data: { createdById: null } });
+        await tx.charge.updateMany({ where: { updatedById: id }, data: { updatedById: null } });
+        await tx.paiementCharge.updateMany({ where: { createdById: id }, data: { createdById: null } });
+        await tx.paiementDivers.updateMany({ where: { createdById: id }, data: { createdById: null } });
+
+        await tx.user.delete({ where: { id } });
+      });
+
+      await createAuditLog(adminId, 'DELETE', 'User', id);
 
       res.json({ message: 'Utilisateur supprimé définitivement' });
     } catch (error) {
