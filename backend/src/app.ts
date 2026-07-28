@@ -14,6 +14,9 @@ import { authMiddleware } from './middleware/auth.middleware.js';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Derrière un reverse proxy (Caddy) — nécessaire pour express-rate-limit
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(helmet());
 app.use(cors({
