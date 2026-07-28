@@ -30,10 +30,13 @@ export const interventionController = {
       const where: any = {};
 
       // EQUIPE : ne voit que les interventions qui lui sont assignées
-      if (req.user?.role === 'EQUIPE' && req.user?.employeId) {
-        where.interventionEmployes = {
-          some: { employeId: req.user.employeId },
-        };
+      if (req.user?.role === 'EQUIPE') {
+        if (req.user.employeId) {
+          where.interventionEmployes = { some: { employeId: req.user.employeId } };
+        } else {
+          // Pas de fiche employé liée → aucune intervention visible
+          where.id = { in: [] };
+        }
       }
 
       if (clientId) where.clientId = clientId;
