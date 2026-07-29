@@ -1629,22 +1629,34 @@ export function ParametresPage() {
       <AlertDialog open={!!deleteEmployeTarget} onOpenChange={(open) => !open && setDeleteEmployeTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Supprimer cet employé ?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleteEmployeTarget && (deleteEmployeTarget._count?.interventionEmployes ?? 0) > 0
-                ? `Cet employé est associé à ${deleteEmployeTarget._count!.interventionEmployes} intervention(s). Le supprimer le désaffectera de toutes ces interventions. Cette action est définitive.`
-                : 'Cette action est définitive.'}
+            <AlertDialogTitle>
+              Supprimer {deleteEmployeTarget?.prenom} {deleteEmployeTarget?.nom} ?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                {(deleteEmployeTarget?._count?.interventionEmployes ?? 0) > 0 && (
+                  <div className="rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-800">
+                    <strong>Attention :</strong> cet employe est assigne a{' '}
+                    <strong>{deleteEmployeTarget!._count!.interventionEmployes} mission{deleteEmployeTarget!._count!.interventionEmployes > 1 ? 's' : ''}</strong>.
+                    Il sera retire de toutes ces missions.
+                  </div>
+                )}
+                <p className="text-sm text-muted-foreground">
+                  Cette action est definitive et ne peut pas etre annulee.
+                </p>
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setDeleteEmployeTarget(null)}>Annuler</AlertDialogCancel>
             <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={() => {
                 if (deleteEmployeTarget) deleteEmployeMutation.mutate(deleteEmployeTarget.id);
                 setDeleteEmployeTarget(null);
               }}
             >
-              Supprimer
+              Supprimer definitivement
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

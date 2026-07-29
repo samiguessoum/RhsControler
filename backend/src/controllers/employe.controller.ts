@@ -106,6 +106,22 @@ export const employeController = {
   },
 
   /**
+   * GET /api/employes/:id/interventions-count
+   */
+  async interventionsCount(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const count = await prisma.interventionEmploye.count({
+        where: { employeId: id },
+      });
+      res.json({ count });
+    } catch (error) {
+      logger.error({ err: error }, 'Employe interventions count error');
+      return next(new AppError(500, 'Erreur serveur'));
+    }
+  },
+
+  /**
    * DELETE /api/employes/:id
    */
   async delete(req: AuthRequest, res: Response, next: NextFunction) {

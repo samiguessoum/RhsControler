@@ -195,6 +195,7 @@ router.delete('/prestations/:id', authMiddleware, canDo('managePrestations'), pr
 // Employés
 router.get('/employes', authMiddleware, canDo('viewEmployes'), employeController.list);
 router.get('/employes/:id', authMiddleware, canDo('viewEmployes'), employeController.get);
+router.get('/employes/:id/interventions-count', authMiddleware, canDo('manageEmployes'), employeController.interventionsCount);
 router.post('/employes', authMiddleware, canDo('manageEmployes'), validate(createEmployeSchema), employeController.create);
 router.put('/employes/:id', authMiddleware, canDo('manageEmployes'), validate(updateEmployeSchema), employeController.update);
 router.delete('/employes/:id', authMiddleware, canDo('manageEmployes'), employeController.delete);
