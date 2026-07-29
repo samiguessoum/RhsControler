@@ -117,7 +117,11 @@ export const employeController = {
         return res.status(404).json({ error: 'Employé non trouvé' });
       }
 
-      await prisma.employe.delete({ where: { id } });
+      await prisma.$transaction(async (tx) => {
+        // Nullifier le lien User -> Employe avant suppression
+        await tx.user.updateMany({ where: { employeId: id }, data: { employeId: null } });
+        await tx.employe.delete({ where: { id } });
+      });
       res.json({ message: 'Employé supprimé' });
     } catch (error) {
       logger.error({ err: error }, 'Delete employe error');
