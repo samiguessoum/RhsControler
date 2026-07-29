@@ -1631,7 +1631,9 @@ export function ParametresPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer cet employé ?</AlertDialogTitle>
             <AlertDialogDescription>
-              Cette action est définitive.
+              {deleteEmployeTarget && (deleteEmployeTarget._count?.interventionEmployes ?? 0) > 0
+                ? `Cet employé est associé à ${deleteEmployeTarget._count!.interventionEmployes} intervention(s). Le supprimer le désaffectera de toutes ces interventions. Cette action est définitive.`
+                : 'Cette action est définitive.'}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

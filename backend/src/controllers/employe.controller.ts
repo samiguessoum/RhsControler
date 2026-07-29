@@ -12,7 +12,7 @@ export const employeController = {
   async list(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const employes = await prisma.employe.findMany({
-        include: { postes: true },
+        include: { postes: true, _count: { select: { interventionEmployes: true } } },
         orderBy: [{ nom: 'asc' }, { prenom: 'asc' }],
       });
 
@@ -120,6 +120,8 @@ export const employeController = {
       await prisma.$transaction(async (tx) => {
         // Nullifier le lien User -> Employe avant suppression
         await tx.user.updateMany({ where: { employeId: id }, data: { employeId: null } });
+        // Désaffecter l'employé de toutes ses interventions avant suppression
+        await tx.interventionEmploye.deleteMany({ where: { employeId: id } });
         await tx.employe.delete({ where: { id } });
       });
       res.json({ message: 'Employé supprimé' });
