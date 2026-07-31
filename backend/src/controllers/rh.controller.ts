@@ -271,6 +271,96 @@ export const rhController = {
     }
   },
 
+  // ============ SOLDES CONGES ============
+
+  /**
+   * GET /api/rh/soldes?annee=2026
+   * Soldes de congés de tous les employés pour une année
+   */
+  async listSoldes(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const annee = parseInt(req.query.annee as string) || new Date().getFullYear();
+
+      const soldes = await prisma.soldeConge.findMany({
+        where: { annee, type: 'ANNUEL' },
+        include: { employe: { select: { id: true, nom: true, prenom: true } } },
+        orderBy: [{ employe: { nom: 'asc' } }],
+      });
+
+      res.json({ soldes, annee });
+    } catch (error) {
+      logger.error({ err: error }, 'List soldes error');
+      return next(new AppError(500, 'Erreur serveur'));
+    }
+  },
+
+  /**
+   * POST /api/rh/soldes/initialiser
+   * Initialise ou remet à jour les soldes ANNUEL pour tous les employés
+   * selon les paramètres de l'entreprise
+   */
+  async initialiserSoldes(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { annee } = req.body;
+      const anneeNum = annee ? parseInt(annee) : new Date().getFullYear();
+
+      const settings = await prisma.companySettings.findFirst();
+      if (!settings) {
+        return res.status(400).json({ error: 'Paramètres entreprise non configurés' });
+      }
+
+      const joursAcquis =
+        settings.modeAllocationConges === 'MENSUEL'
+          ? settings.joursCongesMensuels * 12
+          : settings.joursCongesAnnuels;
+
+      const employes = await prisma.employe.findMany({ select: { id: true } });
+
+      let crees = 0;
+      let mis_a_jour = 0;
+
+      for (const emp of employes) {
+        const existant = await prisma.soldeConge.findUnique({
+          where: { employeId_annee_type: { employeId: emp.id, annee: anneeNum, type: 'ANNUEL' } },
+        });
+
+        if (existant) {
+          // Mettre à jour seulement joursAcquis et recalculer joursRestants
+          await prisma.soldeConge.update({
+            where: { employeId_annee_type: { employeId: emp.id, annee: anneeNum, type: 'ANNUEL' } },
+            data: {
+              joursAcquis,
+              joursRestants: joursAcquis - existant.joursPris,
+            },
+          });
+          mis_a_jour++;
+        } else {
+          await prisma.soldeConge.create({
+            data: {
+              employeId: emp.id,
+              annee: anneeNum,
+              type: 'ANNUEL',
+              joursAcquis,
+              joursPris: 0,
+              joursRestants: joursAcquis,
+            },
+          });
+          crees++;
+        }
+      }
+
+      res.json({
+        message: `Soldes initialisés pour ${anneeNum} : ${crees} créés, ${mis_a_jour} mis à jour`,
+        annee: anneeNum,
+        joursAcquis,
+        totalEmployes: employes.length,
+      });
+    } catch (error) {
+      logger.error({ err: error }, 'Initialiser soldes error');
+      return next(new AppError(500, 'Erreur serveur'));
+    }
+  },
+
   // ============ JOURS WEEKEND TRAVAILLES ============
 
   /**

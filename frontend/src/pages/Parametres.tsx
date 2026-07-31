@@ -22,7 +22,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { prestationsApi, usersApi, employesApi, postesApi, settingsApi } from '@/services/api';
+import api, { prestationsApi, usersApi, employesApi, postesApi, settingsApi } from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
 import type { Prestation, User, Role, Employe, Poste, CompanySettings, UpdateCompanySettingsInput } from '@/types';
 
@@ -58,6 +58,12 @@ export function ParametresPage() {
   // Settings state
   const [settingsForm, setSettingsForm] = useState<UpdateCompanySettingsInput>({});
   const [activeTab, setActiveTab] = useState('entreprise');
+
+  // Conges state
+  const [congesAnnee, setCongesAnnee] = useState(new Date().getFullYear());
+  const [congesMode, setCongesMode] = useState<'ANNUEL' | 'MENSUEL'>('ANNUEL');
+  const [congesJoursAnnuels, setCongesJoursAnnuels] = useState(30);
+  const [congesJoursMensuels, setCongesJoursMensuels] = useState(2.5);
 
   // Query for settings
   const { data: settings, isLoading: isLoadingSettings } = useQuery({
@@ -117,6 +123,10 @@ export function ParametresPage() {
         offsetFournisseur: settings.offsetFournisseur || 0,
         offsetProspect: settings.offsetProspect || 0,
       });
+      // Initialiser les états congés depuis les settings
+      setCongesMode((settings.modeAllocationConges as 'ANNUEL' | 'MENSUEL') || 'ANNUEL');
+      setCongesJoursAnnuels(settings.joursCongesAnnuels ?? 30);
+      setCongesJoursMensuels(settings.joursCongesMensuels ?? 2.5);
     }
   }, [settings]);
 
@@ -153,6 +163,33 @@ export function ParametresPage() {
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Erreur lors de l\'upload du logo carré');
+    },
+  });
+
+  // Mutation pour sauvegarder les paramètres de congés
+  const saveCongeSettingsMutation = useMutation({
+    mutationFn: () => settingsApi.updateSettings({
+      modeAllocationConges: congesMode,
+      joursCongesAnnuels: congesJoursAnnuels,
+      joursCongesMensuels: congesJoursMensuels,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      toast.success('Politique de conges enregistree');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de la sauvegarde');
+    },
+  });
+
+  // Mutation pour initialiser les soldes
+  const initialiserSoldesMutation = useMutation({
+    mutationFn: (annee: number) => api.post('/rh/soldes/initialiser', { annee }),
+    onSuccess: (res: any) => {
+      toast.success(res.data?.message || 'Soldes initialises');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de l\'initialisation');
     },
   });
 
@@ -423,7 +460,7 @@ export function ParametresPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-6 lg:w-auto lg:inline-flex">
+        <TabsList className="grid w-full grid-cols-7 lg:w-auto lg:inline-flex">
           {canDo('manageSettings') && (
             <TabsTrigger value="entreprise" className="flex items-center gap-2">
               <Building2 className="h-4 w-4" />
@@ -458,6 +495,11 @@ export function ParametresPage() {
             <TabsTrigger value="prestations" className="flex items-center gap-2">
               <Wrench className="h-4 w-4" />
               <span className="hidden sm:inline">Prestations</span>
+            </TabsTrigger>
+          )}
+          {canDo('manageRH') && (
+            <TabsTrigger value="conges" className="flex items-center gap-2">
+              <span className="hidden sm:inline">Conges</span>
             </TabsTrigger>
           )}
         </TabsList>
@@ -1252,6 +1294,150 @@ export function ParametresPage() {
                     </div>
                   ))
                 )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
+        {/* ── Congés ── */}
+        {canDo('manageRH') && (
+          <TabsContent value="conges" className="space-y-6">
+            {/* Politique d'allocation */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Politique de conges annuels</CardTitle>
+                <CardDescription>
+                  Definissez le nombre de jours de conge alloues a chaque employe.
+                  Ce parametre s'applique lors de l'initialisation des soldes.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Mode */}
+                <div className="space-y-3">
+                  <Label>Mode d'allocation</Label>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setCongesMode('ANNUEL')}
+                      className={`flex-1 rounded-md border px-4 py-3 text-sm font-medium transition-colors ${
+                        congesMode === 'ANNUEL'
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-input bg-background hover:bg-accent'
+                      }`}
+                    >
+                      <div className="font-semibold">Par an</div>
+                      <div className="text-xs opacity-70 mt-0.5">Ex: 30 jours par annee</div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCongesMode('MENSUEL')}
+                      className={`flex-1 rounded-md border px-4 py-3 text-sm font-medium transition-colors ${
+                        congesMode === 'MENSUEL'
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-input bg-background hover:bg-accent'
+                      }`}
+                    >
+                      <div className="font-semibold">Par mois</div>
+                      <div className="text-xs opacity-70 mt-0.5">Ex: 2.5 jours par mois calendaire</div>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Valeur */}
+                {congesMode === 'ANNUEL' ? (
+                  <div className="space-y-2">
+                    <Label>Jours de conge par an</Label>
+                    <div className="flex items-center gap-3">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={365}
+                        step={0.5}
+                        value={congesJoursAnnuels}
+                        onChange={(e) => setCongesJoursAnnuels(parseFloat(e.target.value) || 0)}
+                        className="w-32"
+                      />
+                      <span className="text-sm text-muted-foreground">jours / an</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label>Jours de conge par mois</Label>
+                    <div className="flex items-center gap-3">
+                      <Input
+                        type="number"
+                        min={0.5}
+                        max={31}
+                        step={0.5}
+                        value={congesJoursMensuels}
+                        onChange={(e) => setCongesJoursMensuels(parseFloat(e.target.value) || 0)}
+                        className="w-32"
+                      />
+                      <span className="text-sm text-muted-foreground">
+                        jours / mois = {(congesJoursMensuels * 12).toFixed(1)} jours / an
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <Button
+                  onClick={() => saveCongeSettingsMutation.mutate()}
+                  disabled={saveCongeSettingsMutation.isPending}
+                >
+                  {saveCongeSettingsMutation.isPending ? 'Sauvegarde...' : 'Enregistrer la politique'}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Initialisation des soldes */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Initialiser les soldes</CardTitle>
+                <CardDescription>
+                  Cree ou met a jour le solde de conges annuels pour tous les employes
+                  selon la politique definie ci-dessus. Les jours deja pris sont preserves.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <div className="space-y-1">
+                    <Label>Annee</Label>
+                    <Input
+                      type="number"
+                      min={2020}
+                      max={2099}
+                      value={congesAnnee}
+                      onChange={(e) => setCongesAnnee(parseInt(e.target.value) || new Date().getFullYear())}
+                      className="w-28"
+                    />
+                  </div>
+                  <div className="pt-6">
+                    <p className="text-sm text-muted-foreground">
+                      Chaque employe recevra{' '}
+                      <strong>
+                        {congesMode === 'ANNUEL'
+                          ? `${congesJoursAnnuels} jours`
+                          : `${(congesJoursMensuels * 12).toFixed(1)} jours`}
+                      </strong>{' '}
+                      de conge annuel pour {congesAnnee}.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  Cette action cree les soldes manquants et met a jour les soldes existants
+                  sans effacer les jours deja pris.
+                </div>
+
+                <Button
+                  variant="outline"
+                  onClick={() => initialiserSoldesMutation.mutate(congesAnnee)}
+                  disabled={initialiserSoldesMutation.isPending}
+                >
+                  {initialiserSoldesMutation.isPending
+                    ? 'Initialisation...'
+                    : `Initialiser les soldes ${congesAnnee}`}
+                </Button>
               </CardContent>
             </Card>
           </TabsContent>

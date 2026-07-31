@@ -1934,6 +1934,11 @@ export interface CompanySettings {
   offsetFournisseur: number;
   offsetProspect: number;
 
+  // RH - Congés
+  modeAllocationConges: string;
+  joursCongesAnnuels: number;
+  joursCongesMensuels: number;
+
   createdAt: string;
   updatedAt: string;
 }
@@ -2005,4 +2010,9 @@ export interface UpdateCompanySettingsInput {
   offsetClient?: number;
   offsetFournisseur?: number;
   offsetProspect?: number;
+
+  // RH - Congés
+  modeAllocationConges?: string;
+  joursCongesAnnuels?: number;
+  joursCongesMensuels?: number;
 }

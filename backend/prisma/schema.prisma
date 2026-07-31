@@ -1756,6 +1756,11 @@ model CompanySettings {
   inclureAnnee          Boolean  @default(true)
   separateur            String   @default("/") // DV0001/2026
 
+  // RH - Politique de congés annuels
+  modeAllocationConges  String  @default("ANNUEL")  // "ANNUEL" ou "MENSUEL"
+  joursCongesAnnuels    Float   @default(30)         // Jours alloués par an (mode ANNUEL)
+  joursCongesMensuels   Float   @default(2.5)        // Jours acquis par mois (mode MENSUEL)
+
   // Décalages de numérotation (pour reprendre une numérotation en cours)
   // Ex: offsetFacture = 839 => prochaine facture sera 840
   offsetDevis                 Int      @default(0)

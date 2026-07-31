@@ -101,6 +101,10 @@ export const settingsController = {
         offsetClient,
         offsetFournisseur,
         offsetProspect,
+        // RH - Congés
+        modeAllocationConges,
+        joursCongesAnnuels,
+        joursCongesMensuels,
       } = req.body;
 
       // Valider les chemins de fichiers contre le path traversal
@@ -159,6 +163,10 @@ export const settingsController = {
         offsetClient: offsetClient !== undefined ? parseInt(offsetClient, 10) : undefined,
         offsetFournisseur: offsetFournisseur !== undefined ? parseInt(offsetFournisseur, 10) : undefined,
         offsetProspect: offsetProspect !== undefined ? parseInt(offsetProspect, 10) : undefined,
+        // RH - Congés
+        modeAllocationConges,
+        joursCongesAnnuels: joursCongesAnnuels !== undefined ? parseFloat(joursCongesAnnuels) : undefined,
+        joursCongesMensuels: joursCongesMensuels !== undefined ? parseFloat(joursCongesMensuels) : undefined,
       };
 
       // Filtrer les valeurs undefined
