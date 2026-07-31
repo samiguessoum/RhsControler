@@ -479,7 +479,7 @@ function CreateCongeDialog({
     type: 'ANNUEL',
     dateDebut: '',
     dateFin: '',
-    nbJours: 1,
+    nbJours: 0,
     motif: '',
   });
 
@@ -490,11 +490,31 @@ function CreateCongeDialog({
         type: 'ANNUEL',
         dateDebut: '',
         dateFin: '',
-        nbJours: 1,
+        nbJours: 0,
         motif: '',
       });
     }
   }, [open]);
+
+  // Calcul automatique du nombre de jours ouvrés entre les deux dates
+  const nbJoursCalc = useMemo(() => {
+    if (!formData.dateDebut || !formData.dateFin) return 0;
+    const start = new Date(formData.dateDebut);
+    const end = new Date(formData.dateFin);
+    if (end < start) return 0;
+    let count = 0;
+    const cur = new Date(start);
+    while (cur <= end) {
+      const day = cur.getDay();
+      if (day !== 5 && day !== 6) count++; // exclure vendredi et samedi (semaine algérienne)
+      cur.setDate(cur.getDate() + 1);
+    }
+    return count;
+  }, [formData.dateDebut, formData.dateFin]);
+
+  useEffect(() => {
+    setFormData((prev) => ({ ...prev, nbJours: nbJoursCalc }));
+  }, [nbJoursCalc]);
 
   const createMutation = useMutation({
     mutationFn: rhApi.createConge,
@@ -558,7 +578,7 @@ function CreateCongeDialog({
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Date début</Label>
+              <Label>Date debut</Label>
               <Input
                 type="date"
                 value={formData.dateDebut}
@@ -571,23 +591,26 @@ function CreateCongeDialog({
               <Input
                 type="date"
                 value={formData.dateFin}
+                min={formData.dateDebut || undefined}
                 onChange={(e) => setFormData({ ...formData, dateFin: e.target.value })}
                 required
               />
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label>Nombre de jours</Label>
-            <Input
-              type="number"
-              step="0.5"
-              min="0.5"
-              value={formData.nbJours}
-              onChange={(e) => setFormData({ ...formData, nbJours: parseFloat(e.target.value) })}
-              required
-            />
-          </div>
+          {formData.dateDebut && formData.dateFin && (
+            <div className={`flex items-center gap-3 rounded-lg border px-4 py-3 ${
+              nbJoursCalc > 0 ? 'border-primary/30 bg-primary/5' : 'border-destructive/30 bg-destructive/5'
+            }`}>
+              <div className="flex-1">
+                <p className="text-xs text-muted-foreground">Duree calculee (jours ouvrables)</p>
+                <p className={`text-lg font-bold ${nbJoursCalc > 0 ? 'text-primary' : 'text-destructive'}`}>
+                  {nbJoursCalc > 0 ? `${nbJoursCalc} jour${nbJoursCalc > 1 ? 's' : ''}` : 'Dates invalides'}
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">Vendredi et samedi exclus</p>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label>Motif (optionnel)</Label>
@@ -602,7 +625,7 @@ function CreateCongeDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Annuler
             </Button>
-            <Button type="submit" disabled={createMutation.isPending || !formData.employeId}>
+            <Button type="submit" disabled={createMutation.isPending || !formData.employeId || nbJoursCalc === 0}>
               Créer
             </Button>
           </DialogFooter>
