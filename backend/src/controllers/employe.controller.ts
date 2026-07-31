@@ -4,6 +4,11 @@ import { AuthRequest } from '../middleware/auth.middleware.js';
 import logger from '../lib/logger.js';
 import { AppError } from '../lib/errors.js';
 
+const SALARY_ROLES = ['SUPER_ADMIN', 'DIRECTION'];
+
+function canSeeSalary(role?: string) {
+  return role ? SALARY_ROLES.includes(role) : false;
+}
 
 export const employeController = {
   /**
@@ -11,12 +16,19 @@ export const employeController = {
    */
   async list(req: AuthRequest, res: Response, next: NextFunction) {
     try {
+      const showSalary = canSeeSalary(req.user?.role);
+
       const employes = await prisma.employe.findMany({
         include: { postes: true, _count: { select: { interventionEmployes: true } } },
         orderBy: [{ nom: 'asc' }, { prenom: 'asc' }],
       });
 
-      res.json({ employes });
+      const result = employes.map((e) => ({
+        ...e,
+        salaireBase: showSalary ? e.salaireBase : undefined,
+      }));
+
+      res.json({ employes: result });
     } catch (error) {
       logger.error({ err: error }, 'List employes error');
       return next(new AppError(500, 'Erreur serveur'));
@@ -29,6 +41,8 @@ export const employeController = {
   async get(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
+      const showSalary = canSeeSalary(req.user?.role);
+
       const employe = await prisma.employe.findUnique({
         where: { id },
         include: { postes: true },
@@ -38,7 +52,12 @@ export const employeController = {
         return res.status(404).json({ error: 'Employé non trouvé' });
       }
 
-      res.json({ employe });
+      res.json({
+        employe: {
+          ...employe,
+          salaireBase: showSalary ? employe.salaireBase : undefined,
+        },
+      });
     } catch (error) {
       logger.error({ err: error }, 'Get employe error');
       return next(new AppError(500, 'Erreur serveur'));
@@ -50,12 +69,13 @@ export const employeController = {
    */
   async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const { prenom, nom, posteIds } = req.body;
+      const { prenom, nom, posteIds, salaireBase } = req.body;
 
       const employe = await prisma.employe.create({
         data: {
           prenom,
           nom,
+          salaireBase: salaireBase !== undefined ? parseFloat(salaireBase) : undefined,
           postes: {
             connect: posteIds.map((id: string) => ({ id })),
           },
@@ -76,7 +96,8 @@ export const employeController = {
   async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const { prenom, nom, posteIds } = req.body;
+      const { prenom, nom, posteIds, salaireBase } = req.body;
+      const showSalary = canSeeSalary(req.user?.role);
 
       const existing = await prisma.employe.findUnique({ where: { id } });
       if (!existing) {
@@ -88,17 +109,23 @@ export const employeController = {
         data: {
           prenom: prenom ?? existing.prenom,
           nom: nom ?? existing.nom,
+          // Seuls SUPER_ADMIN/DIRECTION peuvent modifier le salaire
+          ...(showSalary && salaireBase !== undefined
+            ? { salaireBase: salaireBase === '' || salaireBase === null ? null : parseFloat(salaireBase) }
+            : {}),
           postes: posteIds
-            ? {
-                set: [],
-                connect: posteIds.map((pid: string) => ({ id: pid })),
-              }
+            ? { set: [], connect: posteIds.map((pid: string) => ({ id: pid })) }
             : undefined,
         },
         include: { postes: true },
       });
 
-      res.json({ employe });
+      res.json({
+        employe: {
+          ...employe,
+          salaireBase: showSalary ? employe.salaireBase : undefined,
+        },
+      });
     } catch (error) {
       logger.error({ err: error }, 'Update employe error');
       return next(new AppError(500, 'Erreur serveur'));
@@ -134,9 +161,7 @@ export const employeController = {
       }
 
       await prisma.$transaction(async (tx) => {
-        // Nullifier le lien User -> Employe avant suppression
         await tx.user.updateMany({ where: { employeId: id }, data: { employeId: null } });
-        // Désaffecter l'employé de toutes ses interventions avant suppression
         await tx.interventionEmploye.deleteMany({ where: { employeId: id } });
         await tx.employe.delete({ where: { id } });
       });

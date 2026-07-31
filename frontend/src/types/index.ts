@@ -25,6 +25,7 @@ export interface Employe {
   prenom: string;
   nom: string;
   postes: Poste[];
+  salaireBase?: number | null;
   createdAt: string;
   updatedAt: string;
   _count?: { interventionEmployes: number };

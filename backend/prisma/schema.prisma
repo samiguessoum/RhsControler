@@ -226,12 +226,13 @@ model User {
 }
 
 model Employe {
-  id        String               @id @default(uuid())
-  prenom    String
-  nom       String
-  postes    Poste[]
-  createdAt DateTime             @default(now())
-  updatedAt DateTime             @updatedAt
+  id          String               @id @default(uuid())
+  prenom      String
+  nom         String
+  postes      Poste[]
+  salaireBase Float?               // Salaire mensuel brut (visible DIRECTION/SUPER_ADMIN uniquement)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
 
   user                     User?
   interventionEmployes     InterventionEmploye[]

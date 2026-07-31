@@ -49,7 +49,9 @@ export function ParametresPage() {
   const [viewingEmploye, setViewingEmploye] = useState<Employe | null>(null);
   const [deleteEmployeTarget, setDeleteEmployeTarget] = useState<Employe | null>(null);
   const [newEmployePosteIds, setNewEmployePosteIds] = useState<string[]>([]);
+  const [newEmployeSalaire, setNewEmployeSalaire] = useState<string>('');
   const [editEmployePosteIds, setEditEmployePosteIds] = useState<string[]>([]);
+  const [editEmployeSalaire, setEditEmployeSalaire] = useState<string>('');
   const [employeSearch, setEmployeSearch] = useState('');
   const [isCreatePosteOpen, setIsCreatePosteOpen] = useState(false);
   const [editingPoste, setEditingPoste] = useState<Poste | null>(null);
@@ -348,12 +350,13 @@ export function ParametresPage() {
   });
 
   const createEmployeMutation = useMutation({
-    mutationFn: (payload: { prenom: string; nom: string; posteIds: string[] }) => employesApi.create(payload),
+    mutationFn: (payload: { prenom: string; nom: string; posteIds: string[]; salaireBase?: number }) => employesApi.create(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employes'] });
       toast.success('Employé créé');
       setIsCreateEmployeOpen(false);
       setNewEmployePosteIds([]);
+      setNewEmployeSalaire('');
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Erreur lors de la création');
@@ -361,7 +364,7 @@ export function ParametresPage() {
   });
 
   const updateEmployeMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { prenom?: string; nom?: string; posteIds?: string[] } }) =>
+    mutationFn: ({ id, data }: { id: string; data: { prenom?: string; nom?: string; posteIds?: string[]; salaireBase?: number | null } }) =>
       employesApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employes'] });
@@ -431,6 +434,7 @@ export function ParametresPage() {
   useEffect(() => {
     if (editingEmploye) {
       setEditEmployePosteIds((editingEmploye.postes || []).map((p) => p.id));
+      setEditEmployeSalaire(editingEmploye.salaireBase != null ? String(editingEmploye.salaireBase) : '');
     }
   }, [editingEmploye]);
 
@@ -440,6 +444,62 @@ export function ParametresPage() {
     } else {
       setValue([...current, value]);
     }
+  };
+
+  const PosteMultiSelect = ({
+    value,
+    onChange,
+    postesList,
+    required,
+  }: {
+    value: string[];
+    onChange: (next: string[]) => void;
+    postesList: typeof postes;
+    required?: boolean;
+  }) => {
+    const actifs = postesList.filter((p) => p.actif);
+    const toggle = (id: string) =>
+      onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
+
+    if (actifs.length === 0) {
+      return <p className="text-xs text-muted-foreground">Aucun poste disponible. Creez-en un d'abord.</p>;
+    }
+
+    return (
+      <div className="space-y-2">
+        <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
+          {actifs.map((p) => {
+            const selected = value.includes(p.id);
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => toggle(p.id)}
+                className={`relative flex items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-sm transition-all ${
+                  selected
+                    ? 'border-primary bg-primary/5 text-primary font-medium shadow-sm'
+                    : 'border-border bg-background text-foreground hover:border-primary/40 hover:bg-accent'
+                }`}
+              >
+                <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                  selected ? 'border-primary bg-primary text-white' : 'border-input'
+                }`}>
+                  {selected && (
+                    <svg viewBox="0 0 12 12" fill="none" className="h-3 w-3" stroke="currentColor" strokeWidth="2">
+                      <polyline points="2,6 5,9 10,3" />
+                    </svg>
+                  )}
+                </span>
+                <span className="truncate">{p.nom}</span>
+              </button>
+            );
+          })}
+        </div>
+        {required && value.length === 0 && (
+          <p className="text-xs text-amber-600">Selectionnez au moins un poste</p>
+        )}
+      </div>
+    );
   };
 
   const filteredEmployes = employeSearch.trim()
@@ -1677,42 +1737,55 @@ export function ParametresPage() {
             onSubmit={(e) => {
               e.preventDefault();
               const formData = new FormData(e.currentTarget);
-              const data = {
+              const salaireRaw = newEmployeSalaire.trim();
+              createEmployeMutation.mutate({
                 prenom: formData.get('prenom') as string,
                 nom: formData.get('nom') as string,
                 posteIds: newEmployePosteIds,
-              };
-              createEmployeMutation.mutate(data);
+                ...(canDo('viewDashboardFinance') && salaireRaw ? { salaireBase: parseFloat(salaireRaw) } : {}),
+              });
             }}
             className="space-y-4"
           >
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="prenom">Prénom *</Label>
+                <Label>Prenom *</Label>
                 <Input name="prenom" required />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="nom">Nom *</Label>
+                <Label>Nom *</Label>
                 <Input name="nom" required />
               </div>
             </div>
+
+            {canDo('viewDashboardFinance') && (
+              <div className="space-y-2">
+                <Label>Salaire mensuel brut (DZD)</Label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min={0}
+                    step={500}
+                    placeholder="Ex: 45000"
+                    value={newEmployeSalaire}
+                    onChange={(e) => setNewEmployeSalaire(e.target.value)}
+                    className="w-40"
+                  />
+                  <span className="text-sm text-muted-foreground">DZD / mois</span>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label>Postes *</Label>
-              <div className="grid grid-cols-2 gap-2">
-                {postes.map((poste) => (
-                  <label key={poste.id} className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={newEmployePosteIds.includes(poste.id)}
-                      onCheckedChange={() => togglePoste(newEmployePosteIds, poste.id, setNewEmployePosteIds)}
-                    />
-                    <span>{poste.nom}</span>
-                  </label>
-                ))}
-                {postes.length === 0 && (
-                  <p className="text-xs text-muted-foreground">Créez un poste avant d’ajouter un employé.</p>
-                )}
-              </div>
+              <PosteMultiSelect
+                value={newEmployePosteIds}
+                onChange={setNewEmployePosteIds}
+                postesList={postes}
+                required
+              />
             </div>
+
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setIsCreateEmployeOpen(false)}>
                 Annuler
@@ -1721,7 +1794,7 @@ export function ParametresPage() {
                 type="submit"
                 disabled={createEmployeMutation.isPending || newEmployePosteIds.length === 0}
               >
-                Créer
+                Creer
               </Button>
             </DialogFooter>
           </form>
@@ -1740,40 +1813,60 @@ export function ParametresPage() {
                 const formData = new FormData(e.currentTarget);
                 const prenom = formData.get('prenom') as string;
                 const nom = formData.get('nom') as string;
+                const salaireRaw = editEmployeSalaire.trim();
                 updateEmployeMutation.mutate({
                   id: editingEmploye.id,
-                  data: { prenom, nom, posteIds: editEmployePosteIds },
+                  data: {
+                    prenom,
+                    nom,
+                    posteIds: editEmployePosteIds,
+                    ...(canDo('viewDashboardFinance')
+                      ? { salaireBase: salaireRaw ? parseFloat(salaireRaw) : null }
+                      : {}),
+                  },
                 });
               }}
               className="space-y-4"
             >
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="prenom">Prénom *</Label>
+                  <Label>Prenom *</Label>
                   <Input name="prenom" defaultValue={editingEmploye.prenom} required />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="nom">Nom *</Label>
+                  <Label>Nom *</Label>
                   <Input name="nom" defaultValue={editingEmploye.nom} required />
                 </div>
               </div>
+
+              {canDo('viewDashboardFinance') && (
+                <div className="space-y-2">
+                  <Label>Salaire mensuel brut (DZD)</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      step={500}
+                      placeholder="Ex: 45000"
+                      value={editEmployeSalaire}
+                      onChange={(e) => setEditEmployeSalaire(e.target.value)}
+                      className="w-40"
+                    />
+                    <span className="text-sm text-muted-foreground">DZD / mois</span>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label>Postes *</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {postes.map((poste) => (
-                    <label key={poste.id} className="flex items-center gap-2 text-sm">
-                      <Checkbox
-                        checked={editEmployePosteIds.includes(poste.id)}
-                        onCheckedChange={() => togglePoste(editEmployePosteIds, poste.id, setEditEmployePosteIds)}
-                      />
-                      <span>{poste.nom}</span>
-                    </label>
-                  ))}
-                  {postes.length === 0 && (
-                    <p className="text-xs text-muted-foreground">Créez un poste pour l’affecter.</p>
-                  )}
-                </div>
+                <PosteMultiSelect
+                  value={editEmployePosteIds}
+                  onChange={setEditEmployePosteIds}
+                  postesList={postes}
+                  required
+                />
               </div>
+
               <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => setEditingEmploye(null)}>
                   Annuler
@@ -1782,7 +1875,7 @@ export function ParametresPage() {
                   type="submit"
                   disabled={updateEmployeMutation.isPending || editEmployePosteIds.length === 0}
                 >
-                  Mettre à jour
+                  Mettre a jour
                 </Button>
               </DialogFooter>
             </form>
@@ -1803,10 +1896,24 @@ export function ParametresPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Postes</p>
-                <p className="font-medium">
-                  {viewingEmploye.postes.map((p) => p.nom).join(', ')}
-                </p>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {viewingEmploye.postes.map((p) => (
+                    <span key={p.id} className="inline-flex items-center rounded-md border border-primary/30 bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary">
+                      {p.nom}
+                    </span>
+                  ))}
+                </div>
               </div>
+              {canDo('viewDashboardFinance') && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Salaire mensuel brut</p>
+                  <p className="font-medium">
+                    {viewingEmploye.salaireBase != null
+                      ? `${viewingEmploye.salaireBase.toLocaleString('fr-DZ')} DZD`
+                      : <span className="text-muted-foreground text-sm">Non renseigne</span>}
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </DialogContent>
@@ -1940,27 +2047,12 @@ export function ParametresPage() {
                 {newUserCreateEmploye && (
                   <div className="space-y-2 pt-1">
                     <Label className="text-sm">Poste(s) <span className="text-red-500">*</span></Label>
-                    <div className="flex flex-wrap gap-2">
-                      {postes.filter(p => p.actif).map((p) => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => setNewUserPosteIds(prev =>
-                            prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]
-                          )}
-                          className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
-                            newUserPosteIds.includes(p.id)
-                              ? 'bg-primary text-white border-primary'
-                              : 'bg-white border-gray-200 hover:border-gray-300'
-                          }`}
-                        >
-                          {p.nom}
-                        </button>
-                      ))}
-                    </div>
-                    {newUserPosteIds.length === 0 && (
-                      <p className="text-xs text-amber-600">Sélectionnez au moins un poste</p>
-                    )}
+                    <PosteMultiSelect
+                      value={newUserPosteIds}
+                      onChange={setNewUserPosteIds}
+                      postesList={postes}
+                      required
+                    />
                   </div>
                 )}
               </div>
@@ -1984,7 +2076,7 @@ export function ParametresPage() {
       <Dialog open={!!editingUser} onOpenChange={() => setEditingUser(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Modifier l’utilisateur</DialogTitle>
+            <DialogTitle>Modifier l'utilisateur</DialogTitle>
           </DialogHeader>
           {editingUser && (
             <form
