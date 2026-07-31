@@ -199,7 +199,8 @@ model User {
   interventionsModif  Intervention[]   @relation("UpdatedBy")
   auditLogs           AuditLog[]
   mouvementsStock     MouvementStock[]
-  congesApprouves     Conge[]          @relation("ApprouvePar")
+  congesApprouves          Conge[]           @relation("ApprouvePar")
+  mouvementsCongeAuteur    MouvementConge[]  @relation("MouvementsCongeAuteur")
 
   // Commerce
   devisCrees          Devis[]          @relation("DevisCreatedBy")
@@ -240,6 +241,7 @@ model Employe {
   joursWeekendTravailles   JourWeekendTravaille[]
   soldesConges             SoldeConge[]
   recuperationsAccordees   RecuperationAccordee[]
+  mouvementsConge          MouvementConge[]
 }
 
 model Poste {
@@ -1376,18 +1378,40 @@ model JourWeekendTravaille {
 
 // Solde des congés par employé et par année
 model SoldeConge {
-  id              String    @id @default(uuid())
-  employeId       String
-  employe         Employe   @relation(fields: [employeId], references: [id])
-  annee           Int       // L'année concernée
-  type            TypeConge
-  joursAcquis     Float     @default(0) // Jours acquis/alloués
-  joursPris       Float     @default(0) // Jours utilisés
-  joursRestants   Float     @default(0) // Calculé: acquis - pris
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id               String    @id @default(uuid())
+  employeId        String
+  employe          Employe   @relation(fields: [employeId], references: [id])
+  annee            Int
+  type             TypeConge
+  joursAcquis      Float     @default(0) // Acquis cette annee (credits mensuels cumules)
+  joursReportes    Float     @default(0) // Report de l annee precedente
+  joursPris        Float     @default(0) // Consommes (conges approuves)
+  joursIndemnises  Float     @default(0) // Convertis en indemnite en fin d annee
+  joursRestants    Float     @default(0) // = Acquis + Reportes - Pris - Indemnises
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@unique([employeId, annee, type])
+  @@index([employeId])
+  @@index([annee])
+}
+
+// Historique de tous les mouvements de conges
+model MouvementConge {
+  id          String   @id @default(uuid())
+  employeId   String
+  employe     Employe  @relation(fields: [employeId], references: [id])
+  typeOp      String   // ACQUISITION | CONSOMMATION | AJUSTEMENT | REPORT_ENTRANT | REPORT_SORTANT | PAIEMENT | PERTE
+  jours       Float    // Valeur absolue
+  sens        String   // CREDIT | DEBIT
+  soldeApres  Float    // Solde restant apres operation
+  motif       String?
+  annee       Int
+  mois        Int?     // Mois concerne (pour ACQUISITION)
+  auteurId    String?
+  auteur      User?    @relation("MouvementsCongeAuteur", fields: [auteurId], references: [id])
+  createdAt   DateTime @default(now())
+
   @@index([employeId])
   @@index([annee])
 }

@@ -63,9 +63,15 @@ export function ParametresPage() {
 
   // Conges state
   const [congesAnnee, setCongesAnnee] = useState(new Date().getFullYear());
-  const [congesMode, setCongesMode] = useState<'ANNUEL' | 'MENSUEL'>('ANNUEL');
+  const [congesMode, setCongesMode] = useState<'ANNUEL' | 'MENSUEL'>('MENSUEL');
   const [congesJoursAnnuels, setCongesJoursAnnuels] = useState(30);
   const [congesJoursMensuels, setCongesJoursMensuels] = useState(2.5);
+  const [congesMoisCredit, setCongesMoisCredit] = useState(new Date().getMonth() + 1);
+  // Ajustement manuel
+  const [ajustEmployeId, setAjustEmployeId] = useState('');
+  const [ajustJours, setAjustJours] = useState('');
+  const [ajustSens, setAjustSens] = useState<'CREDIT' | 'DEBIT'>('CREDIT');
+  const [ajustMotif, setAjustMotif] = useState('');
 
   // Query for settings
   const { data: settings, isLoading: isLoadingSettings } = useQuery({
@@ -168,7 +174,6 @@ export function ParametresPage() {
     },
   });
 
-  // Mutation pour sauvegarder les paramètres de congés
   const saveCongeSettingsMutation = useMutation({
     mutationFn: () => settingsApi.updateSettings({
       modeAllocationConges: congesMode,
@@ -177,21 +182,45 @@ export function ParametresPage() {
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
-      toast.success('Politique de conges enregistree');
+      toast.success('Parametres de conges sauvegardes');
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Erreur lors de la sauvegarde');
+      toast.error(error.response?.data?.error || 'Erreur');
     },
   });
 
-  // Mutation pour initialiser les soldes
-  const initialiserSoldesMutation = useMutation({
-    mutationFn: (annee: number) => api.post('/rh/soldes/initialiser', { annee }),
+  const crediterMoisMutation = useMutation({
+    mutationFn: (payload: { mois: number; annee: number }) =>
+      api.post('/rh/soldes/crediter-mois', payload),
     onSuccess: (res: any) => {
-      toast.success(res.data?.message || 'Soldes initialises');
+      toast.success(res.data?.message || 'Mois credite');
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Erreur lors de l\'initialisation');
+      toast.error(error.response?.data?.error || 'Erreur lors du credit');
+    },
+  });
+
+  const cloturerAnneeMutation = useMutation({
+    mutationFn: (payload: { annee: number; action: string }) =>
+      api.post('/rh/soldes/cloture-annee', payload),
+    onSuccess: (res: any) => {
+      toast.success(res.data?.message || 'Cloture effectuee');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de la cloture');
+    },
+  });
+
+  const ajusterSoldeMutation = useMutation({
+    mutationFn: (payload: { employeId: string; jours: string; sens: string; motif: string; annee: number }) =>
+      api.post(`/rh/soldes/${payload.employeId}/ajuster`, payload),
+    onSuccess: (res: any) => {
+      toast.success(`Solde ajuste. Nouveau solde : ${res.data?.soldeApres} j`);
+      setAjustJours('');
+      setAjustMotif('');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de l\'ajustement');
     },
   });
 
@@ -1362,144 +1391,213 @@ export function ParametresPage() {
         {/* ── Congés ── */}
         {canDo('manageRH') && (
           <TabsContent value="conges" className="space-y-6">
-            {/* Politique d'allocation */}
+
+            {/* Parametres */}
             <Card>
               <CardHeader>
-                <CardTitle>Politique de conges annuels</CardTitle>
+                <CardTitle>Acquisition mensuelle</CardTitle>
                 <CardDescription>
-                  Definissez le nombre de jours de conge alloues a chaque employe.
-                  Ce parametre s'applique lors de l'initialisation des soldes.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Mode */}
-                <div className="space-y-3">
-                  <Label>Mode d'allocation</Label>
-                  <div className="flex gap-3">
-                    <button
-                      type="button"
-                      onClick={() => setCongesMode('ANNUEL')}
-                      className={`flex-1 rounded-md border px-4 py-3 text-sm font-medium transition-colors ${
-                        congesMode === 'ANNUEL'
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-input bg-background hover:bg-accent'
-                      }`}
-                    >
-                      <div className="font-semibold">Par an</div>
-                      <div className="text-xs opacity-70 mt-0.5">Ex: 30 jours par annee</div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setCongesMode('MENSUEL')}
-                      className={`flex-1 rounded-md border px-4 py-3 text-sm font-medium transition-colors ${
-                        congesMode === 'MENSUEL'
-                          ? 'border-primary bg-primary text-primary-foreground'
-                          : 'border-input bg-background hover:bg-accent'
-                      }`}
-                    >
-                      <div className="font-semibold">Par mois</div>
-                      <div className="text-xs opacity-70 mt-0.5">Ex: 2.5 jours par mois calendaire</div>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Valeur */}
-                {congesMode === 'ANNUEL' ? (
-                  <div className="space-y-2">
-                    <Label>Jours de conge par an</Label>
-                    <div className="flex items-center gap-3">
-                      <Input
-                        type="number"
-                        min={1}
-                        max={365}
-                        step={0.5}
-                        value={congesJoursAnnuels}
-                        onChange={(e) => setCongesJoursAnnuels(parseFloat(e.target.value) || 0)}
-                        className="w-32"
-                      />
-                      <span className="text-sm text-muted-foreground">jours / an</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <Label>Jours de conge par mois</Label>
-                    <div className="flex items-center gap-3">
-                      <Input
-                        type="number"
-                        min={0.5}
-                        max={31}
-                        step={0.5}
-                        value={congesJoursMensuels}
-                        onChange={(e) => setCongesJoursMensuels(parseFloat(e.target.value) || 0)}
-                        className="w-32"
-                      />
-                      <span className="text-sm text-muted-foreground">
-                        jours / mois = {(congesJoursMensuels * 12).toFixed(1)} jours / an
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                <Button
-                  onClick={() => saveCongeSettingsMutation.mutate()}
-                  disabled={saveCongeSettingsMutation.isPending}
-                >
-                  {saveCongeSettingsMutation.isPending ? 'Sauvegarde...' : 'Enregistrer la politique'}
-                </Button>
-              </CardContent>
-            </Card>
-
-            {/* Initialisation des soldes */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Initialiser les soldes</CardTitle>
-                <CardDescription>
-                  Cree ou met a jour le solde de conges annuels pour tous les employes
-                  selon la politique definie ci-dessus. Les jours deja pris sont preserves.
+                  Chaque mois, cliquez sur "Crediter le mois" pour ajouter les jours
+                  acquis a tous les employes. Les jours s'accumulent et ne sont jamais
+                  perdus automatiquement.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
                   <div className="space-y-1">
-                    <Label>Annee</Label>
+                    <Label>Jours par mois</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number" min={0.5} max={31} step={0.5}
+                        value={congesJoursMensuels}
+                        onChange={(e) => setCongesJoursMensuels(parseFloat(e.target.value) || 0)}
+                        className="w-24"
+                      />
+                      <span className="text-sm text-muted-foreground">
+                        = {(congesJoursMensuels * 12).toFixed(1)} j/an
+                      </span>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="mt-5"
+                    onClick={() => saveCongeSettingsMutation.mutate()}
+                    disabled={saveCongeSettingsMutation.isPending}
+                  >
+                    Sauvegarder
+                  </Button>
+                </div>
+
+                <div className="border-t pt-4 space-y-3">
+                  <Label>Crediter le mois</Label>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <select
+                      value={congesMoisCredit}
+                      onChange={(e) => setCongesMoisCredit(parseInt(e.target.value))}
+                      className="h-9 rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      {['Janvier','Fevrier','Mars','Avril','Mai','Juin',
+                        'Juillet','Aout','Septembre','Octobre','Novembre','Decembre']
+                        .map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
+                    </select>
                     <Input
-                      type="number"
-                      min={2020}
-                      max={2099}
+                      type="number" min={2020} max={2099}
                       value={congesAnnee}
                       onChange={(e) => setCongesAnnee(parseInt(e.target.value) || new Date().getFullYear())}
-                      className="w-28"
+                      className="w-24"
                     />
+                    <Button
+                      onClick={() => crediterMoisMutation.mutate({ mois: congesMoisCredit, annee: congesAnnee })}
+                      disabled={crediterMoisMutation.isPending}
+                    >
+                      {crediterMoisMutation.isPending
+                        ? 'Credit en cours...'
+                        : `Crediter +${congesJoursMensuels}j a tous`}
+                    </Button>
                   </div>
-                  <div className="pt-6">
-                    <p className="text-sm text-muted-foreground">
-                      Chaque employe recevra{' '}
-                      <strong>
-                        {congesMode === 'ANNUEL'
-                          ? `${congesJoursAnnuels} jours`
-                          : `${(congesJoursMensuels * 12).toFixed(1)} jours`}
-                      </strong>{' '}
-                      de conge annuel pour {congesAnnee}.
-                    </p>
-                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Si un mois a deja ete credite pour un employe, il est ignore automatiquement.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Cloture annee */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Cloture de fin d'annee</CardTitle>
+                <CardDescription>
+                  A la fin de chaque annee, choisissez ce qu'il advient des jours non consommes.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <Label>Annee a cloturer</Label>
+                  <Input
+                    type="number" min={2020} max={2099}
+                    value={congesAnnee}
+                    onChange={(e) => setCongesAnnee(parseInt(e.target.value) || new Date().getFullYear())}
+                    className="w-24"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {[
+                    {
+                      action: 'REPORTER',
+                      label: 'Reporter',
+                      desc: 'Les jours restants sont transferes vers l\'annee suivante',
+                      color: 'border-blue-200 bg-blue-50 hover:bg-blue-100',
+                    },
+                    {
+                      action: 'SUPPRIMER',
+                      label: 'Supprimer',
+                      desc: 'Les jours non consommes sont perdus (remis a zero)',
+                      color: 'border-red-200 bg-red-50 hover:bg-red-100',
+                    },
+                    {
+                      action: 'PAYER',
+                      label: 'Convertir en indemnite',
+                      desc: 'Les jours restants sont marques comme payes en compensation',
+                      color: 'border-green-200 bg-green-50 hover:bg-green-100',
+                    },
+                  ].map(({ action, label, desc, color }) => (
+                    <button
+                      key={action}
+                      type="button"
+                      onClick={() => cloturerAnneeMutation.mutate({ annee: congesAnnee, action })}
+                      disabled={cloturerAnneeMutation.isPending}
+                      className={`rounded-lg border p-4 text-left transition-colors ${color} disabled:opacity-50`}
+                    >
+                      <p className="font-semibold text-sm">{label}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{desc}</p>
+                    </button>
+                  ))}
                 </div>
 
                 <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  Cette action cree les soldes manquants et met a jour les soldes existants
-                  sans effacer les jours deja pris.
+                  Cette action s'applique a tous les employes ayant un solde positif pour {congesAnnee}.
+                  Elle est irreversible.
                 </div>
+              </CardContent>
+            </Card>
 
+            {/* Ajustement manuel */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Ajustement manuel</CardTitle>
+                <CardDescription>
+                  Ajoutez ou deduisez des jours manuellement pour un employe
+                  (reprise de donnees, correction, conges exceptionnels...).
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="space-y-1">
+                    <Label>Employe</Label>
+                    <select
+                      value={ajustEmployeId}
+                      onChange={(e) => setAjustEmployeId(e.target.value)}
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">-- choisir --</option>
+                      {employes.map((e) => (
+                        <option key={e.id} value={e.id}>{e.prenom} {e.nom}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Annee</Label>
+                    <Input
+                      type="number" min={2020} max={2099}
+                      value={congesAnnee}
+                      onChange={(e) => setCongesAnnee(parseInt(e.target.value) || new Date().getFullYear())}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Jours</Label>
+                    <Input
+                      type="number" min={0.5} step={0.5}
+                      value={ajustJours}
+                      onChange={(e) => setAjustJours(e.target.value)}
+                      placeholder="Ex: 5"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Sens</Label>
+                    <select
+                      value={ajustSens}
+                      onChange={(e) => setAjustSens(e.target.value as 'CREDIT' | 'DEBIT')}
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="CREDIT">+ Credit</option>
+                      <option value="DEBIT">- Debit</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label>Motif</Label>
+                  <Input
+                    value={ajustMotif}
+                    onChange={(e) => setAjustMotif(e.target.value)}
+                    placeholder="Ex: Reprise solde ancien systeme, conge exceptionnel..."
+                  />
+                </div>
                 <Button
-                  variant="outline"
-                  onClick={() => initialiserSoldesMutation.mutate(congesAnnee)}
-                  disabled={initialiserSoldesMutation.isPending}
+                  onClick={() => ajusterSoldeMutation.mutate({
+                    employeId: ajustEmployeId,
+                    jours: ajustJours,
+                    sens: ajustSens,
+                    motif: ajustMotif,
+                    annee: congesAnnee,
+                  })}
+                  disabled={ajusterSoldeMutation.isPending || !ajustEmployeId || !ajustJours}
                 >
-                  {initialiserSoldesMutation.isPending
-                    ? 'Initialisation...'
-                    : `Initialiser les soldes ${congesAnnee}`}
+                  {ajusterSoldeMutation.isPending ? 'Ajustement...' : 'Appliquer'}
                 </Button>
               </CardContent>
             </Card>
+
           </TabsContent>
         )}
       </Tabs>

@@ -576,10 +576,28 @@ export interface SoldeConge {
   annee: number;
   type: TypeConge;
   joursAcquis: number;
+  joursReportes: number;
   joursPris: number;
+  joursIndemnises: number;
   joursRestants: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface MouvementConge {
+  id: string;
+  employeId: string;
+  employe?: { id: string; nom: string; prenom: string };
+  typeOp: string;
+  jours: number;
+  sens: string;
+  soldeApres: number;
+  motif?: string;
+  annee: number;
+  mois?: number;
+  auteurId?: string;
+  auteur?: { id: string; nom: string; prenom: string };
+  createdAt: string;
 }
 
 export interface CreateCongeInput {

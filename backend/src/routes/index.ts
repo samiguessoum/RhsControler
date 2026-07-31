@@ -264,9 +264,12 @@ router.post('/rh/conges', authMiddleware, canDo('manageRH'), validate(createCong
 router.put('/rh/conges/:id/approuver', authMiddleware, canDo('manageRH'), validate(approuverCongeSchema), rhController.approuverConge);
 router.delete('/rh/conges/:id', authMiddleware, canDo('manageRH'), rhController.annulerConge);
 
-// Soldes de congés
+// Soldes de conges
 router.get('/rh/soldes', authMiddleware, canDo('viewRH'), rhController.listSoldes);
-router.post('/rh/soldes/initialiser', authMiddleware, canDo('manageRH'), rhController.initialiserSoldes);
+router.get('/rh/soldes/mouvements', authMiddleware, canDo('viewRH'), rhController.listMouvements);
+router.post('/rh/soldes/crediter-mois', authMiddleware, canDo('manageRH'), rhController.crediterMois);
+router.post('/rh/soldes/cloture-annee', authMiddleware, canDo('manageRH'), rhController.cloturerAnnee);
+router.post('/rh/soldes/:employeId/ajuster', authMiddleware, canDo('manageRH'), rhController.ajusterSolde);
 
 // Weekend travaillés
 router.get('/rh/weekend-travailles', authMiddleware, canDo('viewRH'), rhController.listWeekendTravailles);
