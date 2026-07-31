@@ -42,6 +42,7 @@ export function ParametresPage() {
   const [newUserEmployeId, setNewUserEmployeId] = useState<string>('');
   const [newUserCreateEmploye, setNewUserCreateEmploye] = useState(false);
   const [newUserPosteIds, setNewUserPosteIds] = useState<string[]>([]);
+  const [newUserDateEntree, setNewUserDateEntree] = useState<string>('');
   const [editUserRole, setEditUserRole] = useState<Role>('COORDINATEUR');
   const [editUserEmployeId, setEditUserEmployeId] = useState<string>('');
   const [isCreateEmployeOpen, setIsCreateEmployeOpen] = useState(false);
@@ -338,6 +339,7 @@ export function ParametresPage() {
           prenom: userData.prenom!,
           nom: userData.nom!,
           posteIds: newUserPosteIds,
+          ...(newUserDateEntree ? { dateEntree: newUserDateEntree } : {}),
         });
         await usersApi.update(user.id, { employeId: employe.id });
       }
@@ -350,6 +352,7 @@ export function ParametresPage() {
       setIsCreateUserOpen(false);
       setNewUserCreateEmploye(false);
       setNewUserPosteIds([]);
+      setNewUserDateEntree('');
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Erreur lors de la création');
@@ -1396,75 +1399,10 @@ export function ParametresPage() {
         {canDo('manageRH') && (
           <TabsContent value="conges" className="space-y-6">
 
-            {/* Parametres */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Acquisition mensuelle</CardTitle>
-                <CardDescription>
-                  Chaque mois, cliquez sur "Crediter le mois" pour ajouter les jours
-                  acquis a tous les employes. Les jours s'accumulent et ne sont jamais
-                  perdus automatiquement.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <div className="space-y-1">
-                    <Label>Jours par mois</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="number" min={0.5} max={31} step={0.5}
-                        value={congesJoursMensuels}
-                        onChange={(e) => setCongesJoursMensuels(parseFloat(e.target.value) || 0)}
-                        className="w-24"
-                      />
-                      <span className="text-sm text-muted-foreground">
-                        = {(congesJoursMensuels * 12).toFixed(1)} j/an
-                      </span>
-                    </div>
-                  </div>
-                  <Button
-                    variant="outline"
-                    className="mt-5"
-                    onClick={() => saveCongeSettingsMutation.mutate()}
-                    disabled={saveCongeSettingsMutation.isPending}
-                  >
-                    Sauvegarder
-                  </Button>
-                </div>
-
-                <div className="border-t pt-4 space-y-3">
-                  <Label>Crediter le mois</Label>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <select
-                      value={congesMoisCredit}
-                      onChange={(e) => setCongesMoisCredit(parseInt(e.target.value))}
-                      className="h-9 rounded-md border border-input bg-background px-3 text-sm"
-                    >
-                      {['Janvier','Fevrier','Mars','Avril','Mai','Juin',
-                        'Juillet','Aout','Septembre','Octobre','Novembre','Decembre']
-                        .map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
-                    </select>
-                    <Input
-                      type="number" min={2020} max={2099}
-                      value={congesAnnee}
-                      onChange={(e) => setCongesAnnee(parseInt(e.target.value) || new Date().getFullYear())}
-                      className="w-24"
-                    />
-                    <Button
-                      onClick={() => crediterMoisMutation.mutate({ mois: congesMoisCredit, annee: congesAnnee })}
-                      disabled={crediterMoisMutation.isPending}
-                    >
-                      {crediterMoisMutation.isPending
-                        ? 'Credit en cours...'
-                        : `Crediter +${congesJoursMensuels}j a tous`}
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Si un mois a deja ete credite pour un employe, il est ignore automatiquement.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+              L'acquisition des conges est automatique : 2,5 jours par mois sont credites
+              a chaque employe des sa creation, selon sa date d'entree dans l'entreprise.
+            </div>
 
             {/* Cloture annee */}
             <Card>
@@ -1938,10 +1876,10 @@ export function ParametresPage() {
                     prenom,
                     nom,
                     posteIds: editEmployePosteIds,
+                    dateEntree: editEmployeDateEntree || null,
                     ...(canDo('viewDashboardFinance')
                       ? { salaireBase: salaireRaw ? parseFloat(salaireRaw) : null }
                       : {}),
-                    dateEntree: editEmployeDateEntree ? editEmployeDateEntree : null,
                   },
                 });
               }}
@@ -2184,14 +2122,25 @@ export function ParametresPage() {
                 </div>
 
                 {newUserCreateEmploye && (
-                  <div className="space-y-2 pt-1">
-                    <Label className="text-sm">Poste(s) <span className="text-red-500">*</span></Label>
-                    <PosteMultiSelect
-                      value={newUserPosteIds}
-                      onChange={setNewUserPosteIds}
-                      postesList={postes}
-                      required
-                    />
+                  <div className="space-y-3 pt-1">
+                    <div className="space-y-1">
+                      <Label className="text-sm">Date d'entree <span className="text-red-500">*</span></Label>
+                      <Input
+                        type="date"
+                        required={newUserCreateEmploye}
+                        value={newUserDateEntree}
+                        onChange={(e) => setNewUserDateEntree(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-sm">Poste(s) <span className="text-red-500">*</span></Label>
+                      <PosteMultiSelect
+                        value={newUserPosteIds}
+                        onChange={setNewUserPosteIds}
+                        postesList={postes}
+                        required
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -2203,7 +2152,7 @@ export function ParametresPage() {
               </Button>
               <Button
                 type="submit"
-                disabled={createUserMutation.isPending || (newUserCreateEmploye && newUserPosteIds.length === 0)}
+                disabled={createUserMutation.isPending || (newUserCreateEmploye && (newUserPosteIds.length === 0 || !newUserDateEntree))}
               >
                 {createUserMutation.isPending ? 'Création...' : 'Créer'}
               </Button>

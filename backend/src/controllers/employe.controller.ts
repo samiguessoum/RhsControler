@@ -11,6 +11,58 @@ function canSeeSalary(role?: string) {
   return role ? SALARY_ROLES.includes(role) : false;
 }
 
+// Calcule le nombre de jours de conge acquis depuis la date d'entree
+// pour l'annee donnee, a raison de 2.5 j/mois.
+// Si l'employe a rejoint avant l'annee courante -> compte depuis janvier de cette annee.
+// Si rejoint pendant l'annee courante -> compte depuis le mois d'arrivee.
+function computeJoursAcquis(dateEntree: Date, annee: number): number {
+  const today = new Date();
+  const startOfYear = new Date(annee, 0, 1);
+  const effectiveStart = dateEntree > startOfYear ? dateEntree : startOfYear;
+
+  if (effectiveStart.getFullYear() > annee) return 0;
+
+  const startMonth = effectiveStart.getMonth(); // 0-based
+
+  // Fin : decembre si annee passee, sinon mois courant
+  const lastMonth = today.getFullYear() > annee ? 11
+    : today.getFullYear() === annee ? today.getMonth()
+    : -1;
+
+  if (lastMonth < 0) return 0;
+
+  const months = lastMonth - startMonth + 1;
+  return Math.max(0, months * 2.5);
+}
+
+async function crediterCongesInitiaux(
+  employeId: string,
+  dateEntree: Date,
+  auteurId?: string,
+): Promise<void> {
+  const annee = new Date().getFullYear();
+  const jours = computeJoursAcquis(dateEntree, annee);
+  if (jours <= 0) return;
+
+  await prisma.soldeConge.upsert({
+    where: { employeId_annee_type: { employeId, annee, type: 'ANNUEL' } },
+    update: { joursAcquis: { increment: jours }, joursRestants: { increment: jours } },
+    create: {
+      employeId, annee, type: 'ANNUEL',
+      joursAcquis: jours, joursRestants: jours,
+    },
+  });
+
+  await prisma.mouvementConge.create({
+    data: {
+      employeId, typeOp: 'ACQUISITION', sens: 'CREDIT',
+      jours, soldeApres: jours,
+      motif: `Initialisation solde ${annee} (entree le ${dateEntree.toLocaleDateString('fr-FR')})`,
+      annee, auteurId: auteurId ?? null,
+    },
+  });
+}
+
 export const employeController = {
   /**
    * GET /api/employes
@@ -116,7 +168,6 @@ export const employeController = {
         data: {
           prenom: prenom ?? existing.prenom,
           nom: nom ?? existing.nom,
-          // Seuls SUPER_ADMIN/DIRECTION peuvent modifier le salaire
           ...(showSalary && salaireBase !== undefined
             ? { salaireBase: salaireBase === '' || salaireBase === null ? null : parseFloat(salaireBase) }
             : {}),
