@@ -33,6 +33,7 @@ import type {
   EmployeRecap,
   RecuperationEmploye,
   RecuperationAccordee,
+  MouvementConge,
   // Tiers
   Tiers,
   Contact,
@@ -729,6 +730,11 @@ export const rhApi = {
 
   updateSolde: async (payload: UpdateSoldeInput): Promise<{ solde: SoldeConge }> => {
     const { data } = await api.put('/rh/soldes', payload);
+    return data;
+  },
+
+  listMouvements: async (params?: { employeId?: string; annee?: number }): Promise<{ mouvements: MouvementConge[] }> => {
+    const { data } = await api.get('/rh/soldes/mouvements', { params });
     return data;
   },
 

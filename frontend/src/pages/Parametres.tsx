@@ -68,6 +68,8 @@ export function ParametresPage() {
   const [cloturAnnee, setCloturAnnee] = useState(new Date().getFullYear());
   const [cloturAction, setCloturAction] = useState<string | null>(null); // confirmation pending
   const [soldesAnnee, setSoldesAnnee] = useState(new Date().getFullYear());
+  // Recap employé
+  const [recapEmployeId, setRecapEmployeId] = useState('');
   // Ajustement manuel
   const [ajustEmployeId, setAjustEmployeId] = useState('');
   const [ajustAnnee, setAjustAnnee] = useState(new Date().getFullYear());
@@ -272,6 +274,13 @@ export function ParametresPage() {
     enabled: canDo('manageRH'),
   });
   const soldes = soldesData?.soldes ?? [];
+
+  const { data: mouvementsData, isLoading: isLoadingMouvements } = useQuery({
+    queryKey: ['mouvements-recap', recapEmployeId],
+    queryFn: () => rhApi.listMouvements({ employeId: recapEmployeId }),
+    enabled: canDo('manageRH') && !!recapEmployeId,
+  });
+  const mouvements = mouvementsData?.mouvements ?? [];
 
   const createPrestationMutation = useMutation({
     mutationFn: ({ nom, ordre, description }: { nom: string; ordre?: number; description?: string }) =>
@@ -1444,6 +1453,119 @@ export function ParametresPage() {
                     </table>
                   </div>
                 )}
+              </CardContent>
+            </Card>
+
+            {/* Récapitulatif employé */}
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div>
+                    <CardTitle>Récapitulatif employé</CardTitle>
+                    <CardDescription>Historique complet des mouvements de congés</CardDescription>
+                  </div>
+                  <select
+                    value={recapEmployeId}
+                    onChange={(e) => setRecapEmployeId(e.target.value)}
+                    className="h-9 rounded-md border border-input bg-background px-3 text-sm min-w-[180px]"
+                  >
+                    <option value="">-- Sélectionner un employé --</option>
+                    {employes.map((e) => (
+                      <option key={e.id} value={e.id}>{e.prenom} {e.nom}</option>
+                    ))}
+                  </select>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {!recapEmployeId ? (
+                  <p className="text-sm text-muted-foreground py-6 text-center">
+                    Sélectionnez un employé pour voir son historique.
+                  </p>
+                ) : isLoadingMouvements ? (
+                  <p className="text-sm text-muted-foreground py-6 text-center">Chargement...</p>
+                ) : mouvements.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-6 text-center">
+                    Aucun mouvement enregistré pour cet employé.
+                  </p>
+                ) : (() => {
+                  const totalCredite = mouvements.filter(m => m.sens === 'CREDIT').reduce((s, m) => s + m.jours, 0);
+                  const totalDebite  = mouvements.filter(m => m.sens === 'DEBIT').reduce((s, m) => s + m.jours, 0);
+                  const LABELS: Record<string, string> = {
+                    ACQUISITION:   'Acquisition mensuelle',
+                    CONSOMMATION:  'Congé consommé',
+                    AJUSTEMENT:    'Ajustement manuel',
+                    REPORT_ENTRANT:'Report entrant',
+                    REPORT_SORTANT:'Report sortant',
+                    PAIEMENT:      'Indemnisation',
+                    PERTE:         'Perte fin d\'année',
+                  };
+                  const COLORS: Record<string, string> = {
+                    ACQUISITION:    'bg-green-100 text-green-800',
+                    CONSOMMATION:   'bg-orange-100 text-orange-800',
+                    AJUSTEMENT:     'bg-blue-100 text-blue-800',
+                    REPORT_ENTRANT: 'bg-sky-100 text-sky-800',
+                    REPORT_SORTANT: 'bg-purple-100 text-purple-800',
+                    PAIEMENT:       'bg-emerald-100 text-emerald-800',
+                    PERTE:          'bg-red-100 text-red-800',
+                  };
+                  const annees = [...new Set(mouvements.map(m => m.annee))].sort((a, b) => b - a);
+                  return (
+                    <div className="space-y-5">
+                      {/* Totaux */}
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="rounded-lg border bg-green-50 border-green-200 p-3 text-center">
+                          <p className="text-xs text-muted-foreground mb-1">Total crédité</p>
+                          <p className="text-xl font-bold text-green-700">+{totalCredite}j</p>
+                        </div>
+                        <div className="rounded-lg border bg-orange-50 border-orange-200 p-3 text-center">
+                          <p className="text-xs text-muted-foreground mb-1">Total débité</p>
+                          <p className="text-xl font-bold text-orange-700">-{totalDebite}j</p>
+                        </div>
+                        <div className="rounded-lg border bg-muted p-3 text-center">
+                          <p className="text-xs text-muted-foreground mb-1">Solde net</p>
+                          <p className={`text-xl font-bold ${totalCredite - totalDebite >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                            {totalCredite - totalDebite}j
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Mouvements par année */}
+                      {annees.map(annee => {
+                        const mvts = mouvements.filter(m => m.annee === annee);
+                        return (
+                          <div key={annee}>
+                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{annee}</p>
+                            <div className="space-y-1">
+                              {mvts.map(m => (
+                                <div key={m.id} className="flex items-center justify-between gap-3 rounded-md px-3 py-2 hover:bg-muted/40 text-sm">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${COLORS[m.typeOp] ?? 'bg-gray-100 text-gray-700'}`}>
+                                      {LABELS[m.typeOp] ?? m.typeOp}
+                                    </span>
+                                    {m.motif && (
+                                      <span className="text-muted-foreground truncate">{m.motif}</span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-4 shrink-0 tabular-nums">
+                                    <span className={`font-semibold ${m.sens === 'CREDIT' ? 'text-green-700' : 'text-orange-700'}`}>
+                                      {m.sens === 'CREDIT' ? '+' : '-'}{m.jours}j
+                                    </span>
+                                    <span className="text-muted-foreground text-xs w-16 text-right">
+                                      solde {m.soldeApres}j
+                                    </span>
+                                    <span className="text-muted-foreground text-xs w-20 text-right">
+                                      {new Date(m.createdAt).toLocaleDateString('fr-FR')}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </CardContent>
             </Card>
 
