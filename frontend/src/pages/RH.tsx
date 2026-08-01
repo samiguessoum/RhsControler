@@ -127,7 +127,7 @@ export default function RHPage() {
         </TabsList>
 
         <TabsContent value="dashboard" className="mt-4">
-          <RHDashboardTab />
+          <RHDashboardTab annee={annee} />
         </TabsContent>
 
         <TabsContent value="conges" className="mt-4">
@@ -152,10 +152,23 @@ export default function RHPage() {
 }
 
 // ============ DASHBOARD TAB ============
-function RHDashboardTab() {
+function RHDashboardTab({ annee }: { annee: number }) {
+  const [recapEmployeId, setRecapEmployeId] = useState<string>('');
+
   const { data: dashboard, isLoading } = useQuery({
     queryKey: ['rh-dashboard'],
     queryFn: rhApi.getDashboard,
+  });
+
+  const { data: employes } = useQuery({
+    queryKey: ['employes'],
+    queryFn: employesApi.list,
+  });
+
+  const { data: recap, isLoading: recapLoading } = useQuery({
+    queryKey: ['employe-recap-dashboard', recapEmployeId, annee],
+    queryFn: () => rhApi.getEmployeRecap(recapEmployeId, annee),
+    enabled: !!recapEmployeId,
   });
 
   if (isLoading) {
@@ -169,6 +182,11 @@ function RHDashboardTab() {
   }
 
   if (!dashboard) return null;
+
+  const soldeAnnuel = recap?.soldes.find((s) => s.type === 'ANNUEL');
+  const soldeRecup = recap?.soldes.find((s) => s.type === 'RECUPERATION');
+  const congesApprouves = recap?.conges.filter((c) => c.statut === 'APPROUVE') || [];
+  const congesEnAttente = recap?.conges.filter((c) => c.statut === 'EN_ATTENTE') || [];
 
   return (
     <div className="space-y-5">
@@ -210,6 +228,126 @@ function RHDashboardTab() {
           <p className="text-xs text-gray-400 mt-1">employés avec jours disponibles</p>
         </div>
       </div>
+
+      {/* Récapitulatif employé */}
+      <Card className="shadow-sm">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between gap-4">
+            <CardTitle className="text-base font-bold text-gray-900">Récapitulatif employé — {annee}</CardTitle>
+            <Select value={recapEmployeId} onValueChange={setRecapEmployeId}>
+              <SelectTrigger className="w-52 bg-gray-50">
+                <SelectValue placeholder="Sélectionner un employé" />
+              </SelectTrigger>
+              <SelectContent>
+                {employes?.map((emp) => (
+                  <SelectItem key={emp.id} value={emp.id}>
+                    {emp.prenom} {emp.nom}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {!recapEmployeId && (
+            <p className="text-sm text-gray-400 text-center py-6">Sélectionnez un employé pour voir son récapitulatif</p>
+          )}
+
+          {recapEmployeId && recapLoading && (
+            <div className="space-y-3">
+              <div className="h-20 bg-gray-100 rounded-xl animate-pulse" />
+              <div className="h-32 bg-gray-100 rounded-xl animate-pulse" />
+            </div>
+          )}
+
+          {recap && !recapLoading && (
+            <div className="space-y-5">
+              {/* Soldes en grille */}
+              <div className="grid grid-cols-2 gap-4">
+                {/* Congés annuels */}
+                <div className="bg-blue-50 rounded-xl p-4 space-y-3">
+                  <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Congés annuels</p>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div>
+                      <p className="text-xl font-black text-gray-900">{soldeAnnuel?.joursAcquis ?? 0}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Acquis</p>
+                    </div>
+                    <div>
+                      <p className="text-xl font-black text-red-500">{soldeAnnuel?.joursPris ?? 0}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Pris</p>
+                    </div>
+                    <div>
+                      <p className={`text-xl font-black ${(soldeAnnuel?.joursRestants ?? 0) > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
+                        {soldeAnnuel?.joursRestants ?? 0}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">Restants</p>
+                    </div>
+                  </div>
+                  {(soldeAnnuel?.joursReportes ?? 0) > 0 && (
+                    <p className="text-xs text-blue-600 text-center">+{soldeAnnuel!.joursReportes}j reportés de l'année précédente</p>
+                  )}
+                </div>
+
+                {/* Récupération */}
+                <div className="bg-green-50 rounded-xl p-4 space-y-3">
+                  <p className="text-xs font-semibold text-green-700 uppercase tracking-wide">Récupération</p>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div>
+                      <p className="text-xl font-black text-gray-900">{soldeRecup?.joursAcquis ?? 0}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Acquis</p>
+                    </div>
+                    <div>
+                      <p className="text-xl font-black text-red-500">{soldeRecup?.joursPris ?? 0}</p>
+                      <p className="text-xs text-gray-500 mt-0.5">Pris</p>
+                    </div>
+                    <div>
+                      <p className={`text-xl font-black ${(soldeRecup?.joursRestants ?? 0) > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                        {soldeRecup?.joursRestants ?? 0}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">Restants</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 text-center">{recap.stats.totalWeekendsTravailles} weekend{recap.stats.totalWeekendsTravailles > 1 ? 's' : ''} travaillé{recap.stats.totalWeekendsTravailles > 1 ? 's' : ''}</p>
+                </div>
+              </div>
+
+              {/* Historique des congés pris */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                  Congés pris en {annee}
+                  {congesEnAttente.length > 0 && (
+                    <span className="ml-2 text-yellow-600 normal-case font-normal">({congesEnAttente.length} en attente)</span>
+                  )}
+                </p>
+                {congesApprouves.length === 0 && congesEnAttente.length === 0 ? (
+                  <p className="text-sm text-gray-400 italic text-center py-2">Aucun congé cette année</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {[...congesEnAttente, ...congesApprouves].map((conge) => (
+                      <div key={conge.id} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <Badge className={`text-xs ${TYPE_CONGE_CONFIG[conge.type].bgColor} ${TYPE_CONGE_CONFIG[conge.type].color} border-0`}>
+                            {TYPE_CONGE_CONFIG[conge.type].label}
+                          </Badge>
+                          <span className="text-sm text-gray-700">
+                            {format(parseISO(conge.dateDebut), 'dd/MM')} → {format(parseISO(conge.dateFin), 'dd/MM/yyyy')}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm font-semibold text-gray-900">{conge.nbJours}j</span>
+                          <Badge className={`text-xs ${STATUT_CONGE_CONFIG[conge.statut].bgColor} ${STATUT_CONGE_CONFIG[conge.statut].color} border-0`}>
+                            {STATUT_CONGE_CONFIG[conge.statut].label}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 md:grid-cols-2">
         {/* Congés en cours */}
