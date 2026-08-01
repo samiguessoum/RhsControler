@@ -4,6 +4,7 @@ import { AuthRequest } from '../middleware/auth.middleware.js';
 import { startOfYear, endOfYear, startOfWeek, endOfWeek, addWeeks, isFriday, isSaturday, parseISO, format } from 'date-fns';
 import logger from '../lib/logger.js';
 import { AppError } from '../lib/errors.js';
+import { accruerEmployePourMois } from '../services/conges-accrual.service.js';
 
 
 async function recalculerRecuperation(employeId: string, annee: number) {
@@ -317,42 +318,19 @@ export const rhController = {
       const settings = await prisma.companySettings.findFirst();
       const joursParMois = settings?.joursCongesMensuels ?? 2.5;
 
-      const employes = await prisma.employe.findMany({ select: { id: true } });
+      const employes = await prisma.employe.findMany({ select: { id: true, dateEntree: true } });
       let credites = 0;
 
       for (const emp of employes) {
-        // Verifier que ce mois n'a pas deja ete credite
-        const dejaCredite = await prisma.mouvementConge.findFirst({
-          where: { employeId: emp.id, typeOp: 'ACQUISITION', annee: anneeNum, mois: moisNum },
-        });
-        if (dejaCredite) continue;
+        // Ignorer les employes pas encore embauches a la date de ce mois
+        if (emp.dateEntree) {
+          const anneeEntree = emp.dateEntree.getFullYear();
+          const moisEntree = emp.dateEntree.getMonth() + 1;
+          if (anneeEntree > anneeNum || (anneeEntree === anneeNum && moisEntree > moisNum)) continue;
+        }
 
-        const solde = await prisma.soldeConge.findUnique({
-          where: { employeId_annee_type: { employeId: emp.id, annee: anneeNum, type: 'ANNUEL' } },
-        });
-
-        const ancienRestant = solde?.joursRestants ?? 0;
-        const nouvelAcquis = (solde?.joursAcquis ?? 0) + joursParMois;
-        const nouveauRestant = ancienRestant + joursParMois;
-
-        await prisma.soldeConge.upsert({
-          where: { employeId_annee_type: { employeId: emp.id, annee: anneeNum, type: 'ANNUEL' } },
-          update: { joursAcquis: nouvelAcquis, joursRestants: nouveauRestant },
-          create: {
-            employeId: emp.id, annee: anneeNum, type: 'ANNUEL',
-            joursAcquis: joursParMois, joursRestants: joursParMois,
-          },
-        });
-
-        await prisma.mouvementConge.create({
-          data: {
-            employeId: emp.id, typeOp: 'ACQUISITION', sens: 'CREDIT',
-            jours: joursParMois, soldeApres: nouveauRestant,
-            motif: `Acquisition ${moisNum}/${anneeNum}`,
-            annee: anneeNum, mois: moisNum, auteurId: req.user?.id,
-          },
-        });
-        credites++;
+        const ok = await accruerEmployePourMois(emp.id, anneeNum, moisNum, req.user?.id);
+        if (ok) credites++;
       }
 
       res.json({

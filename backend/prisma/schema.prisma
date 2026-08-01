@@ -232,6 +232,7 @@ model Employe {
   nom         String
   postes      Poste[]
   salaireBase Float?               // Salaire mensuel brut (visible DIRECTION/SUPER_ADMIN uniquement)
+  dateEntree  DateTime?            // Date d'entree dans l'entreprise (sert au calcul des conges acquis)
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
 

@@ -9,6 +9,7 @@ import routes from './routes/index.js';
 import logger from './lib/logger.js';
 import { errorMiddleware } from './middleware/error.middleware.js';
 import { authMiddleware } from './middleware/auth.middleware.js';
+import { startAccrualScheduler } from './services/conges-accrual.service.js';
 
 
 const app = express();
@@ -79,6 +80,7 @@ process.on('SIGTERM', async () => {
 app.listen(PORT, () => {
   logger.info(`🚀 RHS Controler API running on http://localhost:${PORT}`);
   logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+  startAccrualScheduler();
 });
 
 export default app;

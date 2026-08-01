@@ -3,6 +3,7 @@ import { prisma } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import logger from '../lib/logger.js';
 import { AppError } from '../lib/errors.js';
+import { rattraperAccrualEmploye } from '../services/conges-accrual.service.js';
 
 const SALARY_ROLES = ['SUPER_ADMIN', 'DIRECTION'];
 
@@ -69,18 +70,24 @@ export const employeController = {
    */
   async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const { prenom, nom, posteIds, salaireBase } = req.body;
+      const { prenom, nom, posteIds, salaireBase, dateEntree } = req.body;
 
       const employe = await prisma.employe.create({
         data: {
           prenom,
           nom,
           salaireBase: salaireBase !== undefined ? parseFloat(salaireBase) : undefined,
+          dateEntree: dateEntree ? new Date(dateEntree) : undefined,
           postes: {
             connect: posteIds.map((id: string) => ({ id })),
           },
         },
         include: { postes: true },
+      });
+
+      // Rattrape les jours de conges deja dus depuis l'entree (ou depuis janvier de l'annee en cours)
+      await rattraperAccrualEmploye(employe.id, employe.dateEntree, req.user?.id).catch((err) => {
+        logger.error({ err }, 'rattraperAccrualEmploye failed after employe create');
       });
 
       res.status(201).json({ employe });
@@ -96,7 +103,7 @@ export const employeController = {
   async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const { prenom, nom, posteIds, salaireBase } = req.body;
+      const { prenom, nom, posteIds, salaireBase, dateEntree } = req.body;
       const showSalary = canSeeSalary(req.user?.role);
 
       const existing = await prisma.employe.findUnique({ where: { id } });
@@ -113,12 +120,22 @@ export const employeController = {
           ...(showSalary && salaireBase !== undefined
             ? { salaireBase: salaireBase === '' || salaireBase === null ? null : parseFloat(salaireBase) }
             : {}),
+          ...(dateEntree !== undefined
+            ? { dateEntree: dateEntree === '' || dateEntree === null ? null : new Date(dateEntree) }
+            : {}),
           postes: posteIds
             ? { set: [], connect: posteIds.map((pid: string) => ({ id: pid })) }
             : undefined,
         },
         include: { postes: true },
       });
+
+      // Si la date d'entree a change, rattrape les mois de conges desormais dus
+      if (dateEntree !== undefined) {
+        await rattraperAccrualEmploye(employe.id, employe.dateEntree, req.user?.id).catch((err) => {
+          logger.error({ err }, 'rattraperAccrualEmploye failed after employe update');
+        });
+      }
 
       res.json({
         employe: {
@@ -163,6 +180,11 @@ export const employeController = {
       await prisma.$transaction(async (tx) => {
         await tx.user.updateMany({ where: { employeId: id }, data: { employeId: null } });
         await tx.interventionEmploye.deleteMany({ where: { employeId: id } });
+        await tx.conge.deleteMany({ where: { employeId: id } });
+        await tx.jourWeekendTravaille.deleteMany({ where: { employeId: id } });
+        await tx.soldeConge.deleteMany({ where: { employeId: id } });
+        await tx.recuperationAccordee.deleteMany({ where: { employeId: id } });
+        await tx.mouvementConge.deleteMany({ where: { employeId: id } });
         await tx.employe.delete({ where: { id } });
       });
       res.json({ message: 'Employé supprimé' });

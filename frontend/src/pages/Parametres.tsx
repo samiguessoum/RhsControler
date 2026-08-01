@@ -50,8 +50,10 @@ export function ParametresPage() {
   const [deleteEmployeTarget, setDeleteEmployeTarget] = useState<Employe | null>(null);
   const [newEmployePosteIds, setNewEmployePosteIds] = useState<string[]>([]);
   const [newEmployeSalaire, setNewEmployeSalaire] = useState<string>('');
+  const [newEmployeDateEntree, setNewEmployeDateEntree] = useState<string>('');
   const [editEmployePosteIds, setEditEmployePosteIds] = useState<string[]>([]);
   const [editEmployeSalaire, setEditEmployeSalaire] = useState<string>('');
+  const [editEmployeDateEntree, setEditEmployeDateEntree] = useState<string>('');
   const [employeSearch, setEmployeSearch] = useState('');
   const [isCreatePosteOpen, setIsCreatePosteOpen] = useState(false);
   const [editingPoste, setEditingPoste] = useState<Poste | null>(null);
@@ -379,13 +381,14 @@ export function ParametresPage() {
   });
 
   const createEmployeMutation = useMutation({
-    mutationFn: (payload: { prenom: string; nom: string; posteIds: string[]; salaireBase?: number }) => employesApi.create(payload),
+    mutationFn: (payload: { prenom: string; nom: string; posteIds: string[]; salaireBase?: number; dateEntree?: string }) => employesApi.create(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employes'] });
       toast.success('Employé créé');
       setIsCreateEmployeOpen(false);
       setNewEmployePosteIds([]);
       setNewEmployeSalaire('');
+      setNewEmployeDateEntree('');
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Erreur lors de la création');
@@ -393,7 +396,7 @@ export function ParametresPage() {
   });
 
   const updateEmployeMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { prenom?: string; nom?: string; posteIds?: string[]; salaireBase?: number | null } }) =>
+    mutationFn: ({ id, data }: { id: string; data: { prenom?: string; nom?: string; posteIds?: string[]; salaireBase?: number | null; dateEntree?: string | null } }) =>
       employesApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employes'] });
@@ -464,6 +467,7 @@ export function ParametresPage() {
     if (editingEmploye) {
       setEditEmployePosteIds((editingEmploye.postes || []).map((p) => p.id));
       setEditEmployeSalaire(editingEmploye.salaireBase != null ? String(editingEmploye.salaireBase) : '');
+      setEditEmployeDateEntree(editingEmploye.dateEntree ? editingEmploye.dateEntree.slice(0, 10) : '');
     }
   }, [editingEmploye]);
 
@@ -1823,7 +1827,10 @@ export function ParametresPage() {
         open={isCreateEmployeOpen}
         onOpenChange={(open) => {
           setIsCreateEmployeOpen(open);
-          if (!open) setNewEmployePosteIds([]);
+          if (!open) {
+            setNewEmployePosteIds([]);
+            setNewEmployeDateEntree('');
+          }
         }}
       >
         <DialogContent>
@@ -1841,6 +1848,7 @@ export function ParametresPage() {
                 nom: formData.get('nom') as string,
                 posteIds: newEmployePosteIds,
                 ...(canDo('viewDashboardFinance') && salaireRaw ? { salaireBase: parseFloat(salaireRaw) } : {}),
+                ...(newEmployeDateEntree ? { dateEntree: newEmployeDateEntree } : {}),
               });
             }}
             className="space-y-4"
@@ -1854,6 +1862,18 @@ export function ParametresPage() {
                 <Label>Nom *</Label>
                 <Input name="nom" required />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Date d'entrée dans l'entreprise</Label>
+              <Input
+                type="date"
+                value={newEmployeDateEntree}
+                onChange={(e) => setNewEmployeDateEntree(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Sert au calcul des congés acquis (2,5 jours par mois depuis cette date).
+              </p>
             </div>
 
             {canDo('viewDashboardFinance') && (
@@ -1921,6 +1941,7 @@ export function ParametresPage() {
                     ...(canDo('viewDashboardFinance')
                       ? { salaireBase: salaireRaw ? parseFloat(salaireRaw) : null }
                       : {}),
+                    dateEntree: editEmployeDateEntree ? editEmployeDateEntree : null,
                   },
                 });
               }}
@@ -1935,6 +1956,18 @@ export function ParametresPage() {
                   <Label>Nom *</Label>
                   <Input name="nom" defaultValue={editingEmploye.nom} required />
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Date d'entrée dans l'entreprise</Label>
+                <Input
+                  type="date"
+                  value={editEmployeDateEntree}
+                  onChange={(e) => setEditEmployeDateEntree(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Sert au calcul des congés acquis (2,5 jours par mois depuis cette date).
+                </p>
               </div>
 
               {canDo('viewDashboardFinance') && (
@@ -2001,6 +2034,14 @@ export function ParametresPage() {
                     </span>
                   ))}
                 </div>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Date d'entrée</p>
+                <p className="font-medium">
+                  {viewingEmploye.dateEntree
+                    ? new Date(viewingEmploye.dateEntree).toLocaleDateString('fr-FR')
+                    : <span className="text-muted-foreground text-sm">Non renseignée</span>}
+                </p>
               </div>
               {canDo('viewDashboardFinance') && (
                 <div>

@@ -49,12 +49,16 @@ export const createEmployeSchema = z.object({
   prenom: z.string().min(1, 'Prénom requis'),
   nom: z.string().min(1, 'Nom requis'),
   posteIds: z.array(z.string().uuid('ID poste invalide')).min(1, 'Au moins un poste requis'),
+  salaireBase: z.union([z.string(), z.number()]).optional(),
+  dateEntree: z.string().or(z.date()).optional().nullable(),
 });
 
 export const updateEmployeSchema = z.object({
   prenom: z.string().min(1, 'Prénom requis').optional(),
   nom: z.string().min(1, 'Nom requis').optional(),
   posteIds: z.array(z.string().uuid('ID poste invalide')).min(1, 'Au moins un poste requis').optional(),
+  salaireBase: z.union([z.string(), z.number()]).optional().nullable(),
+  dateEntree: z.string().or(z.date()).optional().nullable(),
 });
 
 // ============ CLIENTS ============

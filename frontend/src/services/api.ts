@@ -191,12 +191,12 @@ export const employesApi = {
     return data.employe;
   },
 
-  create: async (payload: { prenom: string; nom: string; posteIds: string[] }): Promise<Employe> => {
+  create: async (payload: { prenom: string; nom: string; posteIds: string[]; salaireBase?: number; dateEntree?: string }): Promise<Employe> => {
     const { data } = await api.post('/employes', payload);
     return data.employe;
   },
 
-  update: async (id: string, payload: Partial<{ prenom: string; nom: string; posteIds: string[] }>): Promise<Employe> => {
+  update: async (id: string, payload: Partial<{ prenom: string; nom: string; posteIds: string[]; salaireBase: number | null; dateEntree: string | null }>): Promise<Employe> => {
     const { data } = await api.put(`/employes/${id}`, payload);
     return data.employe;
   },
