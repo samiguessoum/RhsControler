@@ -22,7 +22,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import api, { prestationsApi, usersApi, employesApi, postesApi, settingsApi } from '@/services/api';
+import api, { prestationsApi, usersApi, employesApi, postesApi, settingsApi, rhApi } from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
 import type { Prestation, User, Role, Employe, Poste, CompanySettings, UpdateCompanySettingsInput } from '@/types';
 
@@ -65,13 +65,12 @@ export function ParametresPage() {
   const [activeTab, setActiveTab] = useState('entreprise');
 
   // Conges state
-  const [congesAnnee, setCongesAnnee] = useState(new Date().getFullYear());
-  const [congesMode, setCongesMode] = useState<'ANNUEL' | 'MENSUEL'>('MENSUEL');
-  const [congesJoursAnnuels, setCongesJoursAnnuels] = useState(30);
-  const [congesJoursMensuels, setCongesJoursMensuels] = useState(2.5);
-  const [congesMoisCredit, setCongesMoisCredit] = useState(new Date().getMonth() + 1);
+  const [cloturAnnee, setCloturAnnee] = useState(new Date().getFullYear());
+  const [cloturAction, setCloturAction] = useState<string | null>(null); // confirmation pending
+  const [soldesAnnee, setSoldesAnnee] = useState(new Date().getFullYear());
   // Ajustement manuel
   const [ajustEmployeId, setAjustEmployeId] = useState('');
+  const [ajustAnnee, setAjustAnnee] = useState(new Date().getFullYear());
   const [ajustJours, setAjustJours] = useState('');
   const [ajustSens, setAjustSens] = useState<'CREDIT' | 'DEBIT'>('CREDIT');
   const [ajustMotif, setAjustMotif] = useState('');
@@ -134,10 +133,6 @@ export function ParametresPage() {
         offsetFournisseur: settings.offsetFournisseur || 0,
         offsetProspect: settings.offsetProspect || 0,
       });
-      // Initialiser les états congés depuis les settings
-      setCongesMode((settings.modeAllocationConges as 'ANNUEL' | 'MENSUEL') || 'ANNUEL');
-      setCongesJoursAnnuels(settings.joursCongesAnnuels ?? 30);
-      setCongesJoursMensuels(settings.joursCongesMensuels ?? 2.5);
     }
   }, [settings]);
 
@@ -177,40 +172,17 @@ export function ParametresPage() {
     },
   });
 
-  const saveCongeSettingsMutation = useMutation({
-    mutationFn: () => settingsApi.updateSettings({
-      modeAllocationConges: congesMode,
-      joursCongesAnnuels: congesJoursAnnuels,
-      joursCongesMensuels: congesJoursMensuels,
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['settings'] });
-      toast.success('Parametres de conges sauvegardes');
-    },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Erreur');
-    },
-  });
-
-  const crediterMoisMutation = useMutation({
-    mutationFn: (payload: { mois: number; annee: number }) =>
-      api.post('/rh/soldes/crediter-mois', payload),
-    onSuccess: (res: any) => {
-      toast.success(res.data?.message || 'Mois credite');
-    },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Erreur lors du credit');
-    },
-  });
-
   const cloturerAnneeMutation = useMutation({
     mutationFn: (payload: { annee: number; action: string }) =>
       api.post('/rh/soldes/cloture-annee', payload),
     onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ['soldes', soldesAnnee] });
       toast.success(res.data?.message || 'Cloture effectuee');
+      setCloturAction(null);
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Erreur lors de la cloture');
+      setCloturAction(null);
     },
   });
 
@@ -218,12 +190,13 @@ export function ParametresPage() {
     mutationFn: (payload: { employeId: string; jours: string; sens: string; motif: string; annee: number }) =>
       api.post(`/rh/soldes/${payload.employeId}/ajuster`, payload),
     onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ['soldes', soldesAnnee] });
       toast.success(`Solde ajuste. Nouveau solde : ${res.data?.soldeApres} j`);
       setAjustJours('');
       setAjustMotif('');
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Erreur lors de l\'ajustement');
+      toast.error(error.response?.data?.error || "Erreur lors de l'ajustement");
     },
   });
 
@@ -292,6 +265,13 @@ export function ParametresPage() {
     queryFn: () => postesApi.list(),
     enabled: canDo('viewPostes') || canDo('managePostes') || canDo('manageEmployes'),
   });
+
+  const { data: soldesData } = useQuery({
+    queryKey: ['soldes', soldesAnnee],
+    queryFn: () => rhApi.getSoldes({ annee: soldesAnnee }),
+    enabled: canDo('manageRH'),
+  });
+  const soldes = soldesData?.soldes ?? [];
 
   const createPrestationMutation = useMutation({
     mutationFn: ({ nom, ordre, description }: { nom: string; ordre?: number; description?: string }) =>
@@ -1400,67 +1380,70 @@ export function ParametresPage() {
           <TabsContent value="conges" className="space-y-6">
 
             <div className="rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
-              L'acquisition des conges est automatique : 2,5 jours par mois sont credites
-              a chaque employe des sa creation, selon sa date d'entree dans l'entreprise.
+              Acquisition automatique : 2,5 jours par mois, crédités à chaque employé
+              selon sa date d'entrée dans l'entreprise. Aucune action manuelle requise.
             </div>
 
-            {/* Cloture annee */}
+            {/* Soldes employés */}
             <Card>
               <CardHeader>
-                <CardTitle>Cloture de fin d'annee</CardTitle>
-                <CardDescription>
-                  A la fin de chaque annee, choisissez ce qu'il advient des jours non consommes.
-                </CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Soldes congés</CardTitle>
+                    <CardDescription>État des congés annuels de tous les employés</CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-sm">Année</Label>
+                    <Input
+                      type="number" min={2020} max={2099}
+                      value={soldesAnnee}
+                      onChange={(e) => setSoldesAnnee(parseInt(e.target.value) || new Date().getFullYear())}
+                      className="w-24"
+                    />
+                  </div>
+                </div>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <Label>Annee a cloturer</Label>
-                  <Input
-                    type="number" min={2020} max={2099}
-                    value={congesAnnee}
-                    onChange={(e) => setCongesAnnee(parseInt(e.target.value) || new Date().getFullYear())}
-                    className="w-24"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  {[
-                    {
-                      action: 'REPORTER',
-                      label: 'Reporter',
-                      desc: 'Les jours restants sont transferes vers l\'annee suivante',
-                      color: 'border-blue-200 bg-blue-50 hover:bg-blue-100',
-                    },
-                    {
-                      action: 'SUPPRIMER',
-                      label: 'Supprimer',
-                      desc: 'Les jours non consommes sont perdus (remis a zero)',
-                      color: 'border-red-200 bg-red-50 hover:bg-red-100',
-                    },
-                    {
-                      action: 'PAYER',
-                      label: 'Convertir en indemnite',
-                      desc: 'Les jours restants sont marques comme payes en compensation',
-                      color: 'border-green-200 bg-green-50 hover:bg-green-100',
-                    },
-                  ].map(({ action, label, desc, color }) => (
-                    <button
-                      key={action}
-                      type="button"
-                      onClick={() => cloturerAnneeMutation.mutate({ annee: congesAnnee, action })}
-                      disabled={cloturerAnneeMutation.isPending}
-                      className={`rounded-lg border p-4 text-left transition-colors ${color} disabled:opacity-50`}
-                    >
-                      <p className="font-semibold text-sm">{label}</p>
-                      <p className="text-xs text-muted-foreground mt-1">{desc}</p>
-                    </button>
-                  ))}
-                </div>
-
-                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  Cette action s'applique a tous les employes ayant un solde positif pour {congesAnnee}.
-                  Elle est irreversible.
-                </div>
+              <CardContent>
+                {soldes.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-4 text-center">
+                    Aucun solde enregistré pour {soldesAnnee}.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-muted-foreground">
+                          <th className="text-left py-2 pr-4 font-medium">Employé</th>
+                          <th className="text-right py-2 px-3 font-medium">Acquis</th>
+                          <th className="text-right py-2 px-3 font-medium">Reportés</th>
+                          <th className="text-right py-2 px-3 font-medium">Pris</th>
+                          <th className="text-right py-2 pl-3 font-medium">Restants</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {soldes.map((s: any) => (
+                          <tr key={s.id} className="border-b last:border-0 hover:bg-muted/30">
+                            <td className="py-2 pr-4 font-medium">
+                              {s.employe?.prenom} {s.employe?.nom}
+                            </td>
+                            <td className="text-right py-2 px-3 tabular-nums">{s.joursAcquis}j</td>
+                            <td className="text-right py-2 px-3 tabular-nums text-blue-600">
+                              {s.joursReportes > 0 ? `+${s.joursReportes}j` : '—'}
+                            </td>
+                            <td className="text-right py-2 px-3 tabular-nums text-orange-600">
+                              {s.joursPris > 0 ? `-${s.joursPris}j` : '—'}
+                            </td>
+                            <td className="text-right py-2 pl-3 tabular-nums font-semibold">
+                              <span className={s.joursRestants <= 0 ? 'text-red-600' : s.joursRestants < 5 ? 'text-orange-600' : 'text-green-700'}>
+                                {s.joursRestants}j
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -1469,14 +1452,13 @@ export function ParametresPage() {
               <CardHeader>
                 <CardTitle>Ajustement manuel</CardTitle>
                 <CardDescription>
-                  Ajoutez ou deduisez des jours manuellement pour un employe
-                  (reprise de donnees, correction, conges exceptionnels...).
+                  Ajoutez ou déduisez des jours pour un employé (reprise de données, correction, congé exceptionnel...).
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   <div className="space-y-1">
-                    <Label>Employe</Label>
+                    <Label>Employé</Label>
                     <select
                       value={ajustEmployeId}
                       onChange={(e) => setAjustEmployeId(e.target.value)}
@@ -1489,11 +1471,11 @@ export function ParametresPage() {
                     </select>
                   </div>
                   <div className="space-y-1">
-                    <Label>Annee</Label>
+                    <Label>Année</Label>
                     <Input
                       type="number" min={2020} max={2099}
-                      value={congesAnnee}
-                      onChange={(e) => setCongesAnnee(parseInt(e.target.value) || new Date().getFullYear())}
+                      value={ajustAnnee}
+                      onChange={(e) => setAjustAnnee(parseInt(e.target.value) || new Date().getFullYear())}
                     />
                   </div>
                   <div className="space-y-1">
@@ -1512,8 +1494,8 @@ export function ParametresPage() {
                       onChange={(e) => setAjustSens(e.target.value as 'CREDIT' | 'DEBIT')}
                       className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                     >
-                      <option value="CREDIT">+ Credit</option>
-                      <option value="DEBIT">- Debit</option>
+                      <option value="CREDIT">+ Crédit</option>
+                      <option value="DEBIT">- Débit</option>
                     </select>
                   </div>
                 </div>
@@ -1522,7 +1504,7 @@ export function ParametresPage() {
                   <Input
                     value={ajustMotif}
                     onChange={(e) => setAjustMotif(e.target.value)}
-                    placeholder="Ex: Reprise solde ancien systeme, conge exceptionnel..."
+                    placeholder="Ex: Reprise solde ancien système, congé exceptionnel..."
                   />
                 </div>
                 <Button
@@ -1531,12 +1513,71 @@ export function ParametresPage() {
                     jours: ajustJours,
                     sens: ajustSens,
                     motif: ajustMotif,
-                    annee: congesAnnee,
+                    annee: ajustAnnee,
                   })}
                   disabled={ajusterSoldeMutation.isPending || !ajustEmployeId || !ajustJours}
                 >
                   {ajusterSoldeMutation.isPending ? 'Ajustement...' : 'Appliquer'}
                 </Button>
+              </CardContent>
+            </Card>
+
+            {/* Clôture de fin d'année */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Clôture de fin d'année</CardTitle>
+                <CardDescription>
+                  À la fin de chaque année, choisissez ce qu'il advient des jours non consommés.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <Label>Année à clôturer</Label>
+                  <Input
+                    type="number" min={2020} max={2099}
+                    value={cloturAnnee}
+                    onChange={(e) => setCloturAnnee(parseInt(e.target.value) || new Date().getFullYear())}
+                    className="w-24"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {[
+                    {
+                      action: 'REPORTER',
+                      label: 'Reporter',
+                      desc: `Transférer les jours restants vers ${cloturAnnee + 1}`,
+                      color: 'border-blue-200 bg-blue-50 hover:bg-blue-100',
+                    },
+                    {
+                      action: 'SUPPRIMER',
+                      label: 'Supprimer',
+                      desc: 'Les jours non consommés sont perdus (remis à zéro)',
+                      color: 'border-red-200 bg-red-50 hover:bg-red-100',
+                    },
+                    {
+                      action: 'PAYER',
+                      label: 'Indemniser',
+                      desc: 'Les jours restants sont convertis en compensation financière',
+                      color: 'border-green-200 bg-green-50 hover:bg-green-100',
+                    },
+                  ].map(({ action, label, desc, color }) => (
+                    <button
+                      key={action}
+                      type="button"
+                      onClick={() => setCloturAction(action)}
+                      disabled={cloturerAnneeMutation.isPending}
+                      className={`rounded-lg border p-4 text-left transition-colors ${color} disabled:opacity-50`}
+                    >
+                      <p className="font-semibold text-sm">{label}</p>
+                      <p className="text-xs text-muted-foreground mt-1">{desc}</p>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  Cette action s'applique à tous les employés ayant un solde positif pour {cloturAnnee}. Elle est irréversible.
+                </div>
               </CardContent>
             </Card>
 
@@ -1649,6 +1690,31 @@ export function ParametresPage() {
               }}
             >
               Confirmer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirmation clôture congés */}
+      <AlertDialog open={!!cloturAction} onOpenChange={(open) => { if (!open) setCloturAction(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmer la clôture {cloturAnnee} ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {cloturAction === 'REPORTER' && `Les jours restants de tous les employés seront transférés vers ${cloturAnnee + 1}.`}
+              {cloturAction === 'SUPPRIMER' && `Les jours non consommés de tous les employés pour ${cloturAnnee} seront supprimés définitivement.`}
+              {cloturAction === 'PAYER' && `Les jours restants de tous les employés pour ${cloturAnnee} seront marqués comme indemnisés.`}
+              {' '}Cette action est irréversible.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (cloturAction) cloturerAnneeMutation.mutate({ annee: cloturAnnee, action: cloturAction });
+              }}
+            >
+              {cloturerAnneeMutation.isPending ? 'En cours...' : 'Confirmer'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
