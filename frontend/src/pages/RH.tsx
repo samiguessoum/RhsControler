@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO, startOfYear, endOfYear } from 'date-fns';
+import { toast } from 'sonner';
 import {
   Calendar,
   Clock,
@@ -76,14 +77,29 @@ export default function RHPage() {
   const { canDo } = useAuthStore();
   const canManageRH = canDo('manageRH');
   const anneeActuelle = new Date().getFullYear();
+  const [annee, setAnnee] = useState(anneeActuelle);
+
+  const annees = Array.from({ length: 4 }, (_, i) => anneeActuelle - i);
 
   return (
     <div className="min-h-screen bg-gray-50">
     <div className="max-w-7xl mx-auto px-4 py-6 space-y-5">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-black text-gray-900 tracking-tight">Ressources Humaines</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Gestion des congés, récupérations et soldes employés</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-black text-gray-900 tracking-tight">Ressources Humaines</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Gestion des congés, récupérations et soldes employés</p>
+        </div>
+        <Select value={String(annee)} onValueChange={(v) => setAnnee(Number(v))}>
+          <SelectTrigger className="w-28 bg-white shadow-sm shrink-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {annees.map((a) => (
+              <SelectItem key={a} value={String(a)}>{a}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <Tabs defaultValue="dashboard">
@@ -115,19 +131,19 @@ export default function RHPage() {
         </TabsContent>
 
         <TabsContent value="conges" className="mt-4">
-          <CongesTab canManage={canManageRH} />
+          <CongesTab canManage={canManageRH} annee={annee} />
         </TabsContent>
 
         <TabsContent value="weekends" className="mt-4">
-          <WeekendsTab canManage={canManageRH} annee={anneeActuelle} />
+          <WeekendsTab canManage={canManageRH} annee={annee} />
         </TabsContent>
 
         <TabsContent value="soldes" className="mt-4">
-          <SoldesTab canManage={canManageRH} annee={anneeActuelle} />
+          <SoldesTab canManage={canManageRH} annee={annee} />
         </TabsContent>
 
         <TabsContent value="recuperation" className="mt-4">
-          <RecuperationTab canManage={canManageRH} annee={anneeActuelle} />
+          <RecuperationTab canManage={canManageRH} annee={annee} />
         </TabsContent>
       </Tabs>
     </div>
@@ -274,13 +290,14 @@ function RHDashboardTab() {
 }
 
 // ============ CONGES TAB ============
-function CongesTab({ canManage }: { canManage: boolean }) {
+function CongesTab({ canManage, annee }: { canManage: boolean; annee: number }) {
   const queryClient = useQueryClient();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showApprouverDialog, setShowApprouverDialog] = useState(false);
   const [selectedConge, setSelectedConge] = useState<Conge | null>(null);
   const [filterEmploye, setFilterEmploye] = useState<string>('all');
   const [filterStatut, setFilterStatut] = useState<string>('all');
+  const [filterType, setFilterType] = useState<string>('all');
 
   const { data: employes } = useQuery({
     queryKey: ['employes'],
@@ -288,23 +305,34 @@ function CongesTab({ canManage }: { canManage: boolean }) {
   });
 
   const { data: congesData, isLoading } = useQuery({
-    queryKey: ['conges', filterEmploye, filterStatut],
+    queryKey: ['conges', filterEmploye, filterStatut, filterType, annee],
     queryFn: () =>
       rhApi.listConges({
         employeId: filterEmploye !== 'all' ? filterEmploye : undefined,
         statut: filterStatut !== 'all' ? filterStatut : undefined,
+        dateDebut: startOfYear(new Date(annee, 0, 1)).toISOString(),
+        dateFin: endOfYear(new Date(annee, 0, 1)).toISOString(),
       }),
   });
+
+  const congesFiltres = useMemo(() => {
+    if (!congesData?.conges) return [];
+    if (filterType === 'all') return congesData.conges;
+    return congesData.conges.filter((c) => c.type === filterType);
+  }, [congesData, filterType]);
 
   const approuverMutation = useMutation({
     mutationFn: ({ id, approuve, commentaire }: { id: string; approuve: boolean; commentaire?: string }) =>
       rhApi.approuverConge(id, { approuve, commentaire }),
-    onSuccess: () => {
+    onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ['conges'] });
       queryClient.invalidateQueries({ queryKey: ['rh-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['soldes'] });
       setShowApprouverDialog(false);
       setSelectedConge(null);
+      toast.success(vars.approuve ? 'Congé approuvé' : 'Congé refusé');
     },
+    onError: () => toast.error('Erreur lors du traitement'),
   });
 
   const annulerMutation = useMutation({
@@ -312,7 +340,9 @@ function CongesTab({ canManage }: { canManage: boolean }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conges'] });
       queryClient.invalidateQueries({ queryKey: ['rh-dashboard'] });
+      toast.success('Congé annulé');
     },
+    onError: () => toast.error('Erreur lors de l\'annulation'),
   });
 
   return (
@@ -320,7 +350,7 @@ function CongesTab({ canManage }: { canManage: boolean }) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex flex-wrap gap-3">
           <Select value={filterEmploye} onValueChange={setFilterEmploye}>
-            <SelectTrigger className="w-48 bg-white shadow-sm">
+            <SelectTrigger className="w-44 bg-white shadow-sm">
               <SelectValue placeholder="Tous les employés" />
             </SelectTrigger>
             <SelectContent>
@@ -333,8 +363,20 @@ function CongesTab({ canManage }: { canManage: boolean }) {
             </SelectContent>
           </Select>
 
+          <Select value={filterType} onValueChange={setFilterType}>
+            <SelectTrigger className="w-40 bg-white shadow-sm">
+              <SelectValue placeholder="Tous les types" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tous les types</SelectItem>
+              {Object.entries(TYPE_CONGE_CONFIG).map(([key, config]) => (
+                <SelectItem key={key} value={key}>{config.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <Select value={filterStatut} onValueChange={setFilterStatut}>
-            <SelectTrigger className="w-44 bg-white shadow-sm">
+            <SelectTrigger className="w-40 bg-white shadow-sm">
               <SelectValue placeholder="Tous les statuts" />
             </SelectTrigger>
             <SelectContent>
@@ -355,7 +397,13 @@ function CongesTab({ canManage }: { canManage: boolean }) {
       </div>
 
       {isLoading ? (
-        <div className="bg-white rounded-xl shadow-sm p-8 text-center text-gray-400">Chargement...</div>
+        <Card className="shadow-sm">
+          <div className="p-4 space-y-3">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse" />
+            ))}
+          </div>
+        </Card>
       ) : (
         <Card className="shadow-sm">
           <Table>
@@ -371,7 +419,7 @@ function CongesTab({ canManage }: { canManage: boolean }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {congesData?.conges.map((conge) => (
+              {congesFiltres.map((conge) => (
                 <TableRow key={conge.id}>
                   <TableCell className="font-medium">
                     {conge.employe?.prenom} {conge.employe?.nom}
@@ -412,6 +460,7 @@ function CongesTab({ canManage }: { canManage: boolean }) {
                             variant="outline"
                             className="text-red-600"
                             onClick={() => approuverMutation.mutate({ id: conge.id, approuve: false })}
+                            disabled={approuverMutation.isPending}
                           >
                             <XCircle className="h-4 w-4" />
                           </Button>
@@ -423,6 +472,7 @@ function CongesTab({ canManage }: { canManage: boolean }) {
                           variant="ghost"
                           className="text-red-500"
                           onClick={() => annulerMutation.mutate(conge.id)}
+                          disabled={annulerMutation.isPending}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -431,10 +481,10 @@ function CongesTab({ canManage }: { canManage: boolean }) {
                   </TableCell>
                 </TableRow>
               ))}
-              {congesData?.conges.length === 0 && (
+              {congesFiltres.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                    Aucun congé trouvé
+                    Aucun congé trouvé pour {annee}
                   </TableCell>
                 </TableRow>
               )}
@@ -521,8 +571,10 @@ function CreateCongeDialog({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['conges'] });
       queryClient.invalidateQueries({ queryKey: ['rh-dashboard'] });
+      toast.success('Demande de congé créée');
       onOpenChange(false);
     },
+    onError: (err: any) => toast.error(err?.response?.data?.error || 'Erreur lors de la création'),
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -804,7 +856,9 @@ function WeekendsTab({ canManage, annee }: { canManage: boolean; annee: number }
       queryClient.invalidateQueries({ queryKey: ['weekends'] });
       queryClient.invalidateQueries({ queryKey: ['soldes'] });
       queryClient.invalidateQueries({ queryKey: ['rh-dashboard'] });
+      toast.success('Weekend travaillé enregistré');
     },
+    onError: (err: any) => toast.error(err?.response?.data?.error || 'Erreur lors de l\'enregistrement'),
   });
 
   const deleteMutation = useMutation({
@@ -813,7 +867,9 @@ function WeekendsTab({ canManage, annee }: { canManage: boolean; annee: number }
       queryClient.invalidateQueries({ queryKey: ['weekends'] });
       queryClient.invalidateQueries({ queryKey: ['soldes'] });
       queryClient.invalidateQueries({ queryKey: ['rh-dashboard'] });
+      toast.success('Entrée supprimée');
     },
+    onError: () => toast.error('Erreur lors de la suppression'),
   });
 
   return (
@@ -910,7 +966,11 @@ function WeekendsTab({ canManage, annee }: { canManage: boolean; annee: number }
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="text-center py-4">Chargement...</div>
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="h-12 bg-gray-100 rounded-lg animate-pulse" />
+              ))}
+            </div>
           ) : (
             <Table>
               <TableHeader>
@@ -1004,8 +1064,10 @@ function AddWeekendDialog({
       queryClient.invalidateQueries({ queryKey: ['weekends'] });
       queryClient.invalidateQueries({ queryKey: ['soldes'] });
       queryClient.invalidateQueries({ queryKey: ['rh-dashboard'] });
+      toast.success('Weekend travaillé ajouté');
       onOpenChange(false);
     },
+    onError: (err: any) => toast.error(err?.response?.data?.error || 'Erreur lors de l\'ajout'),
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -1217,8 +1279,10 @@ function EditSoldeDialog({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['soldes'] });
       queryClient.invalidateQueries({ queryKey: ['employe-recap'] });
+      toast.success('Solde mis à jour');
       onOpenChange(false);
     },
+    onError: () => toast.error('Erreur lors de la mise à jour'),
   });
 
   if (!employe) return null;
@@ -1300,13 +1364,15 @@ function RecuperationTab({ canManage, annee }: { canManage: boolean; annee: numb
 
   const accorderMutation = useMutation({
     mutationFn: rhApi.accorderRecuperation,
-    onSuccess: () => {
+    onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ['recuperations'] });
       queryClient.invalidateQueries({ queryKey: ['soldes'] });
       queryClient.invalidateQueries({ queryKey: ['rh-dashboard'] });
+      toast.success(`${vars.nbJours}j de récupération accordés`);
       setAccordDialog(null);
       setAccordForm({ nbJours: 1, motif: '' });
     },
+    onError: () => toast.error('Erreur lors de l\'accord'),
   });
 
   const deleteMutation = useMutation({
@@ -1314,7 +1380,9 @@ function RecuperationTab({ canManage, annee }: { canManage: boolean; annee: numb
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recuperations'] });
       queryClient.invalidateQueries({ queryKey: ['soldes'] });
+      toast.success('Accord de récupération supprimé');
     },
+    onError: () => toast.error('Erreur lors de la suppression'),
   });
 
   const recuperations: RecuperationEmploye[] = data?.recuperations || [];
