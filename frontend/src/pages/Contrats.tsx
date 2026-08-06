@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Plus, MoreVertical, FileText, CalendarClock, MapPin, Trash2, X, ChevronDown, ChevronUp, Search, Clock, CheckCircle2, Calendar } from 'lucide-react';
+import { Plus, MoreVertical, FileText, CalendarClock, MapPin, Trash2, X, ChevronDown, ChevronUp, Search, Clock, CheckCircle2, Calendar, Pencil, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -23,7 +23,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { clientsApi, contratsApi, prestationsApi, usersApi } from '@/services/api';
+import { clientsApi, contratsApi, interventionsApi, prestationsApi, usersApi } from '@/services/api';
 import { formatDate } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
 import type { Contrat, CreateContratInput, Client, User, Frequence, ContratStatut, ContratType, ContratSiteInput } from '@/types';
@@ -180,6 +180,26 @@ export function ContratsPage() {
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Erreur lors de la suppression');
+    },
+  });
+
+  const [editingInterventionId, setEditingInterventionId] = useState<string | null>(null);
+  const [editingDateValue, setEditingDateValue] = useState('');
+
+  const updateInterventionDateMutation = useMutation({
+    mutationFn: ({ id, datePrevue }: { id: string; datePrevue: string }) =>
+      interventionsApi.update(id, { datePrevue }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contrat-detail', selectedContrat?.id] });
+      queryClient.invalidateQueries({ queryKey: ['interventions'] });
+      queryClient.invalidateQueries({ queryKey: ['interventions-semaine'] });
+      queryClient.invalidateQueries({ queryKey: ['interventions-a-planifier'] });
+      queryClient.invalidateQueries({ queryKey: ['interventions-en-retard'] });
+      setEditingInterventionId(null);
+      toast.success('Date mise à jour');
+    },
+    onError: () => {
+      toast.error('Erreur lors de la mise à jour de la date');
     },
   });
 
@@ -1185,227 +1205,203 @@ export function ContratsPage() {
         </div>
       )}
 
-      <Dialog open={!!selectedContrat} onOpenChange={(open) => !open && setSelectedContrat(null)}>
-        <DialogContent className="max-w-2xl max-h-[85vh]">
-          <DialogHeader>
-            <DialogTitle>
-              Contrat - {selectedContrat?.client?.nomEntreprise || (selectedContrat?.clientId && clientMap.get(selectedContrat.clientId))}
-            </DialogTitle>
-            <DialogDescription>
-              {selectedContrat?.type === 'PONCTUEL' ? 'Ponctuel' : 'Annuel'} • {selectedContrat?.statut}
-            </DialogDescription>
-          </DialogHeader>
-
+      <Dialog open={!!selectedContrat} onOpenChange={(open) => { if (!open) { setSelectedContrat(null); setEditingInterventionId(null); } }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col gap-0 p-0">
           {selectedContrat && (
-            <div className="space-y-4 overflow-auto pr-1 max-h-[70vh]">
-              <div className="flex flex-wrap gap-2">
-                {selectedContrat.prestations.map((p) => (
-                  <Badge key={p} variant="outline" className="text-xs">
-                    {p}
-                  </Badge>
-                ))}
+            <>
+              {/* Header */}
+              <div className="px-6 pt-6 pb-4 border-b">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-semibold truncate">
+                      {selectedContrat.client?.nomEntreprise || clientMap.get(selectedContrat.clientId)}
+                    </h2>
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${selectedContrat.type === 'PONCTUEL' ? 'bg-orange-100 text-orange-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                        {selectedContrat.type === 'PONCTUEL' ? 'Ponctuel' : 'Annuel'}
+                      </span>
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${selectedContrat.statut === 'ACTIF' ? 'bg-green-100 text-green-700' : selectedContrat.statut === 'TERMINE' ? 'bg-gray-100 text-gray-500' : 'bg-yellow-100 text-yellow-700'}`}>
+                        {selectedContrat.statut}
+                      </span>
+                      {selectedContrat.prestations.map((p) => (
+                        <span key={p} className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{p}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0"
+                    onClick={() => { setEditingContrat(selectedContrat); setSelectedContrat(null); }}
+                  >
+                    <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                    Modifier
+                  </Button>
+                </div>
+
+                {/* Compact info row */}
+                <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground flex-wrap">
+                  <span className="flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    {formatDate(selectedContrat.dateDebut)}
+                    {selectedContrat.dateFin && <> → {formatDate(selectedContrat.dateFin)}</>}
+                  </span>
+                  {selectedContrat.responsablePlanning && (
+                    <span>
+                      {selectedContrat.responsablePlanning.prenom} {selectedContrat.responsablePlanning.nom}
+                    </span>
+                  )}
+                  {selectedContrat.numeroBonCommande && (
+                    <span>BC {selectedContrat.numeroBonCommande}</span>
+                  )}
+                  {selectedContrat.contratSites && selectedContrat.contratSites.length > 0 && (
+                    <span className="flex items-center gap-1">
+                      <MapPin className="h-3 w-3" />
+                      {selectedContrat.contratSites.map(cs => cs.site?.nom).filter(Boolean).join(', ')}
+                    </span>
+                  )}
+                  {selectedContratDetail?.interventions && (
+                    <span className="flex items-center gap-1">
+                      <CalendarClock className="h-3 w-3" />
+                      {selectedContratDetail.interventions.length} interventions
+                    </span>
+                  )}
+                </div>
               </div>
 
-              <Separator />
+              {/* Body — planning */}
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+                {selectedContrat.notes && (
+                  <div className="text-xs text-muted-foreground bg-gray-50 rounded-md px-3 py-2 whitespace-pre-wrap">
+                    {selectedContrat.notes}
+                  </div>
+                )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Début:</span>{' '}
-                  <span className="font-medium">{formatDate(selectedContrat.dateDebut)}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Fin:</span>{' '}
-                  <span className="font-medium">
-                    {selectedContrat.dateFin ? formatDate(selectedContrat.dateFin) : '—'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Responsable:</span>{' '}
-                  <span className="font-medium">
-                    {selectedContrat.responsablePlanning
-                      ? `${selectedContrat.responsablePlanning.prenom} ${selectedContrat.responsablePlanning.nom}`.trim()
-                      : '—'}
-                  </span>
-                </div>
-                {selectedContrat.numeroBonCommande && (
-                  <div>
-                    <span className="text-muted-foreground">BC:</span>{' '}
-                    <span className="font-medium">{selectedContrat.numeroBonCommande}</span>
-                  </div>
-                )}
-                <div>
-                  <span className="text-muted-foreground">Reconduction auto:</span>{' '}
-                  <span className="font-medium">{selectedContrat.reconductionAuto ? 'Oui' : 'Non'}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Auto-créer prochaine:</span>{' '}
-                  <span className="font-medium">{selectedContrat.autoCreerProchaine ? 'Oui' : 'Non'}</span>
-                </div>
-                {selectedContrat.nombreOperations !== undefined && (
-                  <div>
-                    <span className="text-muted-foreground">Nombre opérations:</span>{' '}
-                    <span className="font-medium">{selectedContrat.nombreOperations ?? '—'}</span>
-                  </div>
-                )}
-                {selectedContrat.frequenceOperations && (
-                  <div>
-                    <span className="text-muted-foreground">Fréquence opérations:</span>{' '}
-                    <span className="font-medium">
-                      {FREQUENCE_LABELS[selectedContrat.frequenceOperations]}
-                    </span>
-                  </div>
-                )}
-                {selectedContrat.frequenceControle && (
-                  <div>
-                    <span className="text-muted-foreground">Fréquence contrôles:</span>{' '}
-                    <span className="font-medium">
-                      {FREQUENCE_LABELS[selectedContrat.frequenceControle]}
-                    </span>
-                  </div>
-                )}
-                {selectedContrat.premiereDateOperation && (
-                  <div>
-                    <span className="text-muted-foreground">1ère opération:</span>{' '}
-                    <span className="font-medium">{formatDate(selectedContrat.premiereDateOperation)}</span>
-                  </div>
-                )}
-                {selectedContrat.premiereDateControle && (
-                  <div>
-                    <span className="text-muted-foreground">1er contrôle:</span>{' '}
-                    <span className="font-medium">{formatDate(selectedContrat.premiereDateControle)}</span>
-                  </div>
-                )}
-              </div>
+                {selectedContratDetail?.interventions && selectedContratDetail.interventions.length > 0 ? (
+                  (() => {
+                    const today = new Date();
+                    const bySite = selectedContratDetail.interventions!.reduce((acc, iv) => {
+                      const key = iv.site?.nom || 'Sans site';
+                      if (!acc[key]) acc[key] = [];
+                      acc[key].push(iv);
+                      return acc;
+                    }, {} as Record<string, typeof selectedContratDetail.interventions>);
 
-              {selectedContrat.contratSites && selectedContrat.contratSites.length > 0 && (
-                <>
-                  <Separator />
-                  <div className="space-y-3">
-                    <h4 className="font-semibold text-sm">Sites</h4>
-                    {selectedContrat.contratSites.map((cs) => (
-                      <div key={cs.id} className="rounded-md border p-3 text-sm space-y-2">
-                        <div className="font-medium">
-                          {cs.site?.nom}
-                          {cs.site?.adresse ? ` — ${cs.site.adresse}` : ''}
+                    return Object.entries(bySite).map(([siteName, ivs]) => (
+                      <div key={siteName} className="rounded-lg border overflow-hidden">
+                        <div className="bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-600 flex items-center gap-1.5">
+                          <MapPin className="h-3 w-3" />
+                          {siteName}
+                          <span className="ml-auto text-gray-400 font-normal">{ivs!.length} intervention{ivs!.length > 1 ? 's' : ''}</span>
                         </div>
-                        {cs.prestations?.length ? (
-                          <div className="flex flex-wrap gap-2">
-                            {cs.prestations.map((p) => (
-                              <Badge key={p} variant="outline" className="text-xs">
-                                {p}
-                              </Badge>
-                            ))}
-                          </div>
-                        ) : null}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-muted-foreground">
-                          {cs.frequenceOperations && (
-                            <div>Fréquence opérations: {FREQUENCE_LABELS[cs.frequenceOperations]}</div>
-                          )}
-                          {cs.frequenceControle && (
-                            <div>Fréquence contrôles: {FREQUENCE_LABELS[cs.frequenceControle]}</div>
-                          )}
-                          {cs.premiereDateOperation && (
-                            <div>1ère opération: {formatDate(cs.premiereDateOperation)}</div>
-                          )}
-                          {cs.premiereDateControle && (
-                            <div>1er contrôle: {formatDate(cs.premiereDateControle)}</div>
-                          )}
-                          {cs.nombreOperations !== undefined && (
-                            <div>Nb opérations: {cs.nombreOperations ?? '—'}</div>
-                          )}
-                          {cs.nombreVisitesControle !== undefined && (
-                            <div>Nb contrôles: {cs.nombreVisitesControle ?? '—'}</div>
-                          )}
+                        <div className="divide-y">
+                          {ivs!.sort((a, b) => a.datePrevue.localeCompare(b.datePrevue)).map((iv) => {
+                            const isPast = new Date(iv.datePrevue) < today;
+                            const canEdit = iv.statut !== 'REALISEE' && iv.statut !== 'ANNULEE';
+                            const isEditing = editingInterventionId === iv.id;
+                            const rowColor =
+                              iv.statut === 'REALISEE' ? 'bg-green-50/50' :
+                              iv.statut === 'ANNULEE' ? 'bg-gray-50 opacity-50' :
+                              isPast ? 'bg-red-50/40' :
+                              iv.statut === 'PLANIFIEE' ? 'bg-blue-50/30' : '';
+
+                            return (
+                              <div key={iv.id} className={`flex items-center gap-3 px-3 py-2 text-xs ${rowColor}`}>
+                                {/* Type badge */}
+                                <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold ${iv.type === 'OPERATION' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                                  {iv.type === 'OPERATION' ? 'OP' : 'CTRL'}
+                                </span>
+
+                                {/* Date — editable */}
+                                {isEditing ? (
+                                  <div className="flex items-center gap-1">
+                                    <input
+                                      type="date"
+                                      className="text-xs border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                      value={editingDateValue}
+                                      onChange={(e) => setEditingDateValue(e.target.value)}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && editingDateValue)
+                                          updateInterventionDateMutation.mutate({ id: iv.id, datePrevue: editingDateValue });
+                                        if (e.key === 'Escape') setEditingInterventionId(null);
+                                      }}
+                                      autoFocus
+                                    />
+                                    <button
+                                      className="text-green-600 hover:text-green-700 disabled:opacity-40"
+                                      disabled={!editingDateValue || updateInterventionDateMutation.isPending}
+                                      onClick={() => updateInterventionDateMutation.mutate({ id: iv.id, datePrevue: editingDateValue })}
+                                    >
+                                      <Check className="h-3.5 w-3.5" />
+                                    </button>
+                                    <button className="text-gray-400 hover:text-gray-600" onClick={() => setEditingInterventionId(null)}>
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    className={`flex items-center gap-1 group ${canEdit ? 'cursor-pointer' : 'cursor-default'} ${iv.statut === 'ANNULEE' ? 'line-through text-gray-400' : iv.statut === 'REALISEE' ? 'text-green-700' : isPast ? 'text-red-600 font-semibold' : 'text-gray-800'}`}
+                                    onClick={() => {
+                                      if (!canEdit) return;
+                                      setEditingInterventionId(iv.id);
+                                      setEditingDateValue(iv.datePrevue.split('T')[0]);
+                                    }}
+                                  >
+                                    <span className="font-medium">
+                                      {new Date(iv.datePrevue).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' })}
+                                    </span>
+                                    {canEdit && <Pencil className="h-2.5 w-2.5 opacity-0 group-hover:opacity-50 transition-opacity" />}
+                                  </button>
+                                )}
+
+                                {/* Prestation */}
+                                {iv.prestation && <span className="text-gray-400 truncate">{iv.prestation}</span>}
+
+                                {/* Statut pill */}
+                                <span className="ml-auto shrink-0">
+                                  {iv.statut === 'REALISEE' ? (
+                                    <span className="flex items-center gap-0.5 text-green-600 font-medium">
+                                      <CheckCircle2 className="h-3 w-3" />
+                                      {iv.dateRealisee && new Date(iv.dateRealisee).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
+                                    </span>
+                                  ) : iv.statut === 'ANNULEE' ? (
+                                    <span className="text-gray-400">Annulée</span>
+                                  ) : iv.statut === 'PLANIFIEE' ? (
+                                    <span className="text-blue-600 font-medium">Planifiée</span>
+                                  ) : isPast ? (
+                                    <span className="text-red-500 font-semibold">En retard</span>
+                                  ) : (
+                                    <span className="text-gray-400">À planifier</span>
+                                  )}
+                                </span>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </>
-              )}
+                    ));
+                  })()
+                ) : selectedContratDetail ? (
+                  <div className="text-center text-sm text-muted-foreground py-8">Aucune intervention planifiée</div>
+                ) : (
+                  <div className="text-center text-sm text-muted-foreground py-8">Chargement du planning…</div>
+                )}
+              </div>
 
-              {selectedContrat.notes && (
-                <>
-                  <Separator />
-                  <div className="text-sm">
-                    <div className="text-muted-foreground">Notes</div>
-                    <div className="mt-1 whitespace-pre-wrap">{selectedContrat.notes}</div>
-                  </div>
-                </>
-              )}
-
-              {/* Toutes les interventions projetées */}
-              {selectedContratDetail?.interventions && selectedContratDetail.interventions.length > 0 && (
-                <>
-                  <Separator />
-                  <div className="space-y-2">
-                    <h4 className="font-semibold text-sm">
-                      Planning complet ({selectedContratDetail.interventions.length} interventions)
-                    </h4>
-                    {(() => {
-                      const bySite = selectedContratDetail.interventions!.reduce((acc, iv) => {
-                        const key = iv.site?.nom || 'Sans site';
-                        if (!acc[key]) acc[key] = { ops: [], ctrl: [] };
-                        if (iv.type === 'OPERATION') acc[key].ops.push(iv);
-                        else acc[key].ctrl.push(iv);
-                        return acc;
-                      }, {} as Record<string, { ops: typeof selectedContratDetail.interventions; ctrl: typeof selectedContratDetail.interventions }>);
-
-                      return Object.entries(bySite).map(([siteName, groups]) => (
-                        <div key={siteName} className="rounded-md border overflow-hidden">
-                          <div className="bg-gray-50 px-3 py-1.5 text-xs font-semibold text-gray-600 flex items-center gap-1.5">
-                            <MapPin className="h-3 w-3" />
-                            {siteName}
-                          </div>
-                          <div className="divide-y divide-gray-50">
-                            {[...groups.ops!, ...groups.ctrl!]
-                              .sort((a, b) => a.datePrevue.localeCompare(b.datePrevue))
-                              .map((iv) => {
-                                const statutColor =
-                                  iv.statut === 'REALISEE' ? 'text-green-600' :
-                                  iv.statut === 'ANNULEE' ? 'text-gray-400 line-through' :
-                                  iv.statut === 'PLANIFIEE' ? 'text-blue-600' :
-                                  new Date(iv.datePrevue) < new Date() ? 'text-red-500' :
-                                  'text-gray-700';
-                                return (
-                                  <div key={iv.id} className={`flex items-center justify-between px-3 py-1.5 text-xs ${statutColor}`}>
-                                    <div className="flex items-center gap-2">
-                                      <span className="font-medium w-20">
-                                        {new Date(iv.datePrevue).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' })}
-                                      </span>
-                                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${iv.type === 'OPERATION' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
-                                        {iv.type === 'OPERATION' ? 'OP' : 'CTRL'}
-                                      </span>
-                                      {iv.prestation && <span className="text-gray-400">{iv.prestation}</span>}
-                                    </div>
-                                    <span className="text-[10px] font-medium">
-                                      {iv.statut === 'REALISEE' ? `✓ ${new Date(iv.dateRealisee!).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}` :
-                                       iv.statut === 'ANNULEE' ? 'Annulée' :
-                                       iv.statut === 'PLANIFIEE' ? 'Planifiée' :
-                                       new Date(iv.datePrevue) < new Date() ? 'En retard' :
-                                       'À planifier'}
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                          </div>
-                        </div>
-                      ));
-                    })()}
-                  </div>
-                </>
-              )}
-
-            </div>
+              {/* Footer */}
+              <div className="px-6 py-4 border-t flex items-center justify-between gap-2">
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to={`/contrats/${selectedContrat.id}`} className="flex items-center gap-1.5">
+                    <FileText className="h-3.5 w-3.5" />
+                    Fiche complète
+                  </Link>
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => { setSelectedContrat(null); setEditingInterventionId(null); }}>
+                  Fermer
+                </Button>
+              </div>
+            </>
           )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setSelectedContrat(null)}>
-              Fermer
-            </Button>
-            <Button asChild>
-              <Link to={`/contrats/${selectedContrat?.id}`}>Ouvrir la fiche</Link>
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
