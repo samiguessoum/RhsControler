@@ -7,10 +7,8 @@ RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists
 COPY package*.json ./
 RUN npm ci
 
-COPY prisma ./prisma
-RUN npx prisma generate
-
 COPY . .
+RUN npx prisma generate
 RUN npm run build
 
 # Stage 2 — Runtime léger (pas de devDependencies)
