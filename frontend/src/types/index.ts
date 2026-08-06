@@ -123,6 +123,8 @@ export interface ContratSiteInput {
   nombreOperations?: number;
   nombreVisitesControle?: number;
   notes?: string;
+  datesPrevuesOperations?: string[];
+  datesPrevuesControles?: string[];
 }
 
 // ============ CONTRAT ============

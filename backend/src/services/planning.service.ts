@@ -532,7 +532,11 @@ export const planningService = {
    * Appelé automatiquement à la création du contrat.
    * Supporte les ContratSites (fréquences par site) et les contrats ponctuels (par nombre d'opérations).
    */
-  async genererPlanningContrat(contratId: string, userId: string) {
+  async genererPlanningContrat(
+    contratId: string,
+    userId: string,
+    siteOverrides?: Array<{ siteId: string; datesPrevuesOperations?: Date[]; datesPrevuesControles?: Date[] }>,
+  ) {
     const contrat = await prisma.contrat.findUnique({
       where: { id: contratId },
       include: { client: true, contratSites: { include: { site: true } } },
@@ -556,57 +560,54 @@ export const planningService = {
         // Utiliser les prestations du site, ou fallback sur celles du contrat
         const sitePrestations = cs.prestations && cs.prestations.length > 0 ? cs.prestations : contrat.prestations;
 
+        const siteOverride = siteOverrides?.find((o) => o.siteId === cs.siteId);
+
         if (contrat.type === 'PONCTUEL') {
           // Contrat ponctuel : générer selon le nombre d'opérations du site
           const nbOps = cs.nombreOperations || 0;
           const nbControles = cs.nombreVisitesControle || 0;
 
-          if (cs.frequenceOperations && cs.premiereDateOperation && nbOps > 0) {
-            let currentDate = new Date(cs.premiereDateOperation);
-            for (let i = 0; i < nbOps; i++) {
-              for (const prestation of sitePrestations) {
-                const intervention = await prisma.intervention.create({
-                  data: {
-                    contratId: contrat.id,
-                    clientId: contrat.clientId,
-                    siteId: cs.siteId,
-                    type: 'OPERATION',
-                    prestation,
-                    datePrevue: currentDate,
-                    statut: 'A_PLANIFIER',
-                    createdById: userId,
-                  },
-                });
-                interventionsCreees.push(intervention);
+          if (cs.premiereDateOperation && (nbOps > 0 || siteOverride?.datesPrevuesOperations?.length)) {
+            if (siteOverride?.datesPrevuesOperations?.length) {
+              for (const date of siteOverride.datesPrevuesOperations) {
+                for (const prestation of sitePrestations) {
+                  const intervention = await prisma.intervention.create({
+                    data: { contratId: contrat.id, clientId: contrat.clientId, siteId: cs.siteId, type: 'OPERATION', prestation, datePrevue: date, statut: 'A_PLANIFIER', createdById: userId },
+                  });
+                  interventionsCreees.push(intervention);
+                }
               }
-              currentDate = getProchaineDateIntervention(
-                currentDate,
-                cs.frequenceOperations,
-                cs.frequenceOperationsJours
-              );
+            } else if (cs.frequenceOperations && nbOps > 0) {
+              let currentDate = new Date(cs.premiereDateOperation);
+              for (let i = 0; i < nbOps; i++) {
+                for (const prestation of sitePrestations) {
+                  const intervention = await prisma.intervention.create({
+                    data: { contratId: contrat.id, clientId: contrat.clientId, siteId: cs.siteId, type: 'OPERATION', prestation, datePrevue: currentDate, statut: 'A_PLANIFIER', createdById: userId },
+                  });
+                  interventionsCreees.push(intervention);
+                }
+                currentDate = getProchaineDateIntervention(currentDate, cs.frequenceOperations, cs.frequenceOperationsJours);
+              }
             }
           }
 
-          if (cs.frequenceControle && cs.premiereDateControle && nbControles > 0) {
-            let currentDate = new Date(cs.premiereDateControle);
-            for (let i = 0; i < nbControles; i++) {
-              const intervention = await prisma.intervention.create({
-                data: {
-                  contratId: contrat.id,
-                  clientId: contrat.clientId,
-                  siteId: cs.siteId,
-                  type: 'CONTROLE',
-                  datePrevue: currentDate,
-                  statut: 'A_PLANIFIER',
-                  createdById: userId,
-                },
-              });
-              interventionsCreees.push(intervention);
-              currentDate = getProchaineDateIntervention(
-                currentDate,
-                cs.frequenceControle,
-                cs.frequenceControleJours
-              );
+          if (cs.premiereDateControle && (nbControles > 0 || siteOverride?.datesPrevuesControles?.length)) {
+            if (siteOverride?.datesPrevuesControles?.length) {
+              for (const date of siteOverride.datesPrevuesControles) {
+                const intervention = await prisma.intervention.create({
+                  data: { contratId: contrat.id, clientId: contrat.clientId, siteId: cs.siteId, type: 'CONTROLE', datePrevue: date, statut: 'A_PLANIFIER', createdById: userId },
+                });
+                interventionsCreees.push(intervention);
+              }
+            } else if (cs.frequenceControle && nbControles > 0) {
+              let currentDate = new Date(cs.premiereDateControle);
+              for (let i = 0; i < nbControles; i++) {
+                const intervention = await prisma.intervention.create({
+                  data: { contratId: contrat.id, clientId: contrat.clientId, siteId: cs.siteId, type: 'CONTROLE', datePrevue: currentDate, statut: 'A_PLANIFIER', createdById: userId },
+                });
+                interventionsCreees.push(intervention);
+                currentDate = getProchaineDateIntervention(currentDate, cs.frequenceControle, cs.frequenceControleJours);
+              }
             }
           }
         } else {
@@ -616,6 +617,16 @@ export const planningService = {
           const nbControles = cs.nombreVisitesControle || 0;
 
           if (cs.frequenceOperations && cs.premiereDateOperation) {
+            if (siteOverride?.datesPrevuesOperations?.length) {
+              for (const date of siteOverride.datesPrevuesOperations) {
+                for (const prestation of sitePrestations) {
+                  const intervention = await prisma.intervention.create({
+                    data: { contratId: contrat.id, clientId: contrat.clientId, siteId: cs.siteId, type: 'OPERATION', prestation, datePrevue: date, statut: 'A_PLANIFIER', createdById: userId },
+                  });
+                  interventionsCreees.push(intervention);
+                }
+              }
+            } else {
             let currentDate = new Date(cs.premiereDateOperation);
             if (nbOps > 0) {
               for (let i = 0; i < nbOps; i++) {
@@ -664,9 +675,18 @@ export const planningService = {
                 );
               }
             }
+            } // end else (frequency-based ops)
           }
 
           if (cs.frequenceControle && cs.premiereDateControle) {
+            if (siteOverride?.datesPrevuesControles?.length) {
+              for (const date of siteOverride.datesPrevuesControles) {
+                const intervention = await prisma.intervention.create({
+                  data: { contratId: contrat.id, clientId: contrat.clientId, siteId: cs.siteId, type: 'CONTROLE', datePrevue: date, statut: 'A_PLANIFIER', createdById: userId },
+                });
+                interventionsCreees.push(intervention);
+              }
+            } else {
             let currentDate = new Date(cs.premiereDateControle);
             if (nbControles > 0) {
               for (let i = 0; i < nbControles; i++) {
@@ -709,6 +729,7 @@ export const planningService = {
                 );
               }
             }
+            } // end else (frequency-based controls)
           }
         }
       }

@@ -92,8 +92,7 @@ export const contratController = {
             },
           },
           interventions: {
-            orderBy: { datePrevue: 'desc' },
-            take: 50,
+            orderBy: { datePrevue: 'asc' },
             include: {
               createdBy: {
                 select: { id: true, nom: true, prenom: true },
@@ -192,11 +191,20 @@ export const contratController = {
       // Audit log
       await createAuditLog(req.user!.id, 'CREATE', 'Contrat', contrat.id, { after: contrat });
 
+      // Extraire les dates explicites par site si fournies
+      const siteOverrides = data.contratSites
+        ?.filter((cs: any) => cs.datesPrevuesOperations?.length || cs.datesPrevuesControles?.length)
+        .map((cs: any) => ({
+          siteId: cs.siteId,
+          datesPrevuesOperations: cs.datesPrevuesOperations?.map((d: string) => new Date(d)),
+          datesPrevuesControles: cs.datesPrevuesControles?.map((d: string) => new Date(d)),
+        }));
+
       // Générer automatiquement le planning si le contrat est ACTIF
       let planningResult = null;
       if (contrat.statut === 'ACTIF') {
         try {
-          planningResult = await planningService.genererPlanningContrat(contrat.id, req.user!.id);
+          planningResult = await planningService.genererPlanningContrat(contrat.id, req.user!.id, siteOverrides?.length ? siteOverrides : undefined);
         } catch (planningError) {
           logger.error({ err: planningError }, 'Auto-planning generation error');
           // On ne bloque pas la création du contrat si le planning échoue
@@ -323,8 +331,15 @@ export const contratController = {
             statut: { notIn: ['REALISEE', 'ANNULEE'] },
           },
         });
+        const updateOverrides = data.contratSites
+          ?.filter((cs: any) => cs.datesPrevuesOperations?.length || cs.datesPrevuesControles?.length)
+          .map((cs: any) => ({
+            siteId: cs.siteId,
+            datesPrevuesOperations: cs.datesPrevuesOperations?.map((d: string) => new Date(d)),
+            datesPrevuesControles: cs.datesPrevuesControles?.map((d: string) => new Date(d)),
+          }));
         try {
-          await planningService.genererPlanningContrat(id, req.user!.id);
+          await planningService.genererPlanningContrat(id, req.user!.id, updateOverrides?.length ? updateOverrides : undefined);
         } catch (planningError) {
           logger.error({ err: planningError }, 'Auto-planning update error');
         }

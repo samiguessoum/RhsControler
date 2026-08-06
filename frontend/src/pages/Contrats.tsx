@@ -28,6 +28,33 @@ import { formatDate } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
 import type { Contrat, CreateContratInput, Client, User, Frequence, ContratStatut, ContratType, ContratSiteInput } from '@/types';
 
+function computeProjectionDates(
+  premierDate: string,
+  nbOps: number | undefined,
+  frequenceJours: number | undefined,
+  dateFin?: string,
+): string[] {
+  if (!premierDate || !frequenceJours) return [];
+  const dates: string[] = [];
+  const start = new Date(premierDate + 'T12:00:00');
+  if (nbOps && nbOps > 0) {
+    for (let i = 0; i < nbOps; i++) {
+      const d = new Date(start.getTime() + i * frequenceJours * 86400000);
+      dates.push(d.toISOString().split('T')[0]);
+    }
+  } else if (dateFin) {
+    const fin = new Date(dateFin + 'T12:00:00');
+    let d = new Date(start);
+    let safety = 0;
+    while (d <= fin && safety < 120) {
+      dates.push(d.toISOString().split('T')[0]);
+      d = new Date(d.getTime() + frequenceJours * 86400000);
+      safety++;
+    }
+  }
+  return dates;
+}
+
 const FREQUENCES: Frequence[] = [
   'HEBDOMADAIRE',
   'MENSUELLE',
@@ -81,6 +108,12 @@ export function ContratsPage() {
   const { data: prestationsData = [] } = useQuery({
     queryKey: ['prestations-active'],
     queryFn: () => prestationsApi.list(true),
+  });
+
+  const { data: selectedContratDetail } = useQuery({
+    queryKey: ['contrat-detail', selectedContrat?.id],
+    queryFn: () => contratsApi.get(selectedContrat!.id),
+    enabled: !!selectedContrat,
   });
 
   const createMutation = useMutation({
@@ -276,9 +309,54 @@ export function ContratsPage() {
 
     // Update a site's configuration
     const updateSite = (siteId: string, updates: Partial<ContratSiteInput>) => {
-      setContratSites(contratSites.map(cs =>
-        cs.siteId === siteId ? { ...cs, ...updates } : cs
-      ));
+      setContratSites(contratSites.map(cs => {
+        if (cs.siteId !== siteId) return cs;
+        const updated = { ...cs, ...updates };
+        // Auto-recompute ops dates when schedule params change
+        if ('premiereDateOperation' in updates || 'frequenceOperationsJours' in updates || 'nombreOperations' in updates) {
+          updated.datesPrevuesOperations = computeProjectionDates(
+            updated.premiereDateOperation || '',
+            updated.nombreOperations,
+            updated.frequenceOperationsJours,
+            dateFin || undefined,
+          );
+        }
+        // Auto-recompute controls dates when schedule params change
+        if ('premiereDateControle' in updates || 'frequenceControleJours' in updates || 'nombreVisitesControle' in updates) {
+          updated.datesPrevuesControles = computeProjectionDates(
+            updated.premiereDateControle || '',
+            updated.nombreVisitesControle,
+            updated.frequenceControleJours,
+            dateFin || undefined,
+          );
+        }
+        return updated;
+      }));
+    };
+
+    const updateSiteDate = (siteId: string, type: 'ops' | 'ctrl', index: number, value: string) => {
+      setContratSites(contratSites.map(cs => {
+        if (cs.siteId !== siteId) return cs;
+        if (type === 'ops') {
+          const dates = [...(cs.datesPrevuesOperations || [])];
+          dates[index] = value;
+          return { ...cs, datesPrevuesOperations: dates };
+        } else {
+          const dates = [...(cs.datesPrevuesControles || [])];
+          dates[index] = value;
+          return { ...cs, datesPrevuesControles: dates };
+        }
+      }));
+    };
+
+    const resetSiteDates = (siteId: string, type: 'ops' | 'ctrl') => {
+      const cs = contratSites.find(s => s.siteId === siteId);
+      if (!cs) return;
+      if (type === 'ops') {
+        updateSite(siteId, { datesPrevuesOperations: computeProjectionDates(cs.premiereDateOperation || '', cs.nombreOperations, cs.frequenceOperationsJours, dateFin || undefined) });
+      } else {
+        updateSite(siteId, { datesPrevuesControles: computeProjectionDates(cs.premiereDateControle || '', cs.nombreVisitesControle, cs.frequenceControleJours, dateFin || undefined) });
+      }
     };
 
     // Add prestation to a site
@@ -745,6 +823,74 @@ export function ContratsPage() {
                             </div>
 
                           </div>
+
+                          {/* ─── Projection des dates ─── */}
+                          {(cs.datesPrevuesOperations?.length || cs.datesPrevuesControles?.length) && (
+                            <div className="space-y-3 pt-2 border-t border-gray-100">
+                              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Projection des dates</p>
+
+                              {cs.datesPrevuesOperations && cs.datesPrevuesOperations.length > 0 && (
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-medium text-gray-600">
+                                      Opérations ({cs.datesPrevuesOperations.length})
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => resetSiteDates(cs.siteId, 'ops')}
+                                      className="text-xs text-blue-500 hover:text-blue-700"
+                                    >
+                                      ↺ Recalculer
+                                    </button>
+                                  </div>
+                                  <div className="grid grid-cols-3 gap-1.5">
+                                    {cs.datesPrevuesOperations.map((date, i) => (
+                                      <div key={i} className="flex items-center gap-1">
+                                        <span className="text-[10px] text-gray-400 w-4 flex-shrink-0">#{i + 1}</span>
+                                        <Input
+                                          type="date"
+                                          className="h-7 text-xs px-1.5"
+                                          value={date}
+                                          onChange={(e) => updateSiteDate(cs.siteId, 'ops', i, e.target.value)}
+                                        />
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {cs.datesPrevuesControles && cs.datesPrevuesControles.length > 0 && (
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-medium text-gray-600">
+                                      Contrôles ({cs.datesPrevuesControles.length})
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => resetSiteDates(cs.siteId, 'ctrl')}
+                                      className="text-xs text-blue-500 hover:text-blue-700"
+                                    >
+                                      ↺ Recalculer
+                                    </button>
+                                  </div>
+                                  <div className="grid grid-cols-3 gap-1.5">
+                                    {cs.datesPrevuesControles.map((date, i) => (
+                                      <div key={i} className="flex items-center gap-1">
+                                        <span className="text-[10px] text-gray-400 w-4 flex-shrink-0">#{i + 1}</span>
+                                        <Input
+                                          type="date"
+                                          className="h-7 text-xs px-1.5"
+                                          value={date}
+                                          onChange={(e) => updateSiteDate(cs.siteId, 'ctrl', i, e.target.value)}
+                                        />
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
                         </div>
                       )}
                     </div>
@@ -1186,6 +1332,69 @@ export function ContratsPage() {
                   </div>
                 </>
               )}
+
+              {/* Toutes les interventions projetées */}
+              {selectedContratDetail?.interventions && selectedContratDetail.interventions.length > 0 && (
+                <>
+                  <Separator />
+                  <div className="space-y-2">
+                    <h4 className="font-semibold text-sm">
+                      Planning complet ({selectedContratDetail.interventions.length} interventions)
+                    </h4>
+                    {(() => {
+                      const bySite = selectedContratDetail.interventions!.reduce((acc, iv) => {
+                        const key = iv.site?.nom || 'Sans site';
+                        if (!acc[key]) acc[key] = { ops: [], ctrl: [] };
+                        if (iv.type === 'OPERATION') acc[key].ops.push(iv);
+                        else acc[key].ctrl.push(iv);
+                        return acc;
+                      }, {} as Record<string, { ops: typeof selectedContratDetail.interventions; ctrl: typeof selectedContratDetail.interventions }>);
+
+                      return Object.entries(bySite).map(([siteName, groups]) => (
+                        <div key={siteName} className="rounded-md border overflow-hidden">
+                          <div className="bg-gray-50 px-3 py-1.5 text-xs font-semibold text-gray-600 flex items-center gap-1.5">
+                            <MapPin className="h-3 w-3" />
+                            {siteName}
+                          </div>
+                          <div className="divide-y divide-gray-50">
+                            {[...groups.ops!, ...groups.ctrl!]
+                              .sort((a, b) => a.datePrevue.localeCompare(b.datePrevue))
+                              .map((iv) => {
+                                const statutColor =
+                                  iv.statut === 'REALISEE' ? 'text-green-600' :
+                                  iv.statut === 'ANNULEE' ? 'text-gray-400 line-through' :
+                                  iv.statut === 'PLANIFIEE' ? 'text-blue-600' :
+                                  new Date(iv.datePrevue) < new Date() ? 'text-red-500' :
+                                  'text-gray-700';
+                                return (
+                                  <div key={iv.id} className={`flex items-center justify-between px-3 py-1.5 text-xs ${statutColor}`}>
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-medium w-20">
+                                        {new Date(iv.datePrevue).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' })}
+                                      </span>
+                                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${iv.type === 'OPERATION' ? 'bg-blue-50 text-blue-600' : 'bg-purple-50 text-purple-600'}`}>
+                                        {iv.type === 'OPERATION' ? 'OP' : 'CTRL'}
+                                      </span>
+                                      {iv.prestation && <span className="text-gray-400">{iv.prestation}</span>}
+                                    </div>
+                                    <span className="text-[10px] font-medium">
+                                      {iv.statut === 'REALISEE' ? `✓ ${new Date(iv.dateRealisee!).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}` :
+                                       iv.statut === 'ANNULEE' ? 'Annulée' :
+                                       iv.statut === 'PLANIFIEE' ? 'Planifiée' :
+                                       new Date(iv.datePrevue) < new Date() ? 'En retard' :
+                                       'À planifier'}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                          </div>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                </>
+              )}
+
             </div>
           )}
 
