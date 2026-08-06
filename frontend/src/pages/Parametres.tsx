@@ -99,6 +99,7 @@ export function ParametresPage() {
         email: settings.email || '',
         siteWeb: settings.siteWeb || '',
         rc: settings.rc || '',
+        capitalSocial: settings.capitalSocial || '',
         nif: settings.nif || '',
         ai: settings.ai || '',
         nis: settings.nis || '',
@@ -819,6 +820,16 @@ export function ParametresPage() {
                           onChange={(e) => handleSettingsChange('nin', e.target.value)}
                         />
                         <p className="text-xs text-muted-foreground">NIN du gérant</p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="capitalSocial">Capital social</Label>
+                        <Input
+                          id="capitalSocial"
+                          placeholder="Ex : 1 000 000 DZD"
+                          value={settingsForm.capitalSocial || ''}
+                          onChange={(e) => handleSettingsChange('capitalSocial', e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">Affiché sur les documents légaux</p>
                       </div>
                     </div>
                   </CardContent>

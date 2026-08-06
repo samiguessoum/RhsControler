@@ -168,6 +168,7 @@ const COMPANY_INFO_DEFAULT = {
   rib: process.env.PDF_COMPANY_RIB || '',
   compte: process.env.PDF_COMPANY_COMPTE || '',
   banque: process.env.PDF_COMPANY_BANQUE || '',
+  capitalSocial: process.env.PDF_COMPANY_CAPITAL_SOCIAL || '',
   logoPath: process.env.PDF_COMPANY_LOGO_PATH || process.env.COMPANY_LOGO_PATH || '',
 };
 
@@ -196,6 +197,7 @@ export async function getCompanySettings() {
         compte: settings.compteBancaire || COMPANY_INFO_DEFAULT.compte,
         logoPath: settings.logoPath || COMPANY_INFO_DEFAULT.logoPath,
         banque: settings.banque || '',
+        capitalSocial: settings.capitalSocial || '',
       };
     }
     return COMPANY_INFO_DEFAULT;
@@ -679,9 +681,16 @@ function drawFooter(doc: PDFKit.PDFDocument, notes?: string | null, conditions?:
   }
 
   // Informations légales en bas
+  const legalParts = [
+    COMPANY_INFO.nif ? `NIF : ${COMPANY_INFO.nif}` : '',
+    COMPANY_INFO.nis ? `NIS : ${COMPANY_INFO.nis}` : '',
+    COMPANY_INFO.rc ? `RC : ${COMPANY_INFO.rc}` : '',
+    COMPANY_INFO.capitalSocial ? `Capital : ${COMPANY_INFO.capitalSocial}` : '',
+  ].filter(Boolean).join('  |  ');
+
   doc.fontSize(7)
     .fillColor(COLORS.lightText)
-    .text(`${COMPANY_INFO.nif} | ${COMPANY_INFO.nis} | ${COMPANY_INFO.rc}`, margin, pageHeight - 30, {
+    .text(legalParts, margin, pageHeight - 30, {
       width: doc.page.width - 2 * margin,
       align: 'center',
     });
@@ -1006,20 +1015,33 @@ function drawInvoiceTotals(doc: PDFKit.PDFDocument, facture: FactureDocument, y:
 
 function drawInvoiceFooter(doc: PDFKit.PDFDocument) {
   const margin = 28;
-  const pageY = doc.page.height - 36;
-  const legalLine = [
+  const pageY = doc.page.height - 50;
+  const contactLine = [
     COMPANY_INFO.name,
     COMPANY_INFO.phone ? `Tel : ${COMPANY_INFO.phone}` : '',
     COMPANY_INFO.email ? `Email : ${COMPANY_INFO.email}` : '',
     COMPANY_INFO.website ? `Web : ${COMPANY_INFO.website}` : '',
   ].filter(Boolean).join('  |  ');
 
+  const legalLine = [
+    COMPANY_INFO.rc ? `RC : ${COMPANY_INFO.rc}` : '',
+    COMPANY_INFO.nif ? `NIF : ${COMPANY_INFO.nif}` : '',
+    COMPANY_INFO.nis ? `NIS : ${COMPANY_INFO.nis}` : '',
+    COMPANY_INFO.capitalSocial ? `Capital social : ${COMPANY_INFO.capitalSocial}` : '',
+  ].filter(Boolean).join('  |  ');
+
   doc.moveTo(margin, pageY - 14).lineTo(doc.page.width - margin, pageY - 14).lineWidth(0.7).strokeColor('#d1d5db').stroke();
-  doc.font('Helvetica').fontSize(7).fillColor('#374151').text(legalLine, margin, pageY - 8, {
+  doc.font('Helvetica').fontSize(7).fillColor('#374151').text(contactLine, margin, pageY - 8, {
     width: doc.page.width - margin * 2 - 50,
     align: 'center',
   });
-  doc.text(`1/1`, doc.page.width - margin - 24, pageY - 8, { width: 24, align: 'right' });
+  if (legalLine) {
+    doc.font('Helvetica').fontSize(6.5).fillColor('#6b7280').text(legalLine, margin, pageY + 4, {
+      width: doc.page.width - margin * 2 - 50,
+      align: 'center',
+    });
+  }
+  doc.font('Helvetica').fontSize(7).fillColor('#374151').text(`1/1`, doc.page.width - margin - 24, pageY - 8, { width: 24, align: 'right' });
 }
 
 // ============ Fonctions publiques ============

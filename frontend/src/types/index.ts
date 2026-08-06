@@ -1907,6 +1907,7 @@ export interface CompanySettings {
   ai?: string;
   nis?: string;
   nin?: string;
+  capitalSocial?: string;
   compteBancaire?: string;
   rib?: string;
   banque?: string;
@@ -1986,6 +1987,7 @@ export interface UpdateCompanySettingsInput {
   ai?: string;
   nis?: string;
   nin?: string;
+  capitalSocial?: string;
   compteBancaire?: string;
   rib?: string;
   banque?: string;

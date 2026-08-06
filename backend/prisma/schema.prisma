@@ -1748,6 +1748,7 @@ model CompanySettings {
   ai                    String?  // Article d'imposition
   nis                   String?  // Numéro d'identification statistique
   nin                   String?  // NIN du gérant
+  capitalSocial         String?  // Capital social (ex: "1 000 000 DZD")
   compteBancaire        String?  // Numéro de compte
   rib                   String?  // RIB complet
   banque                String?  // Nom de la banque
