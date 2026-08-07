@@ -58,6 +58,7 @@ import {
   Clock,
   FileText,
   CheckCircle,
+  CheckCircle2,
   AlertCircle,
   ChevronDown,
   ChevronUp,
@@ -3027,6 +3028,167 @@ function ExportCalendarDialog({
   );
 }
 
+// ============ MOBILE WEEK NAV (Google Calendar style) ============
+function MobileWeekNav({
+  currentDate,
+  onDateChange,
+  interventionsByDay,
+}: {
+  currentDate: Date;
+  onDateChange: (date: Date) => void;
+  interventionsByDay: Record<string, number>;
+}) {
+  const today = new Date();
+  const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
+  const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+
+  return (
+    <div className="bg-white border-b shadow-sm sticky top-14 z-30 md:hidden select-none">
+      {/* Month/year header + week arrows */}
+      <div className="flex items-center justify-between px-3 pt-2 pb-1">
+        <button
+          onClick={() => onDateChange(addWeeks(currentDate, -1))}
+          className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 active:bg-gray-200"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <button
+          onClick={() => onDateChange(today)}
+          className="text-sm font-bold capitalize text-gray-800 hover:text-primary transition-colors"
+        >
+          {format(currentDate, 'MMMM yyyy', { locale: fr })}
+        </button>
+        <button
+          onClick={() => onDateChange(addWeeks(currentDate, 1))}
+          className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 active:bg-gray-200"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* 7-day strip */}
+      <div className="grid grid-cols-7 px-2 pb-2">
+        {days.map((day) => {
+          const isToday = isSameDay(day, today);
+          const isSelected = isSameDay(day, currentDate);
+          const count = interventionsByDay[format(day, 'yyyy-MM-dd')] ?? 0;
+
+          return (
+            <button
+              key={day.toISOString()}
+              onClick={() => onDateChange(day)}
+              className="flex flex-col items-center gap-0.5 py-1 touch-manipulation"
+            >
+              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">
+                {format(day, 'EEE', { locale: fr }).slice(0, 2)}
+              </span>
+              <span
+                className={cn(
+                  'w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all',
+                  isSelected && isToday && 'bg-green-600 text-white shadow-md shadow-green-200',
+                  isSelected && !isToday && 'bg-primary text-primary-foreground shadow-sm',
+                  !isSelected && isToday && 'border-2 border-green-500 text-green-700',
+                  !isSelected && !isToday && 'text-gray-700 hover:bg-gray-100 active:bg-gray-200',
+                )}
+              >
+                {format(day, 'd')}
+              </span>
+              {/* Dot: intervention count indicator */}
+              <span className={cn(
+                'w-1 h-1 rounded-full transition-all',
+                count > 0
+                  ? isSelected ? 'bg-white' : 'bg-green-500'
+                  : 'bg-transparent',
+              )} />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ============ MOBILE DAY LIST ============
+function MobileDayCard({
+  intervention,
+  onTap,
+  onRealiser,
+  canRealiser,
+}: {
+  intervention: Intervention;
+  onTap: () => void;
+  onRealiser: () => void;
+  canRealiser: boolean;
+}) {
+  const today = new Date();
+  const isLate = new Date(intervention.datePrevue) < today && intervention.statut !== 'REALISEE' && intervention.statut !== 'ANNULEE';
+
+  const borderColor =
+    intervention.statut === 'REALISEE' ? 'border-l-green-500' :
+    intervention.statut === 'ANNULEE' ? 'border-l-gray-300' :
+    isLate ? 'border-l-red-500' :
+    intervention.statut === 'PLANIFIEE' ? 'border-l-blue-500' :
+    'border-l-amber-400';
+
+  const canMarkDone = canRealiser && intervention.statut !== 'REALISEE' && intervention.statut !== 'ANNULEE';
+
+  return (
+    <div
+      className={cn('bg-white rounded-xl border-l-4 shadow-sm active:shadow-md transition-all', borderColor)}
+      onClick={onTap}
+    >
+      <div className="flex items-center gap-3 p-3.5">
+        {/* Time column */}
+        {intervention.heurePrevue ? (
+          <div className="shrink-0 w-10 text-center">
+            <span className="text-xs font-bold text-gray-500 block leading-tight">
+              {intervention.heurePrevue.slice(0, 5)}
+            </span>
+          </div>
+        ) : (
+          <div className="shrink-0 w-10" />
+        )}
+
+        {/* Content */}
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-sm text-gray-900 truncate leading-tight">
+            {intervention.client?.nomEntreprise}
+          </p>
+          {intervention.site?.nom && (
+            <p className="text-xs text-gray-400 truncate mt-0.5">{intervention.site.nom}</p>
+          )}
+          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+            <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded', getInterventionTypeBadgeClass(intervention.type))}>
+              {getInterventionTypeLabel(intervention.type)}
+            </span>
+            <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded', getStatutColor(intervention.statut))}>
+              {getStatutLabel(intervention.statut)}
+            </span>
+            {intervention.prestation && (
+              <span className="text-[10px] text-gray-400">{intervention.prestation}</span>
+            )}
+          </div>
+        </div>
+
+        {/* Quick Réaliser button */}
+        {canMarkDone ? (
+          <button
+            onClick={(e) => { e.stopPropagation(); onRealiser(); }}
+            className="shrink-0 w-10 h-10 rounded-full bg-green-50 text-green-600 hover:bg-green-600 hover:text-white active:scale-95 transition-all flex items-center justify-center touch-manipulation"
+            aria-label="Marquer réalisée"
+          >
+            <CheckCircle className="h-5 w-5" />
+          </button>
+        ) : intervention.statut === 'REALISEE' ? (
+          <div className="shrink-0 w-10 h-10 rounded-full bg-green-100 text-green-600 flex items-center justify-center">
+            <CheckCircle2 className="h-5 w-5" />
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 // ============ MAIN PLANNING PAGE ============
 export function PlanningPage() {
   const queryClient = useQueryClient();
@@ -3046,17 +3208,30 @@ export function PlanningPage() {
   }, []);
 
   // View state
-  const [viewMode, setViewMode] = useState<ViewMode>(() => window.innerWidth < 768 ? 'list' : 'month');
+  const [viewMode, setViewMode] = useState<ViewMode>(() => window.innerWidth < 768 ? 'week' : 'month');
   const [showMap, setShowMap] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [dayPreviewDate, setDayPreviewDate] = useState<Date | null>(null);
 
-  // Force list view on mobile when screen changes
+  // On mobile: always use week range to have data for all 7 dot indicators
   useEffect(() => {
-    if (isMobile && viewMode !== 'list' && viewMode !== 'day') {
-      setViewMode('list');
-    }
+    if (isMobile && viewMode !== 'week') setViewMode('week');
+    if (!isMobile && viewMode === 'week') setViewMode('month');
   }, [isMobile]);
+
+  // Swipe touch tracking for mobile day navigation
+  const swipeTouchStartX = useRef<number | null>(null);
+  const handleMobileTouchStart = (e: React.TouchEvent) => {
+    swipeTouchStartX.current = e.touches[0].clientX;
+  };
+  const handleMobileTouchEnd = (e: React.TouchEvent) => {
+    if (swipeTouchStartX.current === null) return;
+    const delta = swipeTouchStartX.current - e.changedTouches[0].clientX;
+    if (Math.abs(delta) > 60) {
+      setCurrentDate((d) => delta > 0 ? addDays(d, 1) : subDays(d, 1));
+    }
+    swipeTouchStartX.current = null;
+  };
 
   // Filters state
   const [filters, setFilters] = useState<PlanningFilters>({
@@ -3392,6 +3567,23 @@ export function PlanningPage() {
     if (!dayPreviewDate) return [];
     return interventions.filter((i) => isSameDay(parseISO(i.datePrevue), dayPreviewDate));
   }, [dayPreviewDate, interventions]);
+
+  // Mobile: map day key → count for week dots
+  const interventionsByDay = useMemo(() => {
+    const map: Record<string, number> = {};
+    interventions.forEach((iv) => {
+      const key = iv.datePrevue.split('T')[0];
+      map[key] = (map[key] ?? 0) + 1;
+    });
+    return map;
+  }, [interventions]);
+
+  // Mobile: interventions for the selected day, sorted by time
+  const mobileDayInterventions = useMemo(() => {
+    return interventions
+      .filter((iv) => isSameDay(parseISO(iv.datePrevue), currentDate))
+      .sort((a, b) => (a.heurePrevue ?? '').localeCompare(b.heurePrevue ?? ''));
+  }, [interventions, currentDate]);
 
   useEffect(() => {
     if (!interventionIdParam) return;
@@ -3739,7 +3931,15 @@ export function PlanningPage() {
       onDragEnd={handleDragEnd}
     >
       <div className="min-h-screen bg-gray-50">
-      <div className="max-w-screen-2xl mx-auto px-4 py-6 space-y-5">
+        {/* Mobile week nav — sticky, full-width, outside padded container */}
+        {isMobile && (
+          <MobileWeekNav
+            currentDate={currentDate}
+            onDateChange={setCurrentDate}
+            interventionsByDay={interventionsByDay}
+          />
+        )}
+      <div className="max-w-screen-2xl mx-auto px-4 py-4 md:py-6 space-y-4 md:space-y-5">
         {employeNames.length > 0 && (
           <datalist id="employes-list">
             {employeNames.map((name) => (
@@ -3748,16 +3948,16 @@ export function PlanningPage() {
           </datalist>
         )}
 
-        {/* ── Header ── */}
-        <div className="flex items-center justify-between">
+        {/* ── Header (desktop only) ── */}
+        <div className="hidden md:flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-black text-gray-900 tracking-tight">Planning</h1>
-            <p className="text-sm text-gray-400 mt-0.5 capitalize hidden sm:block">
+            <p className="text-sm text-gray-400 mt-0.5 capitalize">
               {format(new Date(), 'EEEE d MMMM yyyy', { locale: fr })}
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="hidden sm:flex h-9 text-gray-600 border-gray-200" onClick={handleExportCalendar}>
+            <Button variant="outline" size="sm" className="h-9 text-gray-600 border-gray-200" onClick={handleExportCalendar}>
               <Calendar className="h-4 w-4 mr-1.5" />
               Exporter
             </Button>
@@ -3766,15 +3966,15 @@ export function PlanningPage() {
                 className="bg-green-600 hover:bg-green-700 text-white font-semibold shadow-sm shadow-green-200 h-9"
                 onClick={() => setIsCreateOpen(true)}
               >
-                <Plus className="h-4 w-4 sm:mr-1.5" />
-                <span className="hidden sm:inline">Nouvelle intervention</span>
+                <Plus className="h-4 w-4 mr-1.5" />
+                Nouvelle intervention
               </Button>
             )}
           </div>
         </div>
 
-        {/* ── Stats ── */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        {/* ── Stats (desktop only) ── */}
+        <div className="hidden md:grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <PlanningStatCard
             title="Aujourd'hui"
             value={planningStats.aujourdhui}
@@ -3828,8 +4028,8 @@ export function PlanningPage() {
           />
         </div>
 
-        {/* ── Barre de contrôles ── */}
-        <div className="bg-white rounded-xl shadow-sm px-4 py-3">
+        {/* ── Barre de contrôles (desktop only) ── */}
+        <div className="hidden md:block bg-white rounded-xl shadow-sm px-4 py-3">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
 
             {/* Navigation date */}
@@ -3963,13 +4163,72 @@ export function PlanningPage() {
           </div>
         </div>
 
-        {/* ── Vue calendrier / liste ── */}
+        {/* ── Mobile : Week nav + Day cards ── */}
+        {isMobile && (
+          <>
+            {/* Sticky week nav (rendered outside the padded container) */}
+          </>
+        )}
+
+        {/* ── Vue calendrier / liste (desktop) ── */}
         {isLoading ? (
           <div className="bg-white rounded-xl shadow-sm p-12 text-center">
             <div className="w-8 h-8 border-2 border-green-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
             <p className="text-sm text-gray-400 font-medium">Chargement du planning...</p>
           </div>
+        ) : isMobile ? (
+          /* ── Mobile day view ── */
+          <div
+            className="space-y-2 min-h-[50vh]"
+            onTouchStart={handleMobileTouchStart}
+            onTouchEnd={handleMobileTouchEnd}
+          >
+            {/* Compact stats row */}
+            <div className="flex items-center gap-3 pb-1">
+              {planningStats.enRetard > 0 && (
+                <button
+                  onClick={() => setFilters({ ...filters, statut: 'EN_RETARD' })}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-red-600 bg-red-50 px-2.5 py-1.5 rounded-full"
+                >
+                  <AlertTriangle className="h-3 w-3" />
+                  {planningStats.enRetard} en retard
+                </button>
+              )}
+              {planningStats.aPlanifier > 0 && (
+                <button
+                  onClick={() => setFilters({ ...filters, statut: 'A_PLANIFIER' })}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 bg-amber-50 px-2.5 py-1.5 rounded-full"
+                >
+                  <Clock className="h-3 w-3" />
+                  {planningStats.aPlanifier} à planifier
+                </button>
+              )}
+              <span className="text-xs text-gray-400 ml-auto">
+                {mobileDayInterventions.length} intervention{mobileDayInterventions.length > 1 ? 's' : ''}
+              </span>
+            </div>
+
+            {/* Day cards */}
+            {mobileDayInterventions.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-gray-400">
+                <CalendarDays className="h-14 w-14 mb-3 opacity-20" />
+                <p className="text-sm font-medium">Aucune intervention ce jour</p>
+                <p className="text-xs mt-1 opacity-60">Glissez pour changer de jour</p>
+              </div>
+            ) : (
+              mobileDayInterventions.map((iv) => (
+                <MobileDayCard
+                  key={iv.id}
+                  intervention={iv}
+                  onTap={() => setSelectedIntervention(iv)}
+                  onRealiser={() => setRealiserIntervention(iv)}
+                  canRealiser={canDo('realiserIntervention')}
+                />
+              ))
+            )}
+          </div>
         ) : (
+          /* ── Desktop calendar views ── */
           <div className={cn(showMap && 'grid grid-cols-2 gap-4 items-start')}>
             <div>
             {viewMode === 'day' && (
@@ -4070,6 +4329,17 @@ export function PlanningPage() {
               </div>
             )}
           </div>
+        )}
+
+        {/* Mobile FAB */}
+        {isMobile && canDo('createIntervention') && (
+          <button
+            onClick={() => setIsCreateOpen(true)}
+            className="fixed bottom-6 right-5 w-14 h-14 bg-green-600 hover:bg-green-700 active:scale-95 text-white rounded-full shadow-xl shadow-green-300 flex items-center justify-center transition-all z-40 touch-manipulation"
+            aria-label="Nouvelle intervention"
+          >
+            <Plus className="h-7 w-7" />
+          </button>
         )}
 
         {/* Drag Overlay */}

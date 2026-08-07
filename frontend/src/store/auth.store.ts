@@ -31,7 +31,7 @@ const permissions: Record<string, Role[]> = {
   createIntervention:   ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR'],
   editIntervention:     ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR'],
   deleteIntervention:   ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR'],
-  realiserIntervention: ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR'],
+  realiserIntervention: ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR', 'SUPER_CHEF_EQUIPE', 'EQUIPE'],
 
   // Import / Export
   importData: ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR'],
