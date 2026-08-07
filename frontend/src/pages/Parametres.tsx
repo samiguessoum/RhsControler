@@ -2421,12 +2421,15 @@ export function ParametresPage() {
             {editUserRole === 'EQUIPE' && (
               <div className="space-y-2">
                 <Label>Lier à un employé <span className="text-xs text-muted-foreground">(pour filtrer ses interventions)</span></Label>
-                <Select value={editUserEmployeId} onValueChange={setEditUserEmployeId}>
+                <Select
+                  value={editUserEmployeId || '__none__'}
+                  onValueChange={(v) => setEditUserEmployeId(v === '__none__' ? '' : v)}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Choisir un employé..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">— Aucun —</SelectItem>
+                    <SelectItem value="__none__">— Aucun —</SelectItem>
                     {employes.map((e) => (
                       <SelectItem key={e.id} value={e.id}>{e.prenom} {e.nom}</SelectItem>
                     ))}
