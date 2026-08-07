@@ -1211,32 +1211,21 @@ export function ContratsPage() {
             <>
               {/* Header */}
               <div className="px-6 pt-6 pb-4 border-b">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <h2 className="text-lg font-semibold truncate">
-                      {selectedContrat.client?.nomEntreprise || clientMap.get(selectedContrat.clientId)}
-                    </h2>
-                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${selectedContrat.type === 'PONCTUEL' ? 'bg-orange-100 text-orange-700' : 'bg-indigo-100 text-indigo-700'}`}>
-                        {selectedContrat.type === 'PONCTUEL' ? 'Ponctuel' : 'Annuel'}
-                      </span>
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${selectedContrat.statut === 'ACTIF' ? 'bg-green-100 text-green-700' : selectedContrat.statut === 'TERMINE' ? 'bg-gray-100 text-gray-500' : 'bg-yellow-100 text-yellow-700'}`}>
-                        {selectedContrat.statut}
-                      </span>
-                      {selectedContrat.prestations.map((p) => (
-                        <span key={p} className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{p}</span>
-                      ))}
-                    </div>
+                <div className="pr-8">
+                  <h2 className="text-lg font-semibold truncate">
+                    {selectedContrat.client?.nomEntreprise || clientMap.get(selectedContrat.clientId)}
+                  </h2>
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${selectedContrat.type === 'PONCTUEL' ? 'bg-orange-100 text-orange-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                      {selectedContrat.type === 'PONCTUEL' ? 'Ponctuel' : 'Annuel'}
+                    </span>
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${selectedContrat.statut === 'ACTIF' ? 'bg-green-100 text-green-700' : selectedContrat.statut === 'TERMINE' ? 'bg-gray-100 text-gray-500' : 'bg-yellow-100 text-yellow-700'}`}>
+                      {selectedContrat.statut}
+                    </span>
+                    {selectedContrat.prestations.map((p) => (
+                      <span key={p} className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">{p}</span>
+                    ))}
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="shrink-0"
-                    onClick={() => { setEditingContrat(selectedContrat); setSelectedContrat(null); }}
-                  >
-                    <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                    Modifier
-                  </Button>
                 </div>
 
                 {/* Compact info row */}
@@ -1396,9 +1385,19 @@ export function ContratsPage() {
                     Fiche complète
                   </Link>
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => { setSelectedContrat(null); setEditingInterventionId(null); }}>
-                  Fermer
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { setEditingContrat(selectedContrat); setSelectedContrat(null); }}
+                  >
+                    <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                    Modifier
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => { setSelectedContrat(null); setEditingInterventionId(null); }}>
+                    Fermer
+                  </Button>
+                </div>
               </div>
             </>
           )}
