@@ -1,0 +1,31 @@
+root@srv1328985:/opt/rhs# docker logs rhs-backend-1 --tail 30
+ValidationError: The 'X-Forwarded-For' header is set but the Express 'trust proxy' setting is false (default). This could indicate a misconfiguration which would prevent express-rate-limit from accurately identifying users. See https://express-rate-limit.github.io/ERR_ERL_UNEXPECTED_X_FORWARDED_FOR/ for more information.
+    at Object.xForwardedForHeader (file:///app/node_modules/express-rate-limit/dist/index.mjs:157:13)
+    at wrappedValidations.<computed> [as xForwardedForHeader] (file:///app/node_modules/express-rate-limit/dist/index.mjs:369:22)
+    at Object.keyGenerator (file:///app/node_modules/express-rate-limit/dist/index.mjs:630:20)
+    at file:///app/node_modules/express-rate-limit/dist/index.mjs:682:32
+    at async file:///app/node_modules/express-rate-limit/dist/index.mjs:663:5 {
+  code: 'ERR_ERL_UNEXPECTED_X_FORWARDED_FOR',
+  help: 'https://express-rate-limit.github.io/ERR_ERL_UNEXPECTED_X_FORWARDED_FOR/'
+}
+prisma:error 
+Invalid `prisma.user.findUnique()` invocation:
+
+
+The column `User.employeId` does not exist in the current database.
+{"level":50,"time":1785258441369,"pid":46,"hostname":"ffb1f894efc5","err":{"type":"PrismaClientKnownRequestError","message":"\nInvalid `prisma.user.findUnique()` invocation:\n\n\nThe column `User.employeId` does not exist in the current database.","stack":"PrismaClientKnownRequestError: \nInvalid `prisma.user.findUnique()` invocation:\n\n\nThe column `User.employeId` does not exist in the current database.\n    at $n.handleRequestError (/app/node_modules/@prisma/client/runtime/library.js:121:7315)\n    at $n.handleAndLogRequestError (/app/node_modules/@prisma/client/runtime/library.js:121:6623)\n    at $n.request (/app/node_modules/@prisma/client/runtime/library.js:121:6307)\n    at async l (/app/node_modules/@prisma/client/runtime/library.js:130:9633)\n    at async login (file:///app/dist/controllers/auth.controller.js:13:26)","name":"PrismaClientKnownRequestError","code":"P2022","clientVersion":"5.22.0","meta":{"modelName":"User","column":"User.employeId"}},"msg":"Login error"}
+{"level":50,"time":1785258441374,"pid":46,"hostname":"ffb1f894efc5","err":{"type":"AppError","message":"Erreur de connexion","stack":"AppError: Erreur de connexion\n    at login (file:///app/dist/controllers/auth.controller.js:46:25)","statusCode":500,"name":"AppError"},"path":"/api/auth/login","method":"POST","msg":"Erreur de connexion"}
+prisma:error 
+Invalid `prisma.user.findUnique()` invocation:
+
+
+The column `User.employeId` does not exist in the current database.
+{"level":50,"time":1785258451433,"pid":46,"hostname":"ffb1f894efc5","err":{"type":"PrismaClientKnownRequestError","message":"\nInvalid `prisma.user.findUnique()` invocation:\n\n\nThe column `User.employeId` does not exist in the current database.","stack":"PrismaClientKnownRequestError: \nInvalid `prisma.user.findUnique()` invocation:\n\n\nThe column `User.employeId` does not exist in the current database.\n    at $n.handleRequestError (/app/node_modules/@prisma/client/runtime/library.js:121:7315)\n    at $n.handleAndLogRequestError (/app/node_modules/@prisma/client/runtime/library.js:121:6623)\n    at $n.request (/app/node_modules/@prisma/client/runtime/library.js:121:6307)\n    at async l (/app/node_modules/@prisma/client/runtime/library.js:130:9633)\n    at async login (file:///app/dist/controllers/auth.controller.js:13:26)","name":"PrismaClientKnownRequestError","code":"P2022","clientVersion":"5.22.0","meta":{"modelName":"User","column":"User.employeId"}},"msg":"Login error"}
+{"level":50,"time":1785258451435,"pid":46,"hostname":"ffb1f894efc5","err":{"type":"AppError","message":"Erreur de connexion","stack":"AppError: Erreur de connexion\n    at login (file:///app/dist/controllers/auth.controller.js:46:25)","statusCode":500,"name":"AppError"},"path":"/api/auth/login","method":"POST","msg":"Erreur de connexion"}
+prisma:error 
+Invalid `prisma.user.findUnique()` invocation:
+
+
+The column `User.employeId` does not exist in the current database.
+{"level":50,"time":1785258455116,"pid":46,"hostname":"ffb1f894efc5","err":{"type":"PrismaClientKnownRequestError","message":"\nInvalid `prisma.user.findUnique()` invocation:\n\n\nThe column `User.employeId` does not exist in the current database.","stack":"PrismaClientKnownRequestError: \nInvalid `prisma.user.findUnique()` invocation:\n\n\nThe column `User.employeId` does not exist in the current database.\n    at $n.handleRequestError (/app/node_modules/@prisma/client/runtime/library.js:121:7315)\n    at $n.handleAndLogRequestError (/app/node_modules/@prisma/client/runtime/library.js:121:6623)\n    at $n.request (/app/node_modules/@prisma/client/runtime/library.js:121:6307)\n    at async l (/app/node_modules/@prisma/client/runtime/library.js:130:9633)\n    at async login (file:///app/dist/controllers/auth.controller.js:13:26)","name":"PrismaClientKnownRequestError","code":"P2022","clientVersion":"5.22.0","meta":{"modelName":"User","column":"User.employeId"}},"msg":"Login error"}
+{"level":50,"time":1785258455116,"pid":46,"hostname":"ffb1f894efc5","err":{"type":"AppError","message":"Erreur de connexion","stack":"AppError: Erreur de connexion\n    at login (file:///app/dist/controllers/auth.controller.js:46:25)","statusCode":500,"name":"AppError"},"path":"/api/auth/login","method":"POST","msg":"Erreur de connexion"}

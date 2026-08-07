@@ -522,7 +522,7 @@ export function ContratsPage() {
         <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
           <h3 className="font-medium text-sm text-gray-700">Informations générales</h3>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Client *</Label>
               <Select value={clientId} onValueChange={setClientId} required>
@@ -552,7 +552,7 @@ export function ContratsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Date début *</Label>
               <Input
@@ -925,7 +925,7 @@ export function ContratsPage() {
         <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
           <h3 className="font-medium text-sm text-gray-700">Options</h3>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Responsable planning</Label>
               <Select value={responsablePlanningId || ''} onValueChange={(v) => setResponsablePlanningId(v || undefined)}>

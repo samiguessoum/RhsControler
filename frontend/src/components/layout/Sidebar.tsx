@@ -1,9 +1,8 @@
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
   Calendar,
   FileText,
-  Receipt,
   Upload,
   Settings,
   LogOut,
@@ -12,21 +11,23 @@ import {
   Building2,
   ShoppingBag,
   Wallet,
-  Store,
+  Landmark,
   TrendingUp,
   Warehouse,
-  Landmark,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 
 interface SidebarProps {
   stats?: {
     aPlanifier: number;
     enRetard: number;
   };
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
 interface NavItem {
@@ -38,14 +39,18 @@ interface NavItem {
   badgeVariant?: 'default' | 'secondary' | 'destructive' | 'outline' | 'warning';
 }
 
-export function Sidebar({ stats }: SidebarProps) {
+export function Sidebar({ stats, mobileOpen = false, onMobileClose }: SidebarProps) {
   const { user, logout, canDo } = useAuthStore();
-  const location = useLocation();
+
+  const handleNavClick = () => {
+    onMobileClose?.();
+  };
 
   const renderNavItem = (item: NavItem) => (
     <NavLink
       key={item.to}
       to={item.to}
+      onClick={handleNavClick}
       className={({ isActive }) =>
         cn(
           'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
@@ -95,8 +100,8 @@ export function Sidebar({ stats }: SidebarProps) {
     { to: '/parametres', icon: Settings, label: 'Paramètres', show: canDo('manageSettings') || canDo('managePrestations') },
   ];
 
-  return (
-    <aside className="flex flex-col w-64 bg-white border-r border-gray-200 h-screen fixed left-0 top-0">
+  const NavBody = () => (
+    <>
       {/* Logo */}
       <div className="p-6 border-b">
         <h1 className="text-xl font-bold text-primary">RHS Controler</h1>
@@ -143,12 +148,28 @@ export function Sidebar({ stats }: SidebarProps) {
           variant="ghost"
           size="sm"
           className="w-full justify-start text-gray-600"
-          onClick={() => logout()}
+          onClick={() => { logout(); onMobileClose?.(); }}
         >
           <LogOut className="h-4 w-4 mr-2" />
           Déconnexion
         </Button>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop sidebar */}
+      <aside className="hidden md:flex flex-col w-64 bg-white border-r border-gray-200 h-screen fixed left-0 top-0">
+        <NavBody />
+      </aside>
+
+      {/* Mobile Sheet drawer */}
+      <Sheet open={mobileOpen} onOpenChange={(open) => !open && onMobileClose?.()}>
+        <SheetContent side="left" className="p-0 w-72 flex flex-col">
+          <NavBody />
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }

@@ -540,7 +540,7 @@ function DocumentDetailSheet({
           </div>
 
           {/* Dates */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="p-3 bg-gray-50 rounded-lg">
               <p className="text-xs text-muted-foreground">Date du document</p>
               <p className="font-medium flex items-center gap-2">
@@ -6154,7 +6154,7 @@ export function CommercePage() {
               </div>
 
               {/* Formulaire de paiement */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Montant du paiement <span className="text-red-500">*</span></Label>
                   <Input
@@ -6431,7 +6431,7 @@ export function CommercePage() {
               </div>
 
               {/* Champs modifiables */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Date de commande</Label>
                   <Input
@@ -6515,7 +6515,7 @@ export function CommercePage() {
               </div>
 
               {/* Notes et conditions */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Notes</Label>
                   <textarea
@@ -6598,7 +6598,7 @@ export function CommercePage() {
               </div>
 
               {/* Champs modifiables */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Date de facturation</Label>
                   <Input
@@ -6702,7 +6702,7 @@ export function CommercePage() {
               </div>
 
               {/* Notes et conditions */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Notes</Label>
                   <textarea

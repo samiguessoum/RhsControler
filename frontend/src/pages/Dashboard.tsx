@@ -95,7 +95,7 @@ function WeekStrip({ jours }: { jours: { date: string; jour: string; count: numb
         <CalendarDays className="h-4 w-4 text-gray-400" />
         <span className="text-xs font-semibold uppercase tracking-widest text-gray-400">Cette semaine</span>
       </div>
-      <div className="grid grid-cols-7 gap-2">
+      <div className="grid grid-cols-7 gap-1 sm:gap-2">
         {jours.map((jour) => (
           <Link
             key={jour.date}
@@ -610,8 +610,8 @@ export function DashboardPage() {
           </div>
           <Link to="/planning">
             <Button className="bg-green-600 hover:bg-green-700 text-white font-semibold shadow-sm shadow-green-200 h-10">
-              <Plus className="h-4 w-4 mr-1.5" />
-              Nouvelle intervention
+              <Plus className="h-4 w-4 sm:mr-1.5" />
+              <span className="hidden sm:inline">Nouvelle intervention</span>
             </Button>
           </Link>
         </div>

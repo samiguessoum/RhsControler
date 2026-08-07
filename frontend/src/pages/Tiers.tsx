@@ -1139,7 +1139,7 @@ function TiersFormDialog({
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Téléphone</Label>
                   <Input
@@ -1174,7 +1174,7 @@ function TiersFormDialog({
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label>Code postal</Label>
                   <Input
@@ -1203,7 +1203,7 @@ function TiersFormDialog({
           {/* Contact Principal */}
           <CollapsibleSection title="Contact principal" icon={<Users className="h-4 w-4" />}>
             <div className="space-y-4 pt-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Nom</Label>
                   <Input
@@ -1220,7 +1220,7 @@ function TiersFormDialog({
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Téléphone</Label>
                   <Input
@@ -1271,7 +1271,7 @@ function TiersFormDialog({
                         <X className="h-4 w-4" />
                       </Button>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Nom</Label>
                         <Input
@@ -1287,7 +1287,7 @@ function TiersFormDialog({
                         />
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Téléphone</Label>
                         <Input
@@ -1340,7 +1340,7 @@ function TiersFormDialog({
                       </Button>
                     )}
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Nom du site <span className="text-red-500">*</span></Label>
                       <Input
@@ -1370,7 +1370,7 @@ function TiersFormDialog({
                       </div>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Téléphone</Label>
                       <Input
@@ -1447,7 +1447,7 @@ function TiersFormDialog({
               defaultOpen={isFournisseur}
             >
               <div className="space-y-4 pt-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Forme juridique</Label>
                     <Select
@@ -1476,7 +1476,7 @@ function TiersFormDialog({
                 </div>
 
                 {/* RC / NIF */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Registre du Commerce (RC)</Label>
                     <Input
@@ -1498,7 +1498,7 @@ function TiersFormDialog({
                 </div>
 
                 {/* AI / NIS */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Article d'Imposition (AI)</Label>
                     <Input
@@ -1520,7 +1520,7 @@ function TiersFormDialog({
                 </div>
 
                 {/* TIN / NIN */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Tax Identification Number (TIN)</Label>
                     <Input
@@ -1548,7 +1548,7 @@ function TiersFormDialog({
           {isFournisseur && (
             <CollapsibleSection title="Conditions commerciales" icon={<CreditCard className="h-4 w-4" />}>
               <div className="space-y-4 pt-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Mode de paiement</Label>
                     <Select
@@ -1973,7 +1973,7 @@ function TiersDetailDialog({
                 <FileText className="h-4 w-4" />
                 Activité
               </h3>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="p-4 bg-gradient-to-br from-green-50 to-white rounded-lg border border-green-100 text-center">
                   <p className="text-3xl font-bold text-green-700">{tiers.contrats?.length || 0}</p>
                   <p className="text-sm text-green-600 font-medium">Contrats</p>

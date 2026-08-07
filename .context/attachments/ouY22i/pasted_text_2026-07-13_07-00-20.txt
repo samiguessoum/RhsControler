@@ -1,0 +1,127 @@
+root@srv1328985:/opt/rhs# ls
+Aide_template_AP.docx  Exemple_Devis.pdf            README-RESET.md  deploy.sh                frontend
+Caddyfile              Exemple_Devis2.textClipping  backend          docker-compose.prod.yml  logo-RHS.png
+root@srv1328985:/opt/rhs# cp .env.prod.example .env.prod
+root@srv1328985:/opt/rhs# nano .env.prod
+root@srv1328985:/opt/rhs# chmod +x deploy.sh
+root@srv1328985:/opt/rhs# ./deploy.sh
+[✓] Chargement des variables d'environnement...
+.env.prod: line 11: Gamemix13: unbound variable
+root@srv1328985:/opt/rhs# nano .env.prod
+root@srv1328985:/opt/rhs# chmod +x deploy.sh
+root@srv1328985:/opt/rhs# ./deploy.sh
+[✓] Chargement des variables d'environnement...
+[✓] Pull du dernier code...
+From https://github.com/samiguessoum/RhsControler
+ * branch              main       -> FETCH_HEAD
+Already up to date.
+[✓] Build des images Docker...
+WARN[0000] The "DOMAIN" variable is not set. Defaulting to a blank string. 
+[+] Building 144.7s (23/29)                                                                                                                                    
+ => [internal] load local bake definitions                                                                                                                0.0s
+ => => reading from stdin 927B                                                                                                                            0.0s
+ => [frontend internal] load build definition from Dockerfile                                                                                             0.1s
+ => => transferring dockerfile: 369B                                                                                                                      0.0s
+ => [backend internal] load build definition from Dockerfile                                                                                              0.1s
+ => => transferring dockerfile: 807B                                                                                                                      0.0s
+ => [frontend internal] load metadata for docker.io/library/node:20-alpine                                                                                1.4s
+ => [frontend internal] load metadata for docker.io/library/nginx:1.27-alpine                                                                             1.4s
+ => [backend internal] load .dockerignore                                                                                                                 0.0s
+ => => transferring context: 2B                                                                                                                           0.0s
+ => [frontend internal] load .dockerignore                                                                                                                0.0s
+ => => transferring context: 2B                                                                                                                           0.0s
+ => [frontend builder 1/6] FROM docker.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293                  7.3s
+ => => resolve docker.io/library/node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293                                   0.1s
+ => => sha256:fff4e2c1b189bf87d63ad8bd07f7f4eb288d6f2b6a07a8bb44c60e8c075d2096 445B / 445B                                                                0.1s
+ => => sha256:b2cbbfe903b0821005780971ddc5892edcc4ce74c5a48d82e1d2b382edac3122 1.26MB / 1.26MB                                                            0.2s
+ => => sha256:4feea04c154301db6f4a496efa397b3db96603b1c009c797cfdde77bea8b3287 43.23MB / 43.23MB                                                          1.2s
+ => => sha256:6a0ac1617861a677b045b7ff88545213ec31c0ff08763195a70a4a5adda577bb 3.86MB / 3.86MB                                                            0.5s
+ => => extracting sha256:6a0ac1617861a677b045b7ff88545213ec31c0ff08763195a70a4a5adda577bb                                                                 0.6s
+ => => extracting sha256:4feea04c154301db6f4a496efa397b3db96603b1c009c797cfdde77bea8b3287                                                                 5.7s
+ => => extracting sha256:b2cbbfe903b0821005780971ddc5892edcc4ce74c5a48d82e1d2b382edac3122                                                                 0.1s
+ => => extracting sha256:fff4e2c1b189bf87d63ad8bd07f7f4eb288d6f2b6a07a8bb44c60e8c075d2096                                                                 0.0s
+ => [frontend internal] load build context                                                                                                                0.1s
+ => => transferring context: 1.64MB                                                                                                                       0.1s
+ => [frontend runner 1/3] FROM docker.io/library/nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10                6.1s
+ => => resolve docker.io/library/nginx:1.27-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10                                0.1s
+ => => sha256:39c2ddfd6010082a4a646e7ca44e95aca9bf3eaebc00f17f7ccc2954004f2a7d 15.52MB / 15.52MB                                                          0.4s
+ => => sha256:34a64644b756511a2e217f0508e11d1a572085d66cd6dc9a555a082ad49a3102 1.40kB / 1.40kB                                                            0.2s
+ => => sha256:81bd8ed7ec6789b0cb7f1b47ee731c522f6dba83201ec73cd6bca1350f582948 402B / 402B                                                                0.2s
+ => => sha256:d7e5070240863957ebb0b5a44a5729963c3462666baa2947d00628cb5f2d5773 955B / 955B                                                                0.2s
+ => => sha256:b464cfdf2a6319875aeb27359ec549790ce14d8214fcb16ef915e4530e5ed235 629B / 629B                                                                0.2s
+ => => sha256:61ca4f733c802afd9e05a32f0de0361b6d713b8b53292dc15fb093229f648674 1.79MB / 1.79MB                                                            0.2s
+ => => sha256:f18232174bc91741fdf3da96d85011092101a032a93a388b79e99e69c2d5c870 3.64MB / 3.64MB                                                            0.2s
+ => => extracting sha256:f18232174bc91741fdf3da96d85011092101a032a93a388b79e99e69c2d5c870                                                                 0.4s
+ => => extracting sha256:61ca4f733c802afd9e05a32f0de0361b6d713b8b53292dc15fb093229f648674                                                                 1.0s
+ => => extracting sha256:b464cfdf2a6319875aeb27359ec549790ce14d8214fcb16ef915e4530e5ed235                                                                 0.1s
+ => => extracting sha256:d7e5070240863957ebb0b5a44a5729963c3462666baa2947d00628cb5f2d5773                                                                 0.3s
+ => => extracting sha256:81bd8ed7ec6789b0cb7f1b47ee731c522f6dba83201ec73cd6bca1350f582948                                                                 0.1s
+ => => extracting sha256:197eb75867ef4fcecd4724f17b0972ab0489436860a594a9445f8eaff8155053                                                                 0.1s
+ => => extracting sha256:34a64644b756511a2e217f0508e11d1a572085d66cd6dc9a555a082ad49a3102                                                                 0.2s
+ => => extracting sha256:39c2ddfd6010082a4a646e7ca44e95aca9bf3eaebc00f17f7ccc2954004f2a7d                                                                 2.5s
+ => [backend internal] load build context                                                                                                                 0.1s
+ => => transferring context: 1.06MB                                                                                                                       0.1s
+ => [backend builder 2/6] WORKDIR /app                                                                                                                    0.6s
+ => [frontend builder 3/6] COPY package*.json ./                                                                                                          0.1s
+ => [backend builder 3/8] COPY package*.json ./                                                                                                           0.1s
+ => [frontend builder 4/6] RUN npm ci                                                                                                                    61.8s
+ => [backend builder 4/8] RUN npm ci                                                                                                                     58.7s
+ => [backend runner 4/8] RUN npm ci --omit=dev                                                                                                           50.4s
+ => [backend builder 5/8] COPY prisma ./prisma                                                                                                            0.4s
+ => [backend builder 6/8] RUN npx prisma generate                                                                                                        11.3s
+ => [frontend builder 5/6] COPY . .                                                                                                                       0.8s
+ => ERROR [frontend builder 6/6] RUN npm run build                                                                                                       71.4s
+ => [backend builder 7/8] COPY . .                                                                                                                        0.3s
+ => CANCELED [backend builder 8/8] RUN npm run build                                                                                                     63.9s
+------
+ > [frontend builder 6/6] RUN npm run build:
+0.727 
+0.727 > rhs-controler-frontend@1.0.0 build
+0.727 > tsc -b && vite build
+0.727 
+71.07 src/components/PlanningMap.tsx(231,48): error TS2367: This comparison appears to be unintentional because the types 'InterventionStatut' and '"EN_RETARD"' have no overlap.
+71.08 src/components/layout/Sidebar.tsx(6,3): error TS6133: 'Receipt' is declared but its value is never read.
+71.08 src/components/layout/Sidebar.tsx(15,3): error TS6133: 'Store' is declared but its value is never read.
+71.08 src/components/layout/Sidebar.tsx(43,9): error TS6133: 'location' is declared but its value is never read.
+71.08 src/pages/Commerce.tsx(38,3): error TS6133: 'Layers' is declared but its value is never read.
+71.08 src/pages/Commerce.tsx(351,10): error TS6133: 'DocumentDetailSheet' is declared but its value is never read.
+71.08 src/pages/ContratDetail.tsx(24,3): error TS6133: 'Search' is declared but its value is never read.
+71.08 src/pages/ContratDetail.tsx(38,16): error TS6133: 'TabsContent' is declared but its value is never read.
+71.08 src/pages/ContratDetail.tsx(41,22): error TS6133: 'getStatutColor' is declared but its value is never read.
+71.08 src/pages/Contrats.tsx(7,1): error TS6133: 'CardContent' is declared but its value is never read.
+71.08 src/pages/Contrats.tsx(31,7): error TS6133: 'FREQUENCES' is declared but its value is never read.
+71.08 src/pages/Parametres.tsx(4,79): error TS6133: 'Upload' is declared but its value is never read.
+71.08 src/pages/Parametres.tsx(27,55): error TS6196: 'CompanySettings' is declared but never used.
+71.08 src/pages/Tiers.tsx(34,1): error TS6133: 'CardContent' is declared but its value is never read.
+71.08 src/pages/Tiers.tsx(1830,47): error TS2339: Property 'rib' does not exist on type 'CompteBancaire'.
+71.08 src/pages/Tiers.tsx(1833,35): error TS2339: Property 'rib' does not exist on type 'CompteBancaire'.
+71.08 src/pages/Tiers.tsx(1833,105): error TS2339: Property 'rib' does not exist on type 'CompteBancaire'.
+71.08 src/services/api.ts(19,3): error TS6196: 'Produit' is declared but never used.
+71.08 src/services/api.ts(20,3): error TS6196: 'MouvementStock' is declared but never used.
+71.09 src/services/api.ts(21,3): error TS6196: 'CreateProduitInput' is declared but never used.
+71.09 src/services/api.ts(22,3): error TS6196: 'CreateMouvementInput' is declared but never used.
+71.09 src/services/api.ts(23,3): error TS6196: 'StockStats' is declared but never used.
+71.09 src/services/api.ts(24,3): error TS6196: 'StockAlerte' is declared but never used.
+------
+[+] build 0/2
+ ⠙ Image rhs-backend  Building                                                                                                                           144.8s
+ ⠙ Image rhs-frontend Building                                                                                                                           144.8s
+Dockerfile:9
+
+--------------------
+
+   7 |     
+
+   8 |     COPY . .
+
+   9 | >>> RUN npm run build
+
+  10 |     
+
+  11 |     # Stage 2 — Nginx sert les fichiers statiques
+
+--------------------
+
+target frontend: failed to solve: process "/bin/sh -c npm run build" did not complete successfully: exit code: 1
+
+root@srv1328985:/opt/rhs# 

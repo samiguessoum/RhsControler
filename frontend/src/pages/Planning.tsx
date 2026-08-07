@@ -1151,35 +1151,43 @@ function ListView({
               <button
                 key={intervention.id}
                 onClick={() => onInterventionClick(intervention)}
-                className="w-full text-left p-4 hover:bg-gray-50 transition-colors flex items-center gap-4"
+                className="w-full text-left p-3 sm:p-4 hover:bg-gray-50 active:bg-gray-100 transition-colors flex items-center gap-3 sm:gap-4"
               >
-                <div className="w-24 text-sm">
-                  <div className="font-medium">{formatDate(intervention.datePrevue, 'EEE d MMM')}</div>
-                  {intervention.heurePrevue && (
-                    <div className="text-muted-foreground">{intervention.heurePrevue}</div>
-                  )}
+                {/* Date block */}
+                <div className="shrink-0 w-10 sm:w-24 text-center sm:text-left">
+                  <div className="text-xs font-black text-gray-900 uppercase sm:hidden">
+                    {new Date(intervention.datePrevue + 'T12:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }).replace(' ', '\n')}
+                  </div>
+                  <div className="hidden sm:block text-sm">
+                    <div className="font-medium">{formatDate(intervention.datePrevue, 'EEE d MMM')}</div>
+                    {intervention.heurePrevue && (
+                      <div className="text-muted-foreground">{intervention.heurePrevue}</div>
+                    )}
+                  </div>
                 </div>
+
+                {/* Content */}
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{intervention.client?.nomEntreprise}</div>
+                  <div className="font-semibold text-sm truncate">{intervention.client?.nomEntreprise}</div>
                   {intervention.site?.nom && (
                     <div className="text-xs text-muted-foreground truncate">{intervention.site.nom}</div>
                   )}
-                  <div className="text-sm text-muted-foreground truncate">
-                    {intervention.prestation || getStatutLabel(intervention.type)}
+                  <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                    <Badge className={cn('text-[10px] font-semibold', getInterventionTypeBadgeClass(intervention.type))}>
+                      {getInterventionTypeLabel(intervention.type)}
+                    </Badge>
+                    <Badge className={cn('text-[10px]', getStatutColor(intervention.statut))}>
+                      {getStatutLabel(intervention.statut)}
+                    </Badge>
+                    {intervention.heurePrevue && (
+                      <span className="text-[10px] text-muted-foreground sm:hidden">{intervention.heurePrevue}</span>
+                    )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge
-                    className={cn(
-                      'font-semibold',
-                      getInterventionTypeBadgeClass(intervention.type)
-                    )}
-                  >
-                    {getInterventionTypeLabel(intervention.type)}
-                  </Badge>
-                  <Badge className={getStatutColor(intervention.statut)}>
-                    {getStatutLabel(intervention.statut)}
-                  </Badge>
+
+                {/* Prestation — desktop only */}
+                <div className="hidden sm:block text-sm text-muted-foreground truncate max-w-[120px]">
+                  {intervention.prestation}
                 </div>
               </button>
             ))
@@ -3029,11 +3037,26 @@ export function PlanningPage() {
   const viewParam = searchParams.get('view');
   const prestationParam = searchParams.get('prestation');
 
+  // Mobile detection
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
   // View state
-  const [viewMode, setViewMode] = useState<ViewMode>('month');
+  const [viewMode, setViewMode] = useState<ViewMode>(() => window.innerWidth < 768 ? 'list' : 'month');
   const [showMap, setShowMap] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [dayPreviewDate, setDayPreviewDate] = useState<Date | null>(null);
+
+  // Force list view on mobile when screen changes
+  useEffect(() => {
+    if (isMobile && viewMode !== 'list' && viewMode !== 'day') {
+      setViewMode('list');
+    }
+  }, [isMobile]);
 
   // Filters state
   const [filters, setFilters] = useState<PlanningFilters>({
@@ -3729,12 +3752,12 @@ export function PlanningPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-black text-gray-900 tracking-tight">Planning</h1>
-            <p className="text-sm text-gray-400 mt-0.5 capitalize">
+            <p className="text-sm text-gray-400 mt-0.5 capitalize hidden sm:block">
               {format(new Date(), 'EEEE d MMMM yyyy', { locale: fr })}
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="h-9 text-gray-600 border-gray-200" onClick={handleExportCalendar}>
+            <Button variant="outline" size="sm" className="hidden sm:flex h-9 text-gray-600 border-gray-200" onClick={handleExportCalendar}>
               <Calendar className="h-4 w-4 mr-1.5" />
               Exporter
             </Button>
@@ -3743,8 +3766,8 @@ export function PlanningPage() {
                 className="bg-green-600 hover:bg-green-700 text-white font-semibold shadow-sm shadow-green-200 h-9"
                 onClick={() => setIsCreateOpen(true)}
               >
-                <Plus className="h-4 w-4 mr-1.5" />
-                Nouvelle intervention
+                <Plus className="h-4 w-4 sm:mr-1.5" />
+                <span className="hidden sm:inline">Nouvelle intervention</span>
               </Button>
             )}
           </div>
@@ -3817,7 +3840,7 @@ export function PlanningPage() {
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
-              <span className="text-sm font-bold text-gray-900 min-w-[180px] text-center capitalize">
+              <span className="text-sm font-bold text-gray-900 min-w-[140px] sm:min-w-[180px] text-center capitalize">
                 {getDateRangeLabel()}
               </span>
               <button
@@ -3830,14 +3853,14 @@ export function PlanningPage() {
                 onClick={() => navigate('today')}
                 className="h-8 px-3 rounded-lg text-xs font-semibold text-green-700 bg-green-50 hover:bg-green-100 transition-colors"
               >
-                Aujourd'hui
+                Auj.
               </button>
             </div>
 
             {/* Filtres + vue */}
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Recherche client */}
-              <div className="relative">
+              {/* Recherche client — masquée sur mobile */}
+              <div className="relative hidden sm:block">
                 <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-gray-400" />
                 <Input
                   placeholder="Rechercher client..."
@@ -3848,19 +3871,19 @@ export function PlanningPage() {
               </div>
 
               {/* Quick status pills */}
-              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+              <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1 overflow-x-auto">
                 {[
-                  { value: 'ALL',        label: 'Tous',       count: null },
-                  { value: 'A_PLANIFIER',label: 'À planifier',count: planningStats.aPlanifier },
-                  { value: 'PLANIFIEE',  label: 'Planif.',    count: planningStats.planifiees },
-                  { value: 'EN_RETARD',  label: 'Retard',     count: planningStats.enRetard },
-                  { value: 'REALISEE',   label: 'Réalisées',  count: planningStats.realisees },
+                  { value: 'ALL',        label: 'Tous',    count: null },
+                  { value: 'A_PLANIFIER',label: 'À plan.', count: planningStats.aPlanifier },
+                  { value: 'PLANIFIEE',  label: 'Planif.', count: planningStats.planifiees },
+                  { value: 'EN_RETARD',  label: 'Retard',  count: planningStats.enRetard },
+                  { value: 'REALISEE',   label: 'Réal.',   count: planningStats.realisees },
                 ].map((item) => (
                   <button
                     key={item.value}
                     onClick={() => setFilters({ ...filters, statut: item.value as FilterStatut })}
                     className={cn(
-                      'h-6 px-2.5 rounded-md text-[11px] font-semibold transition-all flex items-center gap-1',
+                      'h-6 px-2 rounded-md text-[11px] font-semibold transition-all flex items-center gap-1 whitespace-nowrap',
                       filters.statut === item.value
                         ? 'bg-white text-gray-900 shadow-sm'
                         : 'text-gray-500 hover:text-gray-700'
@@ -3879,9 +3902,9 @@ export function PlanningPage() {
                 ))}
               </div>
 
-              {/* Type filter */}
+              {/* Type filter — masqué sur mobile */}
               <Select value={filters.type} onValueChange={(v) => setFilters({ ...filters, type: v })}>
-                <SelectTrigger className="w-[130px] h-8 text-xs border-gray-200">
+                <SelectTrigger className="hidden sm:flex w-[130px] h-8 text-xs border-gray-200">
                   <SelectValue placeholder="Type" />
                 </SelectTrigger>
                 <SelectContent>
@@ -3903,34 +3926,39 @@ export function PlanningPage() {
                 onFiltersChange={setFilters}
               />
 
-              {/* Vue selector */}
-              <Select value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
-                <SelectTrigger className="w-[110px] h-8 text-xs border-gray-200">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="day">Jour</SelectItem>
-                  <SelectItem value="week">Semaine</SelectItem>
-                  <SelectItem value="biweek">2 semaines</SelectItem>
-                  <SelectItem value="month">Mois</SelectItem>
-                  <SelectItem value="quarter">Trimestre</SelectItem>
-                  <SelectItem value="year">Année</SelectItem>
-                  <SelectItem value="list">Liste</SelectItem>
-                </SelectContent>
-              </Select>
+              {/* Vue selector — masqué sur mobile (forcé en liste) */}
+              {!isMobile && (
+                <Select value={viewMode} onValueChange={(v) => setViewMode(v as ViewMode)}>
+                  <SelectTrigger className="w-[110px] h-8 text-xs border-gray-200">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="day">Jour</SelectItem>
+                    <SelectItem value="week">Semaine</SelectItem>
+                    <SelectItem value="biweek">2 semaines</SelectItem>
+                    <SelectItem value="month">Mois</SelectItem>
+                    <SelectItem value="quarter">Trimestre</SelectItem>
+                    <SelectItem value="year">Année</SelectItem>
+                    <SelectItem value="list">Liste</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
 
-              <button
-                onClick={() => setShowMap((v) => !v)}
-                className={cn(
-                  'h-8 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 border transition-all',
-                  showMap
-                    ? 'bg-green-600 text-white border-green-600 shadow-sm'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                )}
-              >
-                <Map className="h-3.5 w-3.5" />
-                Carte
-              </button>
+              {/* Carte — masquée sur mobile */}
+              {!isMobile && (
+                <button
+                  onClick={() => setShowMap((v) => !v)}
+                  className={cn(
+                    'h-8 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 border transition-all',
+                    showMap
+                      ? 'bg-green-600 text-white border-green-600 shadow-sm'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                  )}
+                >
+                  <Map className="h-3.5 w-3.5" />
+                  Carte
+                </button>
+              )}
             </div>
           </div>
         </div>

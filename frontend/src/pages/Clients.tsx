@@ -291,7 +291,7 @@ export function ClientsPage() {
 
       <div className="space-y-3">
         <p className="text-sm font-medium">Siège (adresse principale)</p>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="siegeNom">Nom du siège *</Label>
             <Input
@@ -328,7 +328,7 @@ export function ClientsPage() {
                     </Button>
                   )}
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Nom</Label>
                     <Input
@@ -344,7 +344,7 @@ export function ClientsPage() {
                     />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label>Téléphone</Label>
                     <Input
@@ -365,7 +365,7 @@ export function ClientsPage() {
             ))}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="siegeRC">RC</Label>
             <Input
@@ -383,7 +383,7 @@ export function ClientsPage() {
             />
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="space-y-2">
             <Label htmlFor="siegeAI">AI</Label>
             <Input
@@ -438,7 +438,7 @@ export function ClientsPage() {
                   </Button>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Nom du site *</Label>
                   <Input
@@ -457,7 +457,7 @@ export function ClientsPage() {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Téléphone</Label>
                   <Input
@@ -497,7 +497,7 @@ export function ClientsPage() {
                           </Button>
                         )}
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label>Nom</Label>
                           <Input
@@ -514,7 +514,7 @@ export function ClientsPage() {
                           />
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label>Téléphone</Label>
                           <Input

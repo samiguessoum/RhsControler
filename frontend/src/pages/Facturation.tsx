@@ -1243,7 +1243,7 @@ export function FacturationPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Type de charge</Label>
                 <Select
@@ -1299,7 +1299,7 @@ export function FacturationPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label>{chargeInputMode === 'ht' ? 'Montant HT' : 'Montant TTC'}</Label>
                   {chargeInputMode === 'ht' ? (
@@ -1407,7 +1407,7 @@ export function FacturationPage() {
                 onChange={(e) => setPaiementDiversForm({ ...paiementDiversForm, libelle: e.target.value })}
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Type d'opération</Label>
                 <Select

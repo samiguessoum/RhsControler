@@ -263,7 +263,7 @@ function RHDashboardTab({ annee }: { annee: number }) {
           {recap && !recapLoading && (
             <div className="space-y-5">
               {/* Soldes en grille */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Congés annuels */}
                 <div className="bg-blue-50 rounded-xl p-4 space-y-3">
                   <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">Congés annuels</p>
@@ -766,7 +766,7 @@ function CreateCongeDialog({
             </Select>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Date debut</Label>
               <Input
