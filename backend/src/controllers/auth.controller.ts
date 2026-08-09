@@ -48,6 +48,7 @@ export const authController = {
           nom: user.nom,
           prenom: user.prenom,
           role: user.role,
+          employeId: user.employeId ?? null,
         },
       });
     } catch (error) {
@@ -74,6 +75,7 @@ export const authController = {
           prenom: true,
           tel: true,
           role: true,
+          employeId: true,
           createdAt: true,
         },
       });

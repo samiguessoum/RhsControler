@@ -52,7 +52,7 @@ export const interventionController = {
       }
 
       const pageNum = parseInt(page as string) || 1;
-      const limitNum = Math.min(parseInt(limit as string) || 50, 200);
+      const limitNum = Math.min(parseInt(limit as string) || 50, 1000);
       const skip = (pageNum - 1) * limitNum;
 
       const [interventions, total] = await Promise.all([

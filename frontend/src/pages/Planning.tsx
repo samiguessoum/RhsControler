@@ -3198,7 +3198,7 @@ function MobileDayCard({
 export function PlanningPage() {
   const queryClient = useQueryClient();
   const routerNavigate = useNavigate();
-  const { canDo } = useAuthStore();
+  const { canDo, user } = useAuthStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const interventionIdParam = searchParams.get('interventionId');
   const viewParam = searchParams.get('view');
@@ -4176,6 +4176,17 @@ export function PlanningPage() {
           </>
         )}
 
+        {/* Alerte EQUIPE sans fiche employé */}
+        {user?.role === 'EQUIPE' && !user?.employeId && (
+          <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+            <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-amber-800">Votre compte n'est pas lié à une fiche employé</p>
+              <p className="text-xs text-amber-600 mt-0.5">Contactez votre administrateur pour associer votre compte à votre fiche et voir vos missions.</p>
+            </div>
+          </div>
+        )}
+
         {/* ── Vue calendrier / liste (desktop) ── */}
         {isLoading ? (
           <div className="bg-white rounded-xl shadow-sm p-12 text-center">
@@ -4224,7 +4235,13 @@ export function PlanningPage() {
             </div>
 
             {/* Day cards */}
-            {mobileDayInterventions.length === 0 ? (
+            {user?.role === 'EQUIPE' && !user?.employeId ? (
+              <div className="flex flex-col items-center justify-center py-16 text-amber-600 text-center px-4">
+                <AlertTriangle className="h-12 w-12 mb-3 opacity-60" />
+                <p className="text-sm font-semibold">Compte non lié à une fiche employé</p>
+                <p className="text-xs mt-1 text-gray-400">Contactez votre administrateur pour associer votre compte à votre fiche.</p>
+              </div>
+            ) : mobileDayInterventions.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-gray-400">
                 <CalendarDays className="h-14 w-14 mb-3 opacity-20" />
                 <p className="text-sm font-medium">Aucune intervention ce jour</p>
