@@ -31,8 +31,9 @@ export const updateUserSchema = z.object({
   nom: z.string().min(1, 'Nom requis').optional(),
   prenom: z.string().min(1, 'Prénom requis').optional(),
   tel: z.string().optional(),
-  role: z.enum(['DIRECTION', 'PLANNING', 'EQUIPE', 'LECTURE']).optional(),
+  role: z.enum(['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR', 'SUPER_CHEF_EQUIPE', 'EQUIPE', 'LECTURE']).optional(),
   actif: z.boolean().optional(),
+  employeId: z.string().uuid('ID employé invalide').nullable().optional(),
 });
 
 // ============ POSTES / EMPLOYES ============

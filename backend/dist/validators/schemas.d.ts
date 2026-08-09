@@ -54,11 +54,13 @@ export declare const updateUserSchema: z.ZodObject<{
     nom: z.ZodOptional<z.ZodString>;
     prenom: z.ZodOptional<z.ZodString>;
     tel: z.ZodOptional<z.ZodString>;
-    role: z.ZodOptional<z.ZodEnum<["DIRECTION", "PLANNING", "EQUIPE", "LECTURE"]>>;
+    role: z.ZodOptional<z.ZodEnum<["SUPER_ADMIN", "DIRECTION", "COORDINATEUR", "SUPER_CHEF_EQUIPE", "EQUIPE", "LECTURE"]>>;
     actif: z.ZodOptional<z.ZodBoolean>;
+    employeId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
 }, "strip", z.ZodTypeAny, {
     email?: string | undefined;
-    role?: "DIRECTION" | "EQUIPE" | "LECTURE" | "PLANNING" | undefined;
+    role?: "SUPER_ADMIN" | "DIRECTION" | "COORDINATEUR" | "SUPER_CHEF_EQUIPE" | "EQUIPE" | "LECTURE" | undefined;
+    employeId?: string | null | undefined;
     password?: string | undefined;
     nom?: string | undefined;
     prenom?: string | undefined;
@@ -66,7 +68,8 @@ export declare const updateUserSchema: z.ZodObject<{
     actif?: boolean | undefined;
 }, {
     email?: string | undefined;
-    role?: "DIRECTION" | "EQUIPE" | "LECTURE" | "PLANNING" | undefined;
+    role?: "SUPER_ADMIN" | "DIRECTION" | "COORDINATEUR" | "SUPER_CHEF_EQUIPE" | "EQUIPE" | "LECTURE" | undefined;
+    employeId?: string | null | undefined;
     password?: string | undefined;
     nom?: string | undefined;
     prenom?: string | undefined;
