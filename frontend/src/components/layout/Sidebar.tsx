@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   LayoutDashboard,
   Calendar,
@@ -41,8 +42,10 @@ interface NavItem {
 
 export function Sidebar({ stats, mobileOpen = false, onMobileClose }: SidebarProps) {
   const { user, logout, canDo } = useAuthStore();
+  const queryClient = useQueryClient();
 
   const handleNavClick = () => {
+    queryClient.invalidateQueries();
     onMobileClose?.();
   };
 
