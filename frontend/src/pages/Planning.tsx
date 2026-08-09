@@ -3049,7 +3049,7 @@ function MobileWeekNav({
       <div className="flex items-center justify-between px-3 pt-2 pb-1">
         <button
           type="button"
-          onClick={() => onDateChange(addWeeks(currentDate, -1))}
+          onClick={() => onDateChange(subDays(currentDate, 1))}
           className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 active:bg-gray-200"
         >
           <ChevronLeft className="h-4 w-4" />
@@ -3063,7 +3063,7 @@ function MobileWeekNav({
         </button>
         <button
           type="button"
-          onClick={() => onDateChange(addWeeks(currentDate, 1))}
+          onClick={() => onDateChange(addDays(currentDate, 1))}
           className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 active:bg-gray-200"
         >
           <ChevronRight className="h-4 w-4" />

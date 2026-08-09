@@ -122,7 +122,7 @@ export const userController = {
   async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const { email, password, nom, prenom, tel, role, actif } = req.body;
+      const { email, password, nom, prenom, tel, role, actif, employeId } = req.body;
 
       const existing = await prisma.user.findUnique({ where: { id } });
 
@@ -148,6 +148,7 @@ export const userController = {
       if (tel !== undefined) updateData.tel = tel;
       if (role) updateData.role = role;
       if (actif !== undefined) updateData.actif = actif;
+      if (employeId !== undefined) updateData.employeId = employeId || null;
 
       const user = await prisma.user.update({
         where: { id },
@@ -160,6 +161,7 @@ export const userController = {
           tel: true,
           role: true,
           actif: true,
+          employeId: true,
           createdAt: true,
           updatedAt: true,
         },
