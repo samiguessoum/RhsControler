@@ -37,6 +37,7 @@ import {
   DragOverlay,
   DragStartEvent,
   PointerSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   useDroppable,
@@ -3047,18 +3048,21 @@ function MobileWeekNav({
       {/* Month/year header + week arrows */}
       <div className="flex items-center justify-between px-3 pt-2 pb-1">
         <button
+          type="button"
           onClick={() => onDateChange(addWeeks(currentDate, -1))}
           className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 active:bg-gray-200"
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
         <button
+          type="button"
           onClick={() => onDateChange(today)}
           className="text-sm font-bold capitalize text-gray-800 hover:text-primary transition-colors"
         >
           {format(currentDate, 'MMMM yyyy', { locale: fr })}
         </button>
         <button
+          type="button"
           onClick={() => onDateChange(addWeeks(currentDate, 1))}
           className="p-1.5 rounded-full hover:bg-gray-100 text-gray-500 active:bg-gray-200"
         >
@@ -3076,6 +3080,7 @@ function MobileWeekNav({
           return (
             <button
               key={day.toISOString()}
+              type="button"
               onClick={() => onDateChange(day)}
               className="flex flex-col items-center gap-0.5 py-1 touch-manipulation"
             >
@@ -3287,13 +3292,14 @@ export function PlanningPage() {
     }
   };
 
-  // DnD sensors
+  // DnD sensors — TouchSensor with delay so taps on mobile don't get swallowed by dnd-kit
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    })
+      activationConstraint: { distance: 8 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 200, tolerance: 8 },
+    }),
   );
 
   // Calculate date range based on view
@@ -3306,8 +3312,8 @@ export function PlanningPage() {
         };
       case 'week':
         return {
-          start: startOfWeek(currentDate, { weekStartsOn: 0 }),
-          end: endOfWeek(currentDate, { weekStartsOn: 0 }),
+          start: startOfWeek(currentDate, { weekStartsOn: isMobile ? 1 : 0 }),
+          end: endOfWeek(currentDate, { weekStartsOn: isMobile ? 1 : 0 }),
         };
       case 'biweek':
         const biweekStart = startOfWeek(currentDate, { weekStartsOn: 0 });
@@ -4183,6 +4189,15 @@ export function PlanningPage() {
             onTouchStart={handleMobileTouchStart}
             onTouchEnd={handleMobileTouchEnd}
           >
+            {/* Day label */}
+            <div className="flex items-center justify-between px-0.5 pb-1">
+              <p className="text-sm font-bold capitalize text-gray-900">
+                {isSameDay(currentDate, new Date())
+                  ? `Aujourd'hui · ${format(currentDate, 'd MMMM', { locale: fr })}`
+                  : format(currentDate, 'EEEE d MMMM', { locale: fr })}
+              </p>
+            </div>
+
             {/* Compact stats row */}
             <div className="flex items-center gap-3 pb-1">
               {planningStats.enRetard > 0 && (
