@@ -4259,10 +4259,14 @@ export function PlanningPage() {
               ))
             )}
           </div>
+        ) : showMap ? (
+          <PlanningMap
+            interventions={interventions}
+            onInterventionClick={setSelectedIntervention}
+          />
         ) : (
           /* ── Desktop calendar views ── */
-          <div className={cn(showMap && 'grid grid-cols-2 gap-4 items-start')}>
-            <div>
+          <div>
             {viewMode === 'day' && (
               <DayView
                 date={currentDate}
@@ -4352,15 +4356,6 @@ export function PlanningPage() {
               />
             )}
             </div>
-            {showMap && (
-              <div className={cn(showMap ? 'block' : 'hidden')}>
-                <PlanningMap
-                  interventions={interventions}
-                  onInterventionClick={setSelectedIntervention}
-                />
-              </div>
-            )}
-          </div>
         )}
 
         {/* Mobile FAB */}
