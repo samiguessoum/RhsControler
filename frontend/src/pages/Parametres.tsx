@@ -351,7 +351,11 @@ export function ParametresPage() {
 
   const updateUserMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<User> }) => usersApi.update(id, data),
-    onSuccess: () => {
+    onSuccess: (updatedUser) => {
+      // Mise à jour immédiate du cache avec la réponse fraîche (inclut employeId)
+      queryClient.setQueryData<User[]>(['users'], (old) =>
+        old ? old.map((u) => (u.id === updatedUser.id ? { ...u, ...updatedUser } : u)) : old
+      );
       queryClient.invalidateQueries({ queryKey: ['users'] });
       toast.success('Utilisateur mis à jour');
       setEditingUser(null);
@@ -449,12 +453,6 @@ export function ParametresPage() {
     },
   });
 
-  useEffect(() => {
-    if (editingUser) {
-      setEditUserRole(editingUser.role);
-      setEditUserEmployeId(editingUser.employeId || '');
-    }
-  }, [editingUser]);
 
   useEffect(() => {
     if (editingEmploye) {
@@ -1198,7 +1196,11 @@ export function ParametresPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setEditingUser(u)}>
+                          <DropdownMenuItem onClick={() => {
+                            setEditingUser(u);
+                            setEditUserRole(u.role);
+                            setEditUserEmployeId(u.employeId || '');
+                          }}>
                             Modifier
                           </DropdownMenuItem>
                           {u.actif && (
