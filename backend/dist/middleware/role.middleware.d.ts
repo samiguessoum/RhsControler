@@ -1,0 +1,35 @@
+import { Response, NextFunction } from 'express';
+import { Role } from '@prisma/client';
+import { AuthRequest } from './auth.middleware.js';
+export declare function requireRole(...allowedRoles: Role[]): (req: AuthRequest, res: Response, next: NextFunction) => void;
+export declare function requireMinRole(minRole: Role): (req: AuthRequest, res: Response, next: NextFunction) => void;
+export declare const permissions: {
+    readonly manageUsers: readonly ["SUPER_ADMIN"];
+    readonly createClient: readonly ["SUPER_ADMIN", "DIRECTION", "COORDINATEUR"];
+    readonly editClient: readonly ["SUPER_ADMIN", "DIRECTION", "COORDINATEUR"];
+    readonly deleteClient: readonly ["SUPER_ADMIN", "DIRECTION"];
+    readonly createContrat: readonly ["SUPER_ADMIN", "DIRECTION", "COORDINATEUR"];
+    readonly editContrat: readonly ["SUPER_ADMIN", "DIRECTION", "COORDINATEUR"];
+    readonly deleteContrat: readonly ["SUPER_ADMIN", "DIRECTION"];
+    readonly createIntervention: readonly ["SUPER_ADMIN", "DIRECTION", "COORDINATEUR"];
+    readonly editIntervention: readonly ["SUPER_ADMIN", "DIRECTION", "COORDINATEUR"];
+    readonly deleteIntervention: readonly ["SUPER_ADMIN", "DIRECTION", "COORDINATEUR"];
+    readonly realiserIntervention: readonly ["SUPER_ADMIN", "DIRECTION", "COORDINATEUR", "SUPER_CHEF_EQUIPE", "EQUIPE"];
+    readonly importData: readonly ["SUPER_ADMIN", "DIRECTION", "COORDINATEUR"];
+    readonly exportData: readonly ["SUPER_ADMIN", "DIRECTION", "COORDINATEUR", "SUPER_CHEF_EQUIPE"];
+    readonly manageSettings: readonly ["SUPER_ADMIN"];
+    readonly managePrestations: readonly ["SUPER_ADMIN", "DIRECTION", "COORDINATEUR"];
+    readonly viewEmployes: readonly ["SUPER_ADMIN", "DIRECTION", "COORDINATEUR", "SUPER_CHEF_EQUIPE"];
+    readonly manageEmployes: readonly ["SUPER_ADMIN", "DIRECTION"];
+    readonly viewPostes: readonly ["SUPER_ADMIN", "DIRECTION", "COORDINATEUR", "SUPER_CHEF_EQUIPE"];
+    readonly managePostes: readonly ["SUPER_ADMIN", "DIRECTION"];
+    readonly manageStock: readonly ["SUPER_ADMIN", "DIRECTION", "COORDINATEUR"];
+    readonly viewRH: readonly ["SUPER_ADMIN", "DIRECTION"];
+    readonly manageRH: readonly ["SUPER_ADMIN", "DIRECTION"];
+    readonly manageCommerce: readonly ["SUPER_ADMIN", "DIRECTION", "COORDINATEUR"];
+    readonly manageFacturation: readonly ["SUPER_ADMIN", "DIRECTION", "COORDINATEUR"];
+    readonly viewFacturation: readonly ["SUPER_ADMIN", "DIRECTION"];
+    readonly viewDashboardFinance: readonly ["SUPER_ADMIN", "DIRECTION"];
+};
+export declare function canDo(action: keyof typeof permissions): (req: AuthRequest, res: Response, next: NextFunction) => void;
+//# sourceMappingURL=role.middleware.d.ts.map

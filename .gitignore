@@ -1,6 +1,6 @@
 # Node / Vite
 node_modules/
-dist/
+frontend/dist/
 build/
 *.log
 .env

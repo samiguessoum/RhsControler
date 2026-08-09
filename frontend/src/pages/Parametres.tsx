@@ -373,13 +373,16 @@ export function ParametresPage() {
   const linkEmployeMutation = useMutation({
     mutationFn: ({ userId, employeId }: { userId: string; employeId: string | null }) =>
       usersApi.update(userId, { employeId }),
-    onSuccess: (updatedUser) => {
+    onSuccess: (_updatedUser, variables) => {
+      // On utilise variables.employeId (ce qu'on a envoyé) — plus fiable que la réponse backend
+      const newEmployeId = variables.employeId ?? null;
       queryClient.setQueryData<User[]>(['users'], (old) =>
-        old ? old.map((u) => (u.id === updatedUser.id ? { ...u, ...updatedUser } : u)) : old
+        old ? old.map((u) => (u.id === variables.userId ? { ...u, employeId: newEmployeId } : u)) : old
       );
       queryClient.invalidateQueries({ queryKey: ['users'] });
-      setViewingUser((prev) => prev ? { ...prev, ...updatedUser } : prev);
-      toast.success(updatedUser.employeId ? 'Employé lié avec succès' : 'Lien supprimé');
+      setViewingUser((prev) => prev ? { ...prev, employeId: newEmployeId } : prev);
+      setViewingUserEmployeId(newEmployeId || '');
+      toast.success(newEmployeId ? 'Employé lié avec succès' : 'Lien supprimé');
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Erreur lors de la mise à jour');
