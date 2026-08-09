@@ -11,6 +11,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from '@/components/ui/sheet';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,6 +39,8 @@ export function ParametresPage() {
   const [confirmPrestationCreateOpen, setConfirmPrestationCreateOpen] = useState(false);
   const [deletePrestationTarget, setDeletePrestationTarget] = useState<Prestation | null>(null);
   const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
+  const [viewingUser, setViewingUser] = useState<User | null>(null);
+  const [viewingUserEmployeId, setViewingUserEmployeId] = useState<string>('');
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deletingUser, setDeletingUser] = useState<User | null>(null);
   const [newUserRole, setNewUserRole] = useState<Role>('COORDINATEUR');
@@ -359,6 +364,22 @@ export function ParametresPage() {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       toast.success('Utilisateur mis à jour');
       setEditingUser(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de la mise à jour');
+    },
+  });
+
+  const linkEmployeMutation = useMutation({
+    mutationFn: ({ userId, employeId }: { userId: string; employeId: string | null }) =>
+      usersApi.update(userId, { employeId }),
+    onSuccess: (updatedUser) => {
+      queryClient.setQueryData<User[]>(['users'], (old) =>
+        old ? old.map((u) => (u.id === updatedUser.id ? { ...u, ...updatedUser } : u)) : old
+      );
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      setViewingUser((prev) => prev ? { ...prev, ...updatedUser } : prev);
+      toast.success(updatedUser.employeId ? 'Employé lié avec succès' : 'Lien supprimé');
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Erreur lors de la mise à jour');
@@ -1179,24 +1200,33 @@ export function ParametresPage() {
                   users.map((u) => (
                     <div
                       key={u.id}
-                      className="flex items-center justify-between p-3 border rounded-lg"
+                      className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                      onClick={() => {
+                        setViewingUser(u);
+                        setViewingUserEmployeId(u.employeId || '');
+                      }}
                     >
-                      <div>
-                        <p className="font-medium">
-                          {u.prenom} {u.nom}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {u.email} • {u.role} • {u.actif ? 'Actif' : 'Inactif'}
-                        </p>
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-sm font-bold text-primary shrink-0">
+                          {u.prenom?.[0]}{u.nom?.[0]}
+                        </div>
+                        <div>
+                          <p className="font-medium">{u.prenom} {u.nom}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {u.email} • {u.actif ? 'Actif' : 'Inactif'}
+                            {u.employeId && <span className="text-green-600"> • Lié à un employé</span>}
+                          </p>
+                        </div>
                       </div>
                       <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
+                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                           <Button variant="ghost" size="icon">
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => {
+                          <DropdownMenuItem onClick={(e) => {
+                            e.stopPropagation();
                             setEditingUser(u);
                             setEditUserRole(u.role);
                             setEditUserEmployeId(u.employeId || '');
@@ -2361,6 +2391,155 @@ export function ParametresPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* ── Fiche utilisateur (Sheet) ── */}
+      <Sheet open={!!viewingUser} onOpenChange={(open) => !open && setViewingUser(null)}>
+        <SheetContent className="w-full sm:max-w-md flex flex-col gap-0 p-0">
+          {viewingUser && (() => {
+            const linkedEmploye = employes.find((e) => e.id === viewingUser.employeId);
+            const roleLabels: Record<string, string> = {
+              SUPER_ADMIN: 'Super Admin',
+              DIRECTION: 'Direction',
+              COORDINATEUR: 'Coordinateur',
+              SUPER_CHEF_EQUIPE: 'Super Chef d\'équipe',
+              EQUIPE: 'Équipe',
+              LECTURE: 'Lecture seule',
+            };
+            const roleColors: Record<string, string> = {
+              SUPER_ADMIN: 'bg-purple-100 text-purple-700',
+              DIRECTION: 'bg-blue-100 text-blue-700',
+              COORDINATEUR: 'bg-cyan-100 text-cyan-700',
+              SUPER_CHEF_EQUIPE: 'bg-green-100 text-green-700',
+              EQUIPE: 'bg-amber-100 text-amber-700',
+              LECTURE: 'bg-gray-100 text-gray-600',
+            };
+            return (
+              <>
+                {/* Header coloré */}
+                <div className="bg-gradient-to-br from-primary/10 to-primary/5 px-6 pt-8 pb-6">
+                  <div className="flex items-start gap-4">
+                    <div className="w-14 h-14 rounded-2xl bg-primary/20 flex items-center justify-center text-xl font-black text-primary shrink-0">
+                      {viewingUser.prenom?.[0]}{viewingUser.nom?.[0]}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h2 className="text-lg font-bold text-gray-900 truncate">{viewingUser.prenom} {viewingUser.nom}</h2>
+                      <p className="text-sm text-gray-500 truncate">{viewingUser.email}</p>
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${roleColors[viewingUser.role] || 'bg-gray-100 text-gray-600'}`}>
+                          {roleLabels[viewingUser.role] || viewingUser.role}
+                        </span>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${viewingUser.actif ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                          {viewingUser.actif ? 'Actif' : 'Inactif'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+                  {/* Infos de base */}
+                  <div className="space-y-3">
+                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Informations</h3>
+                    <div className="space-y-2">
+                      {viewingUser.tel && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-500">Téléphone</span>
+                          <span className="font-medium">{viewingUser.tel}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Rôle</span>
+                        <span className="font-medium">{roleLabels[viewingUser.role] || viewingUser.role}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Statut</span>
+                        <span className={`font-medium ${viewingUser.actif ? 'text-green-600' : 'text-red-500'}`}>
+                          {viewingUser.actif ? 'Actif' : 'Inactif'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Lien employé */}
+                  <div className="space-y-3">
+                    <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Fiche employé liée</h3>
+                    {linkedEmploye ? (
+                      <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-3 py-2.5">
+                        <div>
+                          <p className="text-sm font-semibold text-green-800">{linkedEmploye.prenom} {linkedEmploye.nom}</p>
+                          {(linkedEmploye.postes || []).length > 0 && (
+                            <p className="text-xs text-green-600 mt-0.5">
+                              {linkedEmploye.postes.map((p: any) => p.nom).join(', ')}
+                            </p>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => linkEmployeMutation.mutate({ userId: viewingUser.id, employeId: null })}
+                          className="text-xs text-red-500 hover:text-red-700 font-medium shrink-0 ml-2"
+                          disabled={linkEmployeMutation.isPending}
+                        >
+                          Délier
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-sm text-gray-500 italic">Aucun employé lié</p>
+                        <Select
+                          value={viewingUserEmployeId || '__none__'}
+                          onValueChange={(v) => setViewingUserEmployeId(v === '__none__' ? '' : v)}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Choisir un employé..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">— Choisir un employé —</SelectItem>
+                            {employes.map((e) => (
+                              <SelectItem key={e.id} value={e.id}>{e.prenom} {e.nom}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {viewingUserEmployeId && (
+                          <Button
+                            size="sm"
+                            className="w-full bg-green-600 hover:bg-green-700 text-white"
+                            disabled={linkEmployeMutation.isPending}
+                            onClick={() => linkEmployeMutation.mutate({ userId: viewingUser.id, employeId: viewingUserEmployeId })}
+                          >
+                            {linkEmployeMutation.isPending ? 'Enregistrement...' : 'Enregistrer le lien'}
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <SheetFooter className="px-6 py-4 border-t flex flex-row gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setViewingUser(null)}
+                  >
+                    Fermer
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    onClick={() => {
+                      setEditingUser(viewingUser);
+                      setEditUserRole(viewingUser.role);
+                      setEditUserEmployeId(viewingUser.employeId || '');
+                      setViewingUser(null);
+                    }}
+                  >
+                    Modifier
+                  </Button>
+                </SheetFooter>
+              </>
+            );
+          })()}
+        </SheetContent>
+      </Sheet>
 
       <Dialog open={!!editingUser} onOpenChange={() => setEditingUser(null)}>
         <DialogContent>
