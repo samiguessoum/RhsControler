@@ -1354,6 +1354,14 @@ export interface Devis {
   lignes?: CommerceLigne[];
 }
 
+export type PipelineVenteStatut =
+  | 'VERIFICATION_STOCK'
+  | 'COMMANDE_FOURNISSEUR'
+  | 'EN_TRANSIT'
+  | 'LIVRE'
+  | 'A_ENCAISSER'
+  | 'PAYE';
+
 export interface Commande {
   id: string;
   ref: string;
@@ -1368,6 +1376,8 @@ export interface Commande {
   dateLivraisonSouhaitee?: string;
   refBonCommandeClient?: string;
   statut: CommandeStatut;
+  pipelineStatut?: PipelineVenteStatut | null;
+  livraisonDirect?: boolean;
   remiseGlobalPct?: number;
   remiseGlobalMontant?: number;
   totalHT: number;
@@ -1386,7 +1396,9 @@ export interface Commande {
     createdBy?: { nom: string; prenom: string };
     lignes?: { libelle?: string; quantiteCommandee?: number; quantiteLivree: number; unite?: string }[];
   }[];
+  factures?: { id: string; ref: string; statut: string; totalTTC: number }[];
   createdBy?: { id: string; nom: string; prenom: string };
+  updatedAt?: string;
 }
 
 export interface BonLivraisonLigne {

@@ -40,6 +40,10 @@ export declare const commerceController: {
     creerBLFromCommande(req: AuthRequest, res: Response, next: NextFunction): Promise<void>;
     getCommandeProgressionLivraison(req: AuthRequest, res: Response, next: NextFunction): Promise<void>;
     exportBonLivraisonPDF(req: AuthRequest, res: Response, next: NextFunction): Promise<void>;
+    getPipelineVentes(req: AuthRequest, res: Response, next: NextFunction): Promise<void>;
+    updatePipelineStatut(req: AuthRequest, res: Response, next: NextFunction): Promise<void | Response<any, Record<string, any>>>;
+    addCommandeToPipeline(req: AuthRequest, res: Response, next: NextFunction): Promise<void | Response<any, Record<string, any>>>;
+    removeCommandeFromPipeline(req: AuthRequest, res: Response, next: NextFunction): Promise<void>;
     _checkAndUpdateCommandeStatut(commandeId: string | null | undefined): Promise<void>;
 };
 export default commerceController;

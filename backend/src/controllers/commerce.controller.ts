@@ -2288,6 +2288,98 @@ export const commerceController = {
     }
   },
 
+  // ── Pipeline ventes ─────────────────────────────────────────────────────────
+
+  async getPipelineVentes(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const commandes = await prisma.commande.findMany({
+        where: {
+          pipelineStatut: { not: null },
+        },
+        select: {
+          id: true,
+          ref: true,
+          statut: true,
+          pipelineStatut: true,
+          livraisonDirect: true,
+          dateCommande: true,
+          dateLivraisonSouhaitee: true,
+          totalTTC: true,
+          totalHT: true,
+          devise: true,
+          notes: true,
+          client: { select: { id: true, nomEntreprise: true } },
+          site: { select: { id: true, nom: true, ville: true } },
+          lignes: { select: { id: true, libelle: true, quantite: true, unite: true, totalHT: true } },
+          bonsLivraison: { select: { id: true, ref: true, statut: true, dateLivraisonEffective: true } },
+          factures: { select: { id: true, ref: true, statut: true, totalTTC: true } },
+          updatedAt: true,
+        },
+        orderBy: { updatedAt: 'desc' },
+      });
+      res.json({ commandes });
+    } catch (error) {
+      logger.error({ err: error }, 'Get pipeline ventes error');
+      return next(new AppError(500, 'Erreur serveur'));
+    }
+  },
+
+  async updatePipelineStatut(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { pipelineStatut, livraisonDirect } = req.body;
+
+      const existing = await prisma.commande.findUnique({ where: { id } });
+      if (!existing) return res.status(404).json({ error: 'Commande non trouvée' });
+
+      const data: Record<string, unknown> = { pipelineStatut };
+      if (livraisonDirect !== undefined) data.livraisonDirect = livraisonDirect;
+
+      const commande = await prisma.commande.update({
+        where: { id },
+        data,
+        select: { id: true, pipelineStatut: true, livraisonDirect: true, updatedAt: true },
+      });
+      res.json({ commande });
+    } catch (error) {
+      logger.error({ err: error }, 'Update pipeline statut error');
+      return next(new AppError(500, 'Erreur serveur'));
+    }
+  },
+
+  async addCommandeToPipeline(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const existing = await prisma.commande.findUnique({ where: { id } });
+      if (!existing) return res.status(404).json({ error: 'Commande non trouvée' });
+
+      const commande = await prisma.commande.update({
+        where: { id },
+        data: { pipelineStatut: 'VERIFICATION_STOCK' },
+        select: { id: true, pipelineStatut: true },
+      });
+      res.json({ commande });
+    } catch (error) {
+      logger.error({ err: error }, 'Add commande to pipeline error');
+      return next(new AppError(500, 'Erreur serveur'));
+    }
+  },
+
+  async removeCommandeFromPipeline(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const commande = await prisma.commande.update({
+        where: { id },
+        data: { pipelineStatut: null },
+        select: { id: true, pipelineStatut: true },
+      });
+      res.json({ commande });
+    } catch (error) {
+      logger.error({ err: error }, 'Remove commande from pipeline error');
+      return next(new AppError(500, 'Erreur serveur'));
+    }
+  },
+
   // Méthode interne : met à jour le statut de la commande si toutes les lignes sont livrées
   async _checkAndUpdateCommandeStatut(commandeId: string | null | undefined) {
     if (!commandeId) return;

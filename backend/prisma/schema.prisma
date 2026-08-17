@@ -124,6 +124,15 @@ enum CommandeStatut {
   ANNULEE
 }
 
+enum PipelineVenteStatut {
+  VERIFICATION_STOCK     // Vérif dispo fournisseur
+  COMMANDE_FOURNISSEUR   // BC émis au fournisseur
+  EN_TRANSIT             // Réception / stockage / expédition vers client
+  LIVRE                  // Livré au client
+  A_ENCAISSER            // Facture émise, paiement attendu
+  PAYE                   // Terminé — masqué par défaut du board
+}
+
 enum FactureStatut {
   BROUILLON
   VALIDEE
@@ -1098,6 +1107,8 @@ model Commande {
   dateLivraisonSouhaitee DateTime?
   refBonCommandeClient String?         // Numéro du bon de commande client (obligatoire à la validation)
   statut               CommandeStatut  @default(BROUILLON)
+  pipelineStatut       PipelineVenteStatut?
+  livraisonDirect      Boolean         @default(false) // true = fournisseur livre directement le client
   remiseGlobalPct      Float?          @default(0)
   remiseGlobalMontant  Float?          @default(0)
   totalHT              Float           @default(0)

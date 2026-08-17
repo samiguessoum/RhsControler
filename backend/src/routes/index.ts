@@ -393,6 +393,12 @@ router.post('/commerce/commandes/:id/convertir-facture', authMiddleware, canDo('
 router.post('/commerce/commandes/:id/creer-bl', authMiddleware, canDo('manageCommerce'), commerceController.creerBLFromCommande);
 router.get('/commerce/commandes/:id/progression-livraison', authMiddleware, commerceController.getCommandeProgressionLivraison);
 
+// Pipeline ventes
+router.get('/commerce/pipeline', authMiddleware, commerceController.getPipelineVentes);
+router.patch('/commerce/commandes/:id/pipeline-statut', authMiddleware, canDo('manageCommerce'), commerceController.updatePipelineStatut);
+router.post('/commerce/commandes/:id/pipeline-add', authMiddleware, canDo('manageCommerce'), commerceController.addCommandeToPipeline);
+router.post('/commerce/commandes/:id/pipeline-remove', authMiddleware, canDo('manageCommerce'), commerceController.removeCommandeFromPipeline);
+
 // Bons de livraison
 router.get('/commerce/bons-livraison', authMiddleware, commerceController.listBonsLivraison);
 router.get('/commerce/bons-livraison/:id', authMiddleware, commerceController.getBonLivraison);

@@ -82,6 +82,7 @@ import { Separator } from '@/components/ui/separator';
 import { commerceApi, produitsServicesApi, tiersApi } from '@/services/api';
 import type { CreateCommandeInput, CreateDevisInput, CreateFactureInput, ProduitService, Tiers, FactureType, BonLivraison, CreateBonLivraisonInput, BonLivraisonStatut } from '@/types';
 import { useAuthStore } from '@/store/auth.store';
+import { PipelineVentes } from '@/components/PipelineVentes';
 import { cn } from '@/lib/utils';
 import {
   EMPTY_LINE,
@@ -2840,7 +2841,7 @@ export function CommercePage() {
   // Active tab state — synced with ?tab= query param
   const searchParams = new URLSearchParams(location.search);
   const tabFromUrl = searchParams.get('tab');
-  const validTabs = ['devis', 'commandes', 'bons-livraison', 'factures'];
+  const validTabs = ['devis', 'commandes', 'bons-livraison', 'factures', 'pipeline'];
   const activeTab = validTabs.includes(tabFromUrl ?? '') ? tabFromUrl! : 'devis';
   const setActiveTab = (tab: string) => {
     navigate(`${location.pathname}?tab=${tab}`, { replace: true });
@@ -3607,20 +3608,21 @@ export function CommercePage() {
 
       {/* ── Tabs ── */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-4 bg-white rounded-xl shadow-sm p-1 h-auto">
+        <TabsList className="grid w-full grid-cols-5 bg-white rounded-xl shadow-sm p-1 h-auto">
           {([
             { value: 'devis',          icon: FileText,     label: 'Devis',               labelShort: 'Devis',  color: 'bg-blue-500' },
             { value: 'commandes',      icon: ShoppingCart, label: 'Commandes',            labelShort: 'Cmd.',   color: 'bg-amber-400' },
             { value: 'bons-livraison', icon: Truck,        label: 'Bons de livraison',    labelShort: 'BL',     color: 'bg-teal-500' },
             { value: 'factures',       icon: Receipt,      label: 'Factures',             labelShort: 'Fact.',  color: 'bg-green-500' },
+            { value: 'pipeline',       icon: Package,      label: 'Suivi ventes',         labelShort: 'Suivi',  color: 'bg-purple-500' },
           ] as const).map(({ value, icon: Icon, label, labelShort, color }) => (
             <TabsTrigger key={value} value={value} className="group relative flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-sm">
               <Icon className="h-4 w-4 shrink-0" />
               <span className="hidden sm:inline">{label}</span>
               <span className="sm:hidden">{labelShort}</span>
-              {tabCounts[value] > 0 && (
+              {tabCounts[value as keyof typeof tabCounts] > 0 && (
                 <span className={`hidden sm:inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold text-white ${color} group-data-[state=active]:bg-white/20 group-data-[state=active]:text-white`}>
-                  {tabCounts[value]}
+                  {tabCounts[value as keyof typeof tabCounts]}
                 </span>
               )}
             </TabsTrigger>
@@ -4694,6 +4696,11 @@ export function CommercePage() {
               )}
             </div>
           </div>
+        </TabsContent>
+
+        {/* ── PIPELINE TAB ── */}
+        <TabsContent value="pipeline" className="mt-4">
+          <PipelineVentes />
         </TabsContent>
 
       </Tabs>

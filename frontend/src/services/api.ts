@@ -1111,6 +1111,23 @@ export const commerceApi = {
     return data;
   },
 
+  // Pipeline ventes
+  getPipelineVentes: async (): Promise<Commande[]> => {
+    const { data } = await api.get('/commerce/pipeline');
+    return data.commandes;
+  },
+  updatePipelineStatut: async (id: string, pipelineStatut: import('@/types').PipelineVenteStatut, livraisonDirect?: boolean): Promise<Commande> => {
+    const { data } = await api.patch(`/commerce/commandes/${id}/pipeline-statut`, { pipelineStatut, livraisonDirect });
+    return data.commande;
+  },
+  addCommandeToPipeline: async (id: string): Promise<Commande> => {
+    const { data } = await api.post(`/commerce/commandes/${id}/pipeline-add`);
+    return data.commande;
+  },
+  removeCommandeFromPipeline: async (id: string): Promise<void> => {
+    await api.post(`/commerce/commandes/${id}/pipeline-remove`);
+  },
+
   // Factures
   listFactures: async (params?: { search?: string; clientId?: string; statut?: string; page?: number; limit?: number }) => {
     const { data } = await api.get('/commerce/factures', { params });
