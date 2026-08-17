@@ -17,6 +17,7 @@ const RHPage = lazy(() => import('@/pages/RH'));
 const TiersPage = lazy(() => import('@/pages/Tiers'));
 const ProduitsServicesPage = lazy(() => import('@/pages/ProduitsServices'));
 const CommercePage = lazy(() => import('@/pages/Commerce'));
+const SuiviVentesPage = lazy(() => import('@/pages/SuiviVentes'));
 const FacturationPage = lazy(() => import('@/pages/Facturation'));
 const FinancePage = lazy(() => import('@/pages/Finance'));
 const EntrepotsPage = lazy(() => import('@/pages/Entrepots'));
@@ -125,6 +126,7 @@ export default function App() {
               <Route path="/entrepots" element={<Suspense fallback={<PageFallback />}><EntrepotsPage /></Suspense>} />
               <Route path="/produits-services" element={<Suspense fallback={<PageFallback />}><ProduitsServicesPage /></Suspense>} />
               <Route path="/commerce" element={<Suspense fallback={<PageFallback />}><CommercePage /></Suspense>} />
+              <Route path="/suivi-ventes" element={<Suspense fallback={<PageFallback />}><SuiviVentesPage /></Suspense>} />
               <Route path="/facturation" element={<Suspense fallback={<PageFallback />}><FacturationPage /></Suspense>} />
               <Route path="/finance" element={<Suspense fallback={<PageFallback />}><FinancePage /></Suspense>} />
               <Route path="/rh" element={<Suspense fallback={<PageFallback />}><RHPage /></Suspense>} />

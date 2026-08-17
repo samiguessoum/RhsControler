@@ -15,6 +15,7 @@ import {
   Landmark,
   TrendingUp,
   Warehouse,
+  KanbanSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -91,6 +92,7 @@ export function Sidebar({ stats, mobileOpen = false, onMobileClose }: SidebarPro
 
   const moduleItems: NavItem[] = [
     { to: '/commerce', icon: TrendingUp, label: 'Cycle de vente', show: !isTeamOnly },
+    { to: '/suivi-ventes', icon: KanbanSquare, label: 'Suivi des ventes', show: !isTeamOnly },
     { to: '/produits-services', icon: ShoppingBag, label: 'Produits & Services', show: !isTeamOnly },
     { to: '/entrepots', icon: Warehouse, label: 'Entrepôts', show: !isTeamOnly },
     { to: '/facturation', icon: Wallet, label: 'Fournisseurs & Charges', show: canDo('viewFacturation') },
