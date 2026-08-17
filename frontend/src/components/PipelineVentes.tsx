@@ -27,7 +27,6 @@ import {
   Banknote,
   ShoppingCart,
   AlertCircle,
-  Plus,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -433,79 +432,6 @@ function CommandeSheet({
   );
 }
 
-// ── Add to Pipeline panel ──────────────────────────────────────────────────
-function AddCommandePanel({
-  onAdd,
-}: {
-  onAdd: (commandeId: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const { data } = useQuery({
-    queryKey: ['commerce', 'commandes'],
-    queryFn: () => commerceApi.listCommandes({ limit: 200, statut: 'VALIDEE' }),
-    enabled: open,
-  });
-  const { data: pipelineData } = useQuery({
-    queryKey: ['commerce', 'pipeline'],
-    queryFn: () => commerceApi.getPipelineVentes(),
-  });
-  const pipelineIds = new Set(pipelineData?.map((c) => c.id) ?? []);
-  const available = (data?.commandes ?? []).filter(
-    (c) => !pipelineIds.has(c.id) &&
-      (c.ref.toLowerCase().includes(search.toLowerCase()) || c.client?.nomEntreprise?.toLowerCase().includes(search.toLowerCase()))
-  );
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="flex items-center gap-2 px-3 py-2 rounded-xl border-2 border-dashed border-gray-200 text-gray-400 hover:border-primary hover:text-primary text-sm font-medium transition-colors"
-      >
-        <Plus className="w-4 h-4" />
-        Ajouter une commande
-      </button>
-    );
-  }
-
-  return (
-    <div className="bg-white rounded-xl border shadow-lg p-4 w-72 shrink-0">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-sm font-semibold text-gray-900">Ajouter au pipeline</p>
-        <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600">
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-      <input
-        autoFocus
-        type="text"
-        placeholder="Rechercher une commande..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="w-full border rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-primary/20"
-      />
-      <div className="max-h-64 overflow-y-auto space-y-1">
-        {available.length === 0 && (
-          <p className="text-sm text-gray-400 text-center py-4">Aucune commande validée disponible</p>
-        )}
-        {available.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            onClick={() => { onAdd(c.id); setOpen(false); setSearch(''); }}
-            className="w-full text-left rounded-lg px-3 py-2 hover:bg-gray-50 transition-colors"
-          >
-            <p className="text-xs font-mono text-gray-400">{c.ref}</p>
-            <p className="text-sm font-medium text-gray-800">{c.client?.nomEntreprise}</p>
-            <p className="text-xs text-gray-500">{formatMontant(c.totalTTC, c.devise)}</p>
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ── Main component ─────────────────────────────────────────────────────────
 export function PipelineVentes() {
   const queryClient = useQueryClient();
@@ -539,12 +465,6 @@ export function PipelineVentes() {
       toast.error('Erreur lors du déplacement');
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ['commerce', 'pipeline'] }),
-  });
-
-  const addMutation = useMutation({
-    mutationFn: (id: string) => commerceApi.addCommandeToPipeline(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['commerce', 'pipeline'] }); toast.success('Commande ajoutée au pipeline'); },
-    onError: () => toast.error('Erreur lors de l\'ajout'),
   });
 
   const removeMutation = useMutation({
@@ -627,11 +547,6 @@ export function PipelineVentes() {
               isOver={overId === col.id}
             />
           ))}
-
-          {/* Add panel */}
-          <div className="shrink-0 pt-0">
-            <AddCommandePanel onAdd={(id) => addMutation.mutate(id)} />
-          </div>
         </div>
 
         <DragOverlay>
