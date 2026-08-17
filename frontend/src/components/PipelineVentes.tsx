@@ -20,7 +20,6 @@ import {
   Search,
   Truck,
   Eye,
-  EyeOff,
   Package,
   CheckCircle2,
   Clock,
@@ -76,17 +75,8 @@ const COLUMNS: ColumnDef[] = [
   },
   {
     id: 'LIVRE',
-    label: 'Livré client',
-    description: 'Livraison effectuée',
-    icon: Package,
-    color: 'bg-teal-50',
-    textColor: 'text-teal-700',
-    borderColor: 'border-teal-200',
-  },
-  {
-    id: 'A_ENCAISSER',
-    label: 'À encaisser',
-    description: 'Facture émise, paiement attendu',
+    label: 'En attente de paiement',
+    description: 'Livré — paiement en attente',
     icon: Banknote,
     color: 'bg-orange-50',
     textColor: 'text-orange-700',
@@ -264,15 +254,25 @@ function KanbanColumn({
         className={cn(
           'flex-1 rounded-b-xl border-x border-b p-2 space-y-2 min-h-[120px] transition-colors',
           col.borderColor,
-          isOver ? 'bg-primary/5' : 'bg-gray-50/60'
+          col.id === 'PAYE'
+            ? isOver ? 'bg-green-100' : 'bg-green-50/40'
+            : isOver ? 'bg-primary/5' : 'bg-gray-50/60'
         )}
       >
-        {commandes.length === 0 && !isOver && (
-          <p className="text-xs text-gray-300 text-center py-6">Déposer ici</p>
+        {col.id === 'PAYE' ? (
+          <p className={cn('text-xs text-center py-6 transition-colors', isOver ? 'text-green-600 font-semibold' : 'text-gray-300')}>
+            {isOver ? '✓ Relâcher pour marquer payé' : 'Glisser ici → retiré du suivi'}
+          </p>
+        ) : (
+          <>
+            {commandes.length === 0 && !isOver && (
+              <p className="text-xs text-gray-300 text-center py-6">Déposer ici</p>
+            )}
+            {commandes.map((c) => (
+              <KanbanCard key={c.id} commande={c} onOpen={onOpen} />
+            ))}
+          </>
         )}
-        {commandes.map((c) => (
-          <KanbanCard key={c.id} commande={c} onOpen={onOpen} />
-        ))}
       </div>
     </div>
   );
@@ -437,7 +437,6 @@ export function PipelineVentes() {
   const queryClient = useQueryClient();
   const [activeId, setActiveId]         = useState<string | null>(null);
   const [overId, setOverId]             = useState<PipelineVenteStatut | null>(null);
-  const [showPaye, setShowPaye]         = useState(false);
   const [viewingCommande, setViewing]   = useState<Commande | null>(null);
 
   const sensors = useSensors(
@@ -469,8 +468,19 @@ export function PipelineVentes() {
 
   const removeMutation = useMutation({
     mutationFn: (id: string) => commerceApi.removeCommandeFromPipeline(id),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['commerce', 'pipeline'] }); toast.success('Commande retirée du pipeline'); },
-    onError: () => toast.error('Erreur lors de la suppression'),
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['commerce', 'pipeline'] });
+      const prev = queryClient.getQueryData<Commande[]>(['commerce', 'pipeline']);
+      queryClient.setQueryData<Commande[]>(['commerce', 'pipeline'], (old) =>
+        old ? old.filter((c) => c.id !== id) : old
+      );
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      queryClient.setQueryData(['commerce', 'pipeline'], ctx?.prev);
+      toast.error('Erreur');
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['commerce', 'pipeline'] }); toast.success('Commande marquée payée et retirée du suivi'); },
   });
 
   const handleDragStart = useCallback((e: DragStartEvent) => setActiveId(String(e.active.id)), []);
@@ -480,19 +490,22 @@ export function PipelineVentes() {
     setActiveId(null);
     setOverId(null);
     if (!over || active.id === over.id) return;
-    const newStatut = over.id as PipelineVenteStatut;
-    moveMutation.mutate({ id: String(active.id), statut: newStatut });
-  }, [moveMutation]);
+    if (over.id === 'PAYE') {
+      removeMutation.mutate(String(active.id));
+    } else {
+      moveMutation.mutate({ id: String(active.id), statut: over.id as PipelineVenteStatut });
+    }
+  }, [moveMutation, removeMutation]);
 
   const activeDragging = commandes.find((c) => c.id === activeId);
 
-  const cols = showPaye ? [...COLUMNS, PAYE_COL] : COLUMNS;
+  // PAYE toujours visible comme zone de drop finale — les cartes en disparaissent automatiquement
+  const cols = [...COLUMNS, PAYE_COL];
 
   // Stats
-  const total     = commandes.filter((c) => c.pipelineStatut !== 'PAYE').length;
-  const totalTTC  = commandes.filter((c) => c.pipelineStatut !== 'PAYE').reduce((s, c) => s + c.totalTTC, 0);
-  const retards   = commandes.filter(isRetard).length;
-  const payees    = commandes.filter((c) => c.pipelineStatut === 'PAYE').length;
+  const total    = commandes.length;
+  const totalTTC = commandes.reduce((s, c) => s + c.totalTTC, 0);
+  const retards  = commandes.filter(isRetard).length;
 
   if (isLoading) {
     return (
@@ -523,15 +536,6 @@ export function PipelineVentes() {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowPaye((v) => !v)}
-            className="text-gray-500 gap-1.5"
-          >
-            {showPaye ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            {showPaye ? 'Masquer payés' : `Payés (${payees})`}
-          </Button>
         </div>
       </div>
 
