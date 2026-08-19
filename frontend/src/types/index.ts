@@ -2,7 +2,6 @@
 export type Role = 'SUPER_ADMIN' | 'DIRECTION' | 'COORDINATEUR' | 'SUPER_CHEF_EQUIPE' | 'EQUIPE' | 'LECTURE';
 export type ContratType = 'ANNUEL' | 'PONCTUEL';
 export type ContratStatut = 'ACTIF' | 'SUSPENDU' | 'TERMINE';
-export type Frequence = 'HEBDOMADAIRE' | 'MENSUELLE' | 'TRIMESTRIELLE' | 'SEMESTRIELLE' | 'ANNUELLE' | 'PERSONNALISEE';
 export type InterventionType = 'OPERATION' | 'CONTROLE' | 'RECLAMATION' | 'PREMIERE_VISITE' | 'DEPLACEMENT_COMMERCIAL';
 export type InterventionStatut = 'A_PLANIFIER' | 'PLANIFIEE' | 'REALISEE' | 'REPORTEE' | 'ANNULEE';
 
@@ -97,9 +96,7 @@ export interface ContratSite {
   site?: Site;
   prestations: string[];
   prixPrestations?: Record<string, number>;
-  frequenceOperations?: Frequence;
   frequenceOperationsJours?: number;
-  frequenceControle?: Frequence;
   frequenceControleJours?: number;
   premiereDateOperation?: string;
   premiereDateControle?: string;
@@ -114,9 +111,7 @@ export interface ContratSiteInput {
   siteId: string;
   prestations?: string[];
   prixPrestations?: Record<string, number>;
-  frequenceOperations?: Frequence;
   frequenceOperationsJours?: number;
-  frequenceControle?: Frequence;
   frequenceControleJours?: number;
   premiereDateOperation?: string;
   premiereDateControle?: string;
@@ -137,9 +132,7 @@ export interface Contrat {
   dateFin?: string;
   reconductionAuto: boolean;
   prestations: string[];
-  frequenceOperations?: Frequence;
   frequenceOperationsJours?: number;
-  frequenceControle?: Frequence;
   frequenceControleJours?: number;
   premiereDateOperation?: string;
   premiereDateControle?: string;
@@ -195,8 +188,8 @@ export interface Intervention {
   updatedAt: string;
   remainingOperations?: number | null;
   remainingControles?: number | null;
-  frequenceOperations?: string | null;
-  frequenceControle?: string | null;
+  frequenceOperationsJours?: number | null;
+  frequenceControleJours?: number | null;
   interventionEmployes?: InterventionEmploye[];
   previousIntervention?: PreviousIntervention | null;
 }
@@ -435,9 +428,7 @@ export interface CreateContratInput {
   dateFin?: string;
   reconductionAuto?: boolean;
   prestations: string[];
-  frequenceOperations?: Frequence;
   frequenceOperationsJours?: number;
-  frequenceControle?: Frequence;
   frequenceControleJours?: number;
   premiereDateOperation?: string;
   premiereDateControle?: string;

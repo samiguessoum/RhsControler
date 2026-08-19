@@ -259,8 +259,8 @@ export const interventionController = {
 
       let remainingOperations: number | null = null;
       let remainingControles: number | null = null;
-      let freqOps: string | null = null;
-      let freqCtrls: string | null = null;
+      let freqOpsJours: number | null = null;
+      let freqCtrlsJours: number | null = null;
 
       if (intervention.contrat) {
         const siteId = intervention.siteId || undefined;
@@ -272,8 +272,8 @@ export const interventionController = {
           if (cs) {
             maxOps = cs.nombreOperations ?? null;
             maxCtrls = cs.nombreVisitesControle ?? null;
-            freqOps = (cs.frequenceOperations as any) || null;
-            freqCtrls = (cs.frequenceControle as any) || null;
+            freqOpsJours = cs.frequenceOperationsJours ?? null;
+            freqCtrlsJours = cs.frequenceControleJours ?? null;
           }
         }
 
@@ -283,11 +283,11 @@ export const interventionController = {
         if (maxCtrls === null) {
           maxCtrls = intervention.contrat.nombreVisitesControle ?? null;
         }
-        if (freqOps === null) {
-          freqOps = (intervention.contrat.frequenceOperations as any) || null;
+        if (freqOpsJours === null) {
+          freqOpsJours = intervention.contrat.frequenceOperationsJours ?? null;
         }
-        if (freqCtrls === null) {
-          freqCtrls = (intervention.contrat.frequenceControle as any) || null;
+        if (freqCtrlsJours === null) {
+          freqCtrlsJours = intervention.contrat.frequenceControleJours ?? null;
         }
 
         const doneOps = await prisma.intervention.count({
@@ -361,8 +361,8 @@ export const interventionController = {
           ...intervention,
           remainingOperations,
           remainingControles,
-          frequenceOperations: freqOps,
-          frequenceControle: freqCtrls,
+          frequenceOperationsJours: freqOpsJours,
+          frequenceControleJours: freqCtrlsJours,
           previousIntervention,
         },
       });

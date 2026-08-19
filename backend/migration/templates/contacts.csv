@@ -1,0 +1,4 @@
+client_ref,site_ref,civilite,nom,prenom,fonction,tel,telMobile,email,estPrincipal,notes
+SANOFI,SANOFI_HYDRA,MME,Dahmani,Hamida,QHSE LEAD Algeria,,0770941725,hamida.dahmani@sanofi.com,true,
+SANOFI,SANOFI_HYDRA,M,Djadi,Said,Complaints Specialist & Training Manager,,0770208254,said.djadi@sanofi.com,false,
+AIR_ALGERIE,,M,Dupont,Jean,Responsable HSE,,0550000000,j.dupont@airalgerie.dz,true,Contact siège (site_ref vide = SiegeContact)

@@ -119,22 +119,11 @@ export const updatePrestationSchema = z.object({
 });
 
 // ============ CONTRATS ============
-export const frequenceEnum = z.enum([
-  'HEBDOMADAIRE',
-  'MENSUELLE',
-  'TRIMESTRIELLE',
-  'SEMESTRIELLE',
-  'ANNUELLE',
-  'PERSONNALISEE',
-]);
-
 const contratSiteSchema = z.object({
   siteId: z.string().uuid('ID site invalide'),
   prestations: z.array(z.string()).min(1, 'Au moins une prestation requise').optional(),
   prixPrestations: z.record(z.string(), z.number().min(0)).optional(),
-  frequenceOperations: frequenceEnum.optional(),
   frequenceOperationsJours: z.number().int().positive().optional(),
-  frequenceControle: frequenceEnum.optional(),
   frequenceControleJours: z.number().int().positive().optional(),
   premiereDateOperation: z.string().or(z.date()).transform((val) => new Date(val)).optional(),
   premiereDateControle: z.string().or(z.date()).transform((val) => new Date(val)).optional(),
@@ -150,9 +139,7 @@ export const createContratSchema = z.object({
   dateFin: z.string().or(z.date()).transform((val) => new Date(val)).optional(),
   reconductionAuto: z.boolean().optional().default(false),
   prestations: z.array(z.string()).min(1, 'Au moins une prestation requise'),
-  frequenceOperations: frequenceEnum.optional(),
   frequenceOperationsJours: z.number().int().positive().optional(),
-  frequenceControle: frequenceEnum.optional(),
   frequenceControleJours: z.number().int().positive().optional(),
   premiereDateOperation: z.string().or(z.date()).transform((val) => new Date(val)).optional(),
   premiereDateControle: z.string().or(z.date()).transform((val) => new Date(val)).optional(),
@@ -178,11 +165,10 @@ export const createContratSchema = z.object({
   if (data.statut === 'ACTIF') {
     const hasContratSites = data.contratSites && data.contratSites.length > 0;
     if (hasContratSites) {
-      // Si on a des sites, les fréquences sont au niveau site
       return true;
     }
-    const hasFrequenceOp = !!data.frequenceOperations;
-    const hasFrequenceCtrl = !!data.frequenceControle;
+    const hasFrequenceOp = !!data.frequenceOperationsJours;
+    const hasFrequenceCtrl = !!data.frequenceControleJours;
 
     if (!hasFrequenceOp && !hasFrequenceCtrl) {
       return false;
@@ -198,7 +184,7 @@ export const createContratSchema = z.object({
   }
   return true;
 }, {
-  message: 'Un contrat actif nécessite au moins une fréquence avec sa date de première intervention',
+  message: 'Un contrat actif nécessite au moins une fréquence (en jours) avec sa date de première intervention',
 });
 
 export const updateContratSchema = z.object({
@@ -208,9 +194,7 @@ export const updateContratSchema = z.object({
   dateFin: z.string().or(z.date()).transform((val) => new Date(val)).optional().nullable(),
   reconductionAuto: z.boolean().optional(),
   prestations: z.array(z.string()).min(1, 'Au moins une prestation requise').optional(),
-  frequenceOperations: frequenceEnum.optional().nullable(),
   frequenceOperationsJours: z.number().int().positive().optional().nullable(),
-  frequenceControle: frequenceEnum.optional().nullable(),
   frequenceControleJours: z.number().int().positive().optional().nullable(),
   premiereDateOperation: z.string().or(z.date()).transform((val) => new Date(val)).optional().nullable(),
   premiereDateControle: z.string().or(z.date()).transform((val) => new Date(val)).optional().nullable(),

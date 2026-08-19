@@ -1,0 +1,8 @@
+ref,nomEntreprise,formeJuridique,siegeRC,siegeNIF,siegeAI,siegeNIS,siegeAdresse,siegeCodePostal,siegeVille,siegePays,siegeTel,siegeFax,siegeEmail,siegeWebsite,secteur,notes
+# ref = identifiant court UNIQUE que TU choisis (ex: SANOFI, AIR_ALGERIE) — sert de clé dans les autres fichiers
+# formeJuridique : SARL | EURL | SPA | SNC | AUTO_ENTREPRENEUR | ASSOCIATION | PARTICULIER | AUTRE
+# siegePays : laisser vide = "Algérie" par défaut
+SANOFI,SANOFI AVENTIS ALGERIE,SPA,98B0005416,99816000541627,16440112611,,Zone d'activité BT B LOT 29-30-31,,HYDRA-ALGER,Algérie,,,,,Pharmacie,
+ABC_PEPSI,ABC PEPSI,,,,,,,,ROUIBA,Algérie,,,,,,
+AIR_ALGERIE,AIR ALGERIE CATERING,,,,,,,,ALGER,Algérie,,,,,Agroalimentaire,
+ART_TEA,ART TEA,SARL,02B0020800-00/16,216129060643,16127010342,,Cooperative les vergers 02 N°04 chemin Romain,,Birkhadem-ALGER,Algérie,,,,,,

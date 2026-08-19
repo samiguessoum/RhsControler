@@ -1,25 +1,14 @@
-import { addDays, addWeeks, addMonths, startOfDay, endOfDay, startOfWeek, endOfWeek, format } from 'date-fns';
+import { addDays, startOfDay, endOfDay, startOfWeek, endOfWeek, format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Frequence } from '@prisma/client';
 
 /**
- * Calcule la prochaine date d'intervention selon la fréquence
+ * Calcule la prochaine date d'intervention selon un intervalle en jours
  */
 export function getProchaineDateIntervention(
   derniereDate: Date,
-  frequence: Frequence,
-  joursPersonnalises?: number | null
+  jours: number | null | undefined
 ): Date {
-  const frequenceMapping: Record<Frequence, () => Date> = {
-    HEBDOMADAIRE: () => addWeeks(derniereDate, 1),
-    MENSUELLE: () => addMonths(derniereDate, 1),
-    TRIMESTRIELLE: () => addMonths(derniereDate, 3),
-    SEMESTRIELLE: () => addMonths(derniereDate, 6),
-    ANNUELLE: () => addMonths(derniereDate, 12),
-    PERSONNALISEE: () => addDays(derniereDate, joursPersonnalises || 30),
-  };
-
-  return frequenceMapping[frequence]();
+  return addDays(derniereDate, jours || 30);
 }
 
 /**
