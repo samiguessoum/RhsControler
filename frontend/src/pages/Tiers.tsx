@@ -35,6 +35,7 @@ import { CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
@@ -1295,28 +1296,24 @@ function TiersFormDialog({
                 </div>
               </div>
               {isClient && sites.filter(s => s.nom?.trim()).length > 0 && (
-                <div className="space-y-2 pt-1">
-                  <Label className="text-xs text-muted-foreground">Sites associés à ce contact</Label>
-                  <div className="flex flex-wrap gap-2">
+                <div className="pt-3 border-t space-y-2">
+                  <Label className="text-xs font-medium text-muted-foreground">Rattacher à un site spécifique</Label>
+                  <div className="flex flex-col gap-2">
                     {sites.map((s, sIdx) => {
                       const label = s.nom?.trim() || `Site ${sites.length - sIdx}`;
                       const checked = (contactPrincipal.siteIndices ?? []).includes(sIdx);
                       return (
-                        <button
-                          key={sIdx}
-                          type="button"
-                          onClick={() => toggleContactPrincipalSiteIndex(sIdx)}
-                          className={cn(
-                            'px-3 py-1 rounded-full text-xs border transition-colors',
-                            checked ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
-                          )}
-                        >
-                          {label}
-                        </button>
+                        <label key={sIdx} className="flex items-center gap-2.5 cursor-pointer group">
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={() => toggleContactPrincipalSiteIndex(sIdx)}
+                          />
+                          <span className={cn('text-sm', checked ? 'font-medium text-foreground' : 'text-muted-foreground group-hover:text-foreground')}>{label}</span>
+                        </label>
                       );
                     })}
                   </div>
-                  <p className="text-[11px] text-muted-foreground">Sans sélection → contact siège (tous sites)</p>
+                  <p className="text-[11px] text-muted-foreground italic">Sans sélection → contact visible sur tous les sites</p>
                 </div>
               )}
             </div>
@@ -1387,28 +1384,24 @@ function TiersFormDialog({
                       </div>
                     </div>
                     {isClient && sites.filter(s => s.nom?.trim()).length > 0 && (
-                      <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground">Sites associés</Label>
-                        <div className="flex flex-wrap gap-2">
+                      <div className="pt-3 border-t space-y-2 col-span-full">
+                        <Label className="text-xs font-medium text-muted-foreground">Rattacher à un site spécifique</Label>
+                        <div className="flex flex-col gap-2">
                           {sites.map((s, sIdx) => {
                             const label = s.nom?.trim() || `Site ${sites.length - sIdx}`;
                             const checked = (contact.siteIndices ?? []).includes(sIdx);
                             return (
-                              <button
-                                key={sIdx}
-                                type="button"
-                                onClick={() => toggleContactSiteIndex(index, sIdx)}
-                                className={cn(
-                                  'px-3 py-1 rounded-full text-xs border transition-colors',
-                                  checked ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
-                                )}
-                              >
-                                {label}
-                              </button>
+                              <label key={sIdx} className="flex items-center gap-2.5 cursor-pointer group">
+                                <Checkbox
+                                  checked={checked}
+                                  onCheckedChange={() => toggleContactSiteIndex(index, sIdx)}
+                                />
+                                <span className={cn('text-sm', checked ? 'font-medium text-foreground' : 'text-muted-foreground group-hover:text-foreground')}>{label}</span>
+                              </label>
                             );
                           })}
                         </div>
-                        <p className="text-[11px] text-muted-foreground">Sans sélection → contact siège</p>
+                        <p className="text-[11px] text-muted-foreground italic">Sans sélection → visible sur tous les sites</p>
                       </div>
                     )}
                   </div>
