@@ -47,9 +47,7 @@ export declare const planningService: {
         type: import(".prisma/client").$Enums.ContratType;
         notes: string | null;
         prestations: string[];
-        frequenceOperations: import(".prisma/client").$Enums.Frequence | null;
         frequenceOperationsJours: number | null;
-        frequenceControle: import(".prisma/client").$Enums.Frequence | null;
         frequenceControleJours: number | null;
         premiereDateOperation: Date | null;
         premiereDateControle: Date | null;
@@ -84,9 +82,7 @@ export declare const planningService: {
             siteId: string;
             prestations: string[];
             prixPrestations: import("@prisma/client/runtime/library").JsonValue;
-            frequenceOperations: import(".prisma/client").$Enums.Frequence | null;
             frequenceOperationsJours: number | null;
-            frequenceControle: import(".prisma/client").$Enums.Frequence | null;
             frequenceControleJours: number | null;
             premiereDateOperation: Date | null;
             premiereDateControle: Date | null;
@@ -120,9 +116,7 @@ export declare const planningService: {
         type: import(".prisma/client").$Enums.ContratType;
         notes: string | null;
         prestations: string[];
-        frequenceOperations: import(".prisma/client").$Enums.Frequence | null;
         frequenceOperationsJours: number | null;
-        frequenceControle: import(".prisma/client").$Enums.Frequence | null;
         frequenceControleJours: number | null;
         premiereDateOperation: Date | null;
         premiereDateControle: Date | null;
@@ -163,9 +157,7 @@ export declare const planningService: {
             siteId: string;
             prestations: string[];
             prixPrestations: import("@prisma/client/runtime/library").JsonValue;
-            frequenceOperations: import(".prisma/client").$Enums.Frequence | null;
             frequenceOperationsJours: number | null;
-            frequenceControle: import(".prisma/client").$Enums.Frequence | null;
             frequenceControleJours: number | null;
             premiereDateOperation: Date | null;
             premiereDateControle: Date | null;
@@ -199,9 +191,7 @@ export declare const planningService: {
         type: import(".prisma/client").$Enums.ContratType;
         notes: string | null;
         prestations: string[];
-        frequenceOperations: import(".prisma/client").$Enums.Frequence | null;
         frequenceOperationsJours: number | null;
-        frequenceControle: import(".prisma/client").$Enums.Frequence | null;
         frequenceControleJours: number | null;
         premiereDateOperation: Date | null;
         premiereDateControle: Date | null;
@@ -514,9 +504,7 @@ export declare const planningService: {
                 type: import(".prisma/client").$Enums.ContratType;
                 notes: string | null;
                 prestations: string[];
-                frequenceOperations: import(".prisma/client").$Enums.Frequence | null;
                 frequenceOperationsJours: number | null;
-                frequenceControle: import(".prisma/client").$Enums.Frequence | null;
                 frequenceControleJours: number | null;
                 premiereDateOperation: Date | null;
                 premiereDateControle: Date | null;
@@ -612,9 +600,7 @@ export declare const planningService: {
             type: import(".prisma/client").$Enums.ContratType;
             notes: string | null;
             prestations: string[];
-            frequenceOperations: import(".prisma/client").$Enums.Frequence | null;
             frequenceOperationsJours: number | null;
-            frequenceControle: import(".prisma/client").$Enums.Frequence | null;
             frequenceControleJours: number | null;
             premiereDateOperation: Date | null;
             premiereDateControle: Date | null;
@@ -738,9 +724,7 @@ export declare const planningService: {
                 siteId: string;
                 prestations: string[];
                 prixPrestations: import("@prisma/client/runtime/library").JsonValue;
-                frequenceOperations: import(".prisma/client").$Enums.Frequence | null;
                 frequenceOperationsJours: number | null;
-                frequenceControle: import(".prisma/client").$Enums.Frequence | null;
                 frequenceControleJours: number | null;
                 premiereDateOperation: Date | null;
                 premiereDateControle: Date | null;
@@ -755,9 +739,7 @@ export declare const planningService: {
             type: import(".prisma/client").$Enums.ContratType;
             notes: string | null;
             prestations: string[];
-            frequenceOperations: import(".prisma/client").$Enums.Frequence | null;
             frequenceOperationsJours: number | null;
-            frequenceControle: import(".prisma/client").$Enums.Frequence | null;
             frequenceControleJours: number | null;
             premiereDateOperation: Date | null;
             premiereDateControle: Date | null;

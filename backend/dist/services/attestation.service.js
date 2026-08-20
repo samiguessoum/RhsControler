@@ -69,7 +69,6 @@ export const attestationService = {
                         id: true,
                         prestations: true,
                         nombreOperations: true,
-                        frequenceOperations: true,
                         frequenceOperationsJours: true,
                         attestationMessageTemplate: true,
                         attestationControleMessageTemplate: true,
@@ -104,7 +103,7 @@ export const attestationService = {
         const operationsLabel = contratPrestations.length > 0
             ? contratPrestations.join(', ')
             : (intervention.prestation?.trim() || 'prestation technique');
-        // Fréquence en jours : depuis le ContratSite du site concerné, sinon contrat, sinon enum legacy
+        // Fréquence en jours : depuis le ContratSite du site concerné, sinon contrat
         let frequenceJours = null;
         if (intervention.siteId && intervention.contrat?.contratSites) {
             const cs = intervention.contrat.contratSites.find((s) => s.siteId === intervention.siteId);
@@ -113,16 +112,6 @@ export const attestationService = {
         }
         if (frequenceJours == null && intervention.contrat?.frequenceOperationsJours) {
             frequenceJours = intervention.contrat.frequenceOperationsJours;
-        }
-        if (frequenceJours == null && intervention.contrat?.frequenceOperations) {
-            const freqToJours = {
-                HEBDOMADAIRE: 7,
-                MENSUELLE: 30,
-                TRIMESTRIELLE: 92,
-                SEMESTRIELLE: 182,
-                ANNUELLE: 365,
-            };
-            frequenceJours = freqToJours[intervention.contrat.frequenceOperations] ?? null;
         }
         // Fallback : 30 jours
         const garantieJours = frequenceJours ?? 30;

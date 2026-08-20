@@ -243,8 +243,8 @@ export const interventionController = {
             }
             let remainingOperations = null;
             let remainingControles = null;
-            let freqOps = null;
-            let freqCtrls = null;
+            let freqOpsJours = null;
+            let freqCtrlsJours = null;
             if (intervention.contrat) {
                 const siteId = intervention.siteId || undefined;
                 let maxOps = null;
@@ -254,8 +254,8 @@ export const interventionController = {
                     if (cs) {
                         maxOps = cs.nombreOperations ?? null;
                         maxCtrls = cs.nombreVisitesControle ?? null;
-                        freqOps = cs.frequenceOperations || null;
-                        freqCtrls = cs.frequenceControle || null;
+                        freqOpsJours = cs.frequenceOperationsJours ?? null;
+                        freqCtrlsJours = cs.frequenceControleJours ?? null;
                     }
                 }
                 if (maxOps === null) {
@@ -264,11 +264,11 @@ export const interventionController = {
                 if (maxCtrls === null) {
                     maxCtrls = intervention.contrat.nombreVisitesControle ?? null;
                 }
-                if (freqOps === null) {
-                    freqOps = intervention.contrat.frequenceOperations || null;
+                if (freqOpsJours === null) {
+                    freqOpsJours = intervention.contrat.frequenceOperationsJours ?? null;
                 }
-                if (freqCtrls === null) {
-                    freqCtrls = intervention.contrat.frequenceControle || null;
+                if (freqCtrlsJours === null) {
+                    freqCtrlsJours = intervention.contrat.frequenceControleJours ?? null;
                 }
                 const doneOps = await prisma.intervention.count({
                     where: {
@@ -333,8 +333,8 @@ export const interventionController = {
                     ...intervention,
                     remainingOperations,
                     remainingControles,
-                    frequenceOperations: freqOps,
-                    frequenceControle: freqCtrls,
+                    frequenceOperationsJours: freqOpsJours,
+                    frequenceControleJours: freqCtrlsJours,
                     previousIntervention,
                 },
             });

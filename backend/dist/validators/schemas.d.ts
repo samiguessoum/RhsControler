@@ -452,7 +452,6 @@ export declare const updatePrestationSchema: z.ZodObject<{
     ordre?: number | undefined;
     description?: string | undefined;
 }>;
-export declare const frequenceEnum: z.ZodEnum<["HEBDOMADAIRE", "MENSUELLE", "TRIMESTRIELLE", "SEMESTRIELLE", "ANNUELLE", "PERSONNALISEE"]>;
 export declare const createContratSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     clientId: z.ZodString;
     type: z.ZodEnum<["ANNUEL", "PONCTUEL"]>;
@@ -460,9 +459,7 @@ export declare const createContratSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<
     dateFin: z.ZodOptional<z.ZodEffects<z.ZodUnion<[z.ZodString, z.ZodDate]>, Date, string | Date>>;
     reconductionAuto: z.ZodDefault<z.ZodOptional<z.ZodBoolean>>;
     prestations: z.ZodArray<z.ZodString, "many">;
-    frequenceOperations: z.ZodOptional<z.ZodEnum<["HEBDOMADAIRE", "MENSUELLE", "TRIMESTRIELLE", "SEMESTRIELLE", "ANNUELLE", "PERSONNALISEE"]>>;
     frequenceOperationsJours: z.ZodOptional<z.ZodNumber>;
-    frequenceControle: z.ZodOptional<z.ZodEnum<["HEBDOMADAIRE", "MENSUELLE", "TRIMESTRIELLE", "SEMESTRIELLE", "ANNUELLE", "PERSONNALISEE"]>>;
     frequenceControleJours: z.ZodOptional<z.ZodNumber>;
     premiereDateOperation: z.ZodOptional<z.ZodEffects<z.ZodUnion<[z.ZodString, z.ZodDate]>, Date, string | Date>>;
     premiereDateControle: z.ZodOptional<z.ZodEffects<z.ZodUnion<[z.ZodString, z.ZodDate]>, Date, string | Date>>;
@@ -476,9 +473,7 @@ export declare const createContratSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<
         siteId: z.ZodString;
         prestations: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
         prixPrestations: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
-        frequenceOperations: z.ZodOptional<z.ZodEnum<["HEBDOMADAIRE", "MENSUELLE", "TRIMESTRIELLE", "SEMESTRIELLE", "ANNUELLE", "PERSONNALISEE"]>>;
         frequenceOperationsJours: z.ZodOptional<z.ZodNumber>;
-        frequenceControle: z.ZodOptional<z.ZodEnum<["HEBDOMADAIRE", "MENSUELLE", "TRIMESTRIELLE", "SEMESTRIELLE", "ANNUELLE", "PERSONNALISEE"]>>;
         frequenceControleJours: z.ZodOptional<z.ZodNumber>;
         premiereDateOperation: z.ZodOptional<z.ZodEffects<z.ZodUnion<[z.ZodString, z.ZodDate]>, Date, string | Date>>;
         premiereDateControle: z.ZodOptional<z.ZodEffects<z.ZodUnion<[z.ZodString, z.ZodDate]>, Date, string | Date>>;
@@ -490,9 +485,7 @@ export declare const createContratSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<
         notes?: string | undefined;
         prestations?: string[] | undefined;
         prixPrestations?: Record<string, number> | undefined;
-        frequenceOperations?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceOperationsJours?: number | undefined;
-        frequenceControle?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceControleJours?: number | undefined;
         premiereDateOperation?: Date | undefined;
         premiereDateControle?: Date | undefined;
@@ -503,9 +496,7 @@ export declare const createContratSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<
         notes?: string | undefined;
         prestations?: string[] | undefined;
         prixPrestations?: Record<string, number> | undefined;
-        frequenceOperations?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceOperationsJours?: number | undefined;
-        frequenceControle?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceControleJours?: number | undefined;
         premiereDateOperation?: string | Date | undefined;
         premiereDateControle?: string | Date | undefined;
@@ -521,9 +512,7 @@ export declare const createContratSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<
     statut: "ACTIF" | "SUSPENDU" | "TERMINE";
     autoCreerProchaine: boolean;
     notes?: string | undefined;
-    frequenceOperations?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
     frequenceOperationsJours?: number | undefined;
-    frequenceControle?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
     frequenceControleJours?: number | undefined;
     premiereDateOperation?: Date | undefined;
     premiereDateControle?: Date | undefined;
@@ -536,9 +525,7 @@ export declare const createContratSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<
         notes?: string | undefined;
         prestations?: string[] | undefined;
         prixPrestations?: Record<string, number> | undefined;
-        frequenceOperations?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceOperationsJours?: number | undefined;
-        frequenceControle?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceControleJours?: number | undefined;
         premiereDateOperation?: Date | undefined;
         premiereDateControle?: Date | undefined;
@@ -551,9 +538,7 @@ export declare const createContratSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<
     clientId: string;
     dateDebut: string | Date;
     notes?: string | undefined;
-    frequenceOperations?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
     frequenceOperationsJours?: number | undefined;
-    frequenceControle?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
     frequenceControleJours?: number | undefined;
     premiereDateOperation?: string | Date | undefined;
     premiereDateControle?: string | Date | undefined;
@@ -569,9 +554,7 @@ export declare const createContratSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<
         notes?: string | undefined;
         prestations?: string[] | undefined;
         prixPrestations?: Record<string, number> | undefined;
-        frequenceOperations?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceOperationsJours?: number | undefined;
-        frequenceControle?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceControleJours?: number | undefined;
         premiereDateOperation?: string | Date | undefined;
         premiereDateControle?: string | Date | undefined;
@@ -587,9 +570,7 @@ export declare const createContratSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<
     statut: "ACTIF" | "SUSPENDU" | "TERMINE";
     autoCreerProchaine: boolean;
     notes?: string | undefined;
-    frequenceOperations?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
     frequenceOperationsJours?: number | undefined;
-    frequenceControle?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
     frequenceControleJours?: number | undefined;
     premiereDateOperation?: Date | undefined;
     premiereDateControle?: Date | undefined;
@@ -602,9 +583,7 @@ export declare const createContratSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<
         notes?: string | undefined;
         prestations?: string[] | undefined;
         prixPrestations?: Record<string, number> | undefined;
-        frequenceOperations?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceOperationsJours?: number | undefined;
-        frequenceControle?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceControleJours?: number | undefined;
         premiereDateOperation?: Date | undefined;
         premiereDateControle?: Date | undefined;
@@ -617,9 +596,7 @@ export declare const createContratSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<
     clientId: string;
     dateDebut: string | Date;
     notes?: string | undefined;
-    frequenceOperations?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
     frequenceOperationsJours?: number | undefined;
-    frequenceControle?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
     frequenceControleJours?: number | undefined;
     premiereDateOperation?: string | Date | undefined;
     premiereDateControle?: string | Date | undefined;
@@ -635,9 +612,7 @@ export declare const createContratSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<
         notes?: string | undefined;
         prestations?: string[] | undefined;
         prixPrestations?: Record<string, number> | undefined;
-        frequenceOperations?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceOperationsJours?: number | undefined;
-        frequenceControle?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceControleJours?: number | undefined;
         premiereDateOperation?: string | Date | undefined;
         premiereDateControle?: string | Date | undefined;
@@ -653,9 +628,7 @@ export declare const createContratSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<
     statut: "ACTIF" | "SUSPENDU" | "TERMINE";
     autoCreerProchaine: boolean;
     notes?: string | undefined;
-    frequenceOperations?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
     frequenceOperationsJours?: number | undefined;
-    frequenceControle?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
     frequenceControleJours?: number | undefined;
     premiereDateOperation?: Date | undefined;
     premiereDateControle?: Date | undefined;
@@ -668,9 +641,7 @@ export declare const createContratSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<
         notes?: string | undefined;
         prestations?: string[] | undefined;
         prixPrestations?: Record<string, number> | undefined;
-        frequenceOperations?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceOperationsJours?: number | undefined;
-        frequenceControle?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceControleJours?: number | undefined;
         premiereDateOperation?: Date | undefined;
         premiereDateControle?: Date | undefined;
@@ -683,9 +654,7 @@ export declare const createContratSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<
     clientId: string;
     dateDebut: string | Date;
     notes?: string | undefined;
-    frequenceOperations?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
     frequenceOperationsJours?: number | undefined;
-    frequenceControle?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
     frequenceControleJours?: number | undefined;
     premiereDateOperation?: string | Date | undefined;
     premiereDateControle?: string | Date | undefined;
@@ -701,9 +670,7 @@ export declare const createContratSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<
         notes?: string | undefined;
         prestations?: string[] | undefined;
         prixPrestations?: Record<string, number> | undefined;
-        frequenceOperations?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceOperationsJours?: number | undefined;
-        frequenceControle?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceControleJours?: number | undefined;
         premiereDateOperation?: string | Date | undefined;
         premiereDateControle?: string | Date | undefined;
@@ -718,9 +685,7 @@ export declare const updateContratSchema: z.ZodObject<{
     dateFin: z.ZodNullable<z.ZodOptional<z.ZodEffects<z.ZodUnion<[z.ZodString, z.ZodDate]>, Date, string | Date>>>;
     reconductionAuto: z.ZodOptional<z.ZodBoolean>;
     prestations: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
-    frequenceOperations: z.ZodNullable<z.ZodOptional<z.ZodEnum<["HEBDOMADAIRE", "MENSUELLE", "TRIMESTRIELLE", "SEMESTRIELLE", "ANNUELLE", "PERSONNALISEE"]>>>;
     frequenceOperationsJours: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
-    frequenceControle: z.ZodNullable<z.ZodOptional<z.ZodEnum<["HEBDOMADAIRE", "MENSUELLE", "TRIMESTRIELLE", "SEMESTRIELLE", "ANNUELLE", "PERSONNALISEE"]>>>;
     frequenceControleJours: z.ZodNullable<z.ZodOptional<z.ZodNumber>>;
     premiereDateOperation: z.ZodNullable<z.ZodOptional<z.ZodEffects<z.ZodUnion<[z.ZodString, z.ZodDate]>, Date, string | Date>>>;
     premiereDateControle: z.ZodNullable<z.ZodOptional<z.ZodEffects<z.ZodUnion<[z.ZodString, z.ZodDate]>, Date, string | Date>>>;
@@ -734,9 +699,7 @@ export declare const updateContratSchema: z.ZodObject<{
         siteId: z.ZodString;
         prestations: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
         prixPrestations: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodNumber>>;
-        frequenceOperations: z.ZodOptional<z.ZodEnum<["HEBDOMADAIRE", "MENSUELLE", "TRIMESTRIELLE", "SEMESTRIELLE", "ANNUELLE", "PERSONNALISEE"]>>;
         frequenceOperationsJours: z.ZodOptional<z.ZodNumber>;
-        frequenceControle: z.ZodOptional<z.ZodEnum<["HEBDOMADAIRE", "MENSUELLE", "TRIMESTRIELLE", "SEMESTRIELLE", "ANNUELLE", "PERSONNALISEE"]>>;
         frequenceControleJours: z.ZodOptional<z.ZodNumber>;
         premiereDateOperation: z.ZodOptional<z.ZodEffects<z.ZodUnion<[z.ZodString, z.ZodDate]>, Date, string | Date>>;
         premiereDateControle: z.ZodOptional<z.ZodEffects<z.ZodUnion<[z.ZodString, z.ZodDate]>, Date, string | Date>>;
@@ -748,9 +711,7 @@ export declare const updateContratSchema: z.ZodObject<{
         notes?: string | undefined;
         prestations?: string[] | undefined;
         prixPrestations?: Record<string, number> | undefined;
-        frequenceOperations?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceOperationsJours?: number | undefined;
-        frequenceControle?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceControleJours?: number | undefined;
         premiereDateOperation?: Date | undefined;
         premiereDateControle?: Date | undefined;
@@ -761,9 +722,7 @@ export declare const updateContratSchema: z.ZodObject<{
         notes?: string | undefined;
         prestations?: string[] | undefined;
         prixPrestations?: Record<string, number> | undefined;
-        frequenceOperations?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceOperationsJours?: number | undefined;
-        frequenceControle?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceControleJours?: number | undefined;
         premiereDateOperation?: string | Date | undefined;
         premiereDateControle?: string | Date | undefined;
@@ -774,9 +733,7 @@ export declare const updateContratSchema: z.ZodObject<{
     type?: "ANNUEL" | "PONCTUEL" | undefined;
     notes?: string | undefined;
     prestations?: string[] | undefined;
-    frequenceOperations?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | null | undefined;
     frequenceOperationsJours?: number | null | undefined;
-    frequenceControle?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | null | undefined;
     frequenceControleJours?: number | null | undefined;
     premiereDateOperation?: Date | null | undefined;
     premiereDateControle?: Date | null | undefined;
@@ -794,9 +751,7 @@ export declare const updateContratSchema: z.ZodObject<{
         notes?: string | undefined;
         prestations?: string[] | undefined;
         prixPrestations?: Record<string, number> | undefined;
-        frequenceOperations?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceOperationsJours?: number | undefined;
-        frequenceControle?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceControleJours?: number | undefined;
         premiereDateOperation?: Date | undefined;
         premiereDateControle?: Date | undefined;
@@ -807,9 +762,7 @@ export declare const updateContratSchema: z.ZodObject<{
     type?: "ANNUEL" | "PONCTUEL" | undefined;
     notes?: string | undefined;
     prestations?: string[] | undefined;
-    frequenceOperations?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | null | undefined;
     frequenceOperationsJours?: number | null | undefined;
-    frequenceControle?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | null | undefined;
     frequenceControleJours?: number | null | undefined;
     premiereDateOperation?: string | Date | null | undefined;
     premiereDateControle?: string | Date | null | undefined;
@@ -827,9 +780,7 @@ export declare const updateContratSchema: z.ZodObject<{
         notes?: string | undefined;
         prestations?: string[] | undefined;
         prixPrestations?: Record<string, number> | undefined;
-        frequenceOperations?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceOperationsJours?: number | undefined;
-        frequenceControle?: "HEBDOMADAIRE" | "MENSUELLE" | "TRIMESTRIELLE" | "SEMESTRIELLE" | "ANNUELLE" | "PERSONNALISEE" | undefined;
         frequenceControleJours?: number | undefined;
         premiereDateOperation?: string | Date | undefined;
         premiereDateControle?: string | Date | undefined;

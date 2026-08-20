@@ -130,9 +130,9 @@ Yacine,Amrani,ADMINISTRATION`,
         },
         contrats: {
           filename: 'template_contrats.csv',
-          content: `client_nom,type,date_debut,date_fin,reconduction_auto,prestations,frequence_operations,jours_personnalises,frequence_controle,premiere_date_operation,premiere_date_controle,statut
-"SARL Exemple","ANNUEL","2024-01-01","2024-12-31","true","dératisation,désinsectisation","MENSUELLE","","TRIMESTRIELLE","2024-01-15","2024-03-15","ACTIF"
-"EURL Test","PONCTUEL","2024-02-01","","false","3D","","","","2024-02-15","","ACTIF"`,
+          content: `client_nom,type,date_debut,date_fin,reconduction_auto,prestations,frequence_operations_jours,frequence_controle_jours,premiere_date_operation,premiere_date_controle,statut
+"SARL Exemple","ANNUEL","2024-01-01","2024-12-31","true","dératisation,désinsectisation","30","90","2024-01-15","2024-03-15","ACTIF"
+"EURL Test","PONCTUEL","2024-02-01","","false","3D","","","2024-02-15","","ACTIF"`,
         },
         interventions: {
           filename: 'template_interventions.csv',

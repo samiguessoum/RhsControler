@@ -1680,20 +1680,20 @@ function InterventionDetailDialog({
               <div className="text-sm space-y-2">
                 {intervention.type === 'OPERATION' && (
                   <>
-                    {intervention.contrat?.frequenceOperations && (
+                    {intervention.contrat?.frequenceOperationsJours && (
                       <p>
                         <span className="text-muted-foreground">Fréquence du contrat:</span>{' '}
                         <span className="font-medium">
-                          {getStatutLabel(intervention.contrat.frequenceOperations)}
+                          Tous les {intervention.contrat.frequenceOperationsJours} jours
                         </span>
                       </p>
                     )}
-                    {(intervention as any).frequenceOperations &&
-                      (intervention as any).frequenceOperations !== intervention.contrat?.frequenceOperations && (
+                    {(intervention as any).frequenceOperationsJours &&
+                      (intervention as any).frequenceOperationsJours !== intervention.contrat?.frequenceOperationsJours && (
                         <p>
                           <span className="text-muted-foreground">Fréquence du site:</span>{' '}
                           <span className="font-medium">
-                            {getStatutLabel((intervention as any).frequenceOperations as string)}
+                            Tous les {(intervention as any).frequenceOperationsJours} jours
                           </span>
                         </p>
                       )}
@@ -1701,20 +1701,20 @@ function InterventionDetailDialog({
                 )}
                 {intervention.type === 'CONTROLE' && (
                   <>
-                    {intervention.contrat?.frequenceControle && (
+                    {intervention.contrat?.frequenceControleJours && (
                       <p>
                         <span className="text-muted-foreground">Fréquence du contrat:</span>{' '}
                         <span className="font-medium">
-                          {getStatutLabel(intervention.contrat.frequenceControle)}
+                          Tous les {intervention.contrat.frequenceControleJours} jours
                         </span>
                       </p>
                     )}
-                    {(intervention as any).frequenceControle &&
-                      (intervention as any).frequenceControle !== intervention.contrat?.frequenceControle && (
+                    {(intervention as any).frequenceControleJours &&
+                      (intervention as any).frequenceControleJours !== intervention.contrat?.frequenceControleJours && (
                         <p>
                           <span className="text-muted-foreground">Fréquence du site:</span>{' '}
                           <span className="font-medium">
-                            {getStatutLabel((intervention as any).frequenceControle as string)}
+                            Tous les {(intervention as any).frequenceControleJours} jours
                           </span>
                         </p>
                       )}

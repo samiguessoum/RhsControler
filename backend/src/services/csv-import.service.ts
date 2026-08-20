@@ -3,7 +3,6 @@ import { stringify } from 'csv-stringify/sync';
 import { prisma } from '../config/database.js';
 import { parseDate } from '../utils/date.utils.js';
 
-const FREQUENCE_VALUES = ['HEBDOMADAIRE', 'MENSUELLE', 'TRIMESTRIELLE', 'SEMESTRIELLE', 'ANNUELLE', 'PERSONNALISEE'];
 const CONTRAT_STATUT_VALUES = ['ACTIF', 'SUSPENDU', 'TERMINE'];
 const INTERVENTION_STATUT_VALUES = ['A_PLANIFIER', 'PLANIFIEE', 'REALISEE', 'REPORTEE', 'ANNULEE'];
 
@@ -413,14 +412,14 @@ export const csvService = {
         errors.push({ row: rowNum, field: 'prestations', message: 'Au moins une prestation requise' });
       }
 
-      const frequenceOperations = row.frequence_operations?.trim() ? row.frequence_operations.toUpperCase() : undefined;
-      if (frequenceOperations && !FREQUENCE_VALUES.includes(frequenceOperations)) {
-        errors.push({ row: rowNum, field: 'frequence_operations', message: `Fréquence invalide (${FREQUENCE_VALUES.join(', ')})`, value: row.frequence_operations });
+      const frequenceOperationsJours = row.frequence_operations_jours?.trim() ? parseInt(row.frequence_operations_jours) : null;
+      if (row.frequence_operations_jours?.trim() && (!Number.isInteger(frequenceOperationsJours) || frequenceOperationsJours! <= 0)) {
+        errors.push({ row: rowNum, field: 'frequence_operations_jours', message: 'Doit être un nombre de jours positif', value: row.frequence_operations_jours });
       }
 
-      const frequenceControle = row.frequence_controle?.trim() ? row.frequence_controle.toUpperCase() : undefined;
-      if (frequenceControle && !FREQUENCE_VALUES.includes(frequenceControle)) {
-        errors.push({ row: rowNum, field: 'frequence_controle', message: `Fréquence invalide (${FREQUENCE_VALUES.join(', ')})`, value: row.frequence_controle });
+      const frequenceControleJours = row.frequence_controle_jours?.trim() ? parseInt(row.frequence_controle_jours) : null;
+      if (row.frequence_controle_jours?.trim() && (!Number.isInteger(frequenceControleJours) || frequenceControleJours! <= 0)) {
+        errors.push({ row: rowNum, field: 'frequence_controle_jours', message: 'Doit être un nombre de jours positif', value: row.frequence_controle_jours });
       }
 
       const statut = row.statut?.trim() ? row.statut.toUpperCase() : 'ACTIF';
@@ -450,9 +449,8 @@ export const csvService = {
         dateFin: row.date_fin,
         reconductionAuto: row.reconduction_auto?.toLowerCase() === 'true',
         prestations: row.prestations?.split(',').map((p: string) => p.trim()).filter(Boolean),
-        frequenceOperations,
-        frequenceOperationsJours: row.jours_personnalises ? parseInt(row.jours_personnalises) : null,
-        frequenceControle,
+        frequenceOperationsJours,
+        frequenceControleJours,
         premiereDateOperation: row.premiere_date_operation,
         premiereDateControle: row.premiere_date_controle,
         statut,
@@ -491,9 +489,8 @@ export const csvService = {
           dateFin: row.dateFin ? parseDate(row.dateFin) : null,
           reconductionAuto: row.reconductionAuto,
           prestations: row.prestations,
-          frequenceOperations: row.frequenceOperations || null,
           frequenceOperationsJours: row.frequenceOperationsJours,
-          frequenceControle: row.frequenceControle || null,
+          frequenceControleJours: row.frequenceControleJours,
           premiereDateOperation: row.premiereDateOperation ? parseDate(row.premiereDateOperation) : null,
           premiereDateControle: row.premiereDateControle ? parseDate(row.premiereDateControle) : null,
           statut: row.statut,
@@ -726,9 +723,8 @@ export const csvService = {
       date_fin: c.dateFin?.toISOString().split('T')[0] || '',
       reconduction_auto: c.reconductionAuto ? 'true' : 'false',
       prestations: c.prestations.join(','),
-      frequence_operations: c.frequenceOperations || '',
-      jours_personnalises: c.frequenceOperationsJours || '',
-      frequence_controle: c.frequenceControle || '',
+      frequence_operations_jours: c.frequenceOperationsJours || '',
+      frequence_controle_jours: c.frequenceControleJours || '',
       premiere_date_operation: c.premiereDateOperation?.toISOString().split('T')[0] || '',
       premiere_date_controle: c.premiereDateControle?.toISOString().split('T')[0] || '',
       statut: c.statut,

@@ -39,16 +39,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { contratsApi, interventionsApi, prestationsApi } from '@/services/api';
 import { formatDate, getStatutColor, getStatutLabel, cn } from '@/lib/utils';
-import type { Frequence, Prestation, InterventionStatut } from '@/types';
-
-const FREQUENCE_LABELS: Record<Frequence, string> = {
-  HEBDOMADAIRE: 'Hebdomadaire',
-  MENSUELLE: 'Mensuelle',
-  TRIMESTRIELLE: 'Trimestrielle',
-  SEMESTRIELLE: 'Semestrielle',
-  ANNUELLE: 'Annuelle',
-  PERSONNALISEE: 'Personnalisée',
-};
+import type { Prestation, InterventionStatut } from '@/types';
 
 const STATUT_CONFIG: Record<string, { label: string; color: string; icon: typeof CheckCircle2 }> = {
   ACTIF: { label: 'Actif', color: 'bg-green-100 text-green-800 border-green-200', icon: CheckCircle2 },
@@ -282,21 +273,21 @@ export function ContratDetailPage() {
               </div>
 
               {/* Fréquences globales */}
-              {(contrat.frequenceOperations || contrat.frequenceControle) && (
+              {(contrat.frequenceOperationsJours || contrat.frequenceControleJours) && (
                 <div className="grid grid-cols-2 gap-4">
-                  {contrat.frequenceOperations && (
+                  {contrat.frequenceOperationsJours && (
                     <div className="p-3 rounded-lg bg-blue-50 border border-blue-100">
                       <p className="text-xs font-medium text-blue-600 mb-1">Fréquence opérations</p>
                       <p className="text-sm font-semibold text-blue-900">
-                        {FREQUENCE_LABELS[contrat.frequenceOperations]}
+                        Tous les {contrat.frequenceOperationsJours} jours
                       </p>
                     </div>
                   )}
-                  {contrat.frequenceControle && (
+                  {contrat.frequenceControleJours && (
                     <div className="p-3 rounded-lg bg-purple-50 border border-purple-100">
                       <p className="text-xs font-medium text-purple-600 mb-1">Fréquence contrôles</p>
                       <p className="text-sm font-semibold text-purple-900">
-                        {FREQUENCE_LABELS[contrat.frequenceControle]}
+                        Tous les {contrat.frequenceControleJours} jours
                       </p>
                     </div>
                   )}
@@ -395,14 +386,14 @@ export function ContratDetailPage() {
 
                       {/* Fréquences du site */}
                       <div className="flex flex-wrap gap-2 mb-3">
-                        {cs.frequenceOperations && (
+                        {cs.frequenceOperationsJours && (
                           <Badge variant="secondary" className="text-xs">
-                            Op: {FREQUENCE_LABELS[cs.frequenceOperations]}
+                            Op: tous les {cs.frequenceOperationsJours}j
                           </Badge>
                         )}
-                        {cs.frequenceControle && (
+                        {cs.frequenceControleJours && (
                           <Badge variant="outline" className="text-xs">
-                            Ctrl: {FREQUENCE_LABELS[cs.frequenceControle]}
+                            Ctrl: tous les {cs.frequenceControleJours}j
                           </Badge>
                         )}
                         {isPonctuel && cs.nombreOperations && (

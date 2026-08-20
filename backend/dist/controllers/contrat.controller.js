@@ -132,9 +132,7 @@ export const contratController = {
                     dateFin: data.dateFin,
                     reconductionAuto: data.reconductionAuto ?? false,
                     prestations: data.prestations,
-                    frequenceOperations: data.frequenceOperations,
                     frequenceOperationsJours: data.frequenceOperationsJours,
-                    frequenceControle: data.frequenceControle,
                     frequenceControleJours: data.frequenceControleJours,
                     premiereDateOperation: data.premiereDateOperation,
                     premiereDateControle: data.premiereDateControle,
@@ -160,9 +158,7 @@ export const contratController = {
                             siteId: cs.siteId,
                             prestations: cs.prestations || [],
                             prixPrestations: cs.prixPrestations ?? {},
-                            frequenceOperations: cs.frequenceOperations,
                             frequenceOperationsJours: cs.frequenceOperationsJours,
-                            frequenceControle: cs.frequenceControle,
                             frequenceControleJours: cs.frequenceControleJours,
                             premiereDateOperation: cs.premiereDateOperation,
                             premiereDateControle: cs.premiereDateControle,
@@ -221,8 +217,8 @@ export const contratController = {
             if (data.statut === 'ACTIF' && existing.statut !== 'ACTIF') {
                 const hasContratSites = data.contratSites && data.contratSites.length > 0;
                 if (!hasContratSites) {
-                    const hasFrequenceOp = data.frequenceOperations ?? existing.frequenceOperations;
-                    const hasFrequenceCtrl = data.frequenceControle ?? existing.frequenceControle;
+                    const hasFrequenceOp = data.frequenceOperationsJours ?? existing.frequenceOperationsJours;
+                    const hasFrequenceCtrl = data.frequenceControleJours ?? existing.frequenceControleJours;
                     const hasDateOp = data.premiereDateOperation ?? existing.premiereDateOperation;
                     const hasDateCtrl = data.premiereDateControle ?? existing.premiereDateControle;
                     if (!hasFrequenceOp && !hasFrequenceCtrl) {
@@ -251,9 +247,7 @@ export const contratController = {
                     dateFin: data.dateFin !== undefined ? data.dateFin : existing.dateFin,
                     reconductionAuto: data.reconductionAuto ?? existing.reconductionAuto,
                     prestations: data.prestations ?? existing.prestations,
-                    frequenceOperations: data.frequenceOperations !== undefined ? data.frequenceOperations : existing.frequenceOperations,
                     frequenceOperationsJours: data.frequenceOperationsJours !== undefined ? data.frequenceOperationsJours : existing.frequenceOperationsJours,
-                    frequenceControle: data.frequenceControle !== undefined ? data.frequenceControle : existing.frequenceControle,
                     frequenceControleJours: data.frequenceControleJours !== undefined ? data.frequenceControleJours : existing.frequenceControleJours,
                     premiereDateOperation: data.premiereDateOperation !== undefined ? data.premiereDateOperation : existing.premiereDateOperation,
                     premiereDateControle: data.premiereDateControle !== undefined ? data.premiereDateControle : existing.premiereDateControle,
@@ -283,9 +277,7 @@ export const contratController = {
                                 siteId: cs.siteId,
                                 prestations: cs.prestations || [],
                                 prixPrestations: cs.prixPrestations ?? {},
-                                frequenceOperations: cs.frequenceOperations,
                                 frequenceOperationsJours: cs.frequenceOperationsJours,
-                                frequenceControle: cs.frequenceControle,
                                 frequenceControleJours: cs.frequenceControleJours,
                                 premiereDateOperation: cs.premiereDateOperation,
                                 premiereDateControle: cs.premiereDateControle,

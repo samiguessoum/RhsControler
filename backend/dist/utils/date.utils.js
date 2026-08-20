@@ -1,18 +1,10 @@
-import { addDays, addWeeks, addMonths, startOfDay, startOfWeek, endOfWeek, format } from 'date-fns';
+import { addDays, startOfDay, startOfWeek, endOfWeek, format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 /**
- * Calcule la prochaine date d'intervention selon la fréquence
+ * Calcule la prochaine date d'intervention selon un intervalle en jours
  */
-export function getProchaineDateIntervention(derniereDate, frequence, joursPersonnalises) {
-    const frequenceMapping = {
-        HEBDOMADAIRE: () => addWeeks(derniereDate, 1),
-        MENSUELLE: () => addMonths(derniereDate, 1),
-        TRIMESTRIELLE: () => addMonths(derniereDate, 3),
-        SEMESTRIELLE: () => addMonths(derniereDate, 6),
-        ANNUELLE: () => addMonths(derniereDate, 12),
-        PERSONNALISEE: () => addDays(derniereDate, joursPersonnalises || 30),
-    };
-    return frequenceMapping[frequence]();
+export function getProchaineDateIntervention(derniereDate, jours) {
+    return addDays(derniereDate, jours || 30);
 }
 /**
  * Retourne le nombre de jours entre deux dates

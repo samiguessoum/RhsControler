@@ -1,8 +1,7 @@
-import { Frequence } from '@prisma/client';
 /**
- * Calcule la prochaine date d'intervention selon la fréquence
+ * Calcule la prochaine date d'intervention selon un intervalle en jours
  */
-export declare function getProchaineDateIntervention(derniereDate: Date, frequence: Frequence, joursPersonnalises?: number | null): Date;
+export declare function getProchaineDateIntervention(derniereDate: Date, jours: number | null | undefined): Date;
 /**
  * Retourne le nombre de jours entre deux dates
  */
