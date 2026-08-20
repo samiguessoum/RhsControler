@@ -407,6 +407,10 @@ const contactSchema = z.object({
   dateNaissance: z.string().optional(),
   notes: z.string().optional(),
   estPrincipal: z.boolean().optional(),
+  // Association contact→site(s) : indices dans le tableau sites[] du formulaire,
+  // ou ids de sites existants (voir tiers.controller.ts)
+  siteIndices: z.array(z.number().int().nonnegative()).optional(),
+  siteIds: z.array(z.string().uuid()).optional(),
 });
 
 const adresseSchema = z.object({
