@@ -436,6 +436,7 @@ export default function TiersPage() {
 
   const [activeTab, setActiveTab] = useState<string>('all');
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [viewMode, setViewMode] = useState<'cards' | 'list'>('list');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingTiers, setEditingTiers] = useState<Tiers | null>(null);
@@ -451,11 +452,17 @@ export default function TiersPage() {
   });
 
   // Fetch tiers list
+  const PAGE_SIZE = 100;
   const typeTiersFilter = activeTab === 'all' ? undefined : activeTab as TypeTiers;
   const { data: tiersData, isLoading } = useQuery({
-    queryKey: ['tiers', typeTiersFilter, search],
-    queryFn: () => tiersApi.list({ typeTiers: typeTiersFilter, search: search || undefined, limit: 100 }),
+    queryKey: ['tiers', typeTiersFilter, search, page],
+    queryFn: () => tiersApi.list({ typeTiers: typeTiersFilter, search: search || undefined, page, limit: PAGE_SIZE }),
   });
+
+  // Revenir à la page 1 quand le filtre ou la recherche change
+  useEffect(() => {
+    setPage(1);
+  }, [typeTiersFilter, search]);
 
   // Delete mutation
   const invalidateAll = () => {
@@ -735,6 +742,35 @@ export default function TiersPage() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Pagination ── */}
+      {tiersData?.pagination && tiersData.pagination.totalPages > 1 && (
+        <div className="flex items-center justify-between bg-white rounded-xl shadow-sm px-4 py-3">
+          <p className="text-xs text-gray-400">
+            Page {tiersData.pagination.page} sur {tiersData.pagination.totalPages} — {tiersData.pagination.total} résultat{tiersData.pagination.total > 1 ? 's' : ''}
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Précédent
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
+              disabled={page >= tiersData.pagination.totalPages}
+              onClick={() => setPage((p) => Math.min(tiersData.pagination.totalPages, p + 1))}
+            >
+              Suivant
+            </Button>
           </div>
         </div>
       )}
@@ -1033,7 +1069,7 @@ function TiersFormDialog({
   const isProspect = formData.typeTiers === 'PROSPECT';
 
   const addSite = () => {
-    setSites(prev => [...prev, { nom: '', adresse: '', contacts: [] }]);
+    setSites(prev => [...prev, { nom: '', adresse: '', pays: 'Algérie', contacts: [] }]);
   };
 
   const removeSite = (index: number) => {
@@ -1350,32 +1386,82 @@ function TiersFormDialog({
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Adresse officielle</Label>
+                      <Label>Code du site</Label>
                       <Input
-                        value={site.adresse || ''}
-                        onChange={(e) => updateSite(index, 'adresse', e.target.value)}
-                        placeholder="Ex: 147 Avenue Mustapha Ali Khodja, Alger"
+                        value={site.code || ''}
+                        onChange={(e) => updateSite(index, 'code', e.target.value)}
+                        placeholder="Ex: SITE001"
                       />
-                      <div className="space-y-1">
-                        <p className="text-[11px] text-gray-400">Position approximative sur la carte</p>
-                        <GeocoderSearch
-                          hint={site.adresse}
-                          onSelect={(geo) => handleSiteGeoSelect(index, geo)}
-                        />
-                        {(site as any).latitude && (
-                          <p className="text-[11px] text-green-600 flex items-center gap-1">
-                            <MapPin className="h-3 w-3" /> Géolocalisé{site.ville ? ` — ${site.ville}` : ''}
-                          </p>
-                        )}
-                      </div>
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+                  <div className="space-y-2">
+                    <Label>Adresse officielle</Label>
+                    <Input
+                      value={site.adresse || ''}
+                      onChange={(e) => updateSite(index, 'adresse', e.target.value)}
+                      placeholder="Ex: 147 Avenue Mustapha Ali Khodja, Alger"
+                    />
+                    <div className="space-y-1">
+                      <p className="text-[11px] text-gray-400">Position approximative sur la carte</p>
+                      <GeocoderSearch
+                        hint={site.adresse}
+                        onSelect={(geo) => handleSiteGeoSelect(index, geo)}
+                      />
+                      {(site as any).latitude && (
+                        <p className="text-[11px] text-green-600 flex items-center gap-1">
+                          <MapPin className="h-3 w-3" /> Géolocalisé{site.ville ? ` — ${site.ville}` : ''}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Complément d'adresse</Label>
+                    <Input
+                      value={site.complement || ''}
+                      onChange={(e) => updateSite(index, 'complement', e.target.value)}
+                      placeholder="Bâtiment, étage, zone industrielle..."
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label>Code postal</Label>
+                      <Input
+                        value={site.codePostal || ''}
+                        onChange={(e) => updateSite(index, 'codePostal', e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Ville</Label>
+                      <Input
+                        value={site.ville || ''}
+                        onChange={(e) => updateSite(index, 'ville', e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Pays</Label>
+                      <Input
+                        value={site.pays || ''}
+                        onChange={(e) => updateSite(index, 'pays', e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label>Téléphone</Label>
                       <Input
                         value={site.tel || ''}
                         onChange={(e) => updateSite(index, 'tel', e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Fax</Label>
+                      <Input
+                        value={site.fax || ''}
+                        onChange={(e) => updateSite(index, 'fax', e.target.value)}
                       />
                     </div>
                     <div className="space-y-2">
@@ -1386,6 +1472,34 @@ function TiersFormDialog({
                         onChange={(e) => updateSite(index, 'email', e.target.value)}
                       />
                     </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Horaires d'ouverture</Label>
+                      <Input
+                        value={site.horairesOuverture || ''}
+                        onChange={(e) => updateSite(index, 'horairesOuverture', e.target.value)}
+                        placeholder="Ex: Lun-Ven 8h-17h"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Accessibilité</Label>
+                      <Input
+                        value={site.accessibilite || ''}
+                        onChange={(e) => updateSite(index, 'accessibilite', e.target.value)}
+                        placeholder="Parking, accès camion..."
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Notes</Label>
+                    <Textarea
+                      value={site.notes || ''}
+                      onChange={(e) => updateSite(index, 'notes', e.target.value)}
+                      rows={2}
+                    />
                   </div>
                 </div>
               ))}
