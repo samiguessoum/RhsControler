@@ -61,6 +61,9 @@ const permissions: Record<string, Role[]> = {
   manageFacturation:    ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR'],
   viewFacturation:      ['SUPER_ADMIN', 'DIRECTION'],
   viewDashboardFinance: ['SUPER_ADMIN', 'DIRECTION'],
+
+  // Terrain & Zoning
+  manageInterventions: ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR'],
 };
 
 export const useAuthStore = create<AuthState>()(

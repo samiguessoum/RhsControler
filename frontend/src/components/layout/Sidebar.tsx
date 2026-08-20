@@ -16,6 +16,7 @@ import {
   TrendingUp,
   Warehouse,
   KanbanSquare,
+  ClipboardCheck,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -86,6 +87,7 @@ export function Sidebar({ stats, mobileOpen = false, onMobileClose }: SidebarPro
       badgeVariant: 'warning' as const,
       show: true,
     },
+    { to: '/terrain', icon: ClipboardCheck, label: 'Terrain & Rapports', show: true },
     { to: '/tiers', icon: Building2, label: 'Tiers', show: !isTeamOnly },
     { to: '/contrats', icon: FileText, label: 'Contrats', show: !isTeamOnly },
   ];
