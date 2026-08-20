@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { GeocoderSearch } from '@/components/AddressAutocomplete';
 import type { GeoSelection } from '@/components/AddressAutocomplete';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -1932,20 +1932,27 @@ function TiersDetailDialog({
                             )}
                           </div>
                         </div>
-                        {site._count && (
-                          <div className="flex gap-2">
-                            {site._count.contratSites > 0 && (
-                              <Badge variant="outline" className="text-xs bg-white">
-                                {site._count.contratSites} contrat(s)
-                              </Badge>
-                            )}
-                            {site._count.interventions > 0 && (
-                              <Badge variant="outline" className="text-xs bg-white">
-                                {site._count.interventions} interv.
-                              </Badge>
-                            )}
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {site._count && (
+                            <div className="flex gap-2">
+                              {site._count.contratSites > 0 && (
+                                <Badge variant="outline" className="text-xs bg-white">
+                                  {site._count.contratSites} contrat(s)
+                                </Badge>
+                              )}
+                              {site._count.interventions > 0 && (
+                                <Badge variant="outline" className="text-xs bg-white">
+                                  {site._count.interventions} interv.
+                                </Badge>
+                              )}
+                            </div>
+                          )}
+                          <Link to={`/sites/${site.id}`}>
+                            <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
+                              Zoning & Terrain
+                            </Button>
+                          </Link>
+                        </div>
                       </div>
                       {(site.tel || site.email) && (
                         <div className="flex gap-4 mt-3 ml-10 text-sm">
