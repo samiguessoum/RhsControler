@@ -1,0 +1,15 @@
+client_ref,site_ref,type,dateDebut,dateFin,reconductionAuto,statut,numeroBonCommande,prestations,montantHT,frequenceOperationsJours,premiereDateOperation,frequenceControleJours,premiereDateControle,notes
+# type : ANNUEL | PONCTUEL
+# dateFin : format YYYY-MM-DD
+# reconductionAuto : true | false
+# statut : ACTIF | SUSPENDU | TERMINE (défaut: ACTIF)
+# frequenceOperationsJours : nombre de jours entre opérations (ex: 30 = mensuel, 90 = trimestriel)
+# frequenceControleJours : nombre de jours entre contrôles
+# prestations : séparées par virgule (ex: 3D,Dératisation)
+# site_ref vide = contrat au niveau société (pas de site spécifique)
+# une ligne par site — si un contrat couvre 3 sites, mettre 3 lignes avec même client_ref+dateDebut
+ABC_PEPSI,ABC_PEPSI_ROUIBA,ANNUEL,2025-05-15,2026-12-31,true,ACTIF,,3D,160000,30,2026-01-07,15,2026-01-21,
+AIR_ALGERIE,AIR_ALGER,ANNUEL,2025-12-07,2028-12-06,true,ACTIF,,3D,503000,30,2026-01-22,15,2026-02-11,
+AIR_ALGERIE,AIR_ORAN,PONCTUEL,2026-05-11,2026-12-10,false,ACTIF,,3D,105000,30,2026-05-13,,,
+AIR_ALGERIE,AIR_CONSTANTINE,PONCTUEL,2026-05-11,2026-12-10,false,ACTIF,,3D,95800,30,2026-06-17,,,
+ART_TEA,,ANNUEL,2020-01-01,2026-12-31,true,ACTIF,,3D,30000,90,2026-01-15,30,2026-02-23,

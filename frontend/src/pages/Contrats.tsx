@@ -26,7 +26,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { clientsApi, contratsApi, interventionsApi, prestationsApi, usersApi } from '@/services/api';
 import { formatDate } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
-import type { Contrat, CreateContratInput, Client, User, Frequence, ContratStatut, ContratType, ContratSiteInput } from '@/types';
+import type { Contrat, CreateContratInput, Client, User, ContratStatut, ContratType, ContratSiteInput } from '@/types';
 
 function computeProjectionDates(
   premierDate: string,
@@ -54,24 +54,6 @@ function computeProjectionDates(
   }
   return dates;
 }
-
-const FREQUENCES: Frequence[] = [
-  'HEBDOMADAIRE',
-  'MENSUELLE',
-  'TRIMESTRIELLE',
-  'SEMESTRIELLE',
-  'ANNUELLE',
-  'PERSONNALISEE',
-];
-
-const FREQUENCE_LABELS: Record<Frequence, string> = {
-  HEBDOMADAIRE: 'Hebdomadaire',
-  MENSUELLE: 'Mensuelle',
-  TRIMESTRIELLE: 'Trimestrielle',
-  SEMESTRIELLE: 'Semestrielle',
-  ANNUELLE: 'Annuelle',
-  PERSONNALISEE: 'Personnalisée',
-};
 
 export function ContratsPage() {
   const queryClient = useQueryClient();
@@ -286,9 +268,7 @@ export function ContratsPage() {
         siteId: cs.siteId,
         prestations: cs.prestations || [],
         prixPrestations: (cs.prixPrestations as Record<string, number>) || {},
-        frequenceOperations: cs.frequenceOperations || undefined,
         frequenceOperationsJours: cs.frequenceOperationsJours ?? undefined,
-        frequenceControle: cs.frequenceControle || undefined,
         frequenceControleJours: cs.frequenceControleJours ?? undefined,
         premiereDateOperation: cs.premiereDateOperation?.split('T')[0],
         premiereDateControle: cs.premiereDateControle?.split('T')[0],
@@ -462,9 +442,9 @@ export function ContratsPage() {
                 }
               } else {
                 // Pour les annuels : au moins une fréquence
-                if (!cs.frequenceOperations && !cs.frequenceControle) {
+                if (!cs.frequenceOperationsJours && !cs.frequenceControleJours) {
                   const siteName = availableSites.find(s => s.id === cs.siteId)?.nom || 'Site';
-                  toast.error(`Configurez au moins une fréquence pour ${siteName}`);
+                  toast.error(`Configurez au moins une fréquence (en jours) pour ${siteName}`);
                   return;
                 }
               }
@@ -483,9 +463,7 @@ export function ContratsPage() {
 
           const cleanedContratSites = contratSites.map((cs) => ({
             ...cs,
-            frequenceOperations: cs.frequenceOperations || undefined,
             frequenceOperationsJours: cs.frequenceOperationsJours ?? undefined,
-            frequenceControle: cs.frequenceControle || undefined,
             frequenceControleJours: cs.frequenceControleJours ?? undefined,
             nombreOperations: cs.nombreOperations ?? undefined,
             nombreVisitesControle: cs.nombreVisitesControle ?? undefined,
@@ -760,7 +738,6 @@ export function ContratsPage() {
                                       value={cs.frequenceOperationsJours || ''}
                                       onChange={(e) => updateSite(cs.siteId, {
                                         frequenceOperationsJours: e.target.value ? Number(e.target.value) : undefined,
-                                        frequenceOperations: e.target.value ? 'PERSONNALISEE' : undefined,
                                       })}
                                     />
                                     <span className="text-xs text-gray-400 whitespace-nowrap">jours</span>
@@ -817,7 +794,6 @@ export function ContratsPage() {
                                       value={cs.frequenceControleJours || ''}
                                       onChange={(e) => updateSite(cs.siteId, {
                                         frequenceControleJours: e.target.value ? Number(e.target.value) : undefined,
-                                        frequenceControle: e.target.value ? 'PERSONNALISEE' : undefined,
                                       })}
                                     />
                                     <span className="text-xs text-gray-400 whitespace-nowrap">jours</span>

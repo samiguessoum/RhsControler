@@ -27,15 +27,6 @@ enum ContratStatut {
   TERMINE
 }
 
-enum Frequence {
-  HEBDOMADAIRE
-  MENSUELLE
-  TRIMESTRIELLE
-  SEMESTRIELLE
-  ANNUELLE
-  PERSONNALISEE
-}
-
 enum InterventionType {
   OPERATION
   CONTROLE
@@ -554,9 +545,7 @@ model Contrat {
   dateFin                  DateTime?
   reconductionAuto         Boolean       @default(false)
   prestations              String[]
-  frequenceOperations      Frequence?
   frequenceOperationsJours Int?
-  frequenceControle        Frequence?
   frequenceControleJours   Int?
   premiereDateOperation    DateTime?
   premiereDateControle     DateTime?
@@ -590,9 +579,7 @@ model ContratSite {
   site                     Site       @relation(fields: [siteId], references: [id])
   prestations              String[]   @default([])
   prixPrestations          Json       @default("{}")  // Map prestation → prix unitaire HT
-  frequenceOperations      Frequence?
   frequenceOperationsJours Int?
-  frequenceControle        Frequence?
   frequenceControleJours   Int?
   premiereDateOperation    DateTime?
   premiereDateControle     DateTime?
