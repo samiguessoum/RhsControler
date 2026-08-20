@@ -1033,11 +1033,19 @@ function TiersFormDialog({
     e.preventDefault();
 
     // Prepare data
+    // Map original sites[] index → filteredSites[] index (unnamed sites are excluded from filteredSites)
+    const origToFilteredIdx = new Map<number, number>();
+    let fi = 0;
+    sites.forEach((s, oi) => { if (s.nom?.trim()) origToFilteredIdx.set(oi, fi++); });
+
     const contactsInput = [contactPrincipal, ...extraContacts]
       .filter(c => c.nom && c.nom.trim())
       .map((c, index) => ({
         ...c,
         estPrincipal: index === 0,
+        siteIndices: (c.siteIndices ?? [])
+          .map(si => origToFilteredIdx.get(si))
+          .filter((idx): idx is number => idx !== undefined),
       }));
 
     const isClientLikeType = formData.typeTiers === 'CLIENT' || formData.typeTiers === 'CLIENT_FOURNISSEUR';

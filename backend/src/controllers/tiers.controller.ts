@@ -482,7 +482,7 @@ export const tiersController = {
 
       const contactsInput = Array.isArray(data.contacts)
         ? data.contacts
-            .filter((c: any) => c?.nom && String(c.nom).trim() && (!c.siteIds || c.siteIds.length === 0))
+            .filter((c: any) => c?.nom && String(c.nom).trim() && (!c.siteIds || c.siteIds.length === 0) && (!c.siteIndices || c.siteIndices.length === 0))
             .map((c: any, i: number) => ({
               civilite: c.civilite,
               nom: c.nom,
@@ -703,20 +703,55 @@ export const tiersController = {
         (req as any).sitesNotDeleted = sitesNotDeleted;
       }
 
-      // Contacts avec siteIds → recréer les SiteContact pour chaque site spécifié
+      // Contacts avec siteIndices ou siteIds → recréer les SiteContact
       if (Array.isArray(data.contacts)) {
         const siteLinkedContacts = data.contacts.filter(
-          (c: any) => c?.nom && Array.isArray(c.siteIds) && c.siteIds.length > 0
+          (c: any) => c?.nom && (
+            (Array.isArray(c.siteIds) && c.siteIds.length > 0) ||
+            (Array.isArray(c.siteIndices) && c.siteIndices.length > 0)
+          )
         );
         if (siteLinkedContacts.length > 0) {
-          // Supprimer les anciens SiteContacts pour ces sites (repartir proprement)
-          const siteIdsToUpdate: string[] = [...new Set<string>(siteLinkedContacts.flatMap((c: any) => c.siteIds as string[]))];
-          await prisma.siteContact.deleteMany({
-            where: { siteId: { in: siteIdsToUpdate } },
+          // Charger tous les sites du tiers pour le lookup par nom (siteIndices)
+          const allClientSites = await prisma.site.findMany({
+            where: { clientId: id },
+            select: { id: true, nom: true },
           });
+          // Résoudre les siteIndices → siteIds via data.sites (même ordre que le form)
+          const formSites: any[] = Array.isArray(data.sites)
+            ? data.sites.filter((s: any) => s?.nom?.trim())
+            : [];
+
+          // Collecter tous les siteIds impactés pour purge préalable
+          const impactedSiteIds = new Set<string>();
+          for (const contact of siteLinkedContacts) {
+            for (const sid of (contact.siteIds ?? []) as string[]) {
+              impactedSiteIds.add(sid);
+            }
+            for (const sIdx of (contact.siteIndices ?? []) as number[]) {
+              const siteNom = formSites[sIdx]?.nom;
+              const dbSite = siteNom ? allClientSites.find(s => s.nom === siteNom) : null;
+              if (dbSite) impactedSiteIds.add(dbSite.id);
+            }
+          }
+          if (impactedSiteIds.size > 0) {
+            await prisma.siteContact.deleteMany({
+              where: { siteId: { in: [...impactedSiteIds] } },
+            });
+          }
+
           // Recréer les SiteContacts
           for (const contact of siteLinkedContacts) {
-            for (const siteId of contact.siteIds as string[]) {
+            const resolvedSiteIds = new Set<string>();
+            for (const sid of (contact.siteIds ?? []) as string[]) {
+              resolvedSiteIds.add(sid);
+            }
+            for (const sIdx of (contact.siteIndices ?? []) as number[]) {
+              const siteNom = formSites[sIdx]?.nom;
+              const dbSite = siteNom ? allClientSites.find(s => s.nom === siteNom) : null;
+              if (dbSite) resolvedSiteIds.add(dbSite.id);
+            }
+            for (const siteId of resolvedSiteIds) {
               await prisma.siteContact.create({
                 data: {
                   siteId,
