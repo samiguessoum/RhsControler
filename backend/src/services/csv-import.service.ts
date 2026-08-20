@@ -3,6 +3,10 @@ import { stringify } from 'csv-stringify/sync';
 import { prisma } from '../config/database.js';
 import { parseDate } from '../utils/date.utils.js';
 
+const FREQUENCE_VALUES = ['HEBDOMADAIRE', 'MENSUELLE', 'TRIMESTRIELLE', 'SEMESTRIELLE', 'ANNUELLE', 'PERSONNALISEE'];
+const CONTRAT_STATUT_VALUES = ['ACTIF', 'SUSPENDU', 'TERMINE'];
+const INTERVENTION_STATUT_VALUES = ['A_PLANIFIER', 'PLANIFIEE', 'REALISEE', 'REPORTEE', 'ANNULEE'];
+
 export interface ImportError {
   row: number;
   field: string;
@@ -170,6 +174,9 @@ export const csvService = {
         nomEntreprise: row.nom_entreprise,
         siegeNom: row.siege_nom,
         siegeAdresse: row.siege_adresse,
+        siegeCodePostal: row.siege_code_postal,
+        siegeVille: row.siege_ville,
+        siegePays: row.siege_pays,
         siegeTel: row.siege_tel,
         siegeEmail: row.siege_email,
         siegeNotes: row.siege_notes,
@@ -182,13 +189,21 @@ export const csvService = {
         siegeContactFonction: row.siege_contact_fonction,
         siegeContactTel: row.siege_contact_tel,
         siegeContactEmail: row.siege_contact_email,
+        siteCode: row.site_code,
         siteNom: row.site_nom,
         siteAdresse: row.site_adresse,
+        siteComplement: row.site_complement,
+        siteCodePostal: row.site_code_postal,
+        siteVille: row.site_ville,
+        sitePays: row.site_pays,
         secteur: row.secteur,
         contactNom: row.contact_nom,
         contactFonction: row.contact_fonction,
         tel: row.tel,
+        fax: row.fax,
         email: row.email,
+        horairesOuverture: row.horaires_ouverture,
+        accessibilite: row.accessibilite,
         notes: row.notes,
       };
     });
@@ -228,6 +243,9 @@ export const csvService = {
             secteur: row.secteur || existing.secteur,
             siegeNom: row.siegeNom || existing.siegeNom,
             siegeAdresse: row.siegeAdresse || existing.siegeAdresse,
+            siegeCodePostal: row.siegeCodePostal || existing.siegeCodePostal,
+            siegeVille: row.siegeVille || existing.siegeVille,
+            siegePays: row.siegePays || existing.siegePays,
             siegeTel: row.siegeTel || existing.siegeTel,
             siegeEmail: row.siegeEmail || existing.siegeEmail,
             siegeNotes: row.siegeNotes || existing.siegeNotes,
@@ -257,10 +275,18 @@ export const csvService = {
           await prisma.site.create({
             data: {
               clientId: existing.id,
+              code: row.siteCode || null,
               nom: row.siteNom || 'Site',
               adresse: row.siteAdresse,
+              complement: row.siteComplement || null,
+              codePostal: row.siteCodePostal || null,
+              ville: row.siteVille || null,
+              pays: row.sitePays || null,
               tel: row.tel,
+              fax: row.fax || null,
               email: row.email || null,
+              horairesOuverture: row.horairesOuverture || null,
+              accessibilite: row.accessibilite || null,
               notes: row.notes,
               ...(hasSiteContact
                 ? {
@@ -285,6 +311,9 @@ export const csvService = {
             secteur: row.secteur,
             siegeNom: row.siegeNom || row.nomEntreprise,
             siegeAdresse: row.siegeAdresse,
+            siegeCodePostal: row.siegeCodePostal,
+            siegeVille: row.siegeVille,
+            siegePays: row.siegePays,
             siegeTel: row.siegeTel,
             siegeEmail: row.siegeEmail || null,
             siegeNotes: row.siegeNotes,
@@ -314,10 +343,18 @@ export const csvService = {
           await prisma.site.create({
             data: {
               clientId: createdClient.id,
+              code: row.siteCode || null,
               nom: row.siteNom || 'Site',
               adresse: row.siteAdresse,
+              complement: row.siteComplement || null,
+              codePostal: row.siteCodePostal || null,
+              ville: row.siteVille || null,
+              pays: row.sitePays || null,
               tel: row.tel,
+              fax: row.fax || null,
               email: row.email || null,
+              horairesOuverture: row.horairesOuverture || null,
+              accessibilite: row.accessibilite || null,
               notes: row.notes,
               ...(hasSiteContact
                 ? {
@@ -376,6 +413,33 @@ export const csvService = {
         errors.push({ row: rowNum, field: 'prestations', message: 'Au moins une prestation requise' });
       }
 
+      const frequenceOperations = row.frequence_operations?.trim() ? row.frequence_operations.toUpperCase() : undefined;
+      if (frequenceOperations && !FREQUENCE_VALUES.includes(frequenceOperations)) {
+        errors.push({ row: rowNum, field: 'frequence_operations', message: `Fréquence invalide (${FREQUENCE_VALUES.join(', ')})`, value: row.frequence_operations });
+      }
+
+      const frequenceControle = row.frequence_controle?.trim() ? row.frequence_controle.toUpperCase() : undefined;
+      if (frequenceControle && !FREQUENCE_VALUES.includes(frequenceControle)) {
+        errors.push({ row: rowNum, field: 'frequence_controle', message: `Fréquence invalide (${FREQUENCE_VALUES.join(', ')})`, value: row.frequence_controle });
+      }
+
+      const statut = row.statut?.trim() ? row.statut.toUpperCase() : 'ACTIF';
+      if (!CONTRAT_STATUT_VALUES.includes(statut)) {
+        errors.push({ row: rowNum, field: 'statut', message: `Statut invalide (${CONTRAT_STATUT_VALUES.join(', ')})`, value: row.statut });
+      }
+
+      if (row.date_fin && !parseDate(row.date_fin)) {
+        errors.push({ row: rowNum, field: 'date_fin', message: 'Date de fin invalide', value: row.date_fin });
+      }
+
+      if (row.premiere_date_operation && !parseDate(row.premiere_date_operation)) {
+        errors.push({ row: rowNum, field: 'premiere_date_operation', message: 'Date invalide', value: row.premiere_date_operation });
+      }
+
+      if (row.premiere_date_controle && !parseDate(row.premiere_date_controle)) {
+        errors.push({ row: rowNum, field: 'premiere_date_controle', message: 'Date invalide', value: row.premiere_date_controle });
+      }
+
       return {
         _row: rowNum,
         _valid: errors.filter(e => e.row === rowNum).length === 0,
@@ -386,12 +450,12 @@ export const csvService = {
         dateFin: row.date_fin,
         reconductionAuto: row.reconduction_auto?.toLowerCase() === 'true',
         prestations: row.prestations?.split(',').map((p: string) => p.trim()).filter(Boolean),
-        frequenceOperations: row.frequence_operations?.toUpperCase(),
+        frequenceOperations,
         frequenceOperationsJours: row.jours_personnalises ? parseInt(row.jours_personnalises) : null,
-        frequenceControle: row.frequence_controle?.toUpperCase(),
+        frequenceControle,
         premiereDateOperation: row.premiere_date_operation,
         premiereDateControle: row.premiere_date_controle,
-        statut: row.statut?.toUpperCase() || 'ACTIF',
+        statut,
       };
     }));
 
@@ -471,6 +535,11 @@ export const csvService = {
         errors.push({ row: rowNum, field: 'date_prevue', message: 'Date prévue invalide', value: row.date_prevue });
       }
 
+      const statut = row.statut?.trim() ? row.statut.toUpperCase() : 'A_PLANIFIER';
+      if (!INTERVENTION_STATUT_VALUES.includes(statut)) {
+        errors.push({ row: rowNum, field: 'statut', message: `Statut invalide (${INTERVENTION_STATUT_VALUES.join(', ')})`, value: row.statut });
+      }
+
       return {
         _row: rowNum,
         _valid: errors.filter(e => e.row === rowNum).length === 0,
@@ -481,7 +550,7 @@ export const csvService = {
         datePrevue: row.date_prevue,
         heurePrevue: row.heure_prevue,
         duree: row.duree_minutes ? parseInt(row.duree_minutes) : null,
-        statut: row.statut?.toUpperCase() || 'A_PLANIFIER',
+        statut,
         notes: row.notes,
       };
     }));
@@ -561,6 +630,9 @@ export const csvService = {
           nom_entreprise: c.nomEntreprise,
           siege_nom: c.siegeNom || '',
           siege_adresse: c.siegeAdresse || '',
+          siege_code_postal: c.siegeCodePostal || '',
+          siege_ville: c.siegeVille || '',
+          siege_pays: c.siegePays || '',
           siege_contact_nom: siegeContact?.nom || '',
           siege_contact_fonction: siegeContact?.fonction || '',
           siege_contact_tel: siegeContact?.tel || '',
@@ -573,13 +645,21 @@ export const csvService = {
           siege_ai: c.siegeAI || '',
           siege_nis: c.siegeNIS || '',
           siege_tin: c.siegeTIN || '',
+          site_code: '',
           site_nom: '',
           site_adresse: '',
+          site_complement: '',
+          site_code_postal: '',
+          site_ville: '',
+          site_pays: '',
           secteur: c.secteur || '',
           contact_nom: '',
           contact_fonction: '',
           tel: '',
+          fax: '',
           email: '',
+          horaires_ouverture: '',
+          accessibilite: '',
           notes: '',
           actif: c.actif ? 'true' : 'false',
         }];
@@ -591,6 +671,9 @@ export const csvService = {
         nom_entreprise: c.nomEntreprise,
         siege_nom: c.siegeNom || '',
         siege_adresse: c.siegeAdresse || '',
+        siege_code_postal: c.siegeCodePostal || '',
+        siege_ville: c.siegeVille || '',
+        siege_pays: c.siegePays || '',
         siege_contact_nom: siegeContact?.nom || '',
         siege_contact_fonction: siegeContact?.fonction || '',
         siege_contact_tel: siegeContact?.tel || '',
@@ -603,13 +686,21 @@ export const csvService = {
         siege_ai: c.siegeAI || '',
         siege_nis: c.siegeNIS || '',
         siege_tin: c.siegeTIN || '',
+        site_code: s.code || '',
         site_nom: s.nom || '',
         site_adresse: s.adresse || '',
+        site_complement: s.complement || '',
+        site_code_postal: s.codePostal || '',
+        site_ville: s.ville || '',
+        site_pays: s.pays || '',
         secteur: c.secteur || '',
         contact_nom: siteContact?.nom || '',
         contact_fonction: siteContact?.fonction || '',
         tel: s.tel || '',
+        fax: s.fax || '',
         email: s.email || '',
+        horaires_ouverture: s.horairesOuverture || '',
+        accessibilite: s.accessibilite || '',
         notes: s.notes || '',
         actif: c.actif ? 'true' : 'false',
         });

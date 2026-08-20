@@ -2,6 +2,9 @@ import { parse } from 'csv-parse/sync';
 import { stringify } from 'csv-stringify/sync';
 import { prisma } from '../config/database.js';
 import { parseDate } from '../utils/date.utils.js';
+const FREQUENCE_VALUES = ['HEBDOMADAIRE', 'MENSUELLE', 'TRIMESTRIELLE', 'SEMESTRIELLE', 'ANNUELLE', 'PERSONNALISEE'];
+const CONTRAT_STATUT_VALUES = ['ACTIF', 'SUSPENDU', 'TERMINE'];
+const INTERVENTION_STATUT_VALUES = ['A_PLANIFIER', 'PLANIFIEE', 'REALISEE', 'REPORTEE', 'ANNULEE'];
 /**
  * Service d'import/export CSV
  */
@@ -323,6 +326,27 @@ export const csvService = {
             if (!row.prestations?.trim()) {
                 errors.push({ row: rowNum, field: 'prestations', message: 'Au moins une prestation requise' });
             }
+            const frequenceOperations = row.frequence_operations?.trim() ? row.frequence_operations.toUpperCase() : undefined;
+            if (frequenceOperations && !FREQUENCE_VALUES.includes(frequenceOperations)) {
+                errors.push({ row: rowNum, field: 'frequence_operations', message: `Fréquence invalide (${FREQUENCE_VALUES.join(', ')})`, value: row.frequence_operations });
+            }
+            const frequenceControle = row.frequence_controle?.trim() ? row.frequence_controle.toUpperCase() : undefined;
+            if (frequenceControle && !FREQUENCE_VALUES.includes(frequenceControle)) {
+                errors.push({ row: rowNum, field: 'frequence_controle', message: `Fréquence invalide (${FREQUENCE_VALUES.join(', ')})`, value: row.frequence_controle });
+            }
+            const statut = row.statut?.trim() ? row.statut.toUpperCase() : 'ACTIF';
+            if (!CONTRAT_STATUT_VALUES.includes(statut)) {
+                errors.push({ row: rowNum, field: 'statut', message: `Statut invalide (${CONTRAT_STATUT_VALUES.join(', ')})`, value: row.statut });
+            }
+            if (row.date_fin && !parseDate(row.date_fin)) {
+                errors.push({ row: rowNum, field: 'date_fin', message: 'Date de fin invalide', value: row.date_fin });
+            }
+            if (row.premiere_date_operation && !parseDate(row.premiere_date_operation)) {
+                errors.push({ row: rowNum, field: 'premiere_date_operation', message: 'Date invalide', value: row.premiere_date_operation });
+            }
+            if (row.premiere_date_controle && !parseDate(row.premiere_date_controle)) {
+                errors.push({ row: rowNum, field: 'premiere_date_controle', message: 'Date invalide', value: row.premiere_date_controle });
+            }
             return {
                 _row: rowNum,
                 _valid: errors.filter(e => e.row === rowNum).length === 0,
@@ -333,12 +357,12 @@ export const csvService = {
                 dateFin: row.date_fin,
                 reconductionAuto: row.reconduction_auto?.toLowerCase() === 'true',
                 prestations: row.prestations?.split(',').map((p) => p.trim()).filter(Boolean),
-                frequenceOperations: row.frequence_operations?.toUpperCase(),
+                frequenceOperations,
                 frequenceOperationsJours: row.jours_personnalises ? parseInt(row.jours_personnalises) : null,
-                frequenceControle: row.frequence_controle?.toUpperCase(),
+                frequenceControle,
                 premiereDateOperation: row.premiere_date_operation,
                 premiereDateControle: row.premiere_date_controle,
-                statut: row.statut?.toUpperCase() || 'ACTIF',
+                statut,
             };
         }));
         return {
@@ -404,6 +428,10 @@ export const csvService = {
             if (!row.date_prevue || !parseDate(row.date_prevue)) {
                 errors.push({ row: rowNum, field: 'date_prevue', message: 'Date prévue invalide', value: row.date_prevue });
             }
+            const statut = row.statut?.trim() ? row.statut.toUpperCase() : 'A_PLANIFIER';
+            if (!INTERVENTION_STATUT_VALUES.includes(statut)) {
+                errors.push({ row: rowNum, field: 'statut', message: `Statut invalide (${INTERVENTION_STATUT_VALUES.join(', ')})`, value: row.statut });
+            }
             return {
                 _row: rowNum,
                 _valid: errors.filter(e => e.row === rowNum).length === 0,
@@ -414,7 +442,7 @@ export const csvService = {
                 datePrevue: row.date_prevue,
                 heurePrevue: row.heure_prevue,
                 duree: row.duree_minutes ? parseInt(row.duree_minutes) : null,
-                statut: row.statut?.toUpperCase() || 'A_PLANIFIER',
+                statut,
                 notes: row.notes,
             };
         }));

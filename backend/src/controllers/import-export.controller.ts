@@ -124,9 +124,9 @@ Yacine,Amrani,ADMINISTRATION`,
         },
         clients: {
           filename: 'template_clients.csv',
-          content: `nom_entreprise,siege_nom,siege_adresse,siege_contact_nom,siege_contact_fonction,siege_contact_tel,siege_contact_email,siege_tel,siege_email,siege_notes,siege_rc,siege_nif,siege_ai,siege_nis,siege_tin,site_nom,site_adresse,secteur,contact_nom,contact_fonction,tel,email,notes
-"SARL Exemple","Siège Alger","1 Rue Principale, Alger","Ahmed Benali","Directeur Qualité","+213 555 123456","contact@exemple.dz","+213 555 000000","siege@exemple.dz","Siège principal","RC123","NIF123","AI123","NIS123","TIN123","Site 1","Zone Industrielle Oued Smar","Agroalimentaire","Ahmed Benali","Directeur Qualité","+213 555 123456","ahmed@exemple.dz","Client prioritaire"
-"EURL Test","Siège Oran","12 Avenue Oran","Karim Hadj","Responsable Hygiène","+213 555 654321","contact@test.dz","+213 555 111111","siege@test.dz","","RC456","NIF456","AI456","NIS456","TIN456","Site 1","Rue des Palmiers, Alger","Pharmaceutique","Karim Hadj","Responsable Hygiène","+213 555 654321","karim@test.dz",""`,
+          content: `nom_entreprise,siege_nom,siege_adresse,siege_code_postal,siege_ville,siege_pays,siege_contact_nom,siege_contact_fonction,siege_contact_tel,siege_contact_email,siege_tel,siege_email,siege_notes,siege_rc,siege_nif,siege_ai,siege_nis,siege_tin,site_code,site_nom,site_adresse,site_complement,site_code_postal,site_ville,site_pays,secteur,contact_nom,contact_fonction,tel,fax,email,horaires_ouverture,accessibilite,notes
+"SARL Exemple","Siège Alger","1 Rue Principale","16000","Alger","Algérie","Ahmed Benali","Directeur Qualité","+213 555 123456","contact@exemple.dz","+213 555 000000","siege@exemple.dz","Siège principal","RC123","NIF123","AI123","NIS123","TIN123","SITE001","Site 1","Zone Industrielle Oued Smar","Lot 12","16270","Oued Smar","Algérie","Agroalimentaire","Ahmed Benali","Directeur Qualité","+213 555 123456","","ahmed@exemple.dz","Lun-Ven 8h-17h","Parking disponible","Client prioritaire"
+"EURL Test","Siège Oran","12 Avenue Oran","31000","Oran","Algérie","Karim Hadj","Responsable Hygiène","+213 555 654321","contact@test.dz","+213 555 111111","siege@test.dz","","RC456","NIF456","AI456","NIS456","TIN456","","Site 1","Rue des Palmiers, Alger","","16000","Alger","Algérie","Pharmaceutique","Karim Hadj","Responsable Hygiène","+213 555 654321","","karim@test.dz","","",""`,
         },
         contrats: {
           filename: 'template_contrats.csv',

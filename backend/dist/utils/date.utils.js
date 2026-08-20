@@ -67,18 +67,18 @@ export function formatICSDate(date, heure) {
  * Parse une date depuis différents formats
  */
 export function parseDate(dateStr) {
-    // Essayer plusieurs formats
-    const formats = [
-        /^\d{4}-\d{2}-\d{2}$/, // YYYY-MM-DD
-        /^\d{2}\/\d{2}\/\d{4}$/, // DD/MM/YYYY
-    ];
-    for (const fmt of formats) {
-        if (fmt.test(dateStr)) {
-            const date = new Date(dateStr);
-            if (!isNaN(date.getTime())) {
-                return date;
-            }
-        }
+    const isoMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
+    if (isoMatch) {
+        const [, year, month, day] = isoMatch;
+        const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+        return isNaN(date.getTime()) ? null : date;
+    }
+    // DD/MM/YYYY — construit explicitement pour éviter l'interprétation MM/DD/YYYY de Date()
+    const frMatch = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(dateStr);
+    if (frMatch) {
+        const [, day, month, year] = frMatch;
+        const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+        return isNaN(date.getTime()) ? null : date;
     }
     // Fallback
     const date = new Date(dateStr);

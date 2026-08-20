@@ -145,9 +145,9 @@ export declare function getCompanySettings(): Promise<{
     nin: string;
     rib: string;
     compte: string;
-    banque: string;
-    capitalSocial: string;
     logoPath: string;
+    banque: string;
+    capitalSocial: any;
 }>;
 export declare function refreshCompanyInfo(): Promise<{
     name: string;
