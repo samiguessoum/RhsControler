@@ -887,6 +887,9 @@ export interface CreateContactInput {
   dateNaissance?: string;
   notes?: string;
   estPrincipal?: boolean;
+  // Association aux sites : indices (création) ou IDs (édition)
+  siteIndices?: number[];
+  siteIds?: string[];
 }
 
 export interface CreateAdresseInput {

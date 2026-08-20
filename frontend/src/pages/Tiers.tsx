@@ -1069,7 +1069,7 @@ function TiersFormDialog({
   const isProspect = formData.typeTiers === 'PROSPECT';
 
   const addSite = () => {
-    setSites(prev => [...prev, { nom: '', adresse: '', pays: 'Algérie', contacts: [] }]);
+    setSites(prev => [{ nom: '', adresse: '', pays: 'Algérie', contacts: [] }, ...prev]);
   };
 
   const removeSite = (index: number) => {
@@ -1100,6 +1100,27 @@ function TiersFormDialog({
     setExtraContacts(prev => prev.map((c, i) =>
       i === index ? { ...c, [field]: value } : c
     ));
+  };
+
+  const toggleContactSiteIndex = (contactIndex: number, siteIndex: number) => {
+    setExtraContacts(prev => prev.map((c, i) => {
+      if (i !== contactIndex) return c;
+      const current = c.siteIndices ?? [];
+      const next = current.includes(siteIndex)
+        ? current.filter(s => s !== siteIndex)
+        : [...current, siteIndex];
+      return { ...c, siteIndices: next };
+    }));
+  };
+
+  const toggleContactPrincipalSiteIndex = (siteIndex: number) => {
+    setContactPrincipal(prev => {
+      const current = prev.siteIndices ?? [];
+      const next = current.includes(siteIndex)
+        ? current.filter(s => s !== siteIndex)
+        : [...current, siteIndex];
+      return { ...prev, siteIndices: next };
+    });
   };
 
   return (
@@ -1273,6 +1294,31 @@ function TiersFormDialog({
                   />
                 </div>
               </div>
+              {isClient && sites.filter(s => s.nom?.trim()).length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <Label className="text-xs text-muted-foreground">Sites associés à ce contact</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {sites.map((s, sIdx) => {
+                      const label = s.nom?.trim() || `Site ${sites.length - sIdx}`;
+                      const checked = (contactPrincipal.siteIndices ?? []).includes(sIdx);
+                      return (
+                        <button
+                          key={sIdx}
+                          type="button"
+                          onClick={() => toggleContactPrincipalSiteIndex(sIdx)}
+                          className={cn(
+                            'px-3 py-1 rounded-full text-xs border transition-colors',
+                            checked ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
+                          )}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">Sans sélection → contact siège (tous sites)</p>
+                </div>
+              )}
             </div>
           </CollapsibleSection>
 
@@ -1340,6 +1386,31 @@ function TiersFormDialog({
                         />
                       </div>
                     </div>
+                    {isClient && sites.filter(s => s.nom?.trim()).length > 0 && (
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Sites associés</Label>
+                        <div className="flex flex-wrap gap-2">
+                          {sites.map((s, sIdx) => {
+                            const label = s.nom?.trim() || `Site ${sites.length - sIdx}`;
+                            const checked = (contact.siteIndices ?? []).includes(sIdx);
+                            return (
+                              <button
+                                key={sIdx}
+                                type="button"
+                                onClick={() => toggleContactSiteIndex(index, sIdx)}
+                                className={cn(
+                                  'px-3 py-1 rounded-full text-xs border transition-colors',
+                                  checked ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
+                                )}
+                              >
+                                {label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">Sans sélection → contact siège</p>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1363,7 +1434,7 @@ function TiersFormDialog({
               {sites.map((site, index) => (
                 <div key={index} className="p-4 bg-white rounded-lg border space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">Site {index + 1}</span>
+                    <span className="text-sm font-medium">Site {sites.length - index}</span>
                     {sites.length > 1 && (
                       <Button
                         type="button"

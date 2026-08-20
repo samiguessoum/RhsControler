@@ -331,20 +331,22 @@ export const tiersController = {
           prospectNiveau: data.prospectNiveau,
           prospectStatut: data.prospectStatut,
 
-          // Relations
+          // Relations — contacts sans siteIndices uniquement (les autres sont créés après)
           siegeContacts: {
-            create: data.contacts?.map((c: any, i: number) => ({
-              civilite: c.civilite,
-              nom: c.nom,
-              prenom: c.prenom,
-              fonction: c.fonction || '',
-              tel: c.tel,
-              telMobile: c.telMobile,
-              fax: c.fax,
-              email: c.email,
-              notes: c.notes,
-              estPrincipal: i === 0 || c.estPrincipal,
-            })) || [],
+            create: (data.contacts ?? [])
+              .filter((c: any, i: number) => c?.nom && (!c.siteIndices || c.siteIndices.length === 0))
+              .map((c: any, i: number) => ({
+                civilite: c.civilite,
+                nom: c.nom,
+                prenom: c.prenom,
+                fonction: c.fonction || '',
+                tel: c.tel,
+                telMobile: c.telMobile,
+                fax: c.fax,
+                email: c.email,
+                notes: c.notes,
+                estPrincipal: i === 0 || c.estPrincipal,
+              })),
           },
           sites: {
             create: data.sites?.map((s: any) => ({
@@ -423,6 +425,35 @@ export const tiersController = {
         },
       });
 
+      // Contacts avec siteIndices → créer comme SiteContact pour chaque site spécifié
+      const siteLinkedContacts = (data.contacts ?? []).filter(
+        (c: any) => c?.nom && Array.isArray(c.siteIndices) && c.siteIndices.length > 0
+      );
+      if (siteLinkedContacts.length > 0 && tiers.sites.length > 0) {
+        for (const contact of siteLinkedContacts) {
+          for (const siteIdx of contact.siteIndices as number[]) {
+            const siteInput = data.sites?.[siteIdx];
+            if (!siteInput?.nom) continue;
+            const createdSite = tiers.sites.find((s: any) => s.nom === siteInput.nom);
+            if (!createdSite) continue;
+            await prisma.siteContact.create({
+              data: {
+                siteId: createdSite.id,
+                civilite: contact.civilite,
+                nom: contact.nom,
+                prenom: contact.prenom,
+                fonction: contact.fonction || '',
+                tel: contact.tel,
+                telMobile: contact.telMobile,
+                email: contact.email,
+                notes: contact.notes,
+                estPrincipal: contact.estPrincipal || false,
+              },
+            });
+          }
+        }
+      }
+
       await createAuditLog(req.user!.id, 'CREATE', 'Tiers', tiers.id, { after: tiers });
 
       res.status(201).json({ tiers });
@@ -451,7 +482,7 @@ export const tiersController = {
 
       const contactsInput = Array.isArray(data.contacts)
         ? data.contacts
-            .filter((c: any) => c?.nom && String(c.nom).trim())
+            .filter((c: any) => c?.nom && String(c.nom).trim() && (!c.siteIds || c.siteIds.length === 0))
             .map((c: any, i: number) => ({
               civilite: c.civilite,
               nom: c.nom,
@@ -670,6 +701,39 @@ export const tiersController = {
 
         // Stocker les sites non supprimés pour la réponse
         (req as any).sitesNotDeleted = sitesNotDeleted;
+      }
+
+      // Contacts avec siteIds → recréer les SiteContact pour chaque site spécifié
+      if (Array.isArray(data.contacts)) {
+        const siteLinkedContacts = data.contacts.filter(
+          (c: any) => c?.nom && Array.isArray(c.siteIds) && c.siteIds.length > 0
+        );
+        if (siteLinkedContacts.length > 0) {
+          // Supprimer les anciens SiteContacts pour ces sites (repartir proprement)
+          const siteIdsToUpdate: string[] = [...new Set<string>(siteLinkedContacts.flatMap((c: any) => c.siteIds as string[]))];
+          await prisma.siteContact.deleteMany({
+            where: { siteId: { in: siteIdsToUpdate } },
+          });
+          // Recréer les SiteContacts
+          for (const contact of siteLinkedContacts) {
+            for (const siteId of contact.siteIds as string[]) {
+              await prisma.siteContact.create({
+                data: {
+                  siteId,
+                  civilite: contact.civilite,
+                  nom: contact.nom,
+                  prenom: contact.prenom,
+                  fonction: contact.fonction || '',
+                  tel: contact.tel,
+                  telMobile: contact.telMobile,
+                  email: contact.email,
+                  notes: contact.notes,
+                  estPrincipal: contact.estPrincipal || false,
+                },
+              });
+            }
+          }
+        }
       }
 
       // Recharger le tiers avec toutes les relations
