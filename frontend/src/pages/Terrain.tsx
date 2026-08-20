@@ -154,22 +154,22 @@ export function TerrainPage() {
                     onChange={(e) => setSearch(e.target.value)}
                   />
                 </div>
-                <Select value={filterType} onValueChange={(v) => { setFilterType(v); setPage(1); }}>
+                <Select value={filterType || 'all'} onValueChange={(v) => { setFilterType(v === 'all' ? '' : v); setPage(1); }}>
                   <SelectTrigger className="w-40 h-9">
                     <SelectValue placeholder="Type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Tous types</SelectItem>
+                    <SelectItem value="all">Tous types</SelectItem>
                     <SelectItem value="OPERATION">Opération</SelectItem>
                     <SelectItem value="VISITE">Visite contrôle</SelectItem>
                   </SelectContent>
                 </Select>
-                <Select value={filterStatut} onValueChange={(v) => { setFilterStatut(v); setPage(1); }}>
+                <Select value={filterStatut || 'all'} onValueChange={(v) => { setFilterStatut(v === 'all' ? '' : v); setPage(1); }}>
                   <SelectTrigger className="w-40 h-9">
                     <SelectValue placeholder="Statut" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Tous statuts</SelectItem>
+                    <SelectItem value="all">Tous statuts</SelectItem>
                     {Object.entries(FI_STATUT_CONFIG).map(([k, v]) => (
                       <SelectItem key={k} value={k}>{v.label}</SelectItem>
                     ))}
