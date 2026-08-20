@@ -2043,16 +2043,44 @@ function TiersDetailDialog({
                       )}
                       {/* Site contacts */}
                       {site.contacts && site.contacts.length > 0 && (
-                        <div className="mt-3 ml-10 pt-3 border-t border-blue-100">
-                          <p className="text-xs font-medium text-muted-foreground mb-2">Contacts du site:</p>
-                          <div className="flex flex-wrap gap-2">
+                        <div className="mt-3 ml-10 pt-3 border-t border-blue-100 space-y-2">
+                          <p className="text-xs font-semibold text-blue-700 flex items-center gap-1">
+                            <Users className="h-3 w-3" />
+                            Contact{site.contacts.length > 1 ? 's' : ''} du site
+                          </p>
+                          <div className="grid gap-2 sm:grid-cols-2">
                             {site.contacts.map((contact: any) => (
-                              <div key={contact.id} className="flex items-center gap-2 text-sm bg-white px-2 py-1 rounded border">
-                                <Users className="h-3 w-3 text-muted-foreground" />
-                                <span>{contact.prenom} {contact.nom}</span>
-                                {contact.fonction && (
-                                  <span className="text-muted-foreground">({contact.fonction})</span>
-                                )}
+                              <div key={contact.id} className="flex items-start gap-2 bg-white px-3 py-2 rounded-lg border text-sm">
+                                <div className={cn(
+                                  'w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0',
+                                  contact.estPrincipal ? 'bg-blue-600' : 'bg-gray-400'
+                                )}>
+                                  {(contact.prenom?.[0] || contact.nom?.[0] || '?').toUpperCase()}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1 flex-wrap">
+                                    <span className="font-semibold truncate">{contact.civilite ? `${contact.civilite} ` : ''}{contact.prenom} {contact.nom}</span>
+                                    {contact.estPrincipal && <Badge className="bg-blue-100 text-blue-700 text-[10px] px-1 py-0">Principal</Badge>}
+                                  </div>
+                                  {contact.fonction && <p className="text-xs text-muted-foreground">{contact.fonction}</p>}
+                                  <div className="flex flex-col gap-0.5 mt-1">
+                                    {contact.tel && (
+                                      <a href={`tel:${contact.tel}`} className="flex items-center gap-1 text-blue-600 hover:underline text-xs">
+                                        <Phone className="h-3 w-3" />{contact.tel}
+                                      </a>
+                                    )}
+                                    {contact.telMobile && contact.telMobile !== contact.tel && (
+                                      <a href={`tel:${contact.telMobile}`} className="flex items-center gap-1 text-blue-600 hover:underline text-xs">
+                                        <Phone className="h-3 w-3" />{contact.telMobile}
+                                      </a>
+                                    )}
+                                    {contact.email && (
+                                      <a href={`mailto:${contact.email}`} className="flex items-center gap-1 text-blue-600 hover:underline text-xs truncate">
+                                        <Mail className="h-3 w-3 flex-shrink-0" /><span className="truncate">{contact.email}</span>
+                                      </a>
+                                    )}
+                                  </div>
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -2064,12 +2092,13 @@ function TiersDetailDialog({
               </div>
             )}
 
-            {/* Contacts */}
+            {/* Contacts siège (tous sites) */}
             {tiers.siegeContacts && tiers.siegeContacts.length > 0 && (
               <div className="space-y-3">
                 <h3 className="font-semibold border-b pb-2 flex items-center gap-2">
                   <Users className="h-4 w-4" />
-                  Contacts ({tiers.siegeContacts.length})
+                  Contacts généraux
+                  <Badge variant="outline" className="text-xs font-normal text-muted-foreground">Tous sites</Badge>
                 </h3>
                 <div className="grid gap-3 sm:grid-cols-2">
                   {tiers.siegeContacts.map((contact) => (
@@ -2082,9 +2111,9 @@ function TiersDetailDialog({
                           {(contact.prenom?.[0] || contact.nom?.[0] || '?').toUpperCase()}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-semibold truncate">
-                              {contact.prenom} {contact.nom}
+                              {contact.civilite ? `${contact.civilite} ` : ''}{contact.prenom} {contact.nom}
                             </span>
                             {contact.estPrincipal && (
                               <Badge className="bg-primary/10 text-primary text-xs">Principal</Badge>
