@@ -2043,3 +2043,201 @@ export interface UpdateCompanySettingsInput {
   joursCongesAnnuels?: number;
   joursCongesMensuels?: number;
 }
+
+// ─── Module Zoning ────────────────────────────────────────────────────────────
+
+export type ZoningStatut = 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
+export type DeviceType = 'BAIT_STATION' | 'MECHANICAL_TRAP' | 'GLUE_TRAP' | 'FLYING_INSECT_KILLER';
+export type DeviceStatut = 'ACTIVE' | 'REMOVED' | 'INACTIVE';
+export type FieldInterventionType = 'OPERATION' | 'VISITE';
+export type FieldInterventionStatut = 'DRAFT' | 'IN_PROGRESS' | 'SUBMITTED' | 'VALIDATED' | 'CANCELLED';
+export type FieldReportStatut = 'DRAFT' | 'FINAL';
+
+export interface ZoningVersion {
+  id: string;
+  siteId: string;
+  version: number;
+  nom: string;
+  statut: ZoningStatut;
+  dateActivation?: string;
+  dateFin?: string;
+  notes?: string;
+  createdById: string;
+  createdBy?: { id: string; nom: string; prenom: string };
+  createdAt: string;
+  updatedAt: string;
+  zones?: Zone[];
+  plans?: ZoningPlan[];
+  _count?: { zones: number; devices: number };
+}
+
+export interface ZoningPlan {
+  id: string;
+  zoningVersionId: string;
+  nom: string;
+  filename: string;
+  path: string;
+  mimeType?: string;
+  ordre: number;
+  createdAt: string;
+}
+
+export interface Zone {
+  id: string;
+  zoningVersionId: string;
+  nom: string;
+  description?: string;
+  etage?: string;
+  ordre: number;
+  actif: boolean;
+  devices?: MonitoringDevice[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MonitoringDevice {
+  id: string;
+  zoningVersionId: string;
+  zoneId: string;
+  zone?: { id: string; nom: string; etage?: string };
+  type: DeviceType;
+  displayNumber: string;
+  nom?: string;
+  statut: DeviceStatut;
+  dateInstallation?: string;
+  dateRetrait?: string;
+  planId?: string;
+  planX?: number;
+  planY?: number;
+  notes?: string;
+  metadata?: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ControlStatus {
+  id: string;
+  code: string;
+  label: string;
+  description?: string;
+  color?: string;
+  actif: boolean;
+  ordre: number;
+}
+
+export interface FieldIntervention {
+  id: string;
+  siteId: string;
+  site?: { id: string; nom: string; ville?: string; adresse?: string };
+  clientId: string;
+  client?: { id: string; nomEntreprise: string };
+  zoningVersionId: string;
+  zoningVersion?: ZoningVersion;
+  type: FieldInterventionType;
+  statut: FieldInterventionStatut;
+  dateIntervention: string;
+  heureDebut?: string;
+  heureFin?: string;
+  commentaire?: string;
+  draftSavedAt?: string;
+  createdById: string;
+  createdBy?: { id: string; nom: string; prenom: string };
+  submittedAt?: string;
+  validatedById?: string;
+  validatedBy?: { id: string; nom: string; prenom: string };
+  validatedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  applicateurs?: FIApplicateur[];
+  controls?: DeviceControl[];
+  products?: FIProduct[];
+  reports?: FieldReport[];
+  _count?: { controls: number; products: number; reports: number };
+}
+
+export interface FIApplicateur {
+  id: string;
+  fieldInterventionId: string;
+  employeId: string;
+  employe?: { id: string; nom: string; prenom: string };
+}
+
+export interface DeviceControl {
+  id: string;
+  fieldInterventionId: string;
+  deviceId: string;
+  device?: MonitoringDevice & { zone?: { id: string; nom: string } };
+  statusCode?: string;
+  observation?: string;
+  insectCounts?: InsectCount[];
+  photos?: ControlPhoto[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InsectCount {
+  id: string;
+  deviceControlId: string;
+  espece: string;
+  count: number;
+}
+
+export interface ControlPhoto {
+  id: string;
+  deviceControlId: string;
+  filename: string;
+  path: string;
+  size?: number;
+  mimeType?: string;
+}
+
+export interface FIProduct {
+  id: string;
+  fieldInterventionId: string;
+  produitId?: string;
+  nom: string;
+  lot?: string;
+  dateFabrication?: string;
+  datePeremption?: string;
+  quantite?: number;
+  unite?: string;
+  notes?: string;
+}
+
+export interface FieldReport {
+  id: string;
+  fieldInterventionId: string;
+  version: number;
+  statut: FieldReportStatut;
+  titre?: string;
+  conclusion?: string;
+  recommandations?: string;
+  pdfPath?: string;
+  xlsxPath?: string;
+  generatedById: string;
+  generatedBy?: { id: string; nom: string; prenom: string };
+  generatedAt: string;
+}
+
+export interface SiteDocument {
+  id: string;
+  siteId: string;
+  titre: string;
+  type: string;
+  filename: string;
+  path: string;
+  size?: number;
+  mimeType?: string;
+  date?: string;
+  annee?: number;
+  commentaire?: string;
+  uploadedById: string;
+  uploadedBy?: { id: string; nom: string; prenom: string };
+  createdAt: string;
+}
+
+export interface SiteAnalytics {
+  totalInterventions: number;
+  deviceStats: Record<string, { interventionCount: number; statusCodes: string[]; insectTotal: number }>;
+  insectTrend: Array<{ month: string; count: number }>;
+}

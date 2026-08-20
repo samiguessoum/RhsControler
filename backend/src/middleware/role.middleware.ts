@@ -72,6 +72,9 @@ export const permissions = {
   realiserIntervention:[Role.SUPER_ADMIN, Role.DIRECTION, Role.COORDINATEUR, Role.SUPER_CHEF_EQUIPE, Role.EQUIPE],
   // viewInterventions : tous les rôles authentifiés (le filtre EQUIPE se fait dans le controller)
 
+  // ── Zoning / Interventions terrain ──
+  manageInterventions: [Role.SUPER_ADMIN, Role.DIRECTION, Role.COORDINATEUR],
+
   // ── Import / Export ──
   importData: [Role.SUPER_ADMIN, Role.DIRECTION, Role.COORDINATEUR],
   exportData: [Role.SUPER_ADMIN, Role.DIRECTION, Role.COORDINATEUR, Role.SUPER_CHEF_EQUIPE],

@@ -224,6 +224,14 @@ model User {
   paiementsDiversCrees        PaiementDivers[]      @relation("PaiementDiversCreatedBy")
   bonsLivraisonCrees          BonLivraison[]        @relation("BonLivraison_createdByIdToUser")
   bonsLivraisonModifies       BonLivraison[]        @relation("BonLivraison_updatedByIdToUser")
+
+  // Zoning
+  zoningVersionsCrees         ZoningVersion[]       @relation("ZoningCreatedBy")
+  fieldInterventionsCrees     FieldIntervention[]   @relation("FICreatedBy")
+  fieldInterventionsValidees  FieldIntervention[]   @relation("FIValidatedBy")
+  fieldReportsGeneres         FieldReport[]         @relation("FIReportGeneratedBy")
+  siteDocumentsUploades       SiteDocument[]        @relation("SiteDocumentUploadedBy")
+  importLogsCrees             ImportLog[]           @relation("ImportLogCreatedBy")
 }
 
 model Employe {
@@ -238,6 +246,7 @@ model Employe {
 
   user                     User?
   interventionEmployes     InterventionEmploye[]
+  fiApplicateurs           FIApplicateur[]
   conges                   Conge[]
   joursWeekendTravailles   JourWeekendTravaille[]
   soldesConges             SoldeConge[]
@@ -326,6 +335,7 @@ model Client {
   interventions    Intervention[]
   sites            Site[]
   siegeContacts    SiegeContact[]
+  fieldInterventions FieldIntervention[]
   adresses         Adresse[]
   comptesBancaires CompteBancaire[]
 
@@ -501,6 +511,11 @@ model Site {
   commandes       Commande[]
   bonsLivraison   BonLivraison[]
   factures        Facture[]
+
+  // Zoning
+  zoningVersions     ZoningVersion[]
+  fieldInterventions FieldIntervention[]
+  siteDocuments      SiteDocument[]
 
   @@index([clientId])
   @@index([code])
@@ -845,6 +860,7 @@ model ProduitService {
   factureFournisseurLignes    FactureFournisseurLigne[] @relation("FactureFournisseurLignes")
 
   fournisseursDefaut ProduitFournisseurDefaut[]
+  fiProducts         FIProduct[]
 
   @@index([reference])
   @@index([codeBarres])
@@ -1802,4 +1818,342 @@ model CompanySettings {
 
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+}
+
+// ============================================================
+// MODULE ZONING / INTERVENTIONS TERRAIN
+// ============================================================
+
+enum ZoningStatut {
+  DRAFT    // En cours de création
+  ACTIVE   // Version active du site
+  ARCHIVED // Archivée (remplacée par une version plus récente)
+}
+
+enum DeviceType {
+  BAIT_STATION          // Boîte à raticide / poste d'appâtage
+  MECHANICAL_TRAP       // Piège mécanique
+  GLUE_TRAP             // Boîte à colle
+  FLYING_INSECT_KILLER  // Destructeur d'insectes / FK
+}
+
+enum DeviceStatut {
+  ACTIVE   // En place
+  REMOVED  // Retiré du site
+  INACTIVE // Désactivé temporairement
+}
+
+enum FieldInterventionType {
+  OPERATION  // Opération de traitement
+  VISITE     // Visite de contrôle
+}
+
+enum FieldInterventionStatut {
+  DRAFT        // Brouillon
+  IN_PROGRESS  // En cours sur le terrain
+  SUBMITTED    // Soumise par l'applicateur
+  VALIDATED    // Validée par le bureau
+  CANCELLED    // Annulée
+}
+
+enum FieldReportStatut {
+  DRAFT  // Brouillon, modifiable
+  FINAL  // Rapport définitif, non modifiable
+}
+
+// ── Version de zoning ─────────────────────────────────────────
+// Chaque site peut avoir plusieurs versions de zoning.
+// Une intervention capture la version active à son moment de création.
+model ZoningVersion {
+  id             String       @id @default(uuid())
+  siteId         String
+  site           Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  version        Int          // Numéro incrémental par site (1, 2, 3…)
+  nom            String       // Ex: "Zoning initial", "Après extension entrepôt"
+  statut         ZoningStatut @default(DRAFT)
+  dateActivation DateTime?
+  dateFin        DateTime?
+  notes          String?
+  createdById    String
+  createdBy      User         @relation("ZoningCreatedBy", fields: [createdById], references: [id])
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  zones              Zone[]
+  devices            MonitoringDevice[]
+  fieldInterventions FieldIntervention[]
+  plans              ZoningPlan[]
+
+  @@unique([siteId, version])
+  @@index([siteId])
+  @@index([statut])
+}
+
+// ── Plan du site ──────────────────────────────────────────────
+model ZoningPlan {
+  id             String        @id @default(uuid())
+  zoningVersionId String
+  zoningVersion  ZoningVersion @relation(fields: [zoningVersionId], references: [id], onDelete: Cascade)
+  nom            String        // "RDC", "Étage 1", "Extérieur"
+  filename       String
+  path           String
+  mimeType       String?
+  ordre          Int           @default(0)
+  createdAt      DateTime      @default(now())
+
+  @@index([zoningVersionId])
+}
+
+// ── Zone ──────────────────────────────────────────────────────
+model Zone {
+  id             String        @id @default(uuid())
+  zoningVersionId String
+  zoningVersion  ZoningVersion @relation(fields: [zoningVersionId], references: [id], onDelete: Cascade)
+  nom            String        // "Administration RDC", "Production", "Entrepôt"
+  description    String?
+  etage          String?       // "RDC", "1er étage", "Mezzanine"
+  ordre          Int           @default(0)
+  actif          Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  devices        MonitoringDevice[]
+
+  @@index([zoningVersionId])
+}
+
+// ── Dispositif de surveillance ────────────────────────────────
+// displayNumber est stocké en TEXT pour conserver "01", "002", etc.
+model MonitoringDevice {
+  id              String        @id @default(uuid())
+  zoningVersionId String
+  zoningVersion   ZoningVersion @relation(fields: [zoningVersionId], references: [id], onDelete: Cascade)
+  zoneId          String
+  zone            Zone          @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  type            DeviceType
+  displayNumber   String        // "01", "02", "007" — JAMAIS converti en entier
+  nom             String?       // Nom libre optionnel
+  statut          DeviceStatut  @default(ACTIVE)
+  dateInstallation DateTime?
+  dateRetrait     DateTime?
+  planId          String?       // Référence au plan sur lequel il est placé
+  planX           Float?        // Coordonnée X sur le plan (0–100%)
+  planY           Float?        // Coordonnée Y sur le plan (0–100%)
+  notes           String?
+  metadata        Json?         // Extensible : infos spécifiques au type
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  controls        DeviceControl[]
+
+  @@unique([zoningVersionId, type, displayNumber])
+  @@index([zoningVersionId])
+  @@index([zoneId])
+  @@index([type])
+}
+
+// ── Référentiel des états de contrôle ─────────────────────────
+// RAS, EBR, CON, NT, CAS, RT, INAC, SOU… — configurable
+model ControlStatus {
+  id          String   @id @default(uuid())
+  code        String   @unique  // "RAS", "CON", "EBR", etc.
+  label       String            // "Rien à signaler", "Consommé", etc.
+  description String?
+  color       String?           // Couleur hex pour l'UI (ex: "#22c55e")
+  actif       Boolean  @default(true)
+  ordre       Int      @default(0)
+  createdAt   DateTime @default(now())
+}
+
+// ── Intervention terrain ──────────────────────────────────────
+model FieldIntervention {
+  id               String                  @id @default(uuid())
+  siteId           String
+  site             Site                    @relation(fields: [siteId], references: [id])
+  clientId         String
+  client           Client                  @relation(fields: [clientId], references: [id])
+  zoningVersionId  String
+  zoningVersion    ZoningVersion           @relation(fields: [zoningVersionId], references: [id])
+  type             FieldInterventionType
+  statut           FieldInterventionStatut @default(DRAFT)
+  dateIntervention DateTime
+  heureDebut       String?
+  heureFin         String?
+  commentaire      String?
+  draftSavedAt     DateTime?               // Dernière sauvegarde du brouillon
+  createdById      String
+  createdBy        User                    @relation("FICreatedBy", fields: [createdById], references: [id])
+  submittedAt      DateTime?
+  validatedById    String?
+  validatedBy      User?                   @relation("FIValidatedBy", fields: [validatedById], references: [id])
+  validatedAt      DateTime?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  applicateurs     FIApplicateur[]
+  controls         DeviceControl[]
+  products         FIProduct[]
+  reports          FieldReport[]
+  documents        FieldInterventionDocument[]
+
+  @@index([siteId])
+  @@index([clientId])
+  @@index([zoningVersionId])
+  @@index([statut])
+  @@index([dateIntervention])
+}
+
+// ── Applicateurs d'une intervention terrain ───────────────────
+model FIApplicateur {
+  id                  String            @id @default(uuid())
+  fieldInterventionId String
+  fieldIntervention   FieldIntervention @relation(fields: [fieldInterventionId], references: [id], onDelete: Cascade)
+  employeId           String
+  employe             Employe           @relation(fields: [employeId], references: [id])
+  createdAt           DateTime          @default(now())
+
+  @@unique([fieldInterventionId, employeId])
+  @@index([fieldInterventionId])
+}
+
+// ── Contrôle d'un dispositif dans une intervention ────────────
+model DeviceControl {
+  id                  String            @id @default(uuid())
+  fieldInterventionId String
+  fieldIntervention   FieldIntervention @relation(fields: [fieldInterventionId], references: [id], onDelete: Cascade)
+  deviceId            String
+  device              MonitoringDevice  @relation(fields: [deviceId], references: [id])
+  statusCode          String?           // Code de l'état (ref ControlStatus.code)
+  observation         String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  insectCounts        InsectCount[]
+  photos              ControlPhoto[]
+
+  @@unique([fieldInterventionId, deviceId])
+  @@index([fieldInterventionId])
+  @@index([deviceId])
+}
+
+// ── Comptages d'insectes (pour FLYING_INSECT_KILLER) ─────────
+// Structure extensible : une ligne par espèce
+model InsectCount {
+  id              String        @id @default(uuid())
+  deviceControlId String
+  deviceControl   DeviceControl @relation(fields: [deviceControlId], references: [id], onDelete: Cascade)
+  espece          String        // "Mouches", "Moustiques", "Abeilles", "Papillons", "Autres"
+  count           Int           @default(0)
+  createdAt       DateTime      @default(now())
+
+  @@unique([deviceControlId, espece])
+  @@index([deviceControlId])
+}
+
+// ── Photos attachées à un contrôle ───────────────────────────
+model ControlPhoto {
+  id              String        @id @default(uuid())
+  deviceControlId String
+  deviceControl   DeviceControl @relation(fields: [deviceControlId], references: [id], onDelete: Cascade)
+  filename        String
+  path            String
+  size            Int?
+  mimeType        String?
+  createdAt       DateTime      @default(now())
+
+  @@index([deviceControlId])
+}
+
+// ── Produits utilisés lors d'une intervention terrain ─────────
+// Snapshot du produit au moment de l'intervention (intégrité historique)
+model FIProduct {
+  id                  String            @id @default(uuid())
+  fieldInterventionId String
+  fieldIntervention   FieldIntervention @relation(fields: [fieldInterventionId], references: [id], onDelete: Cascade)
+  produitId           String?           // Lien souple vers ProduitService (peut être null si produit supprimé)
+  produitService      ProduitService?   @relation(fields: [produitId], references: [id])
+  nom                 String            // Snapshot du nom
+  lot                 String?
+  dateFabrication     DateTime?
+  datePeremption      DateTime?
+  quantite            Float?
+  unite               String?
+  notes               String?
+  createdAt           DateTime          @default(now())
+
+  @@index([fieldInterventionId])
+}
+
+// ── Documents attachés à une intervention terrain ─────────────
+model FieldInterventionDocument {
+  id                  String            @id @default(uuid())
+  fieldInterventionId String
+  fieldIntervention   FieldIntervention @relation(fields: [fieldInterventionId], references: [id], onDelete: Cascade)
+  titre               String
+  filename            String
+  path                String
+  size                Int?
+  mimeType            String?
+  createdAt           DateTime          @default(now())
+
+  @@index([fieldInterventionId])
+}
+
+// ── Rapport d'une intervention terrain ───────────────────────
+// Versionné : chaque génération crée une nouvelle version
+model FieldReport {
+  id                  String              @id @default(uuid())
+  fieldInterventionId String
+  fieldIntervention   FieldIntervention   @relation(fields: [fieldInterventionId], references: [id])
+  version             Int                 @default(1)
+  statut              FieldReportStatut   @default(DRAFT)
+  titre               String?
+  conclusion          String?
+  recommandations     String?
+  pdfPath             String?
+  xlsxPath            String?
+  generatedById       String
+  generatedBy         User                @relation("FIReportGeneratedBy", fields: [generatedById], references: [id])
+  generatedAt         DateTime            @default(now())
+  createdAt           DateTime            @default(now())
+
+  @@unique([fieldInterventionId, version])
+  @@index([fieldInterventionId])
+}
+
+// ── Documents archivés d'un site ──────────────────────────────
+// Upload manuel d'anciens rapports PDF/XLSX/CSV
+model SiteDocument {
+  id           String    @id @default(uuid())
+  siteId       String
+  site         Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  titre        String
+  type         String    // "rapport", "controles", "tendance", "zoning", "autre"
+  filename     String
+  path         String
+  size         Int?
+  mimeType     String?
+  date         DateTime?
+  annee        Int?
+  commentaire  String?
+  uploadedById String
+  uploadedBy   User      @relation("SiteDocumentUploadedBy", fields: [uploadedById], references: [id])
+  createdAt    DateTime  @default(now())
+
+  @@index([siteId])
+}
+
+// ── Journal d'import ──────────────────────────────────────────
+model ImportLog {
+  id          String   @id @default(uuid())
+  siteId      String?
+  type        String   // "ZONING", "HISTORIQUE", "XLSX"
+  filename    String
+  statut      String   // "SUCCESS", "PARTIAL", "ERROR"
+  rapport     Json     // Résumé détaillé : zones créées, devices créés, erreurs, warnings
+  createdById String
+  createdBy   User     @relation("ImportLogCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([siteId])
 }

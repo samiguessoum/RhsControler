@@ -21,6 +21,7 @@ const SuiviVentesPage = lazy(() => import('@/pages/SuiviVentes'));
 const FacturationPage = lazy(() => import('@/pages/Facturation'));
 const FinancePage = lazy(() => import('@/pages/Finance'));
 const EntrepotsPage = lazy(() => import('@/pages/Entrepots'));
+const SiteDetailPage = lazy(() => import('@/pages/SiteDetail').then((m) => ({ default: m.SiteDetailPage })));
 
 const AUTH_BOOT_TIMEOUT_MS = 2500;
 
@@ -121,6 +122,7 @@ export default function App() {
               <Route path="/tiers" element={<Suspense fallback={<PageFallback />}><TiersPage /></Suspense>} />
               <Route path="/contrats" element={<Suspense fallback={<PageFallback />}><ContratsPage /></Suspense>} />
               <Route path="/contrats/:id" element={<Suspense fallback={<PageFallback />}><ContratDetailPage /></Suspense>} />
+              <Route path="/sites/:siteId" element={<Suspense fallback={<PageFallback />}><SiteDetailPage /></Suspense>} />
               <Route path="/import-export" element={<Suspense fallback={<PageFallback />}><ImportExportPage /></Suspense>} />
               <Route path="/prestations" element={<Suspense fallback={<PageFallback />}><PrestationsPage /></Suspense>} />
               <Route path="/entrepots" element={<Suspense fallback={<PageFallback />}><EntrepotsPage /></Suspense>} />

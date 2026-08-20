@@ -1506,4 +1506,123 @@ export const settingsApi = {
   },
 };
 
+// ─── Zoning API ───────────────────────────────────────────────────────────────
+export const zoningApi = {
+  // Versions
+  listVersions: async (siteId: string) => {
+    const { data } = await api.get(`/sites/${siteId}/zoning-versions`);
+    return data;
+  },
+  getVersion: async (id: string) => {
+    const { data } = await api.get(`/zoning-versions/${id}`);
+    return data;
+  },
+  createVersion: async (siteId: string, payload: { nom: string; notes?: string }) => {
+    const { data } = await api.post(`/sites/${siteId}/zoning-versions`, payload);
+    return data;
+  },
+  updateVersion: async (id: string, payload: Record<string, unknown>) => {
+    const { data } = await api.patch(`/zoning-versions/${id}`, payload);
+    return data;
+  },
+  deleteVersion: async (id: string) => {
+    await api.delete(`/zoning-versions/${id}`);
+  },
+
+  // Zones
+  createZone: async (versionId: string, payload: { nom: string; description?: string; etage?: string; ordre?: number }) => {
+    const { data } = await api.post(`/zoning-versions/${versionId}/zones`, payload);
+    return data;
+  },
+  updateZone: async (id: string, payload: Record<string, unknown>) => {
+    const { data } = await api.patch(`/zones/${id}`, payload);
+    return data;
+  },
+  deleteZone: async (id: string) => {
+    await api.delete(`/zones/${id}`);
+  },
+
+  // Devices
+  listDevices: async (versionId: string, params?: { type?: string; zoneId?: string; statut?: string }) => {
+    const { data } = await api.get(`/zoning-versions/${versionId}/devices`, { params });
+    return data;
+  },
+  createDevice: async (zoneId: string, payload: Record<string, unknown>) => {
+    const { data } = await api.post(`/zones/${zoneId}/devices`, payload);
+    return data;
+  },
+  updateDevice: async (id: string, payload: Record<string, unknown>) => {
+    const { data } = await api.patch(`/devices/${id}`, payload);
+    return data;
+  },
+  deleteDevice: async (id: string) => {
+    await api.delete(`/devices/${id}`);
+  },
+
+  // ControlStatus
+  listControlStatuses: async () => {
+    const { data } = await api.get('/control-statuses');
+    return data;
+  },
+};
+
+// ─── Field Interventions API ──────────────────────────────────────────────────
+export const fieldInterventionsApi = {
+  list: async (params?: {
+    siteId?: string; clientId?: string; statut?: string; type?: string;
+    dateFrom?: string; dateTo?: string; page?: number; limit?: number;
+  }) => {
+    const { data } = await api.get('/field-interventions', { params });
+    return data;
+  },
+  get: async (id: string) => {
+    const { data } = await api.get(`/field-interventions/${id}`);
+    return data;
+  },
+  create: async (payload: Record<string, unknown>) => {
+    const { data } = await api.post('/field-interventions', payload);
+    return data;
+  },
+  update: async (id: string, payload: Record<string, unknown>) => {
+    const { data } = await api.patch(`/field-interventions/${id}`, payload);
+    return data;
+  },
+  submit: async (id: string) => {
+    const { data } = await api.post(`/field-interventions/${id}/submit`);
+    return data;
+  },
+  validate: async (id: string) => {
+    const { data } = await api.post(`/field-interventions/${id}/validate`);
+    return data;
+  },
+  cancel: async (id: string) => {
+    await api.post(`/field-interventions/${id}/cancel`);
+  },
+  upsertControls: async (id: string, controls: unknown[]) => {
+    const { data } = await api.put(`/field-interventions/${id}/controls`, { controls });
+    return data;
+  },
+  upsertProducts: async (id: string, products: unknown[]) => {
+    const { data } = await api.put(`/field-interventions/${id}/products`, { products });
+    return data;
+  },
+  getAnalytics: async (siteId: string, params?: { zoningVersionId?: string; dateFrom?: string; dateTo?: string }) => {
+    const { data } = await api.get(`/sites/${siteId}/zoning-analytics`, { params });
+    return data;
+  },
+
+  // Documents de site
+  listSiteDocuments: async (siteId: string) => {
+    const { data } = await api.get(`/sites/${siteId}/documents`);
+    return data;
+  },
+  createSiteDocument: async (siteId: string, payload: Record<string, unknown>) => {
+    const { data } = await api.post(`/sites/${siteId}/documents`, payload);
+    return data;
+  },
+  deleteSiteDocument: async (id: string) => {
+    await api.delete(`/site-documents/${id}`);
+  },
+};
+
 export default api;
