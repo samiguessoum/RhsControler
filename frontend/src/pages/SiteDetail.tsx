@@ -1,6 +1,7 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import {
   ArrowLeft,
   Plus,
@@ -474,7 +475,9 @@ function ZoningTab({ siteId, versions }: { siteId: string; versions: ZoningVersi
       qc.invalidateQueries({ queryKey: ['zoning-versions', siteId] });
       setShowCreateDialog(false);
       setCreateForm({ nom: '', notes: '' });
+      toast.success('Version de zoning créée');
     },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la création de la version'),
   });
 
   const activateMut = useMutation({
@@ -483,13 +486,19 @@ function ZoningTab({ siteId, versions }: { siteId: string; versions: ZoningVersi
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['zoning-versions', siteId] });
       qc.invalidateQueries({ queryKey: ['zoning-version', selectedVersionId] });
+      toast.success('Version activée');
     },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de l\'activation'),
   });
 
   const duplicateMut = useMutation({
     mutationFn: (v: ZoningVersion) =>
       zoningApi.createVersion(siteId, { nom: `${v.nom} (copie)`, notes: v.notes }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['zoning-versions', siteId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['zoning-versions', siteId] });
+      toast.success('Version dupliquée');
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la duplication'),
   });
 
   const deleteMut = useMutation({
@@ -498,7 +507,9 @@ function ZoningTab({ siteId, versions }: { siteId: string; versions: ZoningVersi
       qc.invalidateQueries({ queryKey: ['zoning-versions', siteId] });
       if (selectedVersionId === deleteConfirmId) setSelectedVersionId(null);
       setDeleteConfirmId(null);
+      toast.success('Version supprimée');
     },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la suppression'),
   });
 
   return (
@@ -704,7 +715,9 @@ function ZoneCard({ zone, versionId }: { zone: Zone; versionId: string }) {
       invalidate();
       setShowAddDevice(false);
       setDeviceForm({ type: 'BAIT_STATION', displayNumber: '', nom: '', notes: '', statut: 'ACTIVE' });
+      toast.success('Dispositif ajouté');
     },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de l\'ajout du dispositif'),
   });
 
   const updateDeviceMut = useMutation({
@@ -712,7 +725,9 @@ function ZoneCard({ zone, versionId }: { zone: Zone; versionId: string }) {
     onSuccess: () => {
       invalidate();
       setEditDevice(null);
+      toast.success('Dispositif mis à jour');
     },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la mise à jour du dispositif'),
   });
 
   const deleteDeviceMut = useMutation({
@@ -720,7 +735,9 @@ function ZoneCard({ zone, versionId }: { zone: Zone; versionId: string }) {
     onSuccess: () => {
       invalidate();
       setDeleteDeviceId(null);
+      toast.success('Dispositif supprimé');
     },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la suppression du dispositif'),
   });
 
   const updateZoneMut = useMutation({
@@ -728,12 +745,18 @@ function ZoneCard({ zone, versionId }: { zone: Zone; versionId: string }) {
     onSuccess: () => {
       invalidate();
       setShowEditZone(false);
+      toast.success('Zone mise à jour');
     },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la mise à jour de la zone'),
   });
 
   const deleteZoneMut = useMutation({
     mutationFn: () => zoningApi.deleteZone(zone.id),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      toast.success('Zone supprimée');
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la suppression de la zone'),
   });
 
   const devices = zone.devices ?? [];
@@ -1004,7 +1027,9 @@ function AddZoneButton({ versionId }: { versionId: string }) {
       qc.invalidateQueries({ queryKey: ['zoning-version', versionId] });
       setShowDialog(false);
       setForm({ nom: '', etage: '', description: '' });
+      toast.success('Zone créée');
     },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la création de la zone'),
   });
 
   return (
@@ -1095,7 +1120,9 @@ function FieldInterventionsTab({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['field-interventions', siteId] });
       setShowCreateDialog(false);
+      toast.success('Intervention créée');
     },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la création de l\'intervention'),
   });
 
   let filtered = items;
@@ -1457,7 +1484,9 @@ function DocumentsTab({ siteId, documents }: { siteId: string; documents: SiteDo
       qc.invalidateQueries({ queryKey: ['site-documents', siteId] });
       setShowDialog(false);
       setForm({ titre: '', type: 'rapport', filename: '', path: '', commentaire: '', annee: '' });
+      toast.success('Document ajouté');
     },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de l\'ajout du document'),
   });
 
   const deleteMut = useMutation({
@@ -1465,7 +1494,9 @@ function DocumentsTab({ siteId, documents }: { siteId: string; documents: SiteDo
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['site-documents', siteId] });
       setDeleteId(null);
+      toast.success('Document supprimé');
     },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la suppression du document'),
   });
 
   return (

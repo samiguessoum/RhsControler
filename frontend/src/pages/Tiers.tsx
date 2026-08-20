@@ -480,6 +480,10 @@ export default function TiersPage() {
     onSuccess: () => {
       invalidateAll();
       setDeleteTarget(null);
+      toast.success('Tiers supprimé');
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Erreur lors de la suppression du tiers');
     },
   });
 
@@ -489,6 +493,10 @@ export default function TiersPage() {
     onSuccess: () => {
       invalidateAll();
       setConvertTarget(null);
+      toast.success('Prospect converti en client');
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Erreur lors de la conversion');
     },
   });
 
@@ -942,17 +950,47 @@ function TiersFormDialog({
         })) || [];
         setSites(loadedSites);
         setContactPrincipal(principalContact || { nom: '' });
-        setExtraContacts(otherContacts.map(c => ({
-          civilite: c.civilite,
-          nom: c.nom,
-          prenom: c.prenom,
-          fonction: c.fonction,
-          tel: c.tel,
-          telMobile: c.telMobile,
-          fax: c.fax,
-          email: c.email,
-          notes: c.notes,
-        })));
+
+        // Contacts rattachés à un ou plusieurs sites (stockés comme SiteContact en base) :
+        // regrouper les doublons (même personne créée sur plusieurs sites) en une seule
+        // entrée avec plusieurs siteIndices, pour correspondre à l'UI de sélection par cases à cocher.
+        const siteContactsByKey = new Map<string, CreateContactInput>();
+        (tiersData.sites || []).forEach((site, siteIdx) => {
+          (site.contacts || []).forEach(c => {
+            const key = [c.civilite, c.nom, c.prenom, c.fonction, c.tel, c.telMobile, c.email].join('|');
+            const existing = siteContactsByKey.get(key);
+            if (existing) {
+              existing.siteIndices = [...(existing.siteIndices ?? []), siteIdx];
+            } else {
+              siteContactsByKey.set(key, {
+                civilite: c.civilite,
+                nom: c.nom,
+                prenom: c.prenom,
+                fonction: c.fonction,
+                tel: c.tel,
+                telMobile: c.telMobile,
+                email: c.email,
+                notes: c.notes,
+                siteIndices: [siteIdx],
+              });
+            }
+          });
+        });
+
+        setExtraContacts([
+          ...otherContacts.map(c => ({
+            civilite: c.civilite,
+            nom: c.nom,
+            prenom: c.prenom,
+            fonction: c.fonction,
+            tel: c.tel,
+            telMobile: c.telMobile,
+            fax: c.fax,
+            email: c.email,
+            notes: c.notes,
+          })),
+          ...siteContactsByKey.values(),
+        ]);
       } else {
         setFormData({
           nomEntreprise: '',
@@ -990,6 +1028,7 @@ function TiersFormDialog({
       queryClient.invalidateQueries({ queryKey: ['contrats'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
       onOpenChange(false);
+      toast.success('Tiers créé');
     },
     onError: (error: any) => {
       const details = error?.response?.data?.details;
@@ -1020,6 +1059,8 @@ function TiersFormDialog({
           `Site(s) non supprimé(s) : ${siteNames}`,
           { duration: 6000 }
         );
+      } else {
+        toast.success('Tiers mis à jour');
       }
     },
     onError: (error: any) => {
@@ -1098,7 +1139,7 @@ function TiersFormDialog({
   }, []);
 
   const addExtraContact = () => {
-    setExtraContacts(prev => [...prev, { nom: '' }]);
+    setExtraContacts(prev => [{ nom: '' }, ...prev]);
   };
 
   const removeExtraContact = (index: number) => {
@@ -1347,7 +1388,7 @@ function TiersFormDialog({
                 {extraContacts.map((contact, index) => (
                   <div key={index} className="p-3 bg-white rounded-lg border space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">Contact {index + 1}</span>
+                      <span className="text-sm font-medium">Contact {extraContacts.length - index}</span>
                       <Button
                         type="button"
                         variant="ghost"

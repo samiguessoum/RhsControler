@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ClipboardCheck,
@@ -94,12 +95,20 @@ export function TerrainPage() {
 
   const validateMut = useMutation({
     mutationFn: (id: string) => fieldInterventionsApi.validate(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['field-interventions-all'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['field-interventions-all'] });
+      toast.success('Intervention validée');
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la validation'),
   });
 
   const cancelMut = useMutation({
     mutationFn: (id: string) => fieldInterventionsApi.cancel(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['field-interventions-all'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['field-interventions-all'] });
+      toast.success('Intervention annulée');
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de l\'annulation'),
   });
 
   return (
@@ -370,7 +379,9 @@ function SubmittedList({ canValidate }: { canValidate: boolean }) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['field-interventions-submitted'] });
       qc.invalidateQueries({ queryKey: ['field-interventions-all'] });
+      toast.success('Intervention validée');
     },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la validation'),
   });
 
   if (isLoading) {
