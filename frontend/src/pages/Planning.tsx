@@ -1936,6 +1936,8 @@ function RealiserDialog({
 }) {
   const [dateRealisee, setDateRealisee] = useState('');
   const [notesTerrain, setNotesTerrain] = useState('');
+  const [startingFieldReport, setStartingFieldReport] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     if (intervention?.datePrevue) {
@@ -1947,6 +1949,22 @@ function RealiserDialog({
   }, [intervention]);
 
   if (!intervention) return null;
+
+  // Fiche terrain structurée (zonage) disponible uniquement pour ces types de visite
+  const supportsFieldReport = intervention.siteId && ['OPERATION', 'CONTROLE'].includes(intervention.type);
+
+  const handleStartFieldReport = async () => {
+    setStartingFieldReport(true);
+    try {
+      const fi = await interventionsApi.startFieldReport(intervention.id);
+      onClose();
+      navigate(`/field-interventions/${fi.id}`);
+    } catch (error: any) {
+      toast.error(error?.response?.data?.error || 'Erreur lors du démarrage de la fiche terrain');
+    } finally {
+      setStartingFieldReport(false);
+    }
+  };
 
   const isDateDifferent =
     dateRealisee !== format(parseISO(intervention.datePrevue), 'yyyy-MM-dd');
@@ -1994,6 +2012,22 @@ function RealiserDialog({
                   {intervention.previousIntervention.notesTerrain}
                 </p>
               </div>
+            </div>
+          )}
+
+          {supportsFieldReport && (
+            <div className="rounded-md border border-blue-200 bg-blue-50 p-3 space-y-2">
+              <p className="text-xs text-blue-900">
+                Ce site dispose d'un zonage — remplissez la fiche terrain structurée (états des dispositifs, comptages d'insectes) plutôt qu'une simple note.
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleStartFieldReport}
+                disabled={startingFieldReport}
+              >
+                {startingFieldReport ? 'Ouverture...' : 'Remplir la fiche terrain'}
+              </Button>
             </div>
           )}
 

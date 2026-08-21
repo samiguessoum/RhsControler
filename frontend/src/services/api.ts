@@ -95,6 +95,9 @@ import type {
   // Settings
   CompanySettings,
   UpdateCompanySettingsInput,
+  // Zoning / Terrain
+  ControlStatus,
+  FieldIntervention,
 } from '@/types';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
@@ -373,6 +376,12 @@ export const interventionsApi = {
   annuler: async (id: string, raison: string) => {
     const { data } = await api.post(`/interventions/${id}/annuler`, { raison });
     return data.intervention;
+  },
+
+  // Démarre (ou reprend) la fiche terrain structurée liée à cette visite planifiée
+  startFieldReport: async (id: string) => {
+    const { data } = await api.post(`/interventions/${id}/field-report`);
+    return data;
   },
 
   delete: async (id: string): Promise<void> => {
@@ -1560,7 +1569,7 @@ export const zoningApi = {
   },
 
   // ControlStatus
-  listControlStatuses: async () => {
+  listControlStatuses: async (): Promise<ControlStatus[]> => {
     const { data } = await api.get('/control-statuses');
     return data;
   },
@@ -1575,7 +1584,7 @@ export const fieldInterventionsApi = {
     const { data } = await api.get('/field-interventions', { params });
     return data;
   },
-  get: async (id: string) => {
+  get: async (id: string): Promise<FieldIntervention> => {
     const { data } = await api.get(`/field-interventions/${id}`);
     return data;
   },
@@ -1622,6 +1631,22 @@ export const fieldInterventionsApi = {
   },
   deleteSiteDocument: async (id: string) => {
     await api.delete(`/site-documents/${id}`);
+  },
+};
+
+// ─── Rapports terrain (Excel agrégé par site) ────────────────────────────────
+export const fieldReportsApi = {
+  list: async (siteId: string) => {
+    const { data } = await api.get(`/sites/${siteId}/field-reports`);
+    return data;
+  },
+  generate: async (siteId: string, payload: { dateFrom: string; dateTo: string }) => {
+    const { data } = await api.post(`/sites/${siteId}/field-reports`, payload);
+    return data;
+  },
+  download: async (id: string): Promise<Blob> => {
+    const { data } = await api.get(`/field-reports/${id}/download`, { responseType: 'blob' });
+    return data;
   },
 };
 

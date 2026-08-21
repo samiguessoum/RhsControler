@@ -46,34 +46,34 @@ enum InterventionStatut {
 // ============ TIERS (Dolibarr-inspired) ============
 
 enum TypeTiers {
-  CLIENT            // Client uniquement
-  FOURNISSEUR       // Fournisseur uniquement
-  PROSPECT          // Prospect (client potentiel)
+  CLIENT // Client uniquement
+  FOURNISSEUR // Fournisseur uniquement
+  PROSPECT // Prospect (client potentiel)
   CLIENT_FOURNISSEUR // Les deux
 }
 
 enum FormeJuridique {
-  SARL              // Société à responsabilité limitée
-  EURL              // Entreprise unipersonnelle
-  SPA               // Société par actions
-  SNC               // Société en nom collectif
+  SARL // Société à responsabilité limitée
+  EURL // Entreprise unipersonnelle
+  SPA // Société par actions
+  SNC // Société en nom collectif
   AUTO_ENTREPRENEUR // Auto-entrepreneur
-  ASSOCIATION       // Association
-  PARTICULIER       // Personne physique
-  AUTRE             // Autre forme
+  ASSOCIATION // Association
+  PARTICULIER // Personne physique
+  AUTRE // Autre forme
 }
 
 enum Civilite {
-  M                 // Monsieur
-  MME               // Madame
-  MLLE              // Mademoiselle
+  M // Monsieur
+  MME // Madame
+  MLLE // Mademoiselle
 }
 
 enum TypeAdresse {
-  SIEGE             // Siège social
-  FACTURATION       // Adresse de facturation
-  LIVRAISON         // Adresse de livraison
-  SITE              // Site d'intervention
+  SIEGE // Siège social
+  FACTURATION // Adresse de facturation
+  LIVRAISON // Adresse de livraison
+  SITE // Site d'intervention
 }
 
 // ============ COMMERCE (Dolibarr-inspired) ============
@@ -116,12 +116,12 @@ enum CommandeStatut {
 }
 
 enum PipelineVenteStatut {
-  VERIFICATION_STOCK     // Vérif dispo fournisseur
-  COMMANDE_FOURNISSEUR   // BC émis au fournisseur
-  EN_TRANSIT             // Réception / stockage / expédition vers client
-  LIVRE                  // Livré au client
-  A_ENCAISSER            // Facture émise, paiement attendu
-  PAYE                   // Terminé — masqué par défaut du board
+  VERIFICATION_STOCK // Vérif dispo fournisseur
+  COMMANDE_FOURNISSEUR // BC émis au fournisseur
+  EN_TRANSIT // Réception / stockage / expédition vers client
+  LIVRE // Livré au client
+  A_ENCAISSER // Facture émise, paiement attendu
+  PAYE // Terminé — masqué par défaut du board
 }
 
 enum FactureStatut {
@@ -137,7 +137,7 @@ enum FactureStatut {
 enum FactureType {
   FACTURE
   AVOIR
-  ACOMPTE    // Facture d'acompte
+  ACOMPTE // Facture d'acompte
 }
 
 enum PaiementStatut {
@@ -150,12 +150,12 @@ enum PaiementStatut {
 
 // Mode de paiement
 model ModePaiement {
-  id          String   @id @default(uuid())
-  code        String   @unique  // VIR, CHQ, ESP, CB, etc.
-  libelle     String             // Virement, Chèque, Espèces, etc.
-  actif       Boolean  @default(true)
-  ordre       Int      @default(0)
-  createdAt   DateTime @default(now())
+  id        String   @id @default(uuid())
+  code      String   @unique // VIR, CHQ, ESP, CB, etc.
+  libelle   String // Virement, Chèque, Espèces, etc.
+  actif     Boolean  @default(true)
+  ordre     Int      @default(0)
+  createdAt DateTime @default(now())
 
   tiers                Client[]              @relation("ModePaiementTiers")
   paiements            Paiement[]
@@ -166,17 +166,16 @@ model ModePaiement {
 
 // Conditions de paiement
 model ConditionPaiement {
-  id          String   @id @default(uuid())
-  code        String   @unique  // RECEP, 30D, 60D, etc.
-  libelle     String             // À réception, 30 jours, etc.
-  nbJours     Int      @default(0)  // Nombre de jours
-  actif       Boolean  @default(true)
-  ordre       Int      @default(0)
-  createdAt   DateTime @default(now())
+  id        String   @id @default(uuid())
+  code      String   @unique // RECEP, 30D, 60D, etc.
+  libelle   String // À réception, 30 jours, etc.
+  nbJours   Int      @default(0) // Nombre de jours
+  actif     Boolean  @default(true)
+  ordre     Int      @default(0)
+  createdAt DateTime @default(now())
 
-  tiers       Client[] @relation("ConditionPaiementTiers")
+  tiers Client[] @relation("ConditionPaiementTiers")
 }
-
 
 model User {
   id        String   @id @default(uuid())
@@ -184,33 +183,33 @@ model User {
   password  String
   nom       String
   prenom    String
-  tel        String?
-  role       Role     @default(EQUIPE)
-  actif      Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  tel       String?
+  role      Role     @default(EQUIPE)
+  actif     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Lien vers la fiche employé (pour le rôle EQUIPE : filtre ses propres interventions)
-  employeId  String?  @unique
-  employe    Employe? @relation(fields: [employeId], references: [id])
+  employeId String?  @unique
+  employe   Employe? @relation(fields: [employeId], references: [id])
 
-  contratsResponsable Contrat[]        @relation("ResponsablePlanning")
-  interventionsCrees  Intervention[]   @relation("CreatedBy")
-  interventionsModif  Intervention[]   @relation("UpdatedBy")
-  auditLogs           AuditLog[]
-  mouvementsStock     MouvementStock[]
-  congesApprouves          Conge[]           @relation("ApprouvePar")
-  mouvementsCongeAuteur    MouvementConge[]  @relation("MouvementsCongeAuteur")
+  contratsResponsable   Contrat[]        @relation("ResponsablePlanning")
+  interventionsCrees    Intervention[]   @relation("CreatedBy")
+  interventionsModif    Intervention[]   @relation("UpdatedBy")
+  auditLogs             AuditLog[]
+  mouvementsStock       MouvementStock[]
+  congesApprouves       Conge[]          @relation("ApprouvePar")
+  mouvementsCongeAuteur MouvementConge[] @relation("MouvementsCongeAuteur")
 
   // Commerce
-  devisCrees          Devis[]          @relation("DevisCreatedBy")
-  devisModifies       Devis[]          @relation("DevisUpdatedBy")
-  commandesCrees      Commande[]       @relation("CommandeCreatedBy")
-  commandesModifies   Commande[]       @relation("CommandeUpdatedBy")
-  facturesCrees       Facture[]        @relation("FactureCreatedBy")
-  facturesModifies    Facture[]        @relation("FactureUpdatedBy")
-  paiementsCrees      Paiement[]       @relation("PaiementCreatedBy")
-  facturesRelancees   FactureRelance[] @relation("FactureRelanceCreatedBy")
+  devisCrees                   Devis[]               @relation("DevisCreatedBy")
+  devisModifies                Devis[]               @relation("DevisUpdatedBy")
+  commandesCrees               Commande[]            @relation("CommandeCreatedBy")
+  commandesModifies            Commande[]            @relation("CommandeUpdatedBy")
+  facturesCrees                Facture[]             @relation("FactureCreatedBy")
+  facturesModifies             Facture[]             @relation("FactureUpdatedBy")
+  paiementsCrees               Paiement[]            @relation("PaiementCreatedBy")
+  facturesRelancees            FactureRelance[]      @relation("FactureRelanceCreatedBy")
   commandesFournisseurCrees    CommandeFournisseur[] @relation("CommandeFournisseurCreatedBy")
   commandesFournisseurModifies CommandeFournisseur[] @relation("CommandeFournisseurUpdatedBy")
 
@@ -226,74 +225,74 @@ model User {
   bonsLivraisonModifies       BonLivraison[]        @relation("BonLivraison_updatedByIdToUser")
 
   // Zoning
-  zoningVersionsCrees         ZoningVersion[]       @relation("ZoningCreatedBy")
-  fieldInterventionsCrees     FieldIntervention[]   @relation("FICreatedBy")
-  fieldInterventionsValidees  FieldIntervention[]   @relation("FIValidatedBy")
-  fieldReportsGeneres         FieldReport[]         @relation("FIReportGeneratedBy")
-  siteDocumentsUploades       SiteDocument[]        @relation("SiteDocumentUploadedBy")
-  importLogsCrees             ImportLog[]           @relation("ImportLogCreatedBy")
+  zoningVersionsCrees        ZoningVersion[]     @relation("ZoningCreatedBy")
+  fieldInterventionsCrees    FieldIntervention[] @relation("FICreatedBy")
+  fieldInterventionsValidees FieldIntervention[] @relation("FIValidatedBy")
+  fieldReportsGeneres        FieldReport[]       @relation("FIReportGeneratedBy")
+  siteDocumentsUploades      SiteDocument[]      @relation("SiteDocumentUploadedBy")
+  importLogsCrees            ImportLog[]         @relation("ImportLogCreatedBy")
 }
 
 model Employe {
-  id          String               @id @default(uuid())
+  id          String    @id @default(uuid())
   prenom      String
   nom         String
   postes      Poste[]
-  salaireBase Float?               // Salaire mensuel brut (visible DIRECTION/SUPER_ADMIN uniquement)
-  dateEntree  DateTime?            // Date d'entree dans l'entreprise (sert au calcul des conges acquis)
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
+  salaireBase Float? // Salaire mensuel brut (visible DIRECTION/SUPER_ADMIN uniquement)
+  dateEntree  DateTime? // Date d'entree dans l'entreprise (sert au calcul des conges acquis)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  user                     User?
-  interventionEmployes     InterventionEmploye[]
-  fiApplicateurs           FIApplicateur[]
-  conges                   Conge[]
-  joursWeekendTravailles   JourWeekendTravaille[]
-  soldesConges             SoldeConge[]
-  recuperationsAccordees   RecuperationAccordee[]
-  mouvementsConge          MouvementConge[]
+  user                   User?
+  interventionEmployes   InterventionEmploye[]
+  fiApplicateurs         FIApplicateur[]
+  conges                 Conge[]
+  joursWeekendTravailles JourWeekendTravaille[]
+  soldesConges           SoldeConge[]
+  recuperationsAccordees RecuperationAccordee[]
+  mouvementsConge        MouvementConge[]
 }
 
 model Poste {
-  id        String    @id @default(uuid())
-  nom       String    @unique
-  actif     Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id        String   @id @default(uuid())
+  nom       String   @unique
+  actif     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   employes             Employe[]
   interventionEmployes InterventionEmploye[]
 }
 
 model Client {
-  id              String   @id @default(uuid())
+  id String @id @default(uuid())
 
   // === Identification ===
-  code            String?  @unique  // Code client/fournisseur auto-généré
-  nomEntreprise   String
-  nomAlias        String?           // Nom commercial, enseigne
+  code          String? @unique // Code client/fournisseur auto-généré
+  nomEntreprise String
+  nomAlias      String? // Nom commercial, enseigne
 
   // === Type de tiers ===
-  typeTiers       TypeTiers @default(CLIENT)
+  typeTiers TypeTiers @default(CLIENT)
 
   // === Informations légales ===
-  formeJuridique  FormeJuridique?
-  siegeRC         String?           // Registre du commerce
-  siegeNIF        String?           // Numéro d'identification fiscale
-  siegeAI         String?           // Article d'imposition
-  siegeNIS        String?           // Numéro d'identification statistique
-  siegeNIN        String?           // NIN du gérant
-  siegeTIN        String?           // Tax Identification Number (international)
-  tvaIntracom     String?           // TVA intracommunautaire
-  capital         Float?            // Capital social
-  dateCreation    DateTime?         // Date de création de l'entreprise
+  formeJuridique FormeJuridique?
+  siegeRC        String? // Registre du commerce
+  siegeNIF       String? // Numéro d'identification fiscale
+  siegeAI        String? // Article d'imposition
+  siegeNIS       String? // Numéro d'identification statistique
+  siegeNIN       String? // NIN du gérant
+  siegeTIN       String? // Tax Identification Number (international)
+  tvaIntracom    String? // TVA intracommunautaire
+  capital        Float? // Capital social
+  dateCreation   DateTime? // Date de création de l'entreprise
 
   // === Siège social (adresse principale) ===
   siegeNom        String
   siegeAdresse    String?
   siegeCodePostal String?
   siegeVille      String?
-  siegePays       String?  @default("Algérie")
+  siegePays       String? @default("Algérie")
   siegeTel        String?
   siegeFax        String?
   siegeEmail      String?
@@ -301,43 +300,43 @@ model Client {
   siegeNotes      String?
 
   // === Classification ===
-  secteur         String?           // Secteur d'activité
-  categorie       String?           // Catégorie interne
-  codeComptaClient     String?      // Code comptable client
-  codeComptaFournisseur String?     // Code comptable fournisseur
+  secteur               String? // Secteur d'activité
+  categorie             String? // Catégorie interne
+  codeComptaClient      String? // Code comptable client
+  codeComptaFournisseur String? // Code comptable fournisseur
 
   // === Conditions commerciales ===
-  modePaiementId       String?
-  modePaiement         ModePaiement?      @relation("ModePaiementTiers", fields: [modePaiementId], references: [id])
-  conditionPaiementId  String?
-  conditionPaiement    ConditionPaiement? @relation("ConditionPaiementTiers", fields: [conditionPaiementId], references: [id])
-  remiseParDefaut      Float?       @default(0)   // Remise en %
-  encoursMaximum       Float?                      // Limite d'encours autorisé
+  modePaiementId      String?
+  modePaiement        ModePaiement?      @relation("ModePaiementTiers", fields: [modePaiementId], references: [id])
+  conditionPaiementId String?
+  conditionPaiement   ConditionPaiement? @relation("ConditionPaiementTiers", fields: [conditionPaiementId], references: [id])
+  remiseParDefaut     Float?             @default(0) // Remise en %
+  encoursMaximum      Float? // Limite d'encours autorisé
 
   // === Devises ===
-  devise          String?  @default("DZD")        // Code devise par défaut
+  devise String? @default("DZD") // Code devise par défaut
 
   // === Notes ===
-  notePublique    String?           // Note visible sur les documents
-  notePrivee      String?           // Note interne uniquement
+  notePublique String? // Note visible sur les documents
+  notePrivee   String? // Note interne uniquement
 
   // === Prospect ===
-  prospectNiveau  Int?     @default(0)  // 0=froid, 1=tiède, 2=chaud
-  prospectStatut  String?               // Statut commercial du prospect
+  prospectNiveau Int?    @default(0) // 0=froid, 1=tiède, 2=chaud
+  prospectStatut String? // Statut commercial du prospect
 
   // === Statut ===
-  actif           Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  actif     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // === Relations ===
-  contrats         Contrat[]
-  interventions    Intervention[]
-  sites            Site[]
-  siegeContacts    SiegeContact[]
+  contrats           Contrat[]
+  interventions      Intervention[]
+  sites              Site[]
+  siegeContacts      SiegeContact[]
   fieldInterventions FieldIntervention[]
-  adresses         Adresse[]
-  comptesBancaires CompteBancaire[]
+  adresses           Adresse[]
+  comptesBancaires   CompteBancaire[]
 
   // Relations produits/services (Dolibarr-style)
   produitsFournis           ProduitService[]           @relation("FournisseurProduit")
@@ -346,10 +345,10 @@ model Client {
   prixClient                PrixClient[]               @relation("PrixClientTiers")
 
   // Commerce
-  devis            Devis[]
-  commandes        Commande[]
-  bonsLivraison    BonLivraison[]
-  factures         Facture[]
+  devis                Devis[]
+  commandes            Commande[]
+  bonsLivraison        BonLivraison[]
+  factures             Facture[]
   commandesFournisseur CommandeFournisseur[] @relation("CommandesFournisseur")
   facturesFournisseur  FactureFournisseur[]  @relation("FacturesFournisseur")
   charges              Charge[]              @relation("ChargesFournisseur")
@@ -361,30 +360,30 @@ model Client {
 }
 
 model SiegeContact {
-  id          String    @id @default(uuid())
-  clientId    String
-  client      Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id       String @id @default(uuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   // === Identité ===
-  civilite    Civilite?
-  nom         String
-  prenom      String?
-  fonction    String              // Poste/fonction dans l'entreprise
+  civilite Civilite?
+  nom      String
+  prenom   String?
+  fonction String // Poste/fonction dans l'entreprise
 
   // === Coordonnées ===
-  tel         String?             // Téléphone fixe
-  telMobile   String?             // Téléphone mobile
-  fax         String?
-  email       String?
+  tel       String? // Téléphone fixe
+  telMobile String? // Téléphone mobile
+  fax       String?
+  email     String?
 
   // === Informations complémentaires ===
   dateNaissance DateTime?
-  notes       String?
-  estPrincipal Boolean  @default(false)  // Contact principal
-  actif       Boolean  @default(true)
+  notes         String?
+  estPrincipal  Boolean   @default(false) // Contact principal
+  actif         Boolean   @default(true)
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([clientId])
   @@index([nom])
@@ -392,41 +391,41 @@ model SiegeContact {
 
 // Adresses multiples pour un tiers
 model Adresse {
-  id          String      @id @default(uuid())
-  clientId    String
-  client      Client      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id       String @id @default(uuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   // === Type et libellé ===
-  type        TypeAdresse @default(SITE)
-  libelle     String?               // Nom de l'adresse (ex: "Entrepôt Nord")
+  type    TypeAdresse @default(SITE)
+  libelle String? // Nom de l'adresse (ex: "Entrepôt Nord")
 
   // === Adresse ===
-  adresse     String?
-  complement  String?               // Complément d'adresse
-  codePostal  String?
-  ville       String?
-  pays        String?     @default("Algérie")
+  adresse    String?
+  complement String? // Complément d'adresse
+  codePostal String?
+  ville      String?
+  pays       String? @default("Algérie")
 
   // === Contact sur place ===
-  contactNom  String?
-  contactTel  String?
+  contactNom   String?
+  contactTel   String?
   contactEmail String?
 
   // === Options ===
-  estDefaut   Boolean     @default(false)  // Adresse par défaut pour ce type
-  notes       String?
-  actif       Boolean     @default(true)
+  estDefaut Boolean @default(false) // Adresse par défaut pour ce type
+  notes     String?
+  actif     Boolean @default(true)
 
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Commerce
-  devisFacturation     Devis[]    @relation("DevisAdresseFacturation")
-  devisLivraison       Devis[]    @relation("DevisAdresseLivraison")
-  commandesFacturation Commande[] @relation("CommandeAdresseFacturation")
-  commandesLivraison   Commande[] @relation("CommandeAdresseLivraison")
-  facturesFacturation  Facture[]  @relation("FactureAdresseFacturation")
-  facturesLivraison    Facture[]  @relation("FactureAdresseLivraison")
+  devisFacturation     Devis[]        @relation("DevisAdresseFacturation")
+  devisLivraison       Devis[]        @relation("DevisAdresseLivraison")
+  commandesFacturation Commande[]     @relation("CommandeAdresseFacturation")
+  commandesLivraison   Commande[]     @relation("CommandeAdresseLivraison")
+  facturesFacturation  Facture[]      @relation("FactureAdresseFacturation")
+  facturesLivraison    Facture[]      @relation("FactureAdresseLivraison")
   bonsLivraison        BonLivraison[] @relation("BonLivraisonAdresse")
 
   @@index([clientId])
@@ -435,86 +434,87 @@ model Adresse {
 
 // Comptes bancaires d'un tiers
 model CompteBancaire {
-  id          String   @id @default(uuid())
-  clientId    String
-  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id       String @id @default(uuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   // === Identification du compte ===
-  libelle     String               // Nom du compte (ex: "Compte principal BNA")
-  banque      String               // Nom de la banque
-  agence      String?              // Agence/domiciliation
+  libelle String // Nom du compte (ex: "Compte principal BNA")
+  banque  String // Nom de la banque
+  agence  String? // Agence/domiciliation
 
   // === RIB (format algérien/français) ===
-  codeBanque  String?              // Code banque (5 chiffres)
-  codeGuichet String?              // Code guichet (5 chiffres)
-  numeroCompte String?             // Numéro de compte
-  cleRib      String?              // Clé RIB (2 chiffres)
+  codeBanque   String? // Code banque (5 chiffres)
+  codeGuichet  String? // Code guichet (5 chiffres)
+  numeroCompte String? // Numéro de compte
+  cleRib       String? // Clé RIB (2 chiffres)
 
   // === Format international ===
-  iban        String?              // IBAN complet
-  bic         String?              // BIC/SWIFT
+  iban String? // IBAN complet
+  bic  String? // BIC/SWIFT
 
   // === Titulaire ===
-  titulaire   String?              // Nom du titulaire si différent
+  titulaire String? // Nom du titulaire si différent
 
   // === Options ===
-  devise      String?   @default("DZD")
-  estDefaut   Boolean   @default(false)  // Compte par défaut
-  actif       Boolean   @default(true)
+  devise    String? @default("DZD")
+  estDefaut Boolean @default(false) // Compte par défaut
+  actif     Boolean @default(true)
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([clientId])
 }
 
 model Site {
-  id              String   @id @default(uuid())
-  clientId        String
-  client          Client   @relation(fields: [clientId], references: [id])
+  id       String @id @default(uuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id])
 
   // === Identification ===
-  code            String?           // Code site unique (ex: SITE001)
-  nom             String            // Nom du site
+  code String? // Code site unique (ex: SITE001)
+  nom  String // Nom du site
 
   // === Adresse complète ===
-  adresse         String?
-  complement      String?           // Complément d'adresse
-  codePostal      String?
-  ville           String?
-  pays            String?  @default("Algérie")
+  adresse    String?
+  complement String? // Complément d'adresse
+  codePostal String?
+  ville      String?
+  pays       String? @default("Algérie")
 
   // === Géolocalisation ===
-  latitude        Float?
-  longitude       Float?
+  latitude  Float?
+  longitude Float?
 
   // === Informations pratiques ===
-  tel             String?           // Téléphone du site
-  fax             String?
-  email           String?
-  horairesOuverture String?         // Ex: "Lun-Ven: 8h-17h"
-  accessibilite   String?           // Infos parking, accès, etc.
+  tel               String? // Téléphone du site
+  fax               String?
+  email             String?
+  horairesOuverture String? // Ex: "Lun-Ven: 8h-17h"
+  accessibilite     String? // Infos parking, accès, etc.
 
   // === Notes et statut ===
-  notes           String?
-  noteServiceDefaut String?           // Note par défaut pour les devis service sur ce site
-  actif           Boolean  @default(true)
+  notes             String?
+  noteServiceDefaut String? // Note par défaut pour les devis service sur ce site
+  actif             Boolean @default(true)
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // === Relations ===
-  contacts        SiteContact[]     // Contacts sur ce site
-  contratSites    ContratSite[]
-  interventions   Intervention[]
-  devis           Devis[]
-  commandes       Commande[]
-  bonsLivraison   BonLivraison[]
-  factures        Facture[]
+  contacts      SiteContact[] // Contacts sur ce site
+  contratSites  ContratSite[]
+  interventions Intervention[]
+  devis         Devis[]
+  commandes     Commande[]
+  bonsLivraison BonLivraison[]
+  factures      Facture[]
 
   // Zoning
   zoningVersions     ZoningVersion[]
   fieldInterventions FieldIntervention[]
+  fieldReports       FieldReport[]
   siteDocuments      SiteDocument[]
 
   @@index([clientId])
@@ -524,76 +524,77 @@ model Site {
 
 // Contacts spécifiques à un site d'intervention
 model SiteContact {
-  id          String    @id @default(uuid())
-  siteId      String
-  site        Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  siteId String
+  site   Site   @relation(fields: [siteId], references: [id], onDelete: Cascade)
 
   // === Identité ===
-  civilite    Civilite?
-  nom         String
-  prenom      String?
-  fonction    String?             // Poste/fonction sur le site
+  civilite Civilite?
+  nom      String
+  prenom   String?
+  fonction String? // Poste/fonction sur le site
 
   // === Coordonnées ===
-  tel         String?             // Téléphone fixe
-  telMobile   String?             // Téléphone mobile
-  email       String?
+  tel       String? // Téléphone fixe
+  telMobile String? // Téléphone mobile
+  email     String?
 
   // === Informations complémentaires ===
-  notes       String?
-  estPrincipal Boolean  @default(false)  // Contact principal du site
-  actif       Boolean  @default(true)
+  notes        String?
+  estPrincipal Boolean @default(false) // Contact principal du site
+  actif        Boolean @default(true)
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([siteId])
   @@index([nom])
 }
 
 model Contrat {
-  id                       String        @id @default(uuid())
-  clientId                 String
-  client                   Client        @relation(fields: [clientId], references: [id])
-  type                     ContratType
-  dateDebut                DateTime
-  dateFin                  DateTime?
-  reconductionAuto         Boolean       @default(false)
-  prestations              String[]
-  frequenceOperationsJours Int?
-  frequenceControleJours   Int?
-  premiereDateOperation    DateTime?
-  premiereDateControle     DateTime?
-  responsablePlanningId    String?
-  responsablePlanning      User?         @relation("ResponsablePlanning", fields: [responsablePlanningId], references: [id])
-  statut                   ContratStatut @default(ACTIF)
-  notes                    String?
-  attestationMessageTemplate String?
+  id                                 String        @id @default(uuid())
+  clientId                           String
+  client                             Client        @relation(fields: [clientId], references: [id])
+  type                               ContratType
+  dateDebut                          DateTime
+  dateFin                            DateTime?
+  reconductionAuto                   Boolean       @default(false)
+  prestations                        String[]
+  frequenceOperationsJours           Int?
+  frequenceControleJours             Int?
+  premiereDateOperation              DateTime?
+  premiereDateControle               DateTime?
+  responsablePlanningId              String?
+  responsablePlanning                User?         @relation("ResponsablePlanning", fields: [responsablePlanningId], references: [id])
+  statut                             ContratStatut @default(ACTIF)
+  notes                              String?
+  attestationMessageTemplate         String?
   attestationGarantieMessageTemplate String?
   attestationControleMessageTemplate String?
-  autoCreerProchaine       Boolean       @default(true)
+  autoCreerProchaine                 Boolean       @default(true)
   // Champs spécifiques au contrat ponctuel
-  numeroBonCommande        String?
-  nombreOperations         Int?
-  nombreVisitesControle    Int?
-  createdAt                DateTime      @default(now())
-  updatedAt                DateTime      @updatedAt
+  numeroBonCommande                  String?
+  nombreOperations                   Int?
+  nombreVisitesControle              Int?
+  createdAt                          DateTime      @default(now())
+  updatedAt                          DateTime      @updatedAt
 
-  interventions Intervention[]
-  contratSites  ContratSite[]
+  interventions      Intervention[]
+  contratSites       ContratSite[]
+  fieldInterventions FieldIntervention[]
 
   @@index([clientId])
   @@index([statut])
 }
 
 model ContratSite {
-  id                       String     @id @default(uuid())
+  id                       String    @id @default(uuid())
   contratId                String
-  contrat                  Contrat    @relation(fields: [contratId], references: [id], onDelete: Cascade)
+  contrat                  Contrat   @relation(fields: [contratId], references: [id], onDelete: Cascade)
   siteId                   String
-  site                     Site       @relation(fields: [siteId], references: [id])
-  prestations              String[]   @default([])
-  prixPrestations          Json       @default("{}")  // Map prestation → prix unitaire HT
+  site                     Site      @relation(fields: [siteId], references: [id])
+  prestations              String[]  @default([])
+  prixPrestations          Json      @default("{}") // Map prestation → prix unitaire HT
   frequenceOperationsJours Int?
   frequenceControleJours   Int?
   premiereDateOperation    DateTime?
@@ -601,8 +602,8 @@ model ContratSite {
   nombreOperations         Int?
   nombreVisitesControle    Int?
   notes                    String?
-  createdAt                DateTime   @default(now())
-  updatedAt                DateTime   @updatedAt
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
 
   @@unique([contratId, siteId])
   @@index([contratId])
@@ -636,6 +637,7 @@ model Intervention {
 
   interventionEmployes InterventionEmploye[]
   mouvementsStock      MouvementStock[]
+  fieldIntervention    FieldIntervention?
 
   @@index([clientId])
   @@index([contratId])
@@ -660,12 +662,12 @@ model InterventionEmploye {
 }
 
 model Prestation {
-  id        String   @id @default(uuid())
-  nom       String   @unique
+  id          String   @id @default(uuid())
+  nom         String   @unique
   description String?
-  actif     Boolean  @default(true)
-  ordre     Int      @default(0)
-  createdAt DateTime @default(now())
+  actif       Boolean  @default(true)
+  ordre       Int      @default(0)
+  createdAt   DateTime @default(now())
 }
 
 model AuditLog {
@@ -685,33 +687,33 @@ model AuditLog {
 // ============ GESTION DES PRODUITS/SERVICES (Dolibarr-inspired) ============
 
 enum TypeProduit {
-  PRODUIT              // Article physique avec gestion de stock
-  SERVICE              // Prestation immatérielle sans stock
+  PRODUIT // Article physique avec gestion de stock
+  SERVICE // Prestation immatérielle sans stock
 }
 
 enum NatureProduit {
-  CONSOMMABLE                // Produit consommable (produits chimiques, etc.)
-  EPI                        // Équipement de Protection Individuelle
-  MATERIEL_ANTI_NUISIBLES    // Matériel anti-nuisibles (fly killer, pièges, pics pigeons, etc.)
+  CONSOMMABLE // Produit consommable (produits chimiques, etc.)
+  EPI // Équipement de Protection Individuelle
+  MATERIEL_ANTI_NUISIBLES // Matériel anti-nuisibles (fly killer, pièges, pics pigeons, etc.)
 }
 
 // Catégories de produits/services (hiérarchique)
 model CategorieProduit {
-  id           String             @id @default(uuid())
-  code         String?            @unique
-  nom          String
-  description  String?
-  parentId     String?
-  parent       CategorieProduit?  @relation("CategorieHierarchie", fields: [parentId], references: [id])
-  enfants      CategorieProduit[] @relation("CategorieHierarchie")
-  couleur      String?            // Couleur pour affichage (hex)
-  icone        String?            // Icône (nom lucide-react)
-  ordre        Int                @default(0)
-  actif        Boolean            @default(true)
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  id          String             @id @default(uuid())
+  code        String?            @unique
+  nom         String
+  description String?
+  parentId    String?
+  parent      CategorieProduit?  @relation("CategorieHierarchie", fields: [parentId], references: [id])
+  enfants     CategorieProduit[] @relation("CategorieHierarchie")
+  couleur     String? // Couleur pour affichage (hex)
+  icone       String? // Icône (nom lucide-react)
+  ordre       Int                @default(0)
+  actif       Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
 
-  produits     ProduitServiceCategorie[]
+  produits ProduitServiceCategorie[]
 
   @@index([parentId])
   @@index([nom])
@@ -733,24 +735,24 @@ model ProduitServiceCategorie {
 
 // Entrepôts pour gestion multi-stocks
 model Entrepot {
-  id           String           @id @default(uuid())
-  code         String           @unique
-  nom          String
-  description  String?
-  adresse      String?
-  codePostal   String?
-  ville        String?
-  pays         String?          @default("Algérie")
-  responsable  String?          // Nom du responsable
-  tel          String?
-  email        String?
-  estDefaut    Boolean          @default(false)
-  actif        Boolean          @default(true)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  id          String   @id @default(uuid())
+  code        String   @unique
+  nom         String
+  description String?
+  adresse     String?
+  codePostal  String?
+  ville       String?
+  pays        String?  @default("Algérie")
+  responsable String? // Nom du responsable
+  tel         String?
+  email       String?
+  estDefaut   Boolean  @default(false)
+  actif       Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  stocks       StockEntrepot[]
-  mouvements   MouvementStock[]
+  stocks     StockEntrepot[]
+  mouvements MouvementStock[]
 
   @@index([code])
   @@index([nom])
@@ -758,15 +760,15 @@ model Entrepot {
 
 // Stock par entrepôt
 model StockEntrepot {
-  id           String         @id @default(uuid())
-  produitId    String
-  produit      ProduitService @relation(fields: [produitId], references: [id], onDelete: Cascade)
-  entrepotId   String
-  entrepot     Entrepot       @relation(fields: [entrepotId], references: [id], onDelete: Cascade)
-  quantite     Float          @default(0)
-  emplacement  String?        // Emplacement dans l'entrepôt (ex: A1-B2)
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  id          String         @id @default(uuid())
+  produitId   String
+  produit     ProduitService @relation(fields: [produitId], references: [id], onDelete: Cascade)
+  entrepotId  String
+  entrepot    Entrepot       @relation(fields: [entrepotId], references: [id], onDelete: Cascade)
+  quantite    Float          @default(0)
+  emplacement String? // Emplacement dans l'entrepôt (ex: A1-B2)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
   @@unique([produitId, entrepotId])
   @@index([produitId])
@@ -775,89 +777,89 @@ model StockEntrepot {
 
 // Modèle enrichi Produit/Service (remplace l'ancien Produit)
 model ProduitService {
-  id              String          @id @default(uuid())
+  id String @id @default(uuid())
 
   // === Identification ===
-  reference       String          @unique
-  codeBarres      String?         @unique   // Code-barres EAN13, UPC, etc.
-  nom             String
-  description     String?
-  descriptionLongue String?                 // Description détaillée pour devis/factures
+  reference         String  @unique
+  codeBarres        String? @unique // Code-barres EAN13, UPC, etc.
+  nom               String
+  description       String?
+  descriptionLongue String? // Description détaillée pour devis/factures
 
   // === Type et nature ===
-  type            TypeProduit     @default(PRODUIT)
-  nature          NatureProduit?            // Nature du produit
+  type   TypeProduit    @default(PRODUIT)
+  nature NatureProduit? // Nature du produit
 
   // === Unités ===
-  unite           String          @default("unité")  // Unité de vente (unité, L, Kg, m², h, etc.)
-  uniteAchat      String?                            // Unité d'achat si différente
-  ratioUnites     Float?          @default(1)        // Ratio unité achat / unité vente
+  unite       String  @default("unité") // Unité de vente (unité, L, Kg, m², h, etc.)
+  uniteAchat  String? // Unité d'achat si différente
+  ratioUnites Float?  @default(1) // Ratio unité achat / unité vente
 
   // === Prix de vente ===
-  prixVenteHT     Float?                    // Prix de vente HT
-  tauxTVA         Float?          @default(19)  // Taux TVA en % (19% par défaut en Algérie)
-  prixVenteTTC    Float?                    // Prix TTC (calculé)
+  prixVenteHT  Float? // Prix de vente HT
+  tauxTVA      Float? @default(19) // Taux TVA en % (19% par défaut en Algérie)
+  prixVenteTTC Float? // Prix TTC (calculé)
 
   // === Prix d'achat ===
-  prixAchatHT     Float?                    // Prix d'achat moyen HT
-  margeParDefaut  Float?                    // Marge en %
+  prixAchatHT    Float? // Prix d'achat moyen HT
+  margeParDefaut Float? // Marge en %
 
   // === Stock (pour type PRODUIT) ===
-  aStock          Boolean         @default(true)    // Gérer le stock (false pour services)
-  modeGestion     String          @default("MIXTE") // FLUX_TENDU | MIXTE | STOCKE
-  quantite        Float           @default(0)       // Quantité totale en stock
-  stockMinimum    Float           @default(0)       // Seuil d'alerte
-  stockMaximum    Float?                            // Stock maximum souhaité
-  lotSuivi        Boolean         @default(false)   // Suivi par lot/série
-  dlcSuivi        Boolean         @default(false)   // Suivi date limite consommation
+  aStock       Boolean @default(true) // Gérer le stock (false pour services)
+  modeGestion  String  @default("MIXTE") // FLUX_TENDU | MIXTE | STOCKE
+  quantite     Float   @default(0) // Quantité totale en stock
+  stockMinimum Float   @default(0) // Seuil d'alerte
+  stockMaximum Float? // Stock maximum souhaité
+  lotSuivi     Boolean @default(false) // Suivi par lot/série
+  dlcSuivi     Boolean @default(false) // Suivi date limite consommation
 
   // === Service spécifique ===
-  dureeService    Float?                    // Durée du service (en heures)
+  dureeService Float? // Durée du service (en heures)
 
   // === Fournisseur par défaut ===
-  fournisseurId   String?
-  fournisseur     Client?         @relation("FournisseurProduit", fields: [fournisseurId], references: [id])
-  delaiLivraison  Int?                      // Délai de livraison en jours
+  fournisseurId  String?
+  fournisseur    Client? @relation("FournisseurProduit", fields: [fournisseurId], references: [id])
+  delaiLivraison Int? // Délai de livraison en jours
 
   // === Classification ===
-  marque          String?                   // Marque
-  modele          String?                   // Modèle
-  poids           Float?                    // Poids en kg
-  longueur        Float?                    // Dimensions en cm
-  largeur         Float?
-  hauteur         Float?
+  marque   String? // Marque
+  modele   String? // Modèle
+  poids    Float? // Poids en kg
+  longueur Float? // Dimensions en cm
+  largeur  Float?
+  hauteur  Float?
 
   // === Comptabilité ===
-  compteVente     String?                   // Compte comptable vente
-  compteAchat     String?                   // Compte comptable achat
+  compteVente String? // Compte comptable vente
+  compteAchat String? // Compte comptable achat
 
   // === Notes et fichiers ===
-  notePublique    String?                   // Note sur documents
-  notePrivee      String?                   // Note interne
-  urlExterne      String?                   // Lien vers documentation externe
-  ficheTechniqueUrl String?                 // URL du fichier PDF fiche technique
-  ficheTechniqueNom String?                 // Nom original du fichier PDF
+  notePublique      String? // Note sur documents
+  notePrivee        String? // Note interne
+  urlExterne        String? // Lien vers documentation externe
+  ficheTechniqueUrl String? // URL du fichier PDF fiche technique
+  ficheTechniqueNom String? // Nom original du fichier PDF
 
   // === Statut ===
-  enVente         Boolean         @default(true)    // Peut être vendu
-  enAchat         Boolean         @default(true)    // Peut être acheté
-  actif           Boolean         @default(true)
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  enVente   Boolean  @default(true) // Peut être vendu
+  enAchat   Boolean  @default(true) // Peut être acheté
+  actif     Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // === Relations ===
-  categories      ProduitServiceCategorie[]
-  prixFournisseurs PrixFournisseur[]
-  prixClients     PrixClient[]
-  stocks          StockEntrepot[]
-  mouvements      MouvementStock[]
-  lots            LotProduit[]
-  devisLignes          DevisLigne[]
-  commandeLignes       CommandeLigne[]
-  bonLivraisonLignes   BonLivraisonLigne[]
-  factureLignes        FactureLigne[]
-  commandeFournisseurLignes   CommandeFournisseurLigne[]
-  factureFournisseurLignes    FactureFournisseurLigne[] @relation("FactureFournisseurLignes")
+  categories                ProduitServiceCategorie[]
+  prixFournisseurs          PrixFournisseur[]
+  prixClients               PrixClient[]
+  stocks                    StockEntrepot[]
+  mouvements                MouvementStock[]
+  lots                      LotProduit[]
+  devisLignes               DevisLigne[]
+  commandeLignes            CommandeLigne[]
+  bonLivraisonLignes        BonLivraisonLigne[]
+  factureLignes             FactureLigne[]
+  commandeFournisseurLignes CommandeFournisseurLigne[]
+  factureFournisseurLignes  FactureFournisseurLigne[]  @relation("FactureFournisseurLignes")
 
   fournisseursDefaut ProduitFournisseurDefaut[]
   fiProducts         FIProduct[]
@@ -876,7 +878,7 @@ model ProduitFournisseurDefaut {
   produit       ProduitService @relation(fields: [produitId], references: [id], onDelete: Cascade)
   fournisseurId String
   fournisseur   Client         @relation("FournisseurDefautProduit", fields: [fournisseurId], references: [id], onDelete: Cascade)
-  ordre         Int            @default(1)  // 1 = premier choix, 2 = second, etc.
+  ordre         Int            @default(1) // 1 = premier choix, 2 = second, etc.
   createdAt     DateTime       @default(now())
 
   @@unique([produitId, fournisseurId])
@@ -893,18 +895,18 @@ model PrixFournisseur {
   fournisseurId String
   fournisseur   Client         @relation("PrixFournisseurTiers", fields: [fournisseurId], references: [id], onDelete: Cascade)
 
-  refFournisseur String?                   // Référence chez le fournisseur
-  prixAchatHT    Float                     // Prix d'achat HT
-  remise         Float?         @default(0) // Remise en %
-  quantiteMin    Float?         @default(1) // Quantité minimum de commande
-  delaiLivraison Int?                       // Délai en jours
-  dateDebut      DateTime?                  // Date début validité prix
-  dateFin        DateTime?                  // Date fin validité prix
-  estDefaut      Boolean        @default(false)  // Fournisseur par défaut pour ce produit
+  refFournisseur String? // Référence chez le fournisseur
+  prixAchatHT    Float // Prix d'achat HT
+  remise         Float?    @default(0) // Remise en %
+  quantiteMin    Float?    @default(1) // Quantité minimum de commande
+  delaiLivraison Int? // Délai en jours
+  dateDebut      DateTime? // Date début validité prix
+  dateFin        DateTime? // Date fin validité prix
+  estDefaut      Boolean   @default(false) // Fournisseur par défaut pour ce produit
   notes          String?
-  actif          Boolean        @default(true)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  actif          Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@unique([produitId, fournisseurId])
   @@index([produitId])
@@ -913,21 +915,21 @@ model PrixFournisseur {
 
 // Prix spécifiques par client
 model PrixClient {
-  id            String         @id @default(uuid())
-  produitId     String
-  produit       ProduitService @relation(fields: [produitId], references: [id], onDelete: Cascade)
-  clientId      String
-  client        Client         @relation("PrixClientTiers", fields: [clientId], references: [id], onDelete: Cascade)
+  id        String         @id @default(uuid())
+  produitId String
+  produit   ProduitService @relation(fields: [produitId], references: [id], onDelete: Cascade)
+  clientId  String
+  client    Client         @relation("PrixClientTiers", fields: [clientId], references: [id], onDelete: Cascade)
 
-  prixVenteHT   Float                      // Prix de vente spécifique HT
-  remise        Float?         @default(0) // Remise additionnelle en %
-  quantiteMin   Float?         @default(1) // Quantité minimum
-  dateDebut     DateTime?                  // Date début validité
-  dateFin       DateTime?                  // Date fin validité
-  notes         String?
-  actif         Boolean        @default(true)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  prixVenteHT Float // Prix de vente spécifique HT
+  remise      Float?    @default(0) // Remise additionnelle en %
+  quantiteMin Float?    @default(1) // Quantité minimum
+  dateDebut   DateTime? // Date début validité
+  dateFin     DateTime? // Date fin validité
+  notes       String?
+  actif       Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@unique([produitId, clientId])
   @@index([produitId])
@@ -936,18 +938,18 @@ model PrixClient {
 
 // Lots et numéros de série
 model LotProduit {
-  id            String         @id @default(uuid())
-  produitId     String
-  produit       ProduitService @relation(fields: [produitId], references: [id], onDelete: Cascade)
+  id        String         @id @default(uuid())
+  produitId String
+  produit   ProduitService @relation(fields: [produitId], references: [id], onDelete: Cascade)
 
-  numeroLot     String                     // Numéro de lot ou série
-  quantite      Float          @default(0) // Quantité dans ce lot
-  datePeremption DateTime?                 // Date de péremption
-  dateFabrication DateTime?                // Date de fabrication
-  notes         String?
-  actif         Boolean        @default(true)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  numeroLot       String // Numéro de lot ou série
+  quantite        Float     @default(0) // Quantité dans ce lot
+  datePeremption  DateTime? // Date de péremption
+  dateFabrication DateTime? // Date de fabrication
+  notes           String?
+  actif           Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@unique([produitId, numeroLot])
   @@index([produitId])
@@ -956,17 +958,17 @@ model LotProduit {
 
 // ============ ANCIEN MODELE PRODUIT (conservé pour compatibilité stock existant) ============
 model Produit {
-  id           String           @id @default(uuid())
-  reference    String           @unique
+  id           String   @id @default(uuid())
+  reference    String   @unique
   nom          String
   description  String?
-  unite        String           @default("unité") // unité, L, Kg, m², etc.
-  quantite     Float            @default(0)
-  stockMinimum Float            @default(0) // Seuil d'alerte
-  prixUnitaire Float?           // Prix unitaire (optionnel)
-  actif        Boolean          @default(true)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  unite        String   @default("unité") // unité, L, Kg, m², etc.
+  quantite     Float    @default(0)
+  stockMinimum Float    @default(0) // Seuil d'alerte
+  prixUnitaire Float? // Prix unitaire (optionnel)
+  actif        Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   mouvements MouvementStock[]
 
@@ -978,8 +980,8 @@ enum TypeMouvement {
   ENTREE
   SORTIE
   AJUSTEMENT
-  TRANSFERT       // Transfert entre entrepôts
-  INVENTAIRE      // Correction d'inventaire
+  TRANSFERT // Transfert entre entrepôts
+  INVENTAIRE // Correction d'inventaire
 }
 
 model MouvementStock {
@@ -993,19 +995,19 @@ model MouvementStock {
   // Entrepôt (pour gestion multi-entrepôts)
   entrepotId       String?
   entrepot         Entrepot?       @relation(fields: [entrepotId], references: [id])
-  entrepotDestId   String?         // Pour les transferts
+  entrepotDestId   String? // Pour les transferts
 
-  type             TypeMouvement
-  quantite         Float           // Quantité (toujours positive, le type détermine +/-)
-  quantiteAvant    Float           // Stock avant le mouvement
-  quantiteApres    Float           // Stock après le mouvement
-  motif            String?         // Raison du mouvement
-  numeroLot        String?         // Numéro de lot si applicable
-  interventionId   String?         // Lien optionnel avec une intervention
-  intervention     Intervention?   @relation(fields: [interventionId], references: [id])
-  userId           String
-  user             User            @relation(fields: [userId], references: [id])
-  createdAt        DateTime        @default(now())
+  type           TypeMouvement
+  quantite       Float // Quantité (toujours positive, le type détermine +/-)
+  quantiteAvant  Float // Stock avant le mouvement
+  quantiteApres  Float // Stock après le mouvement
+  motif          String? // Raison du mouvement
+  numeroLot      String? // Numéro de lot si applicable
+  interventionId String? // Lien optionnel avec une intervention
+  intervention   Intervention? @relation(fields: [interventionId], references: [id])
+  userId         String
+  user           User          @relation(fields: [userId], references: [id])
+  createdAt      DateTime      @default(now())
 
   @@index([produitId])
   @@index([produitServiceId])
@@ -1059,9 +1061,9 @@ model Devis {
   createdAt            DateTime     @default(now())
   updatedAt            DateTime     @updatedAt
 
-  lignes               DevisLigne[]
-  commandes            Commande[]
-  factures             Facture[]
+  lignes    DevisLigne[]
+  commandes Commande[]
+  factures  Facture[]
 
   @@index([clientId])
   @@index([siteId])
@@ -1071,65 +1073,65 @@ model Devis {
 }
 
 model DevisLigne {
-  id               String         @id @default(uuid())
+  id               String          @id @default(uuid())
   devisId          String
-  devis            Devis          @relation(fields: [devisId], references: [id], onDelete: Cascade)
+  devis            Devis           @relation(fields: [devisId], references: [id], onDelete: Cascade)
   produitServiceId String?
   produitService   ProduitService? @relation(fields: [produitServiceId], references: [id])
   libelle          String
   description      String?
-  quantite         Float          @default(1)
+  quantite         Float           @default(1)
   unite            String?
-  prixUnitaireHT   Float          @default(0)
-  tauxTVA          Float          @default(0)
-  remisePct        Float?         @default(0)
-  totalHT          Float          @default(0)
-  totalTVA         Float          @default(0)
-  totalTTC         Float          @default(0)
-  ordre            Int            @default(0)
+  prixUnitaireHT   Float           @default(0)
+  tauxTVA          Float           @default(0)
+  remisePct        Float?          @default(0)
+  totalHT          Float           @default(0)
+  totalTVA         Float           @default(0)
+  totalTTC         Float           @default(0)
+  ordre            Int             @default(0)
 
   @@index([devisId])
   @@index([produitServiceId])
 }
 
 model Commande {
-  id                   String          @id @default(uuid())
-  ref                  String          @unique
-  clientId             String
-  client               Client          @relation(fields: [clientId], references: [id])
-  siteId               String?
-  site                 Site?           @relation(fields: [siteId], references: [id])
-  typeDocument         TypeProduit?
-  devisId              String?
-  devis                Devis?          @relation(fields: [devisId], references: [id])
-  adresseFacturationId String?
-  adresseFacturation   Adresse?        @relation("CommandeAdresseFacturation", fields: [adresseFacturationId], references: [id])
-  adresseLivraisonId   String?
-  adresseLivraison     Adresse?        @relation("CommandeAdresseLivraison", fields: [adresseLivraisonId], references: [id])
-  dateCommande         DateTime        @default(now())
+  id                     String               @id @default(uuid())
+  ref                    String               @unique
+  clientId               String
+  client                 Client               @relation(fields: [clientId], references: [id])
+  siteId                 String?
+  site                   Site?                @relation(fields: [siteId], references: [id])
+  typeDocument           TypeProduit?
+  devisId                String?
+  devis                  Devis?               @relation(fields: [devisId], references: [id])
+  adresseFacturationId   String?
+  adresseFacturation     Adresse?             @relation("CommandeAdresseFacturation", fields: [adresseFacturationId], references: [id])
+  adresseLivraisonId     String?
+  adresseLivraison       Adresse?             @relation("CommandeAdresseLivraison", fields: [adresseLivraisonId], references: [id])
+  dateCommande           DateTime             @default(now())
   dateLivraisonSouhaitee DateTime?
-  refBonCommandeClient String?         // Numéro du bon de commande client (obligatoire à la validation)
-  statut               CommandeStatut  @default(BROUILLON)
-  pipelineStatut       PipelineVenteStatut?
-  livraisonDirect      Boolean         @default(false) // true = fournisseur livre directement le client
-  remiseGlobalPct      Float?          @default(0)
-  remiseGlobalMontant  Float?          @default(0)
-  totalHT              Float           @default(0)
-  totalTVA             Float           @default(0)
-  totalTTC             Float           @default(0)
-  devise               String?         @default("DZD")
-  notes                String?
-  conditions           String?
-  createdById          String?
-  createdBy            User?           @relation("CommandeCreatedBy", fields: [createdById], references: [id])
-  updatedById          String?
-  updatedBy            User?           @relation("CommandeUpdatedBy", fields: [updatedById], references: [id])
-  createdAt            DateTime        @default(now())
-  updatedAt            DateTime        @updatedAt
+  refBonCommandeClient   String? // Numéro du bon de commande client (obligatoire à la validation)
+  statut                 CommandeStatut       @default(BROUILLON)
+  pipelineStatut         PipelineVenteStatut?
+  livraisonDirect        Boolean              @default(false) // true = fournisseur livre directement le client
+  remiseGlobalPct        Float?               @default(0)
+  remiseGlobalMontant    Float?               @default(0)
+  totalHT                Float                @default(0)
+  totalTVA               Float                @default(0)
+  totalTTC               Float                @default(0)
+  devise                 String?              @default("DZD")
+  notes                  String?
+  conditions             String?
+  createdById            String?
+  createdBy              User?                @relation("CommandeCreatedBy", fields: [createdById], references: [id])
+  updatedById            String?
+  updatedBy              User?                @relation("CommandeUpdatedBy", fields: [updatedById], references: [id])
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
 
-  lignes               CommandeLigne[]
-  factures             Facture[]
-  bonsLivraison        BonLivraison[]
+  lignes        CommandeLigne[]
+  factures      Facture[]
+  bonsLivraison BonLivraison[]
 
   @@index([clientId])
   @@index([siteId])
@@ -1139,22 +1141,22 @@ model Commande {
 }
 
 model CommandeLigne {
-  id               String         @id @default(uuid())
-  commandeId       String
-  commande         Commande       @relation(fields: [commandeId], references: [id], onDelete: Cascade)
-  produitServiceId String?
-  produitService   ProduitService? @relation(fields: [produitServiceId], references: [id])
-  libelle          String
-  description      String?
-  quantite         Float          @default(1)
-  unite            String?
-  prixUnitaireHT   Float          @default(0)
-  tauxTVA          Float          @default(0)
-  remisePct        Float?         @default(0)
-  totalHT          Float          @default(0)
-  totalTVA         Float          @default(0)
-  totalTTC         Float          @default(0)
-  ordre            Int            @default(0)
+  id                 String              @id @default(uuid())
+  commandeId         String
+  commande           Commande            @relation(fields: [commandeId], references: [id], onDelete: Cascade)
+  produitServiceId   String?
+  produitService     ProduitService?     @relation(fields: [produitServiceId], references: [id])
+  libelle            String
+  description        String?
+  quantite           Float               @default(1)
+  unite              String?
+  prixUnitaireHT     Float               @default(0)
+  tauxTVA            Float               @default(0)
+  remisePct          Float?              @default(0)
+  totalHT            Float               @default(0)
+  totalTVA           Float               @default(0)
+  totalTTC           Float               @default(0)
+  ordre              Int                 @default(0)
   bonLivraisonLignes BonLivraisonLigne[]
 
   @@index([commandeId])
@@ -1236,9 +1238,9 @@ model Facture {
   adresseLivraisonId   String?
   adresseLivraison     Adresse?      @relation("FactureAdresseLivraison", fields: [adresseLivraisonId], references: [id])
   dateFacture          DateTime      @default(now())
-  dateOperation        DateTime?     // Date réelle de l'opération (depuis le Planning), affichée "Opération du..." sur le PDF
+  dateOperation        DateTime? // Date réelle de l'opération (depuis le Planning), affichée "Opération du..." sur le PDF
   dateEcheance         DateTime?
-  delaiPaiementJours   Int?          @default(45)  // Délai de paiement en jours
+  delaiPaiementJours   Int?          @default(45) // Délai de paiement en jours
   type                 FactureType   @default(FACTURE)
   statut               FactureStatut @default(BROUILLON)
   remiseGlobalPct      Float?        @default(0)
@@ -1251,7 +1253,7 @@ model Facture {
   devise               String?       @default("DZD")
   notes                String?
   conditions           String?
-  mentionSpeciale      String?       // Mention libre affichée sur le PDF (ex: Selon le bon de commande..., Selon la convention...)
+  mentionSpeciale      String? // Mention libre affichée sur le PDF (ex: Selon le bon de commande..., Selon la convention...)
   createdById          String?
   createdBy            User?         @relation("FactureCreatedBy", fields: [createdById], references: [id])
   updatedById          String?
@@ -1259,14 +1261,14 @@ model Facture {
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
 
-  lignes               FactureLigne[]
-  paiements            Paiement[]
-  relances             FactureRelance[]
+  lignes    FactureLigne[]
+  paiements Paiement[]
+  relances  FactureRelance[]
 
   // Relations pour les acomptes
-  factureFinaleId      String?              // Pour les acomptes: lien vers la facture finale
-  factureFinale        Facture?             @relation("AcomptesFacture", fields: [factureFinaleId], references: [id])
-  acomptes             Facture[]            @relation("AcomptesFacture")  // Pour la facture finale: liste des acomptes
+  factureFinaleId String? // Pour les acomptes: lien vers la facture finale
+  factureFinale   Facture?  @relation("AcomptesFacture", fields: [factureFinaleId], references: [id])
+  acomptes        Facture[] @relation("AcomptesFacture") // Pour la facture finale: liste des acomptes
 
   @@index([clientId])
   @@index([siteId])
@@ -1282,7 +1284,7 @@ model FactureRelance {
   factureId   String
   facture     Facture  @relation(fields: [factureId], references: [id], onDelete: Cascade)
   niveau      Int      @default(1)
-  canal       String   // EMAIL, SMS, COURRIER, APPEL
+  canal       String // EMAIL, SMS, COURRIER, APPEL
   commentaire String?
   dateRelance DateTime @default(now())
   createdById String?
@@ -1294,33 +1296,33 @@ model FactureRelance {
 }
 
 model FactureLigne {
-  id               String         @id @default(uuid())
+  id               String          @id @default(uuid())
   factureId        String
-  facture          Facture        @relation(fields: [factureId], references: [id], onDelete: Cascade)
+  facture          Facture         @relation(fields: [factureId], references: [id], onDelete: Cascade)
   produitServiceId String?
   produitService   ProduitService? @relation(fields: [produitServiceId], references: [id])
   libelle          String
   description      String?
-  quantite         Float          @default(1)
+  quantite         Float           @default(1)
   unite            String?
-  prixUnitaireHT   Float          @default(0)
-  tauxTVA          Float          @default(0)
-  remisePct        Float?         @default(0)
-  totalHT          Float          @default(0)
-  totalTVA         Float          @default(0)
-  totalTTC         Float          @default(0)
-  ordre            Int            @default(0)
+  prixUnitaireHT   Float           @default(0)
+  tauxTVA          Float           @default(0)
+  remisePct        Float?          @default(0)
+  totalHT          Float           @default(0)
+  totalTVA         Float           @default(0)
+  totalTTC         Float           @default(0)
+  ordre            Int             @default(0)
 
   @@index([factureId])
   @@index([produitServiceId])
 }
 
 model Paiement {
-  id             String         @id @default(uuid())
-  factureId      String
-  facture        Facture        @relation(fields: [factureId], references: [id], onDelete: Cascade)
-  modePaiementId String?
-  modePaiement   ModePaiement?  @relation(fields: [modePaiementId], references: [id])
+  id               String         @id @default(uuid())
+  factureId        String
+  facture          Facture        @relation(fields: [factureId], references: [id], onDelete: Cascade)
+  modePaiementId   String?
+  modePaiement     ModePaiement?  @relation(fields: [modePaiementId], references: [id])
   datePaiement     DateTime       @default(now())
   montant          Float
   reference        String?
@@ -1340,11 +1342,11 @@ model Paiement {
 // ============ GESTION RH - CONGES ET RECUPERATION ============
 
 enum TypeConge {
-  ANNUEL           // Congé annuel
-  MALADIE          // Arrêt maladie
-  RECUPERATION     // Jour de récupération (weekend travaillé)
-  SANS_SOLDE       // Congé sans solde
-  EXCEPTIONNEL     // Événement familial, etc.
+  ANNUEL // Congé annuel
+  MALADIE // Arrêt maladie
+  RECUPERATION // Jour de récupération (weekend travaillé)
+  SANS_SOLDE // Congé sans solde
+  EXCEPTIONNEL // Événement familial, etc.
 }
 
 enum StatutConge {
@@ -1355,21 +1357,21 @@ enum StatutConge {
 }
 
 model Conge {
-  id          String       @id @default(uuid())
-  employeId   String
-  employe     Employe      @relation(fields: [employeId], references: [id])
-  type        TypeConge
-  dateDebut   DateTime
-  dateFin     DateTime
-  nbJours     Float        // Nombre de jours (peut être 0.5 pour demi-journée)
-  motif       String?
-  statut      StatutConge  @default(EN_ATTENTE)
+  id            String      @id @default(uuid())
+  employeId     String
+  employe       Employe     @relation(fields: [employeId], references: [id])
+  type          TypeConge
+  dateDebut     DateTime
+  dateFin       DateTime
+  nbJours       Float // Nombre de jours (peut être 0.5 pour demi-journée)
+  motif         String?
+  statut        StatutConge @default(EN_ATTENTE)
   approuveParId String?
-  approuvePar User?        @relation("ApprouvePar", fields: [approuveParId], references: [id])
-  dateReponse DateTime?
-  commentaire String?      // Commentaire lors de l'approbation/refus
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  approuvePar   User?       @relation("ApprouvePar", fields: [approuveParId], references: [id])
+  dateReponse   DateTime?
+  commentaire   String? // Commentaire lors de l'approbation/refus
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   @@index([employeId])
   @@index([dateDebut])
@@ -1382,7 +1384,7 @@ model JourWeekendTravaille {
   employeId   String
   employe     Employe  @relation(fields: [employeId], references: [id])
   date        DateTime // La date du jour travaillé (vendredi ou samedi)
-  estVendredi Boolean  // true = vendredi, false = samedi
+  estVendredi Boolean // true = vendredi, false = samedi
   notes       String?
   createdAt   DateTime @default(now())
 
@@ -1393,18 +1395,18 @@ model JourWeekendTravaille {
 
 // Solde des congés par employé et par année
 model SoldeConge {
-  id               String    @id @default(uuid())
-  employeId        String
-  employe          Employe   @relation(fields: [employeId], references: [id])
-  annee            Int
-  type             TypeConge
-  joursAcquis      Float     @default(0) // Acquis cette annee (credits mensuels cumules)
-  joursReportes    Float     @default(0) // Report de l annee precedente
-  joursPris        Float     @default(0) // Consommes (conges approuves)
-  joursIndemnises  Float     @default(0) // Convertis en indemnite en fin d annee
-  joursRestants    Float     @default(0) // = Acquis + Reportes - Pris - Indemnises
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id              String    @id @default(uuid())
+  employeId       String
+  employe         Employe   @relation(fields: [employeId], references: [id])
+  annee           Int
+  type            TypeConge
+  joursAcquis     Float     @default(0) // Acquis cette annee (credits mensuels cumules)
+  joursReportes   Float     @default(0) // Report de l annee precedente
+  joursPris       Float     @default(0) // Consommes (conges approuves)
+  joursIndemnises Float     @default(0) // Convertis en indemnite en fin d annee
+  joursRestants   Float     @default(0) // = Acquis + Reportes - Pris - Indemnises
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@unique([employeId, annee, type])
   @@index([employeId])
@@ -1413,19 +1415,19 @@ model SoldeConge {
 
 // Historique de tous les mouvements de conges
 model MouvementConge {
-  id          String   @id @default(uuid())
-  employeId   String
-  employe     Employe  @relation(fields: [employeId], references: [id])
-  typeOp      String   // ACQUISITION | CONSOMMATION | AJUSTEMENT | REPORT_ENTRANT | REPORT_SORTANT | PAIEMENT | PERTE
-  jours       Float    // Valeur absolue
-  sens        String   // CREDIT | DEBIT
-  soldeApres  Float    // Solde restant apres operation
-  motif       String?
-  annee       Int
-  mois        Int?     // Mois concerne (pour ACQUISITION)
-  auteurId    String?
-  auteur      User?    @relation("MouvementsCongeAuteur", fields: [auteurId], references: [id])
-  createdAt   DateTime @default(now())
+  id         String   @id @default(uuid())
+  employeId  String
+  employe    Employe  @relation(fields: [employeId], references: [id])
+  typeOp     String // ACQUISITION | CONSOMMATION | AJUSTEMENT | REPORT_ENTRANT | REPORT_SORTANT | PAIEMENT | PERTE
+  jours      Float // Valeur absolue
+  sens       String // CREDIT | DEBIT
+  soldeApres Float // Solde restant apres operation
+  motif      String?
+  annee      Int
+  mois       Int? // Mois concerne (pour ACQUISITION)
+  auteurId   String?
+  auteur     User?    @relation("MouvementsCongeAuteur", fields: [auteurId], references: [id])
+  createdAt  DateTime @default(now())
 
   @@index([employeId])
   @@index([annee])
@@ -1436,11 +1438,11 @@ model RecuperationAccordee {
   id            String   @id @default(uuid())
   employeId     String
   employe       Employe  @relation(fields: [employeId], references: [id])
-  nbJours       Float    // Nombre de jours accordés
-  motif         String?  // Raison (ex: "travail exceptionnel", "astreinte")
+  nbJours       Float // Nombre de jours accordés
+  motif         String? // Raison (ex: "travail exceptionnel", "astreinte")
   dateAccordee  DateTime @default(now()) // Date à laquelle c'est accordé
-  accordeeParId String?  // Qui a accordé (utilisateur)
-  annee         Int      // Année concernée
+  accordeeParId String? // Qui a accordé (utilisateur)
+  annee         Int // Année concernée
   createdAt     DateTime @default(now())
 
   @@index([employeId])
@@ -1482,8 +1484,8 @@ model CommandeFournisseur {
   createdAt              DateTime                  @default(now())
   updatedAt              DateTime                  @updatedAt
 
-  lignes               CommandeFournisseurLigne[]
-  facturesFournisseur  FactureFournisseur[]
+  lignes              CommandeFournisseurLigne[]
+  facturesFournisseur FactureFournisseur[]
 
   @@index([fournisseurId])
   @@index([statut])
@@ -1528,14 +1530,14 @@ enum FactureFournisseurStatut {
 model FactureFournisseur {
   id                    String                   @id @default(uuid())
   ref                   String                   @unique
-  refFournisseur        String?                  // Référence de la facture chez le fournisseur
+  refFournisseur        String? // Référence de la facture chez le fournisseur
   fournisseurId         String
   fournisseur           Client                   @relation("FacturesFournisseur", fields: [fournisseurId], references: [id])
   commandeFournisseurId String?
   commandeFournisseur   CommandeFournisseur?     @relation(fields: [commandeFournisseurId], references: [id])
   dateFacture           DateTime                 @default(now())
   dateEcheance          DateTime?
-  dateReception         DateTime?                // Date de réception de la facture
+  dateReception         DateTime? // Date de réception de la facture
   statut                FactureFournisseurStatut @default(BROUILLON)
   remiseGlobalPct       Float?                   @default(0)
   remiseGlobalMontant   Float?                   @default(0)
@@ -1553,8 +1555,8 @@ model FactureFournisseur {
   createdAt             DateTime                 @default(now())
   updatedAt             DateTime                 @updatedAt
 
-  lignes                FactureFournisseurLigne[]
-  paiements             PaiementFournisseur[]
+  lignes    FactureFournisseurLigne[]
+  paiements PaiementFournisseur[]
 
   @@index([fournisseurId])
   @@index([statut])
@@ -1563,42 +1565,42 @@ model FactureFournisseur {
 }
 
 model FactureFournisseurLigne {
-  id                   String              @id @default(uuid())
+  id                   String             @id @default(uuid())
   factureFournisseurId String
-  factureFournisseur   FactureFournisseur  @relation(fields: [factureFournisseurId], references: [id], onDelete: Cascade)
+  factureFournisseur   FactureFournisseur @relation(fields: [factureFournisseurId], references: [id], onDelete: Cascade)
   produitServiceId     String?
-  produitService       ProduitService?     @relation("FactureFournisseurLignes", fields: [produitServiceId], references: [id])
+  produitService       ProduitService?    @relation("FactureFournisseurLignes", fields: [produitServiceId], references: [id])
   libelle              String
   description          String?
-  quantite             Float               @default(1)
+  quantite             Float              @default(1)
   unite                String?
-  prixUnitaireHT       Float               @default(0)
-  tauxTVA              Float               @default(0)
-  remisePct            Float?              @default(0)
-  totalHT              Float               @default(0)
-  totalTVA             Float               @default(0)
-  totalTTC             Float               @default(0)
-  ordre                Int                 @default(0)
+  prixUnitaireHT       Float              @default(0)
+  tauxTVA              Float              @default(0)
+  remisePct            Float?             @default(0)
+  totalHT              Float              @default(0)
+  totalTVA             Float              @default(0)
+  totalTTC             Float              @default(0)
+  ordre                Int                @default(0)
 
   @@index([factureFournisseurId])
   @@index([produitServiceId])
 }
 
 model PaiementFournisseur {
-  id                   String              @id @default(uuid())
+  id                   String             @id @default(uuid())
   factureFournisseurId String
-  factureFournisseur   FactureFournisseur  @relation(fields: [factureFournisseurId], references: [id], onDelete: Cascade)
+  factureFournisseur   FactureFournisseur @relation(fields: [factureFournisseurId], references: [id], onDelete: Cascade)
   modePaiementId       String?
-  modePaiement         ModePaiement?       @relation("PaiementsFournisseur", fields: [modePaiementId], references: [id])
-  datePaiement         DateTime            @default(now())
+  modePaiement         ModePaiement?      @relation("PaiementsFournisseur", fields: [modePaiementId], references: [id])
+  datePaiement         DateTime           @default(now())
   montant              Float
-  reference            String?             // Référence du virement/chèque
-  banque               String?             // Banque émettrice
+  reference            String? // Référence du virement/chèque
+  banque               String? // Banque émettrice
   notes                String?
-  statut               PaiementStatut      @default(RECU)
+  statut               PaiementStatut     @default(RECU)
   createdById          String?
-  createdBy            User?               @relation("PaiementFournisseurCreatedBy", fields: [createdById], references: [id])
-  createdAt            DateTime            @default(now())
+  createdBy            User?              @relation("PaiementFournisseurCreatedBy", fields: [createdById], references: [id])
+  createdAt            DateTime           @default(now())
 
   @@index([factureFournisseurId])
   @@index([datePaiement])
@@ -1607,10 +1609,10 @@ model PaiementFournisseur {
 // ============ CHARGES & DEPENSES ============
 
 enum TypeCharge {
-  FOURNISSEUR    // Charge liée à un fournisseur
-  FISCALE        // Impôts, taxes (hors TVA)
-  SOCIALE        // Charges sociales, CNAS, CASNOS
-  DIVERSE        // Autres charges (loyer, utilities, etc.)
+  FOURNISSEUR // Charge liée à un fournisseur
+  FISCALE // Impôts, taxes (hors TVA)
+  SOCIALE // Charges sociales, CNAS, CASNOS
+  DIVERSE // Autres charges (loyer, utilities, etc.)
 }
 
 enum ChargeStatut {
@@ -1621,51 +1623,51 @@ enum ChargeStatut {
 }
 
 model Charge {
-  id                  String       @id @default(uuid())
-  ref                 String       @unique
-  typeCharge          TypeCharge
-  libelle             String
-  description         String?
+  id          String     @id @default(uuid())
+  ref         String     @unique
+  typeCharge  TypeCharge
+  libelle     String
+  description String?
 
   // Fournisseur (pour type FOURNISSEUR)
-  fournisseurId       String?
-  fournisseur         Client?      @relation("ChargesFournisseur", fields: [fournisseurId], references: [id])
+  fournisseurId String?
+  fournisseur   Client? @relation("ChargesFournisseur", fields: [fournisseurId], references: [id])
 
   // Catégorisation
-  categorie           String?      // Ex: "Loyer", "Electricité", "IS", "TVA", "CNAS"
-  sousCategorie       String?      // Ex: "Bureaux", "Entrepôt"
+  categorie     String? // Ex: "Loyer", "Electricité", "IS", "TVA", "CNAS"
+  sousCategorie String? // Ex: "Bureaux", "Entrepôt"
 
   // Dates
-  dateCharge          DateTime     @default(now())  // Date de la charge
-  dateEcheance        DateTime?                     // Date limite de paiement
-  periodeDebut        DateTime?                     // Début de la période concernée
-  periodeFin          DateTime?                     // Fin de la période concernée
+  dateCharge   DateTime  @default(now()) // Date de la charge
+  dateEcheance DateTime? // Date limite de paiement
+  periodeDebut DateTime? // Début de la période concernée
+  periodeFin   DateTime? // Fin de la période concernée
 
   // Montants
-  montantHT           Float        @default(0)
-  tauxTVA             Float        @default(0)
-  montantTVA          Float        @default(0)
-  montantTTC          Float        @default(0)
-  montantPaye         Float        @default(0)
+  montantHT   Float @default(0)
+  tauxTVA     Float @default(0)
+  montantTVA  Float @default(0)
+  montantTTC  Float @default(0)
+  montantPaye Float @default(0)
 
-  devise              String?      @default("DZD")
-  statut              ChargeStatut @default(A_PAYER)
+  devise String?      @default("DZD")
+  statut ChargeStatut @default(A_PAYER)
 
   // Récurrence
-  estRecurrente       Boolean      @default(false)
-  frequenceRecurrence String?      // MENSUELLE, TRIMESTRIELLE, ANNUELLE
+  estRecurrente       Boolean @default(false)
+  frequenceRecurrence String? // MENSUELLE, TRIMESTRIELLE, ANNUELLE
 
-  notes               String?
-  pieceJointe         String?      // Chemin vers document justificatif
+  notes       String?
+  pieceJointe String? // Chemin vers document justificatif
 
-  createdById         String?
-  createdBy           User?        @relation("ChargeCreatedBy", fields: [createdById], references: [id])
-  updatedById         String?
-  updatedBy           User?        @relation("ChargeUpdatedBy", fields: [updatedById], references: [id])
-  createdAt           DateTime     @default(now())
-  updatedAt           DateTime     @updatedAt
+  createdById String?
+  createdBy   User?    @relation("ChargeCreatedBy", fields: [createdById], references: [id])
+  updatedById String?
+  updatedBy   User?    @relation("ChargeUpdatedBy", fields: [updatedById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  paiements           PaiementCharge[]
+  paiements PaiementCharge[]
 
   @@index([typeCharge])
   @@index([categorie])
@@ -1697,37 +1699,37 @@ model PaiementCharge {
 // ============ PAIEMENTS DIVERS ============
 
 model PaiementDivers {
-  id             String         @id @default(uuid())
-  ref            String         @unique
-  libelle        String
-  description    String?
+  id          String  @id @default(uuid())
+  ref         String  @unique
+  libelle     String
+  description String?
 
   // Type
-  typeOperation  String         // ENCAISSEMENT, DECAISSEMENT
-  categorie      String?        // Classement libre
+  typeOperation String // ENCAISSEMENT, DECAISSEMENT
+  categorie     String? // Classement libre
 
   // Tiers (optionnel)
-  tiersId        String?
-  tiers          Client?        @relation("PaiementsDivers", fields: [tiersId], references: [id])
+  tiersId String?
+  tiers   Client? @relation("PaiementsDivers", fields: [tiersId], references: [id])
 
   // Montant
-  montant        Float
-  devise         String?        @default("DZD")
+  montant Float
+  devise  String? @default("DZD")
 
   // Paiement
-  datePaiement   DateTime       @default(now())
+  datePaiement   DateTime      @default(now())
   modePaiementId String?
-  modePaiement   ModePaiement?  @relation("PaiementsDivers", fields: [modePaiementId], references: [id])
+  modePaiement   ModePaiement? @relation("PaiementsDivers", fields: [modePaiementId], references: [id])
   reference      String?
   banque         String?
 
-  notes          String?
-  statut         String         @default("EFFECTUE") // EFFECTUE, ANNULE
+  notes  String?
+  statut String  @default("EFFECTUE") // EFFECTUE, ANNULE
 
-  createdById    String?
-  createdBy      User?          @relation("PaiementDiversCreatedBy", fields: [createdById], references: [id])
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  createdById String?
+  createdBy   User?    @relation("PaiementDiversCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([typeOperation])
   @@index([categorie])
@@ -1738,86 +1740,86 @@ model PaiementDivers {
 // ============ CONFIGURATION ENTREPRISE ============
 
 model CompanySettings {
-  id                    String   @id @default(uuid())
+  id String @id @default(uuid())
 
   // Informations générales
-  nomEntreprise         String   @default("Mon Entreprise")
-  formeJuridique        String?  // SARL, EURL, SPA, etc.
-  logoPath              String?  // Logo principal (rectangulaire)
-  logoCarrePath         String?  // Logo carré (pour icônes, favicons)
+  nomEntreprise  String  @default("Mon Entreprise")
+  formeJuridique String? // SARL, EURL, SPA, etc.
+  logoPath       String? // Logo principal (rectangulaire)
+  logoCarrePath  String? // Logo carré (pour icônes, favicons)
 
   // Coordonnées
-  adresse               String?
-  codePostal            String?
-  ville                 String?
-  pays                  String?  @default("Algérie")
-  telephone             String?
-  fax                   String?
-  email                 String?
-  siteWeb               String?
+  adresse    String?
+  codePostal String?
+  ville      String?
+  pays       String? @default("Algérie")
+  telephone  String?
+  fax        String?
+  email      String?
+  siteWeb    String?
 
   // Informations légales
-  rc                    String?  // Registre du commerce
-  nif                   String?  // Numéro d'identification fiscale
-  ai                    String?  // Article d'imposition
-  nis                   String?  // Numéro d'identification statistique
-  nin                   String?  // NIN du gérant
-  capitalSocial         String?  // Capital social (ex: "1 000 000 DZD")
-  compteBancaire        String?  // Numéro de compte
-  rib                   String?  // RIB complet
-  banque                String?  // Nom de la banque
+  rc             String? // Registre du commerce
+  nif            String? // Numéro d'identification fiscale
+  ai             String? // Article d'imposition
+  nis            String? // Numéro d'identification statistique
+  nin            String? // NIN du gérant
+  capitalSocial  String? // Capital social (ex: "1 000 000 DZD")
+  compteBancaire String? // Numéro de compte
+  rib            String? // RIB complet
+  banque         String? // Nom de la banque
 
   // Paramètres commerciaux
-  devisePrincipale      String   @default("DZD")
-  tauxTVADefaut         Float    @default(19)
+  devisePrincipale String @default("DZD")
+  tauxTVADefaut    Float  @default(19)
 
   // Préfixes de numérotation - Documents vente
-  prefixDevis           String   @default("DV")
-  prefixCommande        String   @default("CMD")
-  prefixFacture         String   @default("FAC")
-  prefixAvoir           String   @default("AV")
-  prefixBonLivraison    String   @default("BL")
+  prefixDevis        String @default("DV")
+  prefixCommande     String @default("CMD")
+  prefixFacture      String @default("FAC")
+  prefixAvoir        String @default("AV")
+  prefixBonLivraison String @default("BL")
 
   // Préfixes de numérotation - Documents achat
-  prefixCommandeFournisseur  String   @default("CF")
-  prefixFactureFournisseur   String   @default("FF")
-  prefixCharge               String   @default("CHG")
+  prefixCommandeFournisseur String @default("CF")
+  prefixFactureFournisseur  String @default("FF")
+  prefixCharge              String @default("CHG")
 
   // Préfixes de numérotation - Tiers
-  prefixClient          String   @default("CLI")
-  prefixFournisseur     String   @default("FOU")
-  prefixProspect        String   @default("PRO")
+  prefixClient      String @default("CLI")
+  prefixFournisseur String @default("FOU")
+  prefixProspect    String @default("PRO")
 
   // Préfixes de numérotation - Autres
-  prefixProduit         String   @default("PRD")
-  prefixService         String   @default("SRV")
+  prefixProduit String @default("PRD")
+  prefixService String @default("SRV")
 
   // Format numérotation
-  longueurNumero        Int      @default(4)  // Nombre de chiffres (0001)
-  inclureAnnee          Boolean  @default(true)
-  separateur            String   @default("/") // DV0001/2026
+  longueurNumero Int     @default(4) // Nombre de chiffres (0001)
+  inclureAnnee   Boolean @default(true)
+  separateur     String  @default("/") // DV0001/2026
 
   // RH - Politique de congés annuels
-  modeAllocationConges  String  @default("ANNUEL")  // "ANNUEL" ou "MENSUEL"
-  joursCongesAnnuels    Float   @default(30)         // Jours alloués par an (mode ANNUEL)
-  joursCongesMensuels   Float   @default(2.5)        // Jours acquis par mois (mode MENSUEL)
+  modeAllocationConges String @default("ANNUEL") // "ANNUEL" ou "MENSUEL"
+  joursCongesAnnuels   Float  @default(30) // Jours alloués par an (mode ANNUEL)
+  joursCongesMensuels  Float  @default(2.5) // Jours acquis par mois (mode MENSUEL)
 
   // Décalages de numérotation (pour reprendre une numérotation en cours)
   // Ex: offsetFacture = 839 => prochaine facture sera 840
-  offsetDevis                 Int      @default(0)
-  offsetCommande              Int      @default(0)
-  offsetFacture               Int      @default(0)
-  offsetAvoir                 Int      @default(0)
-  offsetBonLivraison          Int      @default(0)
-  offsetCommandeFournisseur   Int      @default(0)
-  offsetFactureFournisseur    Int      @default(0)
-  offsetCharge                Int      @default(0)
-  offsetClient                Int      @default(0)
-  offsetFournisseur           Int      @default(0)
-  offsetProspect              Int      @default(0)
+  offsetDevis               Int @default(0)
+  offsetCommande            Int @default(0)
+  offsetFacture             Int @default(0)
+  offsetAvoir               Int @default(0)
+  offsetBonLivraison        Int @default(0)
+  offsetCommandeFournisseur Int @default(0)
+  offsetFactureFournisseur  Int @default(0)
+  offsetCharge              Int @default(0)
+  offsetClient              Int @default(0)
+  offsetFournisseur         Int @default(0)
+  offsetProspect            Int @default(0)
 
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ============================================================
@@ -1825,40 +1827,40 @@ model CompanySettings {
 // ============================================================
 
 enum ZoningStatut {
-  DRAFT    // En cours de création
-  ACTIVE   // Version active du site
+  DRAFT // En cours de création
+  ACTIVE // Version active du site
   ARCHIVED // Archivée (remplacée par une version plus récente)
 }
 
 enum DeviceType {
-  BAIT_STATION          // Boîte à raticide / poste d'appâtage
-  MECHANICAL_TRAP       // Piège mécanique
-  GLUE_TRAP             // Boîte à colle
-  FLYING_INSECT_KILLER  // Destructeur d'insectes / FK
+  BAIT_STATION // Boîte à raticide / poste d'appâtage
+  MECHANICAL_TRAP // Piège mécanique
+  GLUE_TRAP // Boîte à colle
+  FLYING_INSECT_KILLER // Destructeur d'insectes / FK
 }
 
 enum DeviceStatut {
-  ACTIVE   // En place
-  REMOVED  // Retiré du site
+  ACTIVE // En place
+  REMOVED // Retiré du site
   INACTIVE // Désactivé temporairement
 }
 
 enum FieldInterventionType {
-  OPERATION  // Opération de traitement
-  VISITE     // Visite de contrôle
+  OPERATION // Opération de traitement
+  VISITE // Visite de contrôle
 }
 
 enum FieldInterventionStatut {
-  DRAFT        // Brouillon
-  IN_PROGRESS  // En cours sur le terrain
-  SUBMITTED    // Soumise par l'applicateur
-  VALIDATED    // Validée par le bureau
-  CANCELLED    // Annulée
+  DRAFT // Brouillon
+  IN_PROGRESS // En cours sur le terrain
+  SUBMITTED // Soumise par l'applicateur
+  VALIDATED // Validée par le bureau
+  CANCELLED // Annulée
 }
 
 enum FieldReportStatut {
-  DRAFT  // Brouillon, modifiable
-  FINAL  // Rapport définitif, non modifiable
+  DRAFT // Brouillon, modifiable
+  FINAL // Rapport définitif, non modifiable
 }
 
 // ── Version de zoning ─────────────────────────────────────────
@@ -1868,8 +1870,8 @@ model ZoningVersion {
   id             String       @id @default(uuid())
   siteId         String
   site           Site         @relation(fields: [siteId], references: [id], onDelete: Cascade)
-  version        Int          // Numéro incrémental par site (1, 2, 3…)
-  nom            String       // Ex: "Zoning initial", "Après extension entrepôt"
+  version        Int // Numéro incrémental par site (1, 2, 3…)
+  nom            String // Ex: "Zoning initial", "Après extension entrepôt"
   statut         ZoningStatut @default(DRAFT)
   dateActivation DateTime?
   dateFin        DateTime?
@@ -1891,33 +1893,33 @@ model ZoningVersion {
 
 // ── Plan du site ──────────────────────────────────────────────
 model ZoningPlan {
-  id             String        @id @default(uuid())
+  id              String        @id @default(uuid())
   zoningVersionId String
-  zoningVersion  ZoningVersion @relation(fields: [zoningVersionId], references: [id], onDelete: Cascade)
-  nom            String        // "RDC", "Étage 1", "Extérieur"
-  filename       String
-  path           String
-  mimeType       String?
-  ordre          Int           @default(0)
-  createdAt      DateTime      @default(now())
+  zoningVersion   ZoningVersion @relation(fields: [zoningVersionId], references: [id], onDelete: Cascade)
+  nom             String // "RDC", "Étage 1", "Extérieur"
+  filename        String
+  path            String
+  mimeType        String?
+  ordre           Int           @default(0)
+  createdAt       DateTime      @default(now())
 
   @@index([zoningVersionId])
 }
 
 // ── Zone ──────────────────────────────────────────────────────
 model Zone {
-  id             String        @id @default(uuid())
+  id              String        @id @default(uuid())
   zoningVersionId String
-  zoningVersion  ZoningVersion @relation(fields: [zoningVersionId], references: [id], onDelete: Cascade)
-  nom            String        // "Administration RDC", "Production", "Entrepôt"
-  description    String?
-  etage          String?       // "RDC", "1er étage", "Mezzanine"
-  ordre          Int           @default(0)
-  actif          Boolean       @default(true)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  zoningVersion   ZoningVersion @relation(fields: [zoningVersionId], references: [id], onDelete: Cascade)
+  nom             String // "Administration RDC", "Production", "Entrepôt"
+  description     String?
+  etage           String? // "RDC", "1er étage", "Mezzanine"
+  ordre           Int           @default(0)
+  actif           Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
-  devices        MonitoringDevice[]
+  devices MonitoringDevice[]
 
   @@index([zoningVersionId])
 }
@@ -1925,26 +1927,26 @@ model Zone {
 // ── Dispositif de surveillance ────────────────────────────────
 // displayNumber est stocké en TEXT pour conserver "01", "002", etc.
 model MonitoringDevice {
-  id              String        @id @default(uuid())
-  zoningVersionId String
-  zoningVersion   ZoningVersion @relation(fields: [zoningVersionId], references: [id], onDelete: Cascade)
-  zoneId          String
-  zone            Zone          @relation(fields: [zoneId], references: [id], onDelete: Cascade)
-  type            DeviceType
-  displayNumber   String        // "01", "02", "007" — JAMAIS converti en entier
-  nom             String?       // Nom libre optionnel
-  statut          DeviceStatut  @default(ACTIVE)
+  id               String        @id @default(uuid())
+  zoningVersionId  String
+  zoningVersion    ZoningVersion @relation(fields: [zoningVersionId], references: [id], onDelete: Cascade)
+  zoneId           String
+  zone             Zone          @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  type             DeviceType
+  displayNumber    String // "01", "02", "007" — JAMAIS converti en entier
+  nom              String? // Nom libre optionnel
+  statut           DeviceStatut  @default(ACTIVE)
   dateInstallation DateTime?
-  dateRetrait     DateTime?
-  planId          String?       // Référence au plan sur lequel il est placé
-  planX           Float?        // Coordonnée X sur le plan (0–100%)
-  planY           Float?        // Coordonnée Y sur le plan (0–100%)
-  notes           String?
-  metadata        Json?         // Extensible : infos spécifiques au type
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  dateRetrait      DateTime?
+  planId           String? // Référence au plan sur lequel il est placé
+  planX            Float? // Coordonnée X sur le plan (0–100%)
+  planY            Float? // Coordonnée Y sur le plan (0–100%)
+  notes            String?
+  metadata         Json? // Extensible : infos spécifiques au type
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
-  controls        DeviceControl[]
+  controls DeviceControl[]
 
   @@unique([zoningVersionId, type, displayNumber])
   @@index([zoningVersionId])
@@ -1956,10 +1958,10 @@ model MonitoringDevice {
 // RAS, EBR, CON, NT, CAS, RT, INAC, SOU… — configurable
 model ControlStatus {
   id          String   @id @default(uuid())
-  code        String   @unique  // "RAS", "CON", "EBR", etc.
-  label       String            // "Rien à signaler", "Consommé", etc.
+  code        String   @unique // "RAS", "CON", "EBR", etc.
+  label       String // "Rien à signaler", "Consommé", etc.
   description String?
-  color       String?           // Couleur hex pour l'UI (ex: "#22c55e")
+  color       String? // Couleur hex pour l'UI (ex: "#22c55e")
   actif       Boolean  @default(true)
   ordre       Int      @default(0)
   createdAt   DateTime @default(now())
@@ -1972,6 +1974,10 @@ model FieldIntervention {
   site             Site                    @relation(fields: [siteId], references: [id])
   clientId         String
   client           Client                  @relation(fields: [clientId], references: [id])
+  contratId        String?
+  contrat          Contrat?                @relation(fields: [contratId], references: [id])
+  interventionId   String?                 @unique
+  intervention     Intervention?           @relation(fields: [interventionId], references: [id])
   zoningVersionId  String
   zoningVersion    ZoningVersion           @relation(fields: [zoningVersionId], references: [id])
   type             FieldInterventionType
@@ -1980,7 +1986,7 @@ model FieldIntervention {
   heureDebut       String?
   heureFin         String?
   commentaire      String?
-  draftSavedAt     DateTime?               // Dernière sauvegarde du brouillon
+  draftSavedAt     DateTime? // Dernière sauvegarde du brouillon
   createdById      String
   createdBy        User                    @relation("FICreatedBy", fields: [createdById], references: [id])
   submittedAt      DateTime?
@@ -1990,14 +1996,15 @@ model FieldIntervention {
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @updatedAt
 
-  applicateurs     FIApplicateur[]
-  controls         DeviceControl[]
-  products         FIProduct[]
-  reports          FieldReport[]
-  documents        FieldInterventionDocument[]
+  applicateurs FIApplicateur[]
+  controls     DeviceControl[]
+  products     FIProduct[]
+  reports      FieldReport[]
+  documents    FieldInterventionDocument[]
 
   @@index([siteId])
   @@index([clientId])
+  @@index([contratId])
   @@index([zoningVersionId])
   @@index([statut])
   @@index([dateIntervention])
@@ -2023,13 +2030,13 @@ model DeviceControl {
   fieldIntervention   FieldIntervention @relation(fields: [fieldInterventionId], references: [id], onDelete: Cascade)
   deviceId            String
   device              MonitoringDevice  @relation(fields: [deviceId], references: [id])
-  statusCode          String?           // Code de l'état (ref ControlStatus.code)
+  statusCode          String? // Code de l'état (ref ControlStatus.code)
   observation         String?
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
 
-  insectCounts        InsectCount[]
-  photos              ControlPhoto[]
+  insectCounts InsectCount[]
+  photos       ControlPhoto[]
 
   @@unique([fieldInterventionId, deviceId])
   @@index([fieldInterventionId])
@@ -2042,7 +2049,7 @@ model InsectCount {
   id              String        @id @default(uuid())
   deviceControlId String
   deviceControl   DeviceControl @relation(fields: [deviceControlId], references: [id], onDelete: Cascade)
-  espece          String        // "Mouches", "Moustiques", "Abeilles", "Papillons", "Autres"
+  espece          String // "Mouches", "Moustiques", "Abeilles", "Papillons", "Autres"
   count           Int           @default(0)
   createdAt       DateTime      @default(now())
 
@@ -2070,9 +2077,9 @@ model FIProduct {
   id                  String            @id @default(uuid())
   fieldInterventionId String
   fieldIntervention   FieldIntervention @relation(fields: [fieldInterventionId], references: [id], onDelete: Cascade)
-  produitId           String?           // Lien souple vers ProduitService (peut être null si produit supprimé)
+  produitId           String? // Lien souple vers ProduitService (peut être null si produit supprimé)
   produitService      ProduitService?   @relation(fields: [produitId], references: [id])
-  nom                 String            // Snapshot du nom
+  nom                 String // Snapshot du nom
   lot                 String?
   dateFabrication     DateTime?
   datePeremption      DateTime?
@@ -2102,23 +2109,27 @@ model FieldInterventionDocument {
 // ── Rapport d'une intervention terrain ───────────────────────
 // Versionné : chaque génération crée une nouvelle version
 model FieldReport {
-  id                  String              @id @default(uuid())
-  fieldInterventionId String
-  fieldIntervention   FieldIntervention   @relation(fields: [fieldInterventionId], references: [id])
-  version             Int                 @default(1)
-  statut              FieldReportStatut   @default(DRAFT)
+  id                  String             @id @default(uuid())
+  fieldInterventionId String?
+  fieldIntervention   FieldIntervention? @relation(fields: [fieldInterventionId], references: [id])
+  siteId              String? // Rapport agrégé sur historique de site (alternative à fieldInterventionId)
+  site                Site?              @relation(fields: [siteId], references: [id])
+  dateDebut           DateTime? // Période couverte (rapports de site)
+  dateFin             DateTime?
+  version             Int                @default(1)
+  statut              FieldReportStatut  @default(DRAFT)
   titre               String?
   conclusion          String?
   recommandations     String?
   pdfPath             String?
   xlsxPath            String?
   generatedById       String
-  generatedBy         User                @relation("FIReportGeneratedBy", fields: [generatedById], references: [id])
-  generatedAt         DateTime            @default(now())
-  createdAt           DateTime            @default(now())
+  generatedBy         User               @relation("FIReportGeneratedBy", fields: [generatedById], references: [id])
+  generatedAt         DateTime           @default(now())
+  createdAt           DateTime           @default(now())
 
-  @@unique([fieldInterventionId, version])
   @@index([fieldInterventionId])
+  @@index([siteId])
 }
 
 // ── Documents archivés d'un site ──────────────────────────────
@@ -2128,7 +2139,7 @@ model SiteDocument {
   siteId       String
   site         Site      @relation(fields: [siteId], references: [id], onDelete: Cascade)
   titre        String
-  type         String    // "rapport", "controles", "tendance", "zoning", "autre"
+  type         String // "rapport", "controles", "tendance", "zoning", "autre"
   filename     String
   path         String
   size         Int?
@@ -2147,10 +2158,10 @@ model SiteDocument {
 model ImportLog {
   id          String   @id @default(uuid())
   siteId      String?
-  type        String   // "ZONING", "HISTORIQUE", "XLSX"
+  type        String // "ZONING", "HISTORIQUE", "XLSX"
   filename    String
-  statut      String   // "SUCCESS", "PARTIAL", "ERROR"
-  rapport     Json     // Résumé détaillé : zones créées, devices créés, erreurs, warnings
+  statut      String // "SUCCESS", "PARTIAL", "ERROR"
+  rapport     Json // Résumé détaillé : zones créées, devices créés, erreurs, warnings
   createdById String
   createdBy   User     @relation("ImportLogCreatedBy", fields: [createdById], references: [id])
   createdAt   DateTime @default(now())

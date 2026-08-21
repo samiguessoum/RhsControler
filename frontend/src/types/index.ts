@@ -2134,6 +2134,9 @@ export interface FieldIntervention {
   site?: { id: string; nom: string; ville?: string; adresse?: string };
   clientId: string;
   client?: { id: string; nomEntreprise: string };
+  contratId?: string;
+  contrat?: { id: string; type: string; numeroBonCommande?: string };
+  interventionId?: string;
   zoningVersionId: string;
   zoningVersion?: ZoningVersion;
   type: FieldInterventionType;
@@ -2209,7 +2212,10 @@ export interface FIProduct {
 
 export interface FieldReport {
   id: string;
-  fieldInterventionId: string;
+  fieldInterventionId?: string;
+  siteId?: string;
+  dateDebut?: string;
+  dateFin?: string;
   version: number;
   statut: FieldReportStatut;
   titre?: string;

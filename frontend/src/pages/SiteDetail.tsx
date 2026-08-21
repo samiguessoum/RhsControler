@@ -24,6 +24,7 @@ import {
   Bug,
   Activity,
   User,
+  Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -56,7 +57,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import api, { zoningApi, fieldInterventionsApi } from '@/services/api';
+import api, { zoningApi, fieldInterventionsApi, fieldReportsApi } from '@/services/api';
 import { formatDate, cn } from '@/lib/utils';
 import type {
   Site,
@@ -70,6 +71,7 @@ import type {
   SiteDocument,
   SiteAnalytics,
   SiteContact,
+  FieldReport,
 } from '@/types';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -290,7 +292,7 @@ export function SiteDetailPage() {
 
         {/* ── Tab 5 : Rapports ──────────────────────────────────── */}
         <TabsContent value="rapports" className="mt-4">
-          <RapportsTab items={fiItems} />
+          <RapportsTab siteId={siteId!} />
         </TabsContent>
 
         {/* ── Tab 6 : Documents ─────────────────────────────────── */}
@@ -1407,52 +1409,140 @@ function TendancesTab({ analytics }: { analytics?: SiteAnalytics }) {
 
 // ─── Tab 5 : Rapports ─────────────────────────────────────────────────────────
 
-function RapportsTab({ items }: { items: FieldIntervention[] }) {
-  const withReports = items.filter((fi) => fi._count && fi._count.reports > 0);
+function RapportsTab({ siteId }: { siteId: string }) {
+  const qc = useQueryClient();
+  const [showDialog, setShowDialog] = useState(false);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
-  if (withReports.length === 0) {
-    return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-12 text-gray-400">
-          <FileText className="h-10 w-10 mb-3" />
-          <p className="font-medium">Aucun rapport généré</p>
-          <p className="text-sm mt-1">
-            Les rapports sont générés depuis les interventions terrain validées.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
+  const { data: reports = [], isLoading } = useQuery<FieldReport[]>({
+    queryKey: ['site-field-reports', siteId],
+    queryFn: () => fieldReportsApi.list(siteId),
+  });
+
+  const generateMut = useMutation({
+    mutationFn: () => fieldReportsApi.generate(siteId, { dateFrom, dateTo }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['site-field-reports', siteId] });
+      setShowDialog(false);
+      setDateFrom('');
+      setDateTo('');
+      toast.success('Rapport généré');
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la génération du rapport'),
+  });
+
+  const handleDownload = async (report: FieldReport) => {
+    setDownloadingId(report.id);
+    try {
+      const blob = await fieldReportsApi.download(report.id);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = report.titre ? `${report.titre}.xlsx` : `rapport-${report.id}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error: any) {
+      toast.error(error?.response?.data?.error || 'Erreur lors du téléchargement du rapport');
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   return (
-    <div className="space-y-2">
-      {withReports.map((fi) => {
-        const cfg = FI_STATUT_CONFIG[fi.statut];
-        return (
-          <Card key={fi.id}>
-            <CardContent className="flex items-center gap-4 py-3 px-4">
-              <FileText className="h-5 w-5 text-blue-500 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium">
-                  {formatDate(fi.dateIntervention)} —{' '}
-                  {fi.type === 'OPERATION' ? 'Opération' : 'Visite'}
-                </p>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <Badge className={cn('text-xs', cfg.color)}>{cfg.label}</Badge>
-                  <span className="text-xs text-gray-500">
-                    {fi._count?.reports} rapport(s)
-                  </span>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">Rapports terrain</h2>
+        <Button size="sm" onClick={() => setShowDialog(true)}>
+          <Plus className="h-4 w-4 mr-1" /> Générer un rapport
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+        </div>
+      ) : reports.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12 text-gray-400">
+            <FileText className="h-10 w-10 mb-3" />
+            <p className="font-medium">Aucun rapport généré</p>
+            <p className="text-sm mt-1">
+              Générez un rapport Excel agrégeant l'historique des contrôles et comptages sur une période.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {reports.map((report) => (
+            <Card key={report.id}>
+              <CardContent className="flex items-center gap-4 py-3 px-4">
+                <FileText className="h-5 w-5 text-blue-500 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{report.titre || `Rapport v${report.version}`}</p>
+                  <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5 flex-wrap">
+                    {report.dateDebut && report.dateFin && (
+                      <span>{formatDate(report.dateDebut)} → {formatDate(report.dateFin)}</span>
+                    )}
+                    <Badge variant="outline" className="text-xs">v{report.version}</Badge>
+                    {report.generatedBy && (
+                      <span>{report.generatedBy.prenom} {report.generatedBy.nom}</span>
+                    )}
+                    <span>{formatDate(report.generatedAt)}</span>
+                  </div>
                 </div>
-              </div>
-              <Link to={`/field-interventions/${fi.id}`}>
-                <Button variant="ghost" size="sm">
-                  Voir <ChevronRight className="h-3 w-3 ml-1" />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={!report.xlsxPath || downloadingId === report.id}
+                  onClick={() => handleDownload(report)}
+                >
+                  <Download className="h-3.5 w-3.5 mr-1" />
+                  {downloadingId === report.id ? 'Téléchargement...' : 'Télécharger'}
                 </Button>
-              </Link>
-            </CardContent>
-          </Card>
-        );
-      })}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Generate report dialog */}
+      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Générer un rapport</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-gray-500">
+              Le rapport agrège les contrôles et comptages des interventions terrain soumises ou validées sur la période choisie.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Du *</Label>
+                <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+              </div>
+              <div className="space-y-1">
+                <Label>Au *</Label>
+                <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDialog(false)}>
+              Annuler
+            </Button>
+            <Button
+              onClick={() => generateMut.mutate()}
+              disabled={!dateFrom || !dateTo || generateMut.isPending}
+            >
+              {generateMut.isPending ? 'Génération...' : 'Générer'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

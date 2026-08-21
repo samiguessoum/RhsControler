@@ -23,6 +23,7 @@ const FinancePage = lazy(() => import('@/pages/Finance'));
 const EntrepotsPage = lazy(() => import('@/pages/Entrepots'));
 const SiteDetailPage = lazy(() => import('@/pages/SiteDetail').then((m) => ({ default: m.SiteDetailPage })));
 const TerrainPage = lazy(() => import('@/pages/Terrain').then((m) => ({ default: m.TerrainPage })));
+const FieldInterventionDetailPage = lazy(() => import('@/pages/FieldInterventionDetail').then((m) => ({ default: m.FieldInterventionDetailPage })));
 
 const AUTH_BOOT_TIMEOUT_MS = 2500;
 
@@ -115,6 +116,8 @@ export default function App() {
           <Route element={<MainLayout />}>
             {/* Planning : accessible à tous les rôles */}
             <Route path="/planning" element={<Suspense fallback={<PageFallback />}><PlanningPage /></Suspense>} />
+            {/* Fiche terrain : accessible à EQUIPE (l'accès à une fiche précise est vérifié côté API) */}
+            <Route path="/field-interventions/:id" element={<Suspense fallback={<PageFallback />}><FieldInterventionDetailPage /></Suspense>} />
 
             {/* Pages réservées aux rôles non-terrain */}
             <Route element={<RequireFullAccess />}>

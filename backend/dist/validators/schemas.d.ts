@@ -1249,6 +1249,8 @@ export declare const createTiersSchema: z.ZodObject<{
         dateNaissance: z.ZodOptional<z.ZodString>;
         notes: z.ZodOptional<z.ZodString>;
         estPrincipal: z.ZodOptional<z.ZodBoolean>;
+        siteIndices: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
+        siteIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
     }, "strip", z.ZodTypeAny, {
         nom: string;
         email?: string | undefined;
@@ -1261,6 +1263,8 @@ export declare const createTiersSchema: z.ZodObject<{
         fax?: string | undefined;
         dateNaissance?: string | undefined;
         estPrincipal?: boolean | undefined;
+        siteIndices?: number[] | undefined;
+        siteIds?: string[] | undefined;
     }, {
         nom: string;
         email?: string | undefined;
@@ -1273,6 +1277,8 @@ export declare const createTiersSchema: z.ZodObject<{
         fax?: string | undefined;
         dateNaissance?: string | undefined;
         estPrincipal?: boolean | undefined;
+        siteIndices?: number[] | undefined;
+        siteIds?: string[] | undefined;
     }>, "many">>;
     sites: z.ZodOptional<z.ZodArray<z.ZodObject<{
         id: z.ZodOptional<z.ZodString>;
@@ -1490,6 +1496,8 @@ export declare const createTiersSchema: z.ZodObject<{
         fax?: string | undefined;
         dateNaissance?: string | undefined;
         estPrincipal?: boolean | undefined;
+        siteIndices?: number[] | undefined;
+        siteIds?: string[] | undefined;
     }[] | undefined;
     sites?: {
         nom: string;
@@ -1598,6 +1606,8 @@ export declare const createTiersSchema: z.ZodObject<{
         fax?: string | undefined;
         dateNaissance?: string | undefined;
         estPrincipal?: boolean | undefined;
+        siteIndices?: number[] | undefined;
+        siteIds?: string[] | undefined;
     }[] | undefined;
     sites?: {
         nom: string;
@@ -1731,6 +1741,8 @@ export declare const updateTiersSchema: z.ZodObject<{
         dateNaissance: z.ZodOptional<z.ZodString>;
         notes: z.ZodOptional<z.ZodString>;
         estPrincipal: z.ZodOptional<z.ZodBoolean>;
+        siteIndices: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
+        siteIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
     }, "strip", z.ZodTypeAny, {
         nom: string;
         email?: string | undefined;
@@ -1743,6 +1755,8 @@ export declare const updateTiersSchema: z.ZodObject<{
         fax?: string | undefined;
         dateNaissance?: string | undefined;
         estPrincipal?: boolean | undefined;
+        siteIndices?: number[] | undefined;
+        siteIds?: string[] | undefined;
     }, {
         nom: string;
         email?: string | undefined;
@@ -1755,6 +1769,8 @@ export declare const updateTiersSchema: z.ZodObject<{
         fax?: string | undefined;
         dateNaissance?: string | undefined;
         estPrincipal?: boolean | undefined;
+        siteIndices?: number[] | undefined;
+        siteIds?: string[] | undefined;
     }>, "many">>>;
     sites: z.ZodOptional<z.ZodOptional<z.ZodArray<z.ZodObject<{
         id: z.ZodOptional<z.ZodString>;
@@ -1974,6 +1990,8 @@ export declare const updateTiersSchema: z.ZodObject<{
         fax?: string | undefined;
         dateNaissance?: string | undefined;
         estPrincipal?: boolean | undefined;
+        siteIndices?: number[] | undefined;
+        siteIds?: string[] | undefined;
     }[] | undefined;
     sites?: {
         nom: string;
@@ -2084,6 +2102,8 @@ export declare const updateTiersSchema: z.ZodObject<{
         fax?: string | undefined;
         dateNaissance?: string | undefined;
         estPrincipal?: boolean | undefined;
+        siteIndices?: number[] | undefined;
+        siteIds?: string[] | undefined;
     }[] | undefined;
     sites?: {
         nom: string;
@@ -2179,6 +2199,8 @@ export declare const createContactSchema: z.ZodObject<{
     dateNaissance: z.ZodOptional<z.ZodString>;
     notes: z.ZodOptional<z.ZodString>;
     estPrincipal: z.ZodOptional<z.ZodBoolean>;
+    siteIndices: z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>;
+    siteIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
 }, "strip", z.ZodTypeAny, {
     nom: string;
     email?: string | undefined;
@@ -2191,6 +2213,8 @@ export declare const createContactSchema: z.ZodObject<{
     fax?: string | undefined;
     dateNaissance?: string | undefined;
     estPrincipal?: boolean | undefined;
+    siteIndices?: number[] | undefined;
+    siteIds?: string[] | undefined;
 }, {
     nom: string;
     email?: string | undefined;
@@ -2203,6 +2227,8 @@ export declare const createContactSchema: z.ZodObject<{
     fax?: string | undefined;
     dateNaissance?: string | undefined;
     estPrincipal?: boolean | undefined;
+    siteIndices?: number[] | undefined;
+    siteIds?: string[] | undefined;
 }>;
 export declare const updateContactSchema: z.ZodObject<{
     civilite: z.ZodOptional<z.ZodOptional<z.ZodEnum<["M", "MME", "MLLE"]>>>;
@@ -2216,6 +2242,8 @@ export declare const updateContactSchema: z.ZodObject<{
     dateNaissance: z.ZodOptional<z.ZodOptional<z.ZodString>>;
     notes: z.ZodOptional<z.ZodOptional<z.ZodString>>;
     estPrincipal: z.ZodOptional<z.ZodOptional<z.ZodBoolean>>;
+    siteIndices: z.ZodOptional<z.ZodOptional<z.ZodArray<z.ZodNumber, "many">>>;
+    siteIds: z.ZodOptional<z.ZodOptional<z.ZodArray<z.ZodString, "many">>>;
 } & {
     actif: z.ZodOptional<z.ZodBoolean>;
 }, "strip", z.ZodTypeAny, {
@@ -2231,6 +2259,8 @@ export declare const updateContactSchema: z.ZodObject<{
     fax?: string | undefined;
     dateNaissance?: string | undefined;
     estPrincipal?: boolean | undefined;
+    siteIndices?: number[] | undefined;
+    siteIds?: string[] | undefined;
 }, {
     email?: string | undefined;
     nom?: string | undefined;
@@ -2244,6 +2274,8 @@ export declare const updateContactSchema: z.ZodObject<{
     fax?: string | undefined;
     dateNaissance?: string | undefined;
     estPrincipal?: boolean | undefined;
+    siteIndices?: number[] | undefined;
+    siteIds?: string[] | undefined;
 }>;
 export declare const createAdresseSchema: z.ZodObject<{
     libelle: z.ZodOptional<z.ZodString>;

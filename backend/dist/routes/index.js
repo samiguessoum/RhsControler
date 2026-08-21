@@ -37,6 +37,8 @@ import paiementDiversController from '../controllers/paiement-divers.controller.
 import facturationStatsController from '../controllers/facturation-stats.controller.js';
 import notificationsController from '../controllers/notifications.controller.js';
 import { settingsController } from '../controllers/settings.controller.js';
+import { zoningController } from '../controllers/zoning.controller.js';
+import { fieldInterventionController } from '../controllers/field-intervention.controller.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -157,6 +159,7 @@ router.post('/interventions', authMiddleware, canDo('createIntervention'), valid
 router.put('/interventions/:id', authMiddleware, canDo('editIntervention'), validate(updateInterventionSchema), interventionController.update);
 router.put('/interventions/:id/realiser', authMiddleware, canDo('realiserIntervention'), validate(realiserInterventionSchema), interventionController.realiser);
 router.post('/interventions/:id/reporter', authMiddleware, canDo('editIntervention'), validate(reporterInterventionSchema), interventionController.reporter);
+router.post('/interventions/:id/field-report', authMiddleware, canDo('realiserIntervention'), interventionController.startFieldReport);
 router.post('/interventions/:id/annuler', authMiddleware, canDo('editIntervention'), validate(annulerInterventionSchema), interventionController.annuler);
 router.delete('/interventions/:id', authMiddleware, canDo('deleteIntervention'), interventionController.delete);
 // ============ DASHBOARD ============
@@ -371,6 +374,46 @@ router.get('/facturation/tva/annees', authMiddleware, canDo('viewFacturation'), 
 router.get('/facturation/tva/g50', authMiddleware, canDo('viewFacturation'), facturationStatsController.getG50);
 router.get('/facturation/stats/mensuel', authMiddleware, canDo('viewFacturation'), facturationStatsController.getMensuel);
 router.get('/facturation/stats/top-clients', authMiddleware, canDo('viewFacturation'), facturationStatsController.getTopClients);
+// ============ ZONING ============
+// Versions de zoning par site
+router.get('/sites/:siteId/zoning-versions', authMiddleware, zoningController.listVersions);
+router.get('/zoning-versions/:id', authMiddleware, zoningController.getVersion);
+router.post('/sites/:siteId/zoning-versions', authMiddleware, canDo('manageInterventions'), zoningController.createVersion);
+router.patch('/zoning-versions/:id', authMiddleware, canDo('manageInterventions'), zoningController.updateVersion);
+router.delete('/zoning-versions/:id', authMiddleware, canDo('manageInterventions'), zoningController.deleteVersion);
+// Devices
+router.get('/zoning-versions/:versionId/devices', authMiddleware, zoningController.listDevices);
+router.post('/zones/:zoneId/devices', authMiddleware, canDo('manageInterventions'), zoningController.createDevice);
+router.patch('/devices/:id', authMiddleware, canDo('manageInterventions'), zoningController.updateDevice);
+router.delete('/devices/:id', authMiddleware, canDo('manageInterventions'), zoningController.deleteDevice);
+// Zones
+router.post('/zoning-versions/:versionId/zones', authMiddleware, canDo('manageInterventions'), zoningController.createZone);
+router.patch('/zones/:id', authMiddleware, canDo('manageInterventions'), zoningController.updateZone);
+router.delete('/zones/:id', authMiddleware, canDo('manageInterventions'), zoningController.deleteZone);
+// ControlStatus (référentiel)
+router.get('/control-statuses', authMiddleware, zoningController.listControlStatuses);
+router.post('/control-statuses', authMiddleware, canDo('manageSettings'), zoningController.createControlStatus);
+router.patch('/control-statuses/:id', authMiddleware, canDo('manageSettings'), zoningController.updateControlStatus);
+// ============ INTERVENTIONS TERRAIN ============
+router.get('/field-interventions', authMiddleware, fieldInterventionController.list);
+router.get('/field-interventions/:id', authMiddleware, fieldInterventionController.get);
+router.post('/field-interventions', authMiddleware, fieldInterventionController.create);
+router.patch('/field-interventions/:id', authMiddleware, fieldInterventionController.update);
+router.post('/field-interventions/:id/submit', authMiddleware, fieldInterventionController.submit);
+router.post('/field-interventions/:id/validate', authMiddleware, canDo('manageInterventions'), fieldInterventionController.validate);
+router.post('/field-interventions/:id/cancel', authMiddleware, canDo('manageInterventions'), fieldInterventionController.cancel);
+router.put('/field-interventions/:id/controls', authMiddleware, fieldInterventionController.upsertControls);
+router.put('/field-interventions/:id/products', authMiddleware, fieldInterventionController.upsertProducts);
+// Analytics terrain par site
+router.get('/sites/:siteId/zoning-analytics', authMiddleware, fieldInterventionController.getSiteAnalytics);
+// Rapports terrain (Excel agrégé par site)
+router.get('/sites/:siteId/field-reports', authMiddleware, fieldInterventionController.listSiteFieldReports);
+router.post('/sites/:siteId/field-reports', authMiddleware, canDo('manageInterventions'), fieldInterventionController.generateSiteFieldReport);
+router.get('/field-reports/:id/download', authMiddleware, fieldInterventionController.downloadFieldReport);
+// Documents de site
+router.get('/sites/:siteId/documents', authMiddleware, fieldInterventionController.listSiteDocuments);
+router.post('/sites/:siteId/documents', authMiddleware, canDo('manageInterventions'), fieldInterventionController.createSiteDocument);
+router.delete('/site-documents/:id', authMiddleware, canDo('manageInterventions'), fieldInterventionController.deleteSiteDocument);
 // ============ NOTIFICATIONS ============
 router.get('/notifications', authMiddleware, notificationsController.list);
 router.put('/notifications/:id/read', authMiddleware, notificationsController.markAsRead);

@@ -570,6 +570,78 @@ export const interventionController = {
   },
 
   /**
+   * POST /api/interventions/:id/field-report
+   * Démarre (ou reprend) la fiche terrain structurée liée à cette visite planifiée,
+   * dérivée automatiquement du zonage actif du site. C'est le point d'entrée unique
+   * du formulaire terrain — pas de création libre côté field-interventions pour EQUIPE.
+   */
+  async startFieldReport(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+
+      const intervention = await prisma.intervention.findUnique({
+        where: { id },
+        include: { interventionEmployes: true },
+      });
+      if (!intervention) throw new AppError(404, 'Intervention introuvable');
+
+      if (req.user!.role === 'EQUIPE') {
+        const assigned = intervention.interventionEmployes.some((ie) => ie.employeId === req.user!.employeId);
+        if (!assigned) throw new AppError(403, "Vous n'êtes pas affecté à cette intervention");
+      }
+
+      if (!intervention.siteId) {
+        throw new AppError(400, "Cette visite n'est pas associée à un site");
+      }
+
+      const typeMap: Record<string, 'OPERATION' | 'VISITE'> = {
+        OPERATION: 'OPERATION',
+        CONTROLE: 'VISITE',
+        PREMIERE_VISITE: 'VISITE',
+      };
+      const fiType = typeMap[intervention.type];
+      if (!fiType) {
+        throw new AppError(400, 'Ce type de visite ne dispose pas de fiche terrain structurée');
+      }
+
+      const existing = await prisma.fieldIntervention.findUnique({ where: { interventionId: id } });
+      if (existing) {
+        return res.json(existing);
+      }
+
+      const activeZoning = await prisma.zoningVersion.findFirst({
+        where: { siteId: intervention.siteId, statut: 'ACTIVE' },
+      });
+      if (!activeZoning) {
+        throw new AppError(400, 'Aucun zonage actif pour ce site — configurez le zonage depuis la fiche du site avant de démarrer une fiche terrain');
+      }
+
+      const employeIds = [...new Set(intervention.interventionEmployes.map((ie) => ie.employeId))];
+
+      const fi = await prisma.fieldIntervention.create({
+        data: {
+          siteId: intervention.siteId,
+          clientId: intervention.clientId,
+          contratId: intervention.contratId,
+          interventionId: intervention.id,
+          zoningVersionId: activeZoning.id,
+          type: fiType,
+          dateIntervention: intervention.datePrevue,
+          createdById: req.user!.id,
+          applicateurs: employeIds.length
+            ? { create: employeIds.map((employeId) => ({ employeId })) }
+            : undefined,
+        },
+      });
+
+      await createAuditLog(req.user!.id, 'CREATE', 'FieldIntervention', fi.id, { after: { interventionId: id, siteId: intervention.siteId } });
+      res.status(201).json(fi);
+    } catch (error: any) {
+      next(error);
+    }
+  },
+
+  /**
    * POST /api/interventions/:id/reporter
    */
   async reporter(req: AuthRequest, res: Response, next: NextFunction) {

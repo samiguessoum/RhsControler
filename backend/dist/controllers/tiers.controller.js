@@ -288,9 +288,11 @@ export const tiersController = {
                     // Prospect
                     prospectNiveau: data.prospectNiveau,
                     prospectStatut: data.prospectStatut,
-                    // Relations
+                    // Relations — contacts sans siteIndices uniquement (les autres sont créés après)
                     siegeContacts: {
-                        create: data.contacts?.map((c, i) => ({
+                        create: (data.contacts ?? [])
+                            .filter((c, i) => c?.nom && (!c.siteIndices || c.siteIndices.length === 0))
+                            .map((c, i) => ({
                             civilite: c.civilite,
                             nom: c.nom,
                             prenom: c.prenom,
@@ -301,7 +303,7 @@ export const tiersController = {
                             email: c.email,
                             notes: c.notes,
                             estPrincipal: i === 0 || c.estPrincipal,
-                        })) || [],
+                        })),
                     },
                     sites: {
                         create: data.sites?.map((s) => ({
@@ -379,6 +381,41 @@ export const tiersController = {
                     conditionPaiement: true,
                 },
             });
+            // Contacts avec siteIndices → créer comme SiteContact pour chaque site spécifié
+            const siteLinkedContacts = (data.contacts ?? []).filter((c) => c?.nom && Array.isArray(c.siteIndices) && c.siteIndices.length > 0);
+            logger.info({ siteLinkedCount: siteLinkedContacts.length, sitesCount: tiers.sites.length, contactsRaw: data.contacts }, 'create: siteLinked processing');
+            if (siteLinkedContacts.length > 0 && tiers.sites.length > 0) {
+                for (const contact of siteLinkedContacts) {
+                    for (const siteIdx of contact.siteIndices) {
+                        const siteInput = data.sites?.[siteIdx];
+                        logger.info({ siteIdx, siteInputNom: siteInput?.nom }, 'create: resolving site index');
+                        if (!siteInput?.nom) {
+                            logger.warn({ siteIdx }, 'create: siteInput not found');
+                            continue;
+                        }
+                        // Lookup par ID si disponible (plus fiable), sinon par nom
+                        const createdSite = tiers.sites.find((s) => (siteInput.id && s.id === siteInput.id) || s.nom === siteInput.nom);
+                        logger.info({ siteInputNom: siteInput.nom, foundSiteId: createdSite?.id }, 'create: site found?');
+                        if (!createdSite)
+                            continue;
+                        await prisma.siteContact.create({
+                            data: {
+                                siteId: createdSite.id,
+                                civilite: contact.civilite,
+                                nom: contact.nom,
+                                prenom: contact.prenom,
+                                fonction: contact.fonction || '',
+                                tel: contact.tel,
+                                telMobile: contact.telMobile,
+                                email: contact.email,
+                                notes: contact.notes,
+                                estPrincipal: contact.estPrincipal || false,
+                            },
+                        });
+                        logger.info({ siteId: createdSite.id, contactNom: contact.nom }, 'create: SiteContact created');
+                    }
+                }
+            }
             await createAuditLog(req.user.id, 'CREATE', 'Tiers', tiers.id, { after: tiers });
             res.status(201).json({ tiers });
         }
@@ -404,7 +441,7 @@ export const tiersController = {
             }
             const contactsInput = Array.isArray(data.contacts)
                 ? data.contacts
-                    .filter((c) => c?.nom && String(c.nom).trim())
+                    .filter((c) => c?.nom && String(c.nom).trim() && (!c.siteIds || c.siteIds.length === 0) && (!c.siteIndices || c.siteIndices.length === 0))
                     .map((c, i) => ({
                     civilite: c.civilite,
                     nom: c.nom,
@@ -607,6 +644,78 @@ export const tiersController = {
                 }
                 // Stocker les sites non supprimés pour la réponse
                 req.sitesNotDeleted = sitesNotDeleted;
+            }
+            // Contacts avec siteIndices ou siteIds → recréer les SiteContact
+            if (Array.isArray(data.contacts)) {
+                const siteLinkedContacts = data.contacts.filter((c) => c?.nom && ((Array.isArray(c.siteIds) && c.siteIds.length > 0) ||
+                    (Array.isArray(c.siteIndices) && c.siteIndices.length > 0)));
+                logger.info({ siteLinkedCount: siteLinkedContacts.length, contactsRaw: data.contacts }, 'update: siteLinked processing');
+                if (siteLinkedContacts.length > 0) {
+                    // Charger tous les sites du tiers pour le lookup
+                    const allClientSites = await prisma.site.findMany({
+                        where: { clientId: id },
+                        select: { id: true, nom: true },
+                    });
+                    // data.sites envoyé par le form (même ordre, filtré sans entrées vides)
+                    const formSites = Array.isArray(data.sites)
+                        ? data.sites.filter((s) => s?.nom?.trim())
+                        : [];
+                    logger.info({ formSitesCount: formSites.length, allClientSitesCount: allClientSites.length }, 'update: sites for lookup');
+                    // Helper: résoudre un siteIndex → siteId (priorité : id du form, puis nom)
+                    const resolveSiteId = (sIdx) => {
+                        const formSite = formSites[sIdx];
+                        if (!formSite?.nom) {
+                            logger.warn({ sIdx }, 'update: formSite not found for index');
+                            return null;
+                        }
+                        // Lookup par id si disponible, sinon par nom
+                        const dbSite = allClientSites.find(s => (formSite.id && s.id === formSite.id) || s.nom === formSite.nom);
+                        logger.info({ sIdx, formSiteNom: formSite.nom, formSiteId: formSite.id, foundId: dbSite?.id }, 'update: resolved site');
+                        return dbSite?.id ?? null;
+                    };
+                    // Collecter tous les siteIds impactés pour purge préalable
+                    const impactedSiteIds = new Set();
+                    for (const contact of siteLinkedContacts) {
+                        for (const sid of (contact.siteIds ?? []))
+                            impactedSiteIds.add(sid);
+                        for (const sIdx of (contact.siteIndices ?? [])) {
+                            const resolved = resolveSiteId(sIdx);
+                            if (resolved)
+                                impactedSiteIds.add(resolved);
+                        }
+                    }
+                    if (impactedSiteIds.size > 0) {
+                        await prisma.siteContact.deleteMany({ where: { siteId: { in: [...impactedSiteIds] } } });
+                    }
+                    // Recréer les SiteContacts
+                    for (const contact of siteLinkedContacts) {
+                        const resolvedSiteIds = new Set();
+                        for (const sid of (contact.siteIds ?? []))
+                            resolvedSiteIds.add(sid);
+                        for (const sIdx of (contact.siteIndices ?? [])) {
+                            const resolved = resolveSiteId(sIdx);
+                            if (resolved)
+                                resolvedSiteIds.add(resolved);
+                        }
+                        for (const siteId of resolvedSiteIds) {
+                            await prisma.siteContact.create({
+                                data: {
+                                    siteId,
+                                    civilite: contact.civilite,
+                                    nom: contact.nom,
+                                    prenom: contact.prenom,
+                                    fonction: contact.fonction || '',
+                                    tel: contact.tel,
+                                    telMobile: contact.telMobile,
+                                    email: contact.email,
+                                    notes: contact.notes,
+                                    estPrincipal: contact.estPrincipal || false,
+                                },
+                            });
+                            logger.info({ siteId, contactNom: contact.nom }, 'update: SiteContact created');
+                        }
+                    }
+                }
             }
             // Recharger le tiers avec toutes les relations
             const updatedTiers = await prisma.client.findUnique({

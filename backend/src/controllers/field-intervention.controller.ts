@@ -4,6 +4,19 @@ import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
 import { AppError } from '../lib/errors.js';
 import logger from '../lib/logger.js';
+import planningService from '../services/planning.service.js';
+
+// EQUIPE : vérifie que l'employé lié à req.user est bien affecté à cette intervention terrain.
+// Les autres rôles (bureau) ont accès à toutes les interventions.
+async function assertFieldInterventionAccess(req: AuthRequest, fieldInterventionId: string) {
+  if (req.user!.role !== 'EQUIPE') return;
+  if (!req.user!.employeId) throw new AppError(403, 'Compte non lié à une fiche employé');
+  const assigned = await prisma.fIApplicateur.findFirst({
+    where: { fieldInterventionId, employeId: req.user!.employeId },
+    select: { id: true },
+  });
+  if (!assigned) throw new AppError(403, "Vous n'êtes pas affecté à cette intervention");
+}
 
 export const fieldInterventionController = {
 
@@ -58,11 +71,13 @@ export const fieldInterventionController = {
   async get(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
+      await assertFieldInterventionAccess(req, id);
       const fi = await prisma.fieldIntervention.findUnique({
         where: { id },
         include: {
           site: { select: { id: true, nom: true, ville: true, adresse: true } },
           client: { select: { id: true, nomEntreprise: true } },
+          contrat: { select: { id: true, type: true, numeroBonCommande: true } },
           zoningVersion: {
             include: {
               zones: {
@@ -101,9 +116,14 @@ export const fieldInterventionController = {
   // POST /api/field-interventions
   async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
+      if (req.user!.role === 'EQUIPE') {
+        // EQUIPE ne crée pas d'intervention terrain libre : elle démarre depuis une visite
+        // planifiée via POST /interventions/:id/field-report (intervention.controller.ts).
+        throw new AppError(403, 'Utilisez une visite planifiée pour démarrer une fiche terrain');
+      }
       const {
         siteId, clientId, zoningVersionId, type, dateIntervention,
-        heureDebut, heureFin, commentaire, applicateurIds,
+        heureDebut, heureFin, commentaire, applicateurIds, contratId,
       } = req.body;
 
       if (!siteId || !clientId || !zoningVersionId || !type || !dateIntervention) {
@@ -112,7 +132,7 @@ export const fieldInterventionController = {
 
       const fi = await prisma.fieldIntervention.create({
         data: {
-          siteId, clientId, zoningVersionId, type,
+          siteId, clientId, zoningVersionId, type, contratId,
           dateIntervention: new Date(dateIntervention),
           heureDebut, heureFin, commentaire,
           createdById: req.user!.id,
@@ -136,6 +156,7 @@ export const fieldInterventionController = {
   async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
+      await assertFieldInterventionAccess(req, id);
       const existing = await prisma.fieldIntervention.findUnique({ where: { id } });
       if (!existing) throw new AppError(404, 'Intervention introuvable');
       if (!['DRAFT', 'IN_PROGRESS'].includes(existing.statut)) {
@@ -173,6 +194,7 @@ export const fieldInterventionController = {
   async submit(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
+      await assertFieldInterventionAccess(req, id);
       const existing = await prisma.fieldIntervention.findUnique({ where: { id } });
       if (!existing) throw new AppError(404, 'Intervention introuvable');
       if (!['DRAFT', 'IN_PROGRESS'].includes(existing.statut)) {
@@ -183,6 +205,19 @@ export const fieldInterventionController = {
         where: { id },
         data: { statut: 'SUBMITTED', submittedAt: new Date() },
       });
+
+      // Répercute la soumission sur la visite planifiée liée (si présente)
+      if (existing.interventionId) {
+        try {
+          await planningService.marquerRealisee(existing.interventionId, req.user!.id, {
+            dateRealisee: existing.dateIntervention,
+            notesTerrain: existing.commentaire || undefined,
+          });
+        } catch (e) {
+          logger.warn({ err: e, interventionId: existing.interventionId }, 'Impossible de marquer la visite planning comme réalisée');
+        }
+      }
+
       await createAuditLog(req.user!.id, 'UPDATE', 'FieldIntervention', id, { after: { statut: 'SUBMITTED' } });
       res.json(updated);
     } catch (err) {
@@ -234,6 +269,7 @@ export const fieldInterventionController = {
   async upsertControls(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
+      await assertFieldInterventionAccess(req, id);
       const { controls } = req.body as {
         controls: Array<{
           deviceId: string;
@@ -300,6 +336,7 @@ export const fieldInterventionController = {
   async upsertProducts(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
+      await assertFieldInterventionAccess(req, id);
       const { products } = req.body as {
         products: Array<{
           produitId?: string; nom: string; lot?: string;
@@ -391,6 +428,58 @@ export const fieldInterventionController = {
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([month, count]) => ({ month, count })),
       });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // ─── Rapports (livrable Excel agrégé) ──────────────────────────────────────
+
+  // GET /api/sites/:siteId/field-reports
+  async listSiteFieldReports(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { siteId } = req.params;
+      const reports = await prisma.fieldReport.findMany({
+        where: { siteId },
+        include: { generatedBy: { select: { id: true, nom: true, prenom: true } } },
+        orderBy: { generatedAt: 'desc' },
+      });
+      res.json(reports);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // POST /api/sites/:siteId/field-reports — génère le rapport Excel agrégé sur une période
+  async generateSiteFieldReport(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { siteId } = req.params;
+      const { dateFrom, dateTo } = req.body;
+      if (!dateFrom || !dateTo) throw new AppError(400, 'dateFrom et dateTo sont requis');
+
+      const { fieldReportService } = await import('../services/field-report.service.js');
+      const report = await fieldReportService.generateSiteHistoryReport(
+        siteId,
+        new Date(dateFrom),
+        new Date(dateTo),
+        req.user!.id,
+      );
+      res.status(201).json(report);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // GET /api/field-reports/:id/download
+  async downloadFieldReport(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const report = await prisma.fieldReport.findUnique({ where: { id } });
+      if (!report?.xlsxPath) throw new AppError(404, 'Rapport introuvable');
+
+      const path = await import('path');
+      const absolutePath = path.join(process.cwd(), report.xlsxPath);
+      res.download(absolutePath, path.basename(report.xlsxPath));
     } catch (err) {
       next(err);
     }

@@ -15,6 +15,7 @@ export declare const permissions: {
     readonly editIntervention: readonly ["SUPER_ADMIN", "DIRECTION", "COORDINATEUR"];
     readonly deleteIntervention: readonly ["SUPER_ADMIN", "DIRECTION", "COORDINATEUR"];
     readonly realiserIntervention: readonly ["SUPER_ADMIN", "DIRECTION", "COORDINATEUR", "SUPER_CHEF_EQUIPE", "EQUIPE"];
+    readonly manageInterventions: readonly ["SUPER_ADMIN", "DIRECTION", "COORDINATEUR"];
     readonly importData: readonly ["SUPER_ADMIN", "DIRECTION", "COORDINATEUR"];
     readonly exportData: readonly ["SUPER_ADMIN", "DIRECTION", "COORDINATEUR", "SUPER_CHEF_EQUIPE"];
     readonly manageSettings: readonly ["SUPER_ADMIN"];

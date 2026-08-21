@@ -36,6 +36,13 @@ export declare const interventionController: {
      */
     realiser(req: AuthRequest, res: Response, next: NextFunction): Promise<void>;
     /**
+     * POST /api/interventions/:id/field-report
+     * Démarre (ou reprend) la fiche terrain structurée liée à cette visite planifiée,
+     * dérivée automatiquement du zonage actif du site. C'est le point d'entrée unique
+     * du formulaire terrain — pas de création libre côté field-interventions pour EQUIPE.
+     */
+    startFieldReport(req: AuthRequest, res: Response, next: NextFunction): Promise<Response<any, Record<string, any>> | undefined>;
+    /**
      * POST /api/interventions/:id/reporter
      */
     reporter(req: AuthRequest, res: Response, next: NextFunction): Promise<Response<any, Record<string, any>> | undefined>;

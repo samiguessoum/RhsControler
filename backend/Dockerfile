@@ -28,7 +28,7 @@ COPY --from=builder /app/dist ./dist
 COPY prisma ./prisma
 
 # Créer les dossiers uploads (le volume Docker les montera)
-RUN mkdir -p uploads/logos uploads/fiches-techniques
+RUN mkdir -p uploads/logos uploads/fiches-techniques uploads/field-reports
 
 EXPOSE 3000
 

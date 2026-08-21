@@ -47,6 +47,8 @@ app.get('/health', (req, res) => {
 app.use('/uploads/logos', express.static(path.join(process.cwd(), 'uploads/logos')));
 // Fiches techniques protégées — auth requise
 app.use('/uploads/fiches-techniques', authMiddleware, express.static(path.join(process.cwd(), 'uploads/fiches-techniques')));
+// Rapports terrain (Excel) protégés — auth requise
+app.use('/uploads/field-reports', authMiddleware, express.static(path.join(process.cwd(), 'uploads/field-reports')));
 // API routes
 app.use('/api', routes);
 // 404 handler

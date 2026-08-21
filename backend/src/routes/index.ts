@@ -236,6 +236,7 @@ router.post('/interventions', authMiddleware, canDo('createIntervention'), valid
 router.put('/interventions/:id', authMiddleware, canDo('editIntervention'), validate(updateInterventionSchema), interventionController.update);
 router.put('/interventions/:id/realiser', authMiddleware, canDo('realiserIntervention'), validate(realiserInterventionSchema), interventionController.realiser);
 router.post('/interventions/:id/reporter', authMiddleware, canDo('editIntervention'), validate(reporterInterventionSchema), interventionController.reporter);
+router.post('/interventions/:id/field-report', authMiddleware, canDo('realiserIntervention'), interventionController.startFieldReport);
 router.post('/interventions/:id/annuler', authMiddleware, canDo('editIntervention'), validate(annulerInterventionSchema), interventionController.annuler);
 router.delete('/interventions/:id', authMiddleware, canDo('deleteIntervention'), interventionController.delete);
 
@@ -521,6 +522,11 @@ router.put('/field-interventions/:id/products', authMiddleware, fieldInterventio
 
 // Analytics terrain par site
 router.get('/sites/:siteId/zoning-analytics', authMiddleware, fieldInterventionController.getSiteAnalytics);
+
+// Rapports terrain (Excel agrégé par site)
+router.get('/sites/:siteId/field-reports', authMiddleware, fieldInterventionController.listSiteFieldReports);
+router.post('/sites/:siteId/field-reports', authMiddleware, canDo('manageInterventions'), fieldInterventionController.generateSiteFieldReport);
+router.get('/field-reports/:id/download', authMiddleware, fieldInterventionController.downloadFieldReport);
 
 // Documents de site
 router.get('/sites/:siteId/documents', authMiddleware, fieldInterventionController.listSiteDocuments);
