@@ -12,7 +12,6 @@ import {
   ChevronRight,
   MapPin,
   Building2,
-  Plus,
   FileText,
   TrendingUp,
   Filter,
@@ -30,9 +29,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { fieldInterventionsApi } from '@/services/api';
-import { formatDate, cn } from '@/lib/utils';
-import type { FieldIntervention, FieldInterventionStatut } from '@/types';
+import { fieldInterventionsApi, interventionsApi, tiersApi } from '@/services/api';
+import { formatDate, cn, getStatutLabel, getStatutColor } from '@/lib/utils';
+import type { FieldIntervention, FieldInterventionStatut, Intervention, Tiers } from '@/types';
 import { useAuthStore } from '@/store/auth.store';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -132,8 +131,11 @@ export function TerrainPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="interventions">
+      <Tabs defaultValue="clients">
         <TabsList>
+          <TabsTrigger value="clients" className="flex items-center gap-1.5">
+            <Building2 className="h-4 w-4" /> Clients
+          </TabsTrigger>
           <TabsTrigger value="interventions" className="flex items-center gap-1.5">
             <ClipboardCheck className="h-4 w-4" /> Interventions
           </TabsTrigger>
@@ -147,6 +149,11 @@ export function TerrainPage() {
             <FileText className="h-4 w-4" /> Rapports
           </TabsTrigger>
         </TabsList>
+
+        {/* ── Clients & sites (zoning / terrain) ── */}
+        <TabsContent value="clients" className="mt-4">
+          <ClientsSitesList />
+        </TabsContent>
 
         {/* ── Toutes les interventions ── */}
         <TabsContent value="interventions" className="mt-4 space-y-4">
@@ -448,61 +455,249 @@ function SubmittedList({ canValidate }: { canValidate: boolean }) {
   );
 }
 
-function RapportsList() {
+function ClientsSitesList() {
+  const [search, setSearch] = useState('');
+
   const { data, isLoading } = useQuery({
-    queryKey: ['field-interventions-rapports'],
-    queryFn: () => fieldInterventionsApi.list({ statut: 'VALIDATED', limit: 50 }),
+    queryKey: ['terrain-clients-sites', search],
+    queryFn: () =>
+      tiersApi.list({
+        typeTiers: 'CLIENT',
+        actif: true,
+        search: search || undefined,
+        limit: 100,
+      }),
   });
-  const items: FieldIntervention[] = ((data as any)?.items ?? []).filter(
-    (fi: FieldIntervention) => fi._count && fi._count.reports > 0
-  );
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-40">
-        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
-      </div>
-    );
-  }
-
-  if (items.length === 0) {
-    return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-          <FileText className="h-10 w-10 mb-3" />
-          <p className="font-medium">Aucun rapport disponible</p>
-          <p className="text-sm mt-1">Les rapports sont générés depuis les interventions validées.</p>
-        </CardContent>
-      </Card>
-    );
-  }
+  const clients: Tiers[] = data?.tiers ?? [];
 
   return (
-    <div className="space-y-2">
-      {items.map((fi) => (
-        <Card key={fi.id}>
-          <CardContent className="flex items-center gap-4 py-3 px-4">
-            <FileText className="h-5 w-5 text-blue-500 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium text-sm">{formatDate(fi.dateIntervention)}</span>
-                <Badge variant="outline" className="text-xs">{fi.type === 'OPERATION' ? 'Opération' : 'Visite'}</Badge>
-                <Badge className="text-xs bg-green-100 text-green-700">Validée</Badge>
-              </div>
-              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground mt-0.5">
-                {fi.client && <span>{fi.client.nomEntreprise}</span>}
-                {fi.site && <span><MapPin className="h-3 w-3 inline mr-0.5" />{fi.site.nom}</span>}
-                <span>{fi._count?.reports} rapport(s)</span>
-              </div>
-            </div>
-            <Link to={`/field-interventions/${fi.id}`}>
-              <Button variant="outline" size="sm" className="h-8 text-xs">
-                Voir <ChevronRight className="h-3 w-3 ml-0.5" />
-              </Button>
-            </Link>
+    <div className="space-y-4">
+      <div className="relative max-w-sm">
+        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Rechercher un client..."
+          className="pl-8 h-9"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center h-40">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+        </div>
+      ) : clients.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+            <Building2 className="h-10 w-10 mb-3" />
+            <p className="font-medium">Aucun client trouvé</p>
           </CardContent>
         </Card>
-      ))}
+      ) : (
+        <div className="space-y-4">
+          {clients.map((client) => (
+            <Card key={client.id}>
+              <CardContent className="pt-4 pb-4 space-y-3">
+                <div className="font-semibold text-sm flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-blue-600" />
+                  {client.nomEntreprise}
+                </div>
+
+                {client.sites && client.sites.length > 0 ? (
+                  <div className="grid gap-2">
+                    {client.sites.map((site) => (
+                      <div
+                        key={site.id}
+                        className="flex items-center justify-between p-3 bg-gradient-to-r from-blue-50 to-white rounded-lg border border-blue-100"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                            <MapPin className="h-4 w-4 text-blue-600" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-medium text-sm text-blue-900 truncate">{site.nom}</div>
+                            {(site.adresse || site.ville) && (
+                              <p className="text-xs text-muted-foreground truncate">
+                                {[site.adresse, site.ville].filter(Boolean).join(', ')}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <Link to={`/sites/${site.id}`}>
+                          <Button variant="outline" size="sm" className="h-7 text-xs gap-1 shrink-0">
+                            Zoning & Terrain
+                          </Button>
+                        </Link>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground pl-6">Aucun site pour ce client</p>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// L'onglet Rapports suit le planning : toutes les opérations RÉALISÉES (contrat →
+// planning), regroupées site par site, pour que l'assistante puisse croiser les
+// données terrain et éditer le rapport de chaque site.
+function RapportsList() {
+  const { canDo } = useAuthStore();
+  const [search, setSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['planning-operations-realisees', dateFrom, dateTo],
+    queryFn: () =>
+      interventionsApi.list({
+        type: 'OPERATION',
+        statut: 'REALISEE',
+        dateDebut: dateFrom || undefined,
+        dateFin: dateTo || undefined,
+        sort: 'desc',
+        limit: 300,
+      }),
+  });
+  const items: Intervention[] = data?.interventions ?? [];
+
+  const startMut = useMutation({
+    mutationFn: (interventionId: string) => interventionsApi.startFieldReport(interventionId),
+    onSuccess: (fi: FieldIntervention) => {
+      qc.invalidateQueries({ queryKey: ['planning-operations-realisees'] });
+      navigate(`/field-interventions/${fi.id}`);
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors du démarrage de la fiche terrain'),
+  });
+
+  const filtered = search
+    ? items.filter((pi) =>
+        pi.site?.nom?.toLowerCase().includes(search.toLowerCase()) ||
+        pi.client?.nomEntreprise?.toLowerCase().includes(search.toLowerCase())
+      )
+    : items;
+
+  // Regroupement site par site (conserve l'ordre du plus récent au plus ancien)
+  const bySite = new Map<string, { site: Intervention['site']; client: Intervention['client']; ops: Intervention[] }>();
+  for (const pi of filtered) {
+    const key = pi.siteId || pi.id;
+    if (!bySite.has(key)) bySite.set(key, { site: pi.site, client: pi.client, ops: [] });
+    bySite.get(key)!.ops.push(pi);
+  }
+  const groups = Array.from(bySite.values());
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-3">
+        <div className="relative flex-1 min-w-48">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Rechercher un site ou un client..."
+            className="pl-8 h-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <Input type="date" className="w-36 h-9 text-sm" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} title="Réalisée depuis le" />
+        <Input type="date" className="w-36 h-9 text-sm" value={dateTo} onChange={(e) => setDateTo(e.target.value)} title="Réalisée jusqu'au" />
+        {(search || dateFrom || dateTo) && (
+          <Button variant="ghost" size="sm" className="h-9 text-muted-foreground" onClick={() => { setSearch(''); setDateFrom(''); setDateTo(''); }}>
+            Effacer
+          </Button>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center h-40">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+        </div>
+      ) : groups.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+            <FileText className="h-10 w-10 mb-3" />
+            <p className="font-medium">Aucune opération réalisée</p>
+            <p className="text-sm mt-1">Les rapports suivent les opérations marquées réalisées dans le planning.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-4">
+          {groups.map((group) => (
+            <Card key={group.site?.id ?? group.ops[0].id}>
+              <CardContent className="pt-4 pb-4 space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="font-semibold text-sm flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-blue-600" />
+                    {group.client?.nomEntreprise}
+                    {group.site && (
+                      <>
+                        <span className="text-muted-foreground font-normal">›</span>
+                        <MapPin className="h-3.5 w-3.5 text-blue-600" />
+                        {group.site.nom}
+                      </>
+                    )}
+                    <Badge variant="secondary" className="text-xs">{group.ops.length}</Badge>
+                  </div>
+                  {group.site && (
+                    <Link to={`/sites/${group.site.id}?tab=rapports`}>
+                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
+                        Rapport du site <ChevronRight className="h-3 w-3" />
+                      </Button>
+                    </Link>
+                  )}
+                </div>
+
+                <div className="grid gap-2">
+                  {group.ops.map((pi) => {
+                    const fi = pi.fieldIntervention;
+                    return (
+                      <div
+                        key={pi.id}
+                        className="flex items-center justify-between gap-3 p-2.5 rounded-lg border bg-gray-50"
+                      >
+                        <div className="flex items-center gap-2 flex-wrap text-sm">
+                          <span className="font-medium">{formatDate(pi.dateRealisee || pi.datePrevue)}</span>
+                          <Badge className={cn('text-xs', getStatutColor(pi.statut))}>{getStatutLabel(pi.statut)}</Badge>
+                          {fi ? (
+                            <Badge className={cn('text-xs', FI_STATUT_CONFIG[fi.statut].color)}>
+                              {FI_STATUT_CONFIG[fi.statut].label}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs text-gray-500">Aucune fiche remplie</Badge>
+                          )}
+                        </div>
+                        {fi ? (
+                          <Link to={`/field-interventions/${fi.id}`}>
+                            <Button variant="outline" size="sm" className="h-7 text-xs">
+                              Voir la fiche <ChevronRight className="h-3 w-3 ml-0.5" />
+                            </Button>
+                          </Link>
+                        ) : canDo('realiserIntervention') ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            disabled={startMut.isPending}
+                            onClick={() => startMut.mutate(pi.id)}
+                          >
+                            Créer la fiche
+                          </Button>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -18,6 +18,7 @@ export const interventionController = {
       const {
         clientId,
         contratId,
+        siteId,
         type,
         statut,
         prestation,
@@ -25,7 +26,9 @@ export const interventionController = {
         dateFin,
         page = '1',
         limit = '50',
+        sort = 'asc',
       } = req.query;
+      const sortOrder: 'asc' | 'desc' = sort === 'desc' ? 'desc' : 'asc';
 
       const where: any = {};
 
@@ -41,14 +44,19 @@ export const interventionController = {
 
       if (clientId) where.clientId = clientId;
       if (contratId) where.contratId = contratId;
+      if (siteId) where.siteId = siteId;
       if (type) where.type = type;
       if (statut) where.statut = statut;
       if (prestation) where.prestation = { contains: prestation as string, mode: 'insensitive' };
 
       if (dateDebut || dateFin) {
-        where.datePrevue = {};
-        if (dateDebut) where.datePrevue.gte = startOfDay(parseISO(dateDebut as string));
-        if (dateFin) where.datePrevue.lte = endOfDay(parseISO(dateFin as string));
+        // Pour les interventions réalisées, on filtre sur la date effective de
+        // réalisation plutôt que sur la date planifiée (pertinent pour le suivi
+        // des rapports terrain, qui raisonne en dates réelles).
+        const dateField = statut === 'REALISEE' ? 'dateRealisee' : 'datePrevue';
+        where[dateField] = {};
+        if (dateDebut) where[dateField].gte = startOfDay(parseISO(dateDebut as string));
+        if (dateFin) where[dateField].lte = endOfDay(parseISO(dateFin as string));
       }
 
       const pageNum = parseInt(page as string) || 1;
@@ -60,7 +68,7 @@ export const interventionController = {
           where,
           skip,
           take: limitNum,
-          orderBy: [{ datePrevue: 'asc' }, { heurePrevue: 'asc' }],
+          orderBy: [{ datePrevue: sortOrder }, { heurePrevue: sortOrder }],
           include: {
             client: {
               select: {
@@ -134,6 +142,9 @@ export const interventionController = {
                 },
                 poste: true,
               },
+            },
+            fieldIntervention: {
+              select: { id: true, statut: true, submittedAt: true, validatedAt: true },
             },
           },
         }),
@@ -249,6 +260,9 @@ export const interventionController = {
               },
               poste: true,
             },
+          },
+          fieldIntervention: {
+            select: { id: true, statut: true, submittedAt: true, validatedAt: true },
           },
         },
       });

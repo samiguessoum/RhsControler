@@ -321,6 +321,7 @@ export const interventionsApi = {
   list: async (params?: {
     clientId?: string;
     contratId?: string;
+    siteId?: string;
     type?: string;
     statut?: string;
     prestation?: string;
@@ -328,6 +329,7 @@ export const interventionsApi = {
     dateFin?: string;
     page?: number;
     limit?: number;
+    sort?: 'asc' | 'desc';
   }) => {
     const { data } = await api.get('/interventions', { params });
     return { interventions: data.interventions as Intervention[], pagination: data.pagination };

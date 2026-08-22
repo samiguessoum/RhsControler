@@ -1243,12 +1243,19 @@ function InterventionDetailDialog({
   congesActifs?: Pick<Conge, 'employeId' | 'dateDebut' | 'dateFin'>[];
 }) {
   // Tous les hooks doivent être appelés AVANT tout return conditionnel
+  const navigate = useNavigate();
   const [showContacts, setShowContacts] = useState(false);
   const [horaireDebut, setHoraireDebut] = useState('');
   const [horaireFin, setHoraireFin] = useState('');
   const [horaireError, setHoraireError] = useState<string | null>(null);
   const [selectedEmployes, setSelectedEmployes] = useState<InterventionEmployeInput[]>([]);
   const [employesModified, setEmployesModified] = useState(false);
+
+  const voirRapportMut = useMutation({
+    mutationFn: (interventionId: string) => interventionsApi.startFieldReport(interventionId),
+    onSuccess: (fi: { id: string }) => navigate(`/field-interventions/${fi.id}`),
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de l\'ouverture du rapport'),
+  });
 
   // Initialiser les employés sélectionnés à partir de l'intervention
   const interventionEmployesJson = JSON.stringify(
@@ -1835,6 +1842,23 @@ function InterventionDetailDialog({
           )}
 
           <DialogFooter className="gap-2">
+            {intervention.type === 'OPERATION' && (intervention.fieldIntervention || canRealiser) && (
+              <Button
+                variant="outline"
+                className="text-blue-700 border-blue-300 hover:bg-blue-50"
+                disabled={voirRapportMut.isPending}
+                onClick={() => {
+                  if (intervention.fieldIntervention) {
+                    navigate(`/field-interventions/${intervention.fieldIntervention.id}`);
+                  } else {
+                    voirRapportMut.mutate(intervention.id);
+                  }
+                }}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Voir le rapport
+              </Button>
+            )}
             {canExport && intervention.type === 'OPERATION' && intervention.statut === 'REALISEE' && (
               <>
                 <Button

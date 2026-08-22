@@ -1,4 +1,4 @@
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -115,9 +115,13 @@ const ZONING_STATUT_CONFIG = {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+const VALID_TABS = ['info', 'zoning', 'interventions', 'tendances', 'rapports', 'documents'];
+
 export function SiteDetailPage() {
   const { siteId } = useParams<{ siteId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialTab = VALID_TABS.includes(searchParams.get('tab') || '') ? searchParams.get('tab')! : 'info';
 
   // Site data — uses GET /sites/:id → { site: { ...siteData } }
   const {
@@ -227,7 +231,7 @@ export function SiteDetailPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="info">
+      <Tabs defaultValue={initialTab}>
         <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="info" className="flex items-center gap-1.5">
             <Building2 className="h-4 w-4" /> Informations
@@ -1103,8 +1107,8 @@ function FieldInterventionsTab({
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [filterStatut, setFilterStatut] = useState<string>('');
-  const [filterType, setFilterType] = useState<string>('');
+  const [filterStatut, setFilterStatut] = useState<string>('ALL');
+  const [filterType, setFilterType] = useState<string>('ALL');
   const [createForm, setCreateForm] = useState({
     zoningVersionId: versions.find((v) => v.statut === 'ACTIVE')?.id ?? versions[0]?.id ?? '',
     type: 'OPERATION',
@@ -1128,8 +1132,8 @@ function FieldInterventionsTab({
   });
 
   let filtered = items;
-  if (filterStatut) filtered = filtered.filter((fi) => fi.statut === filterStatut);
-  if (filterType) filtered = filtered.filter((fi) => fi.type === filterType);
+  if (filterStatut !== 'ALL') filtered = filtered.filter((fi) => fi.statut === filterStatut);
+  if (filterType !== 'ALL') filtered = filtered.filter((fi) => fi.type === filterType);
 
   return (
     <div className="space-y-4">
@@ -1144,7 +1148,7 @@ function FieldInterventionsTab({
               <SelectValue placeholder="Tous types" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Tous types</SelectItem>
+              <SelectItem value="ALL">Tous types</SelectItem>
               <SelectItem value="OPERATION">Opération</SelectItem>
               <SelectItem value="VISITE">Visite</SelectItem>
             </SelectContent>
@@ -1154,7 +1158,7 @@ function FieldInterventionsTab({
               <SelectValue placeholder="Tous statuts" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Tous statuts</SelectItem>
+              <SelectItem value="ALL">Tous statuts</SelectItem>
               {(Object.entries(FI_STATUT_CONFIG) as [FieldInterventionStatut, { label: string }][]).map(
                 ([k, v]) => (
                   <SelectItem key={k} value={k}>

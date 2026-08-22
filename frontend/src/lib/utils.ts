@@ -47,6 +47,7 @@ export function getStatutLabel(statut: string): string {
     TERMINE: 'Terminé',
     OPERATION: 'Opération',
     CONTROLE: 'Visite de contrôle',
+    PREMIERE_VISITE: 'Première visite',
     RECLAMATION: 'Réclamation',
     ANNUEL: 'Annuel',
     PONCTUEL: 'Ponctuel',

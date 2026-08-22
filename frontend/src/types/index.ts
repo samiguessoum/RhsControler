@@ -192,6 +192,12 @@ export interface Intervention {
   frequenceControleJours?: number | null;
   interventionEmployes?: InterventionEmploye[];
   previousIntervention?: PreviousIntervention | null;
+  fieldIntervention?: {
+    id: string;
+    statut: FieldInterventionStatut;
+    submittedAt?: string;
+    validatedAt?: string;
+  } | null;
 }
 
 // ============ DASHBOARD ============
