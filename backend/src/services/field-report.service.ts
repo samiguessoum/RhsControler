@@ -166,18 +166,38 @@ export const fieldReportService = {
 
     const existingCount = await prisma.fieldReport.count({ where: { siteId } });
 
-    return prisma.fieldReport.create({
+    const dateFromFr = formatDate(dateFrom);
+    const dateToFr = formatDate(dateTo);
+    const titre = `Rapport terrain — ${site.nom} — ${dateFromFr} au ${dateToFr}`;
+    const relativePath = `uploads/field-reports/${siteId}/${filename}`;
+
+    const report = await prisma.fieldReport.create({
       data: {
         siteId,
         dateDebut: dateFrom,
         dateFin: dateTo,
         version: existingCount + 1,
         statut: 'FINAL',
-        titre: `Historique terrain — ${site.nom}`,
-        xlsxPath: `uploads/field-reports/${siteId}/${filename}`,
+        titre,
+        xlsxPath: relativePath,
         generatedById,
       },
     });
+
+    // Auto-archivage dans les documents du site
+    await prisma.siteDocument.create({
+      data: {
+        siteId,
+        titre,
+        type: 'rapport',
+        filename,
+        path: relativePath,
+        annee: dateFrom.getFullYear(),
+        uploadedById: generatedById,
+      },
+    });
+
+    return report;
   },
 };
 

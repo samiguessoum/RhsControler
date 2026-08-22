@@ -48,67 +48,13 @@ const FI_STATUT_CONFIG: Record<FieldInterventionStatut, { label: string; color: 
 
 export function TerrainPage() {
   const { canDo } = useAuthStore();
-  const navigate = useNavigate();
-  const qc = useQueryClient();
 
-  const [search, setSearch] = useState('');
-  const [filterStatut, setFilterStatut] = useState('');
-  const [filterType, setFilterType] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [page, setPage] = useState(1);
-  const limit = 20;
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['field-interventions-all', filterStatut, filterType, dateFrom, dateTo, page],
-    queryFn: () =>
-      fieldInterventionsApi.list({
-        statut: filterStatut || undefined,
-        type: filterType || undefined,
-        dateFrom: dateFrom || undefined,
-        dateTo: dateTo || undefined,
-        page,
-        limit,
-      }),
+  // Stats : uniquement les interventions SUBMITTED pour le badge "À valider"
+  const { data: statsData } = useQuery({
+    queryKey: ['field-interventions-stats'],
+    queryFn: () => fieldInterventionsApi.list({ statut: 'SUBMITTED', limit: 1 }),
   });
-
-  const items: FieldIntervention[] = (data as any)?.items ?? [];
-  const total: number = (data as any)?.total ?? 0;
-  const totalPages = Math.ceil(total / limit);
-
-  // Filtrage client-side sur search (nom site ou client)
-  const filtered = search
-    ? items.filter((fi) =>
-        fi.site?.nom?.toLowerCase().includes(search.toLowerCase()) ||
-        fi.client?.nomEntreprise?.toLowerCase().includes(search.toLowerCase())
-      )
-    : items;
-
-  // Stats rapides (sur les éléments chargés)
-  const stats = {
-    total,
-    enCours: items.filter((fi) => fi.statut === 'IN_PROGRESS').length,
-    soumises: items.filter((fi) => fi.statut === 'SUBMITTED').length,
-    validees: items.filter((fi) => fi.statut === 'VALIDATED').length,
-  };
-
-  const validateMut = useMutation({
-    mutationFn: (id: string) => fieldInterventionsApi.validate(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['field-interventions-all'] });
-      toast.success('Intervention validée');
-    },
-    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la validation'),
-  });
-
-  const cancelMut = useMutation({
-    mutationFn: (id: string) => fieldInterventionsApi.cancel(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['field-interventions-all'] });
-      toast.success('Intervention annulée');
-    },
-    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de l\'annulation'),
-  });
+  const soumisesCount: number = (statsData as any)?.total ?? 0;
 
   return (
     <div className="p-6 space-y-6">
@@ -123,124 +69,31 @@ export function TerrainPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <StatCard label="Total" value={stats.total} color="text-gray-700" />
-        <StatCard label="En cours" value={stats.enCours} color="text-blue-600" />
-        <StatCard label="À valider" value={stats.soumises} color="text-amber-600" />
-        <StatCard label="Validées" value={stats.validees} color="text-green-600" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <StatCard label="Fiches à valider" value={soumisesCount} color="text-amber-600" />
+        <StatCard label="En attente de rapport" value={0} color="text-blue-600" />
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="clients">
+      <Tabs defaultValue="rapports">
         <TabsList>
-          <TabsTrigger value="clients" className="flex items-center gap-1.5">
-            <Building2 className="h-4 w-4" /> Clients
-          </TabsTrigger>
-          <TabsTrigger value="interventions" className="flex items-center gap-1.5">
-            <ClipboardCheck className="h-4 w-4" /> Interventions
+          <TabsTrigger value="rapports" className="flex items-center gap-1.5">
+            <FileText className="h-4 w-4" /> Rapports à faire
           </TabsTrigger>
           <TabsTrigger value="aValider" className="flex items-center gap-1.5">
             <AlertCircle className="h-4 w-4" /> À valider
-            {stats.soumises > 0 && (
-              <Badge variant="secondary" className="ml-1 h-4 text-xs">{stats.soumises}</Badge>
+            {soumisesCount > 0 && (
+              <Badge variant="secondary" className="ml-1 h-4 text-xs">{soumisesCount}</Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="rapports" className="flex items-center gap-1.5">
-            <FileText className="h-4 w-4" /> Rapports
+          <TabsTrigger value="clients" className="flex items-center gap-1.5">
+            <Building2 className="h-4 w-4" /> Sites
           </TabsTrigger>
         </TabsList>
 
-        {/* ── Clients & sites (zoning / terrain) ── */}
-        <TabsContent value="clients" className="mt-4">
-          <ClientsSitesList />
-        </TabsContent>
-
-        {/* ── Toutes les interventions ── */}
-        <TabsContent value="interventions" className="mt-4 space-y-4">
-          {/* Filtres */}
-          <Card>
-            <CardContent className="pt-4 pb-3">
-              <div className="flex flex-wrap gap-3">
-                <div className="relative flex-1 min-w-48">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Rechercher site ou client..."
-                    className="pl-8 h-9"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                  />
-                </div>
-                <Select value={filterType || 'all'} onValueChange={(v) => { setFilterType(v === 'all' ? '' : v); setPage(1); }}>
-                  <SelectTrigger className="w-40 h-9">
-                    <SelectValue placeholder="Type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Tous types</SelectItem>
-                    <SelectItem value="OPERATION">Opération</SelectItem>
-                    <SelectItem value="VISITE">Visite contrôle</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={filterStatut || 'all'} onValueChange={(v) => { setFilterStatut(v === 'all' ? '' : v); setPage(1); }}>
-                  <SelectTrigger className="w-40 h-9">
-                    <SelectValue placeholder="Statut" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Tous statuts</SelectItem>
-                    {Object.entries(FI_STATUT_CONFIG).map(([k, v]) => (
-                      <SelectItem key={k} value={k}>{v.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Input
-                  type="date"
-                  className="w-36 h-9 text-sm"
-                  value={dateFrom}
-                  onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
-                  title="Date début"
-                />
-                <Input
-                  type="date"
-                  className="w-36 h-9 text-sm"
-                  value={dateTo}
-                  onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
-                  title="Date fin"
-                />
-                {(filterStatut || filterType || dateFrom || dateTo || search) && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-9 text-muted-foreground"
-                    onClick={() => { setFilterStatut(''); setFilterType(''); setDateFrom(''); setDateTo(''); setSearch(''); setPage(1); }}
-                  >
-                    Effacer
-                  </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          <InterventionList
-            items={filtered}
-            isLoading={isLoading}
-            canValidate={canDo('manageInterventions')}
-            onValidate={(id) => validateMut.mutate(id)}
-            onCancel={(id) => cancelMut.mutate(id)}
-          />
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center gap-2 pt-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-                Précédent
-              </Button>
-              <span className="text-sm text-muted-foreground">
-                Page {page} / {totalPages}
-              </span>
-              <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
-                Suivant
-              </Button>
-            </div>
-          )}
+        {/* ── Rapports à faire : opérations réalisées sans rapport ── */}
+        <TabsContent value="rapports" className="mt-4">
+          <RapportsList />
         </TabsContent>
 
         {/* ── À valider ── */}
@@ -248,9 +101,9 @@ export function TerrainPage() {
           <SubmittedList canValidate={canDo('manageInterventions')} />
         </TabsContent>
 
-        {/* ── Rapports ── */}
-        <TabsContent value="rapports" className="mt-4">
-          <RapportsList />
+        {/* ── Sites & clients ── */}
+        <TabsContent value="clients" className="mt-4">
+          <ClientsSitesList />
         </TabsContent>
       </Tabs>
     </div>
@@ -663,31 +516,34 @@ function RapportsList() {
                       >
                         <div className="flex items-center gap-2 flex-wrap text-sm">
                           <span className="font-medium">{formatDate(pi.dateRealisee || pi.datePrevue)}</span>
-                          <Badge className={cn('text-xs', getStatutColor(pi.statut))}>{getStatutLabel(pi.statut)}</Badge>
-                          {fi ? (
+                          {!fi && (
+                            <Badge variant="outline" className="text-xs text-orange-600 border-orange-300 bg-orange-50">Fiche terrain manquante</Badge>
+                          )}
+                          {fi && fi.statut !== 'VALIDATED' && (
                             <Badge className={cn('text-xs', FI_STATUT_CONFIG[fi.statut].color)}>
-                              {FI_STATUT_CONFIG[fi.statut].label}
+                              Fiche {FI_STATUT_CONFIG[fi.statut].label.toLowerCase()}
                             </Badge>
-                          ) : (
-                            <Badge variant="outline" className="text-xs text-gray-500">Aucune fiche remplie</Badge>
+                          )}
+                          {fi && fi.statut === 'VALIDATED' && (
+                            <Badge className="text-xs bg-amber-100 text-amber-700">Rapport à générer</Badge>
                           )}
                         </div>
-                        {fi ? (
-                          <Link to={`/field-interventions/${fi.id}`}>
-                            <Button variant="outline" size="sm" className="h-7 text-xs">
-                              Voir la fiche <ChevronRight className="h-3 w-3 ml-0.5" />
-                            </Button>
-                          </Link>
-                        ) : canDo('realiserIntervention') ? (
+                        {!fi && canDo('realiserIntervention') ? (
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-7 text-xs"
+                            className="h-7 text-xs border-orange-300 text-orange-700 hover:bg-orange-50"
                             disabled={startMut.isPending}
                             onClick={() => startMut.mutate(pi.id)}
                           >
                             Créer la fiche
                           </Button>
+                        ) : fi ? (
+                          <Link to={`/field-interventions/${fi.id}`}>
+                            <Button variant="outline" size="sm" className="h-7 text-xs">
+                              Voir la fiche <ChevronRight className="h-3 w-3 ml-0.5" />
+                            </Button>
+                          </Link>
                         ) : null}
                       </div>
                     );
