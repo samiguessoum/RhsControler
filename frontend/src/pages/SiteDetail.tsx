@@ -860,7 +860,12 @@ function ZoneCard({
     onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la suppression de la zone'),
   });
 
-  const devices = zone.devices ?? [];
+  const devices = [...(zone.devices ?? [])].sort((a, b) => {
+    const na = parseInt(a.displayNumber, 10);
+    const nb = parseInt(b.displayNumber, 10);
+    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+    return a.displayNumber.localeCompare(b.displayNumber);
+  });
 
   // Numéros prévus pour le prochain ajout
   const startNum = (maxByType[addType] ?? 0) + 1;
