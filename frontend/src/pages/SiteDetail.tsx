@@ -618,9 +618,19 @@ function ZoningTab({ siteId, versions }: { siteId: string; versions: ZoningVersi
                     <p className="text-sm text-gray-400 text-center py-8">Aucune zone définie</p>
                   ) : (
                     <div className="space-y-4">
-                      {version.zones.map((zone) => (
-                        <ZoneCard key={zone.id} zone={zone} versionId={version.id} />
-                      ))}
+                      {(() => {
+                        // Max numéro existant par type, sur l'ensemble de la version
+                        const maxByType = version.zones
+                          .flatMap((z) => z.devices ?? [])
+                          .reduce((acc, d) => {
+                            const n = parseInt(d.displayNumber, 10);
+                            if (!isNaN(n)) acc[d.type] = Math.max(acc[d.type] ?? 0, n);
+                            return acc;
+                          }, {} as Partial<Record<DeviceType, number>>);
+                        return version.zones.map((zone) => (
+                          <ZoneCard key={zone.id} zone={zone} versionId={version.id} maxByType={maxByType} />
+                        ));
+                      })()}
                     </div>
                   )}
                   <AddZoneButton versionId={version.id} />
@@ -760,7 +770,15 @@ function ZoningTab({ siteId, versions }: { siteId: string; versions: ZoningVersi
 
 // ─── Zone card ────────────────────────────────────────────────────────────────
 
-function ZoneCard({ zone, versionId }: { zone: Zone; versionId: string }) {
+function ZoneCard({
+  zone,
+  versionId,
+  maxByType,
+}: {
+  zone: Zone;
+  versionId: string;
+  maxByType: Partial<Record<DeviceType, number>>;
+}) {
   const qc = useQueryClient();
   const [showAddDevice, setShowAddDevice] = useState(false);
   const [editDevice, setEditDevice] = useState<MonitoringDevice | null>(null);
@@ -768,35 +786,49 @@ function ZoneCard({ zone, versionId }: { zone: Zone; versionId: string }) {
   const [showEditZone, setShowEditZone] = useState(false);
   const [zoneForm, setZoneForm] = useState({ nom: zone.nom, etage: zone.etage ?? '', description: zone.description ?? '' });
 
-  const [deviceForm, setDeviceForm] = useState({
-    type: 'BAIT_STATION' as DeviceType,
-    displayNumber: '',
-    nom: '',
-    notes: '',
-    statut: 'ACTIVE' as DeviceStatut,
-  });
+  // ── Add form (simplifié : type + quantité) ──
+  const [addType, setAddType] = useState<DeviceType>('BAIT_STATION');
+  const [addQty, setAddQty] = useState(1);
+  const [addNom, setAddNom] = useState('');
+  const [addNotes, setAddNotes] = useState('');
+
+  // ── Edit form ──
+  const [editForm, setEditForm] = useState({ displayNumber: '', nom: '', notes: '', statut: 'ACTIVE' as DeviceStatut });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['zoning-version', versionId] });
 
-  const createDeviceMut = useMutation({
-    mutationFn: () => zoningApi.createDevice(zone.id, { ...deviceForm }),
+  const addDevicesMut = useMutation({
+    mutationFn: async () => {
+      const start = (maxByType[addType] ?? 0) + 1;
+      for (let i = 0; i < addQty; i++) {
+        await zoningApi.createDevice(zone.id, {
+          type: addType,
+          displayNumber: String(start + i).padStart(2, '0'),
+          nom: addNom || null,
+          notes: addNotes || null,
+          statut: 'ACTIVE',
+        });
+      }
+    },
     onSuccess: () => {
       invalidate();
       setShowAddDevice(false);
-      setDeviceForm({ type: 'BAIT_STATION', displayNumber: '', nom: '', notes: '', statut: 'ACTIVE' });
-      toast.success('Dispositif ajouté');
+      setAddQty(1);
+      setAddNom('');
+      setAddNotes('');
+      toast.success(addQty === 1 ? 'Dispositif ajouté' : `${addQty} dispositifs ajoutés`);
     },
-    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de l\'ajout du dispositif'),
+    onError: (error: any) => toast.error(error?.response?.data?.error || "Erreur lors de l'ajout"),
   });
 
   const updateDeviceMut = useMutation({
-    mutationFn: (payload: Record<string, unknown>) => zoningApi.updateDevice(editDevice!.id, payload),
+    mutationFn: () => zoningApi.updateDevice(editDevice!.id, editForm),
     onSuccess: () => {
       invalidate();
       setEditDevice(null);
       toast.success('Dispositif mis à jour');
     },
-    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la mise à jour du dispositif'),
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la mise à jour'),
   });
 
   const deleteDeviceMut = useMutation({
@@ -806,7 +838,7 @@ function ZoneCard({ zone, versionId }: { zone: Zone; versionId: string }) {
       setDeleteDeviceId(null);
       toast.success('Dispositif supprimé');
     },
-    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la suppression du dispositif'),
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la suppression'),
   });
 
   const updateZoneMut = useMutation({
@@ -829,7 +861,11 @@ function ZoneCard({ zone, versionId }: { zone: Zone; versionId: string }) {
   });
 
   const devices = zone.devices ?? [];
-  const canDeleteZone = devices.length === 0;
+
+  // Numéros prévus pour le prochain ajout
+  const startNum = (maxByType[addType] ?? 0) + 1;
+  const endNum = startNum + addQty - 1;
+  const preview = addQty === 1 ? `#${String(startNum).padStart(2, '0')}` : `#${String(startNum).padStart(2, '0')} → #${String(endNum).padStart(2, '0')}`;
 
   return (
     <div className="border rounded-lg p-4">
@@ -851,7 +887,7 @@ function ZoneCard({ zone, versionId }: { zone: Zone; versionId: string }) {
           >
             <Edit2 className="h-3 w-3" />
           </Button>
-          {canDeleteZone && (
+          {devices.length === 0 && (
             <Button
               variant="ghost"
               size="icon"
@@ -874,13 +910,7 @@ function ZoneCard({ zone, versionId }: { zone: Zone; versionId: string }) {
             <button
               key={device.id}
               onClick={() => {
-                setDeviceForm({
-                  type: device.type,
-                  displayNumber: device.displayNumber,
-                  nom: device.nom ?? '',
-                  notes: device.notes ?? '',
-                  statut: device.statut,
-                });
+                setEditForm({ displayNumber: device.displayNumber, nom: device.nom ?? '', notes: device.notes ?? '', statut: device.statut });
                 setEditDevice(device);
               }}
               className={cn(
@@ -891,9 +921,7 @@ function ZoneCard({ zone, versionId }: { zone: Zone; versionId: string }) {
               <Bug className="h-3 w-3 shrink-0" />
               <span className="font-medium">#{device.displayNumber}</span>
               <span className="truncate flex-1">{DEVICE_TYPE_LABELS[device.type]}</span>
-              <span
-                className={cn('px-1 rounded text-xs', DEVICE_STATUT_COLORS[device.statut])}
-              >
+              <span className={cn('px-1 rounded text-xs', DEVICE_STATUT_COLORS[device.statut])}>
                 {device.statut === 'ACTIVE' ? '●' : device.statut === 'REMOVED' ? '✕' : '○'}
               </span>
             </button>
@@ -903,32 +931,89 @@ function ZoneCard({ zone, versionId }: { zone: Zone; versionId: string }) {
         <p className="text-xs text-gray-400">Aucun dispositif</p>
       )}
 
-      {/* Add device dialog */}
-      <Dialog open={showAddDevice} onOpenChange={setShowAddDevice}>
+      {/* ── Add device dialog ── */}
+      <Dialog open={showAddDevice} onOpenChange={(o) => { if (!o) { setShowAddDevice(false); setAddQty(1); setAddNom(''); setAddNotes(''); } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Ajouter un dispositif — {zone.nom}</DialogTitle>
+            <DialogTitle>Ajouter des dispositifs — {zone.nom}</DialogTitle>
           </DialogHeader>
-          <DeviceFormFields form={deviceForm} onChange={setDeviceForm} showStatut={false} />
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label>Type *</Label>
+              <Select value={addType} onValueChange={(v) => setAddType(v as DeviceType)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {(Object.entries(DEVICE_TYPE_LABELS) as [DeviceType, string][]).map(([k, label]) => (
+                    <SelectItem key={k} value={k}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Quantité</Label>
+              <div className="flex items-center gap-3">
+                <Input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={addQty}
+                  onChange={(e) => setAddQty(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
+                  className="w-24"
+                />
+                <span className="text-sm text-muted-foreground">
+                  Sera numéroté <span className="font-medium text-foreground">{preview}</span>
+                </span>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label>Nom libre <span className="text-muted-foreground text-xs">(optionnel)</span></Label>
+              <Input placeholder="Ex: près de l'entrée…" value={addNom} onChange={(e) => setAddNom(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>Notes <span className="text-muted-foreground text-xs">(optionnel)</span></Label>
+              <Textarea value={addNotes} onChange={(e) => setAddNotes(e.target.value)} rows={2} />
+            </div>
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddDevice(false)}>Annuler</Button>
-            <Button
-              onClick={() => createDeviceMut.mutate()}
-              disabled={!deviceForm.displayNumber || createDeviceMut.isPending}
-            >
-              Ajouter
+            <Button onClick={() => addDevicesMut.mutate()} disabled={addDevicesMut.isPending}>
+              {addDevicesMut.isPending ? 'Ajout…' : addQty === 1 ? 'Ajouter' : `Ajouter ${addQty}`}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Edit device dialog */}
+      {/* ── Edit device dialog ── */}
       <Dialog open={!!editDevice} onOpenChange={(o) => { if (!o) setEditDevice(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Modifier le dispositif #{editDevice?.displayNumber}</DialogTitle>
+            <DialogTitle>Modifier — {editDevice ? DEVICE_TYPE_LABELS[editDevice.type] : ''} #{editDevice?.displayNumber}</DialogTitle>
           </DialogHeader>
-          <DeviceFormFields form={deviceForm} onChange={setDeviceForm} showStatut />
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label>Numéro</Label>
+              <Input value={editForm.displayNumber} onChange={(e) => setEditForm((f) => ({ ...f, displayNumber: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Nom libre</Label>
+              <Input value={editForm.nom} onChange={(e) => setEditForm((f) => ({ ...f, nom: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label>Statut</Label>
+              <Select value={editForm.statut} onValueChange={(v) => setEditForm((f) => ({ ...f, statut: v as DeviceStatut }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ACTIVE">Actif</SelectItem>
+                  <SelectItem value="INACTIVE">Inactif</SelectItem>
+                  <SelectItem value="REMOVED">Retiré</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label>Notes</Label>
+              <Textarea value={editForm.notes} onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))} rows={2} />
+            </div>
+          </div>
           <DialogFooter>
             <Button
               variant="outline"
@@ -938,17 +1023,14 @@ function ZoneCard({ zone, versionId }: { zone: Zone; versionId: string }) {
               <Trash2 className="h-3 w-3 mr-1" /> Supprimer
             </Button>
             <Button variant="outline" onClick={() => setEditDevice(null)}>Annuler</Button>
-            <Button
-              onClick={() => updateDeviceMut.mutate(deviceForm)}
-              disabled={!deviceForm.displayNumber || updateDeviceMut.isPending}
-            >
+            <Button onClick={() => updateDeviceMut.mutate()} disabled={!editForm.displayNumber || updateDeviceMut.isPending}>
               Enregistrer
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Delete device confirm */}
+      {/* ── Delete device confirm ── */}
       <AlertDialog open={!!deleteDeviceId} onOpenChange={(o) => { if (!o) setDeleteDeviceId(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -967,7 +1049,7 @@ function ZoneCard({ zone, versionId }: { zone: Zone; versionId: string }) {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Edit zone dialog */}
+      {/* ── Edit zone dialog ── */}
       <Dialog open={showEditZone} onOpenChange={setShowEditZone}>
         <DialogContent>
           <DialogHeader><DialogTitle>Modifier la zone</DialogTitle></DialogHeader>
@@ -993,92 +1075,6 @@ function ZoneCard({ zone, versionId }: { zone: Zone; versionId: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-// ─── Device form fields (shared between add/edit) ─────────────────────────────
-
-type DeviceFormState = {
-  type: DeviceType;
-  displayNumber: string;
-  nom: string;
-  notes: string;
-  statut: DeviceStatut;
-};
-
-function DeviceFormFields({
-  form,
-  onChange,
-  showStatut,
-}: {
-  form: DeviceFormState;
-  onChange: (f: DeviceFormState) => void;
-  showStatut: boolean;
-}) {
-  return (
-    <div className="space-y-4 py-2">
-      <div className="space-y-1">
-        <Label>Type *</Label>
-        <Select
-          value={form.type}
-          onValueChange={(v) => onChange({ ...form, type: v as DeviceType })}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {(Object.entries(DEVICE_TYPE_LABELS) as [DeviceType, string][]).map(([k, label]) => (
-              <SelectItem key={k} value={k}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-1">
-        <Label>Numéro *</Label>
-        <Input
-          placeholder="01, 02, A1…"
-          value={form.displayNumber}
-          onChange={(e) => onChange({ ...form, displayNumber: e.target.value })}
-        />
-      </div>
-      <div className="space-y-1">
-        <Label>Nom libre</Label>
-        <Input
-          placeholder="Optionnel"
-          value={form.nom}
-          onChange={(e) => onChange({ ...form, nom: e.target.value })}
-        />
-      </div>
-      {showStatut && (
-        <div className="space-y-1">
-          <Label>Statut</Label>
-          <Select
-            value={form.statut}
-            onValueChange={(v) => onChange({ ...form, statut: v as DeviceStatut })}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ACTIVE">Actif</SelectItem>
-              <SelectItem value="INACTIVE">Inactif</SelectItem>
-              <SelectItem value="REMOVED">Retiré</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-      <div className="space-y-1">
-        <Label>Notes</Label>
-        <Textarea
-          placeholder="Optionnel"
-          value={form.notes}
-          onChange={(e) => onChange({ ...form, notes: e.target.value })}
-          rows={2}
-        />
-      </div>
     </div>
   );
 }
