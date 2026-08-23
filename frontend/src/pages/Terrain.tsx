@@ -75,8 +75,11 @@ export function TerrainPage() {
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="rapports">
+      <Tabs defaultValue="clients">
         <TabsList>
+          <TabsTrigger value="clients" className="flex items-center gap-1.5">
+            <Building2 className="h-4 w-4" /> Sites
+          </TabsTrigger>
           <TabsTrigger value="rapports" className="flex items-center gap-1.5">
             <FileText className="h-4 w-4" /> Rapports à faire
           </TabsTrigger>
@@ -86,10 +89,12 @@ export function TerrainPage() {
               <Badge variant="secondary" className="ml-1 h-4 text-xs">{soumisesCount}</Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="clients" className="flex items-center gap-1.5">
-            <Building2 className="h-4 w-4" /> Sites
-          </TabsTrigger>
         </TabsList>
+
+        {/* ── Sites & clients ── */}
+        <TabsContent value="clients" className="mt-4">
+          <ClientsSitesList />
+        </TabsContent>
 
         {/* ── Rapports à faire : opérations réalisées sans rapport ── */}
         <TabsContent value="rapports" className="mt-4">
@@ -99,11 +104,6 @@ export function TerrainPage() {
         {/* ── À valider ── */}
         <TabsContent value="aValider" className="mt-4">
           <SubmittedList canValidate={canDo('manageInterventions')} />
-        </TabsContent>
-
-        {/* ── Sites & clients ── */}
-        <TabsContent value="clients" className="mt-4">
-          <ClientsSitesList />
         </TabsContent>
       </Tabs>
     </div>

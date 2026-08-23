@@ -10,7 +10,6 @@ import {
   Mail,
   Building2,
   Map,
-  ClipboardList,
   TrendingUp,
   FileText,
   FolderOpen,
@@ -115,7 +114,7 @@ const ZONING_STATUT_CONFIG = {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-const VALID_TABS = ['info', 'zoning', 'interventions', 'tendances', 'rapports', 'documents'];
+const VALID_TABS = ['info', 'zoning', 'rapports', 'tendances', 'documents'];
 
 export function SiteDetailPage() {
   const { siteId } = useParams<{ siteId: string }>();
@@ -146,15 +145,6 @@ export function SiteDetailPage() {
   const zoningVersions: ZoningVersion[] = Array.isArray(zoningVersionsRaw)
     ? zoningVersionsRaw
     : ((zoningVersionsRaw as { versions?: ZoningVersion[] })?.versions ?? []);
-
-  // Field interventions
-  const { data: fiRaw } = useQuery({
-    queryKey: ['field-interventions', siteId],
-    queryFn: () => fieldInterventionsApi.list({ siteId: siteId!, limit: 50 }),
-    enabled: !!siteId,
-  });
-  const fiItems: FieldIntervention[] = (fiRaw as { items?: FieldIntervention[] })?.items ?? [];
-  const fiTotal: number = (fiRaw as { total?: number })?.total ?? fiItems.length;
 
   // Site documents
   const { data: siteDocsRaw } = useQuery({
@@ -244,19 +234,11 @@ export function SiteDetailPage() {
               </Badge>
             )}
           </TabsTrigger>
-          <TabsTrigger value="interventions" className="flex items-center gap-1.5">
-            <ClipboardList className="h-4 w-4" /> Interventions terrain
-            {fiTotal > 0 && (
-              <Badge variant="secondary" className="ml-1 h-4 text-xs">
-                {fiTotal}
-              </Badge>
-            )}
+          <TabsTrigger value="rapports" className="flex items-center gap-1.5">
+            <FileText className="h-4 w-4" /> Rapports
           </TabsTrigger>
           <TabsTrigger value="tendances" className="flex items-center gap-1.5">
             <TrendingUp className="h-4 w-4" /> Tendances
-          </TabsTrigger>
-          <TabsTrigger value="rapports" className="flex items-center gap-1.5">
-            <FileText className="h-4 w-4" /> Rapports
           </TabsTrigger>
           <TabsTrigger value="documents" className="flex items-center gap-1.5">
             <FolderOpen className="h-4 w-4" /> Documents
@@ -278,25 +260,14 @@ export function SiteDetailPage() {
           <ZoningTab siteId={siteId!} versions={zoningVersions} />
         </TabsContent>
 
-        {/* ── Tab 3 : Interventions terrain ────────────────────── */}
-        <TabsContent value="interventions" className="mt-4">
-          <FieldInterventionsTab
-            siteId={siteId!}
-            clientId={site.clientId}
-            versions={zoningVersions}
-            items={fiItems}
-            total={fiTotal}
-          />
+        {/* ── Tab 3 : Rapports ──────────────────────────────────── */}
+        <TabsContent value="rapports" className="mt-4">
+          <RapportsTab siteId={siteId!} />
         </TabsContent>
 
         {/* ── Tab 4 : Tendances ─────────────────────────────────── */}
         <TabsContent value="tendances" className="mt-4">
           <TendancesTab analytics={analytics} />
-        </TabsContent>
-
-        {/* ── Tab 5 : Rapports ──────────────────────────────────── */}
-        <TabsContent value="rapports" className="mt-4">
-          <RapportsTab siteId={siteId!} />
         </TabsContent>
 
         {/* ── Tab 6 : Documents ─────────────────────────────────── */}
@@ -1089,226 +1060,7 @@ function AddZoneButton({ versionId }: { versionId: string }) {
   );
 }
 
-// ─── Tab 3 : Field Interventions ──────────────────────────────────────────────
-
-function FieldInterventionsTab({
-  siteId,
-  clientId,
-  versions,
-  items,
-  total,
-}: {
-  siteId: string;
-  clientId: string;
-  versions: ZoningVersion[];
-  items: FieldIntervention[];
-  total: number;
-}) {
-  const navigate = useNavigate();
-  const qc = useQueryClient();
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [filterStatut, setFilterStatut] = useState<string>('ALL');
-  const [filterType, setFilterType] = useState<string>('ALL');
-  const [createForm, setCreateForm] = useState({
-    zoningVersionId: versions.find((v) => v.statut === 'ACTIVE')?.id ?? versions[0]?.id ?? '',
-    type: 'OPERATION',
-    dateIntervention: new Date().toISOString().slice(0, 10),
-    commentaire: '',
-  });
-
-  const createMut = useMutation({
-    mutationFn: () =>
-      fieldInterventionsApi.create({
-        ...createForm,
-        siteId,
-        clientId,
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['field-interventions', siteId] });
-      setShowCreateDialog(false);
-      toast.success('Intervention créée');
-    },
-    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la création de l\'intervention'),
-  });
-
-  let filtered = items;
-  if (filterStatut !== 'ALL') filtered = filtered.filter((fi) => fi.statut === filterStatut);
-  if (filterType !== 'ALL') filtered = filtered.filter((fi) => fi.type === filterType);
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold">Interventions terrain</h2>
-          <Badge variant="secondary">{total}</Badge>
-        </div>
-        <div className="flex items-center gap-2">
-          <Select value={filterType} onValueChange={setFilterType}>
-            <SelectTrigger className="w-36 h-8 text-xs">
-              <SelectValue placeholder="Tous types" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Tous types</SelectItem>
-              <SelectItem value="OPERATION">Opération</SelectItem>
-              <SelectItem value="VISITE">Visite</SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={filterStatut} onValueChange={setFilterStatut}>
-            <SelectTrigger className="w-40 h-8 text-xs">
-              <SelectValue placeholder="Tous statuts" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="ALL">Tous statuts</SelectItem>
-              {(Object.entries(FI_STATUT_CONFIG) as [FieldInterventionStatut, { label: string }][]).map(
-                ([k, v]) => (
-                  <SelectItem key={k} value={k}>
-                    {v.label}
-                  </SelectItem>
-                )
-              )}
-            </SelectContent>
-          </Select>
-          <Button
-            size="sm"
-            onClick={() => setShowCreateDialog(true)}
-            disabled={versions.length === 0}
-          >
-            <Plus className="h-4 w-4 mr-1" /> Nouvelle intervention
-          </Button>
-        </div>
-      </div>
-
-      {filtered.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12 text-gray-400">
-            <ClipboardList className="h-10 w-10 mb-3" />
-            <p className="font-medium">Aucune intervention terrain</p>
-            {versions.length === 0 && (
-              <p className="text-sm mt-1">Créez d'abord un zoning pour ce site.</p>
-            )}
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-2">
-          {filtered.map((fi) => {
-            const cfg = FI_STATUT_CONFIG[fi.statut];
-            const Icon = cfg.icon;
-            return (
-              <Card
-                key={fi.id}
-                className="hover:shadow-sm transition-shadow cursor-pointer"
-                onClick={() => navigate(`/field-interventions/${fi.id}`)}
-              >
-                <CardContent className="flex items-center gap-4 py-3 px-4">
-                  <Icon className={cn('h-5 w-5 shrink-0', cfg.color.split(' ')[1])} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-sm">
-                        {formatDate(fi.dateIntervention)}
-                      </span>
-                      <Badge variant="outline" className="text-xs">
-                        {fi.type === 'OPERATION' ? 'Opération' : 'Visite contrôle'}
-                      </Badge>
-                      <Badge className={cn('text-xs', cfg.color)}>{cfg.label}</Badge>
-                    </div>
-                    <div className="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
-                      {fi.applicateurs && fi.applicateurs.length > 0 && (
-                        <span>
-                          {fi.applicateurs
-                            .map((a) => `${a.employe?.prenom ?? ''} ${a.employe?.nom ?? ''}`.trim())
-                            .join(', ')}
-                        </span>
-                      )}
-                      {fi._count && <span>{fi._count.controls} dispositif(s)</span>}
-                    </div>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-gray-400 shrink-0" />
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Create dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Nouvelle intervention terrain</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1">
-              <Label>Type *</Label>
-              <Select
-                value={createForm.type}
-                onValueChange={(v) => setCreateForm((f) => ({ ...f, type: v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="OPERATION">Opération</SelectItem>
-                  <SelectItem value="VISITE">Visite de contrôle</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Date *</Label>
-              <Input
-                type="date"
-                value={createForm.dateIntervention}
-                onChange={(e) => setCreateForm((f) => ({ ...f, dateIntervention: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Version de zoning *</Label>
-              <Select
-                value={createForm.zoningVersionId}
-                onValueChange={(v) => setCreateForm((f) => ({ ...f, zoningVersionId: v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner une version" />
-                </SelectTrigger>
-                <SelectContent>
-                  {versions.map((v) => (
-                    <SelectItem key={v.id} value={v.id}>
-                      v{v.version} — {v.nom} ({ZONING_STATUT_CONFIG[v.statut].label})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Commentaire</Label>
-              <Textarea
-                value={createForm.commentaire}
-                onChange={(e) => setCreateForm((f) => ({ ...f, commentaire: e.target.value }))}
-                rows={2}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
-              Annuler
-            </Button>
-            <Button
-              onClick={() => createMut.mutate()}
-              disabled={
-                !createForm.zoningVersionId ||
-                !createForm.dateIntervention ||
-                createMut.isPending
-              }
-            >
-              Créer
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-// ─── Tab 4 : Tendances ────────────────────────────────────────────────────────
+// ─── Tab 3 : Tendances ────────────────────────────────────────────────────────
 
 function TendancesTab({ analytics }: { analytics?: SiteAnalytics }) {
   if (!analytics) {
