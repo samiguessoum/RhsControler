@@ -228,6 +228,7 @@ model User {
   zoningVersionsCrees        ZoningVersion[]     @relation("ZoningCreatedBy")
   fieldInterventionsCrees    FieldIntervention[] @relation("FICreatedBy")
   fieldInterventionsValidees FieldIntervention[] @relation("FIValidatedBy")
+  deviceControls             DeviceControl[]     @relation("DeviceControlUpdatedBy")
   fieldReportsGeneres        FieldReport[]       @relation("FIReportGeneratedBy")
   siteDocumentsUploades      SiteDocument[]      @relation("SiteDocumentUploadedBy")
   importLogsCrees            ImportLog[]         @relation("ImportLogCreatedBy")
@@ -2032,6 +2033,8 @@ model DeviceControl {
   device              MonitoringDevice  @relation(fields: [deviceId], references: [id])
   statusCode          String? // Code de l'état (ref ControlStatus.code)
   observation         String?
+  updatedById         String? // Employé qui a rempli ce contrôle
+  updatedBy           User?             @relation("DeviceControlUpdatedBy", fields: [updatedById], references: [id])
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
 

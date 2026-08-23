@@ -96,6 +96,7 @@ export const fieldInterventionController = {
               device: { include: { zone: { select: { id: true, nom: true } } } },
               insectCounts: true,
               photos: true,
+              updatedBy: { select: { id: true, prenom: true, nom: true } },
             },
           },
           products: true,
@@ -296,10 +297,12 @@ export const fieldInterventionController = {
               deviceId: ctrl.deviceId,
               statusCode: ctrl.statusCode,
               observation: ctrl.observation,
+              updatedById: req.user!.id,
             },
             update: {
               statusCode: ctrl.statusCode,
               observation: ctrl.observation,
+              updatedById: req.user!.id,
             },
           });
 
