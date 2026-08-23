@@ -286,13 +286,33 @@ export function FieldInterventionDetailPage() {
       )}
 
       {/* Zones et dispositifs */}
-      {zones.map((zone) => (
+      {zones.map((zone) => {
+        const typeOrder: DeviceType[] = ['BAIT_STATION', 'MECHANICAL_TRAP', 'GLUE_TRAP', 'FLYING_INSECT_KILLER'];
+        const grouped = typeOrder
+          .map((type) => ({
+            type,
+            devices: (zone.devices || [])
+              .filter((d) => d.type === type)
+              .sort((a, b) => {
+                const na = parseInt(a.displayNumber, 10), nb = parseInt(b.displayNumber, 10);
+                return !isNaN(na) && !isNaN(nb) ? na - nb : a.displayNumber.localeCompare(b.displayNumber);
+              }),
+          }))
+          .filter((g) => g.devices.length > 0);
+
+        return (
         <div key={zone.id}>
           <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider px-1 mb-2">
             {zone.nom}{zone.etage ? ` — ${zone.etage}` : ''}
           </h2>
-          <div className="space-y-3">
-            {(zone.devices || []).map((device) => {
+          <div className="space-y-4">
+            {grouped.map(({ type, devices: groupDevices }) => (
+              <div key={type}>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1 mb-2">
+                  {DEVICE_TYPE_LABELS[type]}
+                </p>
+                <div className="space-y-3">
+            {groupDevices.map((device) => {
               const state = controls[device.id] || { statusCode: '', observation: '', insectCounts: {} };
               const savedControl = fi.controls?.find((c) => c.deviceId === device.id);
               const filledBy = (savedControl as any)?.updatedBy;
@@ -398,9 +418,13 @@ export function FieldInterventionDetailPage() {
                 </Card>
               );
             })}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-      ))}
+        );
+      })}
 
       {/* Produits utilisés */}
       <Card>
