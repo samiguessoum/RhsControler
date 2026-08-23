@@ -955,9 +955,8 @@ function ZoneCard({
                 <Input
                   type="number"
                   min={1}
-                  max={50}
                   value={addQty}
-                  onChange={(e) => setAddQty(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
+                  onChange={(e) => setAddQty(Math.max(1, parseInt(e.target.value) || 1))}
                   className="w-24"
                 />
                 <span className="text-sm text-muted-foreground">
