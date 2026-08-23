@@ -24,6 +24,7 @@ import {
   Activity,
   User,
   Download,
+  Upload,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -56,7 +57,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import api, { zoningApi, fieldInterventionsApi, fieldReportsApi } from '@/services/api';
+import api, { zoningApi, fieldInterventionsApi, fieldReportsApi, interventionsApi } from '@/services/api';
 import { formatDate, cn } from '@/lib/utils';
 import type {
   Site,
@@ -71,6 +72,7 @@ import type {
   SiteAnalytics,
   SiteContact,
   FieldReport,
+  Intervention,
 } from '@/types';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -432,7 +434,22 @@ function InfoTab({ site }: { site: Site }) {
 function ZoningTab({ siteId, versions }: { siteId: string; versions: ZoningVersion[] }) {
   const qc = useQueryClient();
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importVersionId, setImportVersionId] = useState<string>('');
+  const [importFile, setImportFile] = useState<File | null>(null);
   const [createForm, setCreateForm] = useState({ nom: '', notes: '' });
+
+  const importMut = useMutation({
+    mutationFn: () => zoningApi.importZoning(importVersionId, importFile!),
+    onSuccess: (result) => {
+      qc.invalidateQueries({ queryKey: ['zoning-versions', siteId] });
+      qc.invalidateQueries({ queryKey: ['zoning-version', importVersionId] });
+      setShowImportDialog(false);
+      setImportFile(null);
+      toast.success(`Import réussi : ${result.createdZones} zone(s), ${result.createdDevices} dispositif(s)${result.skippedRows > 0 ? ` (${result.skippedRows} ligne(s) ignorée(s))` : ''}`);
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.error || "Erreur lors de l'import"),
+  });
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(
     versions.find((v) => v.statut === 'ACTIVE')?.id ?? versions[0]?.id ?? null
   );
@@ -493,9 +510,24 @@ function ZoningTab({ siteId, versions }: { siteId: string; versions: ZoningVersi
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Versions de zoning</h2>
-        <Button onClick={() => setShowCreateDialog(true)} size="sm">
-          <Plus className="h-4 w-4 mr-1" /> Nouvelle version
-        </Button>
+        <div className="flex items-center gap-2">
+          {versions.length > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const active = versions.find((v) => v.statut === 'ACTIVE') ?? versions[0];
+                setImportVersionId(active.id);
+                setShowImportDialog(true);
+              }}
+            >
+              <Upload className="h-4 w-4 mr-1" /> Importer
+            </Button>
+          )}
+          <Button onClick={() => setShowCreateDialog(true)} size="sm">
+            <Plus className="h-4 w-4 mr-1" /> Nouvelle version
+          </Button>
+        </div>
       </div>
 
       {versions.length === 0 ? (
@@ -602,6 +634,66 @@ function ZoningTab({ siteId, versions }: { siteId: string; versions: ZoningVersi
           </div>
         </div>
       )}
+
+      {/* Import dialog */}
+      <Dialog open={showImportDialog} onOpenChange={(o) => { if (!o) { setShowImportDialog(false); setImportFile(null); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Importer un zoning</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Téléchargez le template Excel, remplissez-le, puis importez-le. Les zones existantes sont réutilisées ; les nouvelles sont créées automatiquement.
+            </p>
+            {versions.length > 1 && (
+              <div className="space-y-1">
+                <Label>Version cible</Label>
+                <Select value={importVersionId} onValueChange={setImportVersionId}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {versions.map((v) => (
+                      <SelectItem key={v.id} value={v.id}>
+                        v{v.version} — {v.nom}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-1">
+              <Label>Fichier Excel (.xlsx)</Label>
+              <Input
+                type="file"
+                accept=".xlsx"
+                onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
+              />
+            </div>
+            {importVersionId && (
+              <a
+                href={zoningApi.downloadImportTemplate(importVersionId)}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
+              >
+                <Download className="h-3.5 w-3.5" /> Télécharger le template Excel
+              </a>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setShowImportDialog(false); setImportFile(null); }}>
+              Annuler
+            </Button>
+            <Button
+              onClick={() => importMut.mutate()}
+              disabled={!importFile || !importVersionId || importMut.isPending}
+            >
+              {importMut.isPending ? 'Import en cours…' : 'Importer'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create dialog */}
       <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
@@ -1163,117 +1255,170 @@ function TendancesTab({ analytics }: { analytics?: SiteAnalytics }) {
   );
 }
 
-// ─── Tab 5 : Rapports ─────────────────────────────────────────────────────────
+// ─── Tab 3 : Rapports ─────────────────────────────────────────────────────────
 
 function RapportsTab({ siteId }: { siteId: string }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [showDialog, setShowDialog] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
-  const { data: reports = [], isLoading } = useQuery<FieldReport[]>({
-    queryKey: ['site-field-reports', siteId],
-    queryFn: () => fieldReportsApi.list(siteId),
+  // Opérations réalisées pour ce site sans rapport généré
+  const { data, isLoading } = useQuery({
+    queryKey: ['site-operations-realisees', siteId],
+    queryFn: () => interventionsApi.list({ siteId, type: 'OPERATION', statut: 'REALISEE', limit: 100, sort: 'desc' }),
+  });
+  const operations: Intervention[] = data?.interventions ?? [];
+
+  const pendingOps = operations.filter((op) => !op.fieldIntervention || op.fieldIntervention.statut !== 'VALIDATED');
+  const readyOps = operations.filter((op) => op.fieldIntervention?.statut === 'VALIDATED');
+
+  const startMut = useMutation({
+    mutationFn: (interventionId: string) => interventionsApi.startFieldReport(interventionId),
+    onSuccess: (fi: FieldIntervention) => {
+      qc.invalidateQueries({ queryKey: ['site-operations-realisees', siteId] });
+      navigate(`/field-interventions/${fi.id}`);
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur'),
   });
 
   const generateMut = useMutation({
     mutationFn: () => fieldReportsApi.generate(siteId, { dateFrom, dateTo }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['site-field-reports', siteId] });
+      qc.invalidateQueries({ queryKey: ['site-documents', siteId] });
       setShowDialog(false);
       setDateFrom('');
       setDateTo('');
-      toast.success('Rapport généré');
+      toast.success('Rapport généré et archivé dans Documents');
     },
-    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la génération du rapport'),
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la génération'),
   });
 
-  const handleDownload = async (report: FieldReport) => {
-    setDownloadingId(report.id);
-    try {
-      const blob = await fieldReportsApi.download(report.id);
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = report.titre ? `${report.titre}.xlsx` : `rapport-${report.id}.xlsx`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (error: any) {
-      toast.error(error?.response?.data?.error || 'Erreur lors du téléchargement du rapport');
-    } finally {
-      setDownloadingId(null);
-    }
-  };
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+
+      {/* Actions */}
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Rapports terrain</h2>
+        <h2 className="text-lg font-semibold">Rapports du site</h2>
         <Button size="sm" onClick={() => setShowDialog(true)}>
           <Plus className="h-4 w-4 mr-1" /> Générer un rapport
         </Button>
       </div>
 
-      {isLoading ? (
-        <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
-        </div>
-      ) : reports.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12 text-gray-400">
-            <FileText className="h-10 w-10 mb-3" />
-            <p className="font-medium">Aucun rapport généré</p>
-            <p className="text-sm mt-1">
-              Générez un rapport Excel agrégeant l'historique des contrôles et comptages sur une période.
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-2">
-          {reports.map((report) => (
-            <Card key={report.id}>
-              <CardContent className="flex items-center gap-4 py-3 px-4">
-                <FileText className="h-5 w-5 text-blue-500 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{report.titre || `Rapport v${report.version}`}</p>
-                  <div className="flex items-center gap-2 text-xs text-gray-500 mt-0.5 flex-wrap">
-                    {report.dateDebut && report.dateFin && (
-                      <span>{formatDate(report.dateDebut)} → {formatDate(report.dateFin)}</span>
+      {/* Opérations sans fiche / fiche non validée */}
+      <div className="space-y-2">
+        <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+          À traiter ({pendingOps.length})
+        </p>
+        {pendingOps.length === 0 ? (
+          <Card>
+            <CardContent className="flex items-center gap-3 py-4 text-green-600">
+              <CheckCircle2 className="h-5 w-5 shrink-0" />
+              <p className="text-sm font-medium">Toutes les opérations ont une fiche validée</p>
+            </CardContent>
+          </Card>
+        ) : (
+          pendingOps.map((op) => {
+            const fi = op.fieldIntervention;
+            return (
+              <Card key={op.id} className={cn(!fi ? 'border-orange-200 bg-orange-50/30' : 'border-amber-200 bg-amber-50/30')}>
+                <CardContent className="flex items-center gap-3 py-3 px-4">
+                  {!fi ? (
+                    <AlertCircle className="h-4 w-4 text-orange-500 shrink-0" />
+                  ) : (
+                    <Clock className="h-4 w-4 text-amber-500 shrink-0" />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <span className="text-sm font-medium">{formatDate(op.dateRealisee || op.datePrevue)}</span>
+                    {!fi && (
+                      <Badge variant="outline" className="ml-2 text-xs text-orange-600 border-orange-300">Fiche manquante</Badge>
                     )}
-                    <Badge variant="outline" className="text-xs">v{report.version}</Badge>
-                    {report.generatedBy && (
-                      <span>{report.generatedBy.prenom} {report.generatedBy.nom}</span>
+                    {fi && (
+                      <Badge className={cn('ml-2 text-xs', FI_STATUT_CONFIG[fi.statut].color)}>
+                        Fiche {FI_STATUT_CONFIG[fi.statut].label.toLowerCase()}
+                      </Badge>
                     )}
-                    <span>{formatDate(report.generatedAt)}</span>
                   </div>
+                  {!fi ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs border-orange-300 text-orange-700 hover:bg-orange-50 shrink-0"
+                      disabled={startMut.isPending}
+                      onClick={() => startMut.mutate(op.id)}
+                    >
+                      Créer la fiche
+                    </Button>
+                  ) : (
+                    <Link to={`/field-interventions/${fi.id}`}>
+                      <Button variant="outline" size="sm" className="h-7 text-xs shrink-0">
+                        Voir <ChevronRight className="h-3 w-3 ml-0.5" />
+                      </Button>
+                    </Link>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })
+        )}
+      </div>
+
+      {/* Opérations prêtes à générer */}
+      {readyOps.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+            Fiches validées — prêtes pour rapport ({readyOps.length})
+          </p>
+          {readyOps.map((op) => (
+            <Card key={op.id} className="border-green-200 bg-green-50/20">
+              <CardContent className="flex items-center gap-3 py-3 px-4">
+                <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <span className="text-sm font-medium">{formatDate(op.dateRealisee || op.datePrevue)}</span>
+                  <Badge className="ml-2 text-xs bg-amber-100 text-amber-700">Rapport à générer</Badge>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={!report.xlsxPath || downloadingId === report.id}
-                  onClick={() => handleDownload(report)}
-                >
-                  <Download className="h-3.5 w-3.5 mr-1" />
-                  {downloadingId === report.id ? 'Téléchargement...' : 'Télécharger'}
-                </Button>
+                <Link to={`/field-interventions/${op.fieldIntervention!.id}`}>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs shrink-0">
+                    Voir <ChevronRight className="h-3 w-3 ml-0.5" />
+                  </Button>
+                </Link>
               </CardContent>
             </Card>
           ))}
+          <p className="text-xs text-muted-foreground pl-1">
+            Les rapports générés sont archivés automatiquement dans l'onglet Documents.
+          </p>
         </div>
+      )}
+
+      {operations.length === 0 && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12 text-gray-400">
+            <FileText className="h-10 w-10 mb-3" />
+            <p className="font-medium">Aucune opération réalisée</p>
+            <p className="text-sm mt-1">Les opérations planifiées apparaissent ici une fois réalisées.</p>
+          </CardContent>
+        </Card>
       )}
 
       {/* Generate report dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Générer un rapport</DialogTitle>
+            <DialogTitle>Générer un rapport Excel</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <p className="text-sm text-gray-500">
-              Le rapport agrège les contrôles et comptages des interventions terrain soumises ou validées sur la période choisie.
+              Agrège les contrôles et comptages des fiches terrain validées sur la période. Le fichier est archivé automatiquement dans Documents.
             </p>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
@@ -1287,9 +1432,7 @@ function RapportsTab({ siteId }: { siteId: string }) {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDialog(false)}>
-              Annuler
-            </Button>
+            <Button variant="outline" onClick={() => setShowDialog(false)}>Annuler</Button>
             <Button
               onClick={() => generateMut.mutate()}
               disabled={!dateFrom || !dateTo || generateMut.isPending}

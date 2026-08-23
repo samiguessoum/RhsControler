@@ -504,6 +504,11 @@ router.post('/zoning-versions/:versionId/zones', authMiddleware, canDo('manageIn
 router.patch('/zones/:id', authMiddleware, canDo('manageInterventions'), zoningController.updateZone);
 router.delete('/zones/:id', authMiddleware, canDo('manageInterventions'), zoningController.deleteZone);
 
+// Import zoning
+const zoningImportUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+router.get('/zoning-versions/:versionId/import-template', authMiddleware, zoningController.downloadImportTemplate);
+router.post('/zoning-versions/:versionId/import', authMiddleware, canDo('manageInterventions'), zoningImportUpload.single('file'), zoningController.importZoning);
+
 // ControlStatus (référentiel)
 router.get('/control-statuses', authMiddleware, zoningController.listControlStatuses);
 router.post('/control-statuses', authMiddleware, canDo('manageSettings'), zoningController.createControlStatus);

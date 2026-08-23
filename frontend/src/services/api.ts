@@ -1575,6 +1575,18 @@ export const zoningApi = {
     const { data } = await api.get('/control-statuses');
     return data;
   },
+
+  // Import zoning
+  downloadImportTemplate: (versionId: string) =>
+    `${api.defaults.baseURL}/zoning-versions/${versionId}/import-template`,
+  importZoning: async (versionId: string, file: File): Promise<{ createdZones: number; createdDevices: number; skippedRows: number }> => {
+    const form = new FormData();
+    form.append('file', file);
+    const { data } = await api.post(`/zoning-versions/${versionId}/import`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
+  },
 };
 
 // ─── Field Interventions API ──────────────────────────────────────────────────

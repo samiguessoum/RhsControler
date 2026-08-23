@@ -1,9 +1,21 @@
 import { Response, NextFunction } from 'express';
+import ExcelJS from 'exceljs';
 import { prisma } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
 import { AppError } from '../lib/errors.js';
 import logger from '../lib/logger.js';
+
+const DEVICE_TYPE_MAP: Record<string, string> = {
+  BAIT_STATION: 'BAIT_STATION',
+  MECHANICAL_TRAP: 'MECHANICAL_TRAP',
+  GLUE_TRAP: 'GLUE_TRAP',
+  FLYING_INSECT_KILLER: 'FLYING_INSECT_KILLER',
+  "Poste d'appâtage": 'BAIT_STATION',
+  'Piège mécanique': 'MECHANICAL_TRAP',
+  'Boîte à colle': 'GLUE_TRAP',
+  'Destructeur insectes': 'FLYING_INSECT_KILLER',
+};
 
 // ─── ZoningVersion ────────────────────────────────────────────────────────────
 
@@ -285,6 +297,130 @@ export const zoningController = {
       const { label, description, color, actif, ordre } = req.body;
       const status = await prisma.controlStatus.update({ where: { id }, data: { label, description, color, actif, ordre } });
       res.json(status);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // GET /api/zoning-versions/:versionId/import-template
+  async downloadImportTemplate(_req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet('Zoning');
+
+      ws.columns = [
+        { header: 'Zone *', key: 'zone', width: 25 },
+        { header: 'Étage / Niveau', key: 'etage', width: 18 },
+        { header: 'Type *', key: 'type', width: 24 },
+        { header: 'Numéro *', key: 'numero', width: 12 },
+        { header: 'Nom libre', key: 'nom', width: 20 },
+        { header: 'Notes', key: 'notes', width: 30 },
+      ];
+
+      // Header row styling
+      const headerRow = ws.getRow(1);
+      headerRow.font = { bold: true };
+      headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+
+      // Example rows
+      const examples = [
+        ['Administration', 'RDC', 'BAIT_STATION', '01', '', ''],
+        ['Administration', 'RDC', 'BAIT_STATION', '02', '', ''],
+        ['Production', '1er étage', 'FLYING_INSECT_KILLER', '01', 'FK-Prod', 'Près de la chaîne'],
+        ['Entrepôt', 'RDC', 'GLUE_TRAP', '01', '', ''],
+        ['Entrepôt', 'RDC', 'MECHANICAL_TRAP', '01', '', ''],
+      ];
+      examples.forEach((r) => ws.addRow(r));
+
+      // Legend sheet
+      const legend = wb.addWorksheet('Types valides');
+      legend.columns = [{ header: 'Code à utiliser', key: 'code', width: 26 }, { header: 'Description', key: 'desc', width: 30 }];
+      legend.getRow(1).font = { bold: true };
+      [
+        ['BAIT_STATION', "Poste d'appâtage"],
+        ['MECHANICAL_TRAP', 'Piège mécanique'],
+        ['GLUE_TRAP', 'Boîte à colle'],
+        ['FLYING_INSECT_KILLER', 'Destructeur insectes volants (FK)'],
+      ].forEach((r) => legend.addRow(r));
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename="template-zoning.xlsx"');
+      await wb.xlsx.write(res);
+      res.end();
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // POST /api/zoning-versions/:versionId/import
+  async importZoning(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { versionId } = req.params;
+      const file = (req as any).file as Express.Multer.File | undefined;
+      if (!file) throw new AppError(400, 'Fichier .xlsx requis');
+
+      const version = await prisma.zoningVersion.findUnique({
+        where: { id: versionId },
+        include: { zones: true },
+      });
+      if (!version) throw new AppError(404, 'Version de zoning introuvable');
+
+      const wb = new ExcelJS.Workbook();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await wb.xlsx.load(file.buffer as any);
+      const ws = wb.worksheets[0];
+
+      type Row = { zone: string; etage: string; type: string; numero: string; nom: string; notes: string };
+      const rows: Row[] = [];
+      ws.eachRow((row, i) => {
+        if (i === 1) return;
+        const zone = String(row.getCell(1).value ?? '').trim();
+        const etage = String(row.getCell(2).value ?? '').trim();
+        const type = String(row.getCell(3).value ?? '').trim();
+        const numero = String(row.getCell(4).value ?? '').trim();
+        const nom = String(row.getCell(5).value ?? '').trim();
+        const notes = String(row.getCell(6).value ?? '').trim();
+        if (zone && type && numero) rows.push({ zone, etage, type, numero, nom, notes });
+      });
+
+      const zonesMap = new Map<string, string>(); // nom → zoneId
+      // Pre-populate with existing zones
+      version.zones.forEach((z) => zonesMap.set(z.nom, z.id));
+
+      let createdZones = 0;
+      let createdDevices = 0;
+      let skippedRows = 0;
+
+      for (const row of rows) {
+        const deviceType = DEVICE_TYPE_MAP[row.type];
+        if (!deviceType) { skippedRows++; continue; }
+
+        let zoneId = zonesMap.get(row.zone);
+        if (!zoneId) {
+          const z = await prisma.zone.create({
+            data: { zoningVersionId: versionId, nom: row.zone, etage: row.etage || null },
+          });
+          zoneId = z.id;
+          zonesMap.set(row.zone, zoneId);
+          createdZones++;
+        }
+
+        await prisma.monitoringDevice.create({
+          data: {
+            zoningVersionId: versionId,
+            zoneId,
+            type: deviceType as any,
+            displayNumber: row.numero,
+            nom: row.nom || null,
+            notes: row.notes || null,
+            statut: 'ACTIVE',
+          },
+        });
+        createdDevices++;
+      }
+
+      logger.info({ versionId, createdZones, createdDevices, skippedRows }, 'zoning import completed');
+      res.json({ createdZones, createdDevices, skippedRows });
     } catch (err) {
       next(err);
     }
