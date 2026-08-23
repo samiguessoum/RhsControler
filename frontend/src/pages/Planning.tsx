@@ -1842,7 +1842,7 @@ function InterventionDetailDialog({
           )}
 
           <DialogFooter className="gap-2">
-            {intervention.type === 'OPERATION' && (intervention.fieldIntervention || canRealiser) && (
+            {(intervention.fieldIntervention || canRealiser) && (
               <Button
                 variant="outline"
                 className="text-blue-700 border-blue-300 hover:bg-blue-50"
