@@ -656,6 +656,26 @@ async function main() {
 
   console.log('Created commerce sample data');
 
+  // ============ CONTROL STATUSES ============
+  console.log('Upserting control statuses...');
+  const controlStatuses = [
+    { code: 'RAS',  label: 'Rien à Signaler', color: '#22c55e', ordre: 1 },
+    { code: 'CON',  label: 'Consommé',         color: '#10b981', ordre: 2 },
+    { code: 'EBR',  label: 'Ébréché',          color: '#f97316', ordre: 3 },
+    { code: 'CAS',  label: 'Cassé',            color: '#ef4444', ordre: 4 },
+    { code: 'SOU',  label: 'Souris',           color: '#d97706', ordre: 5 },
+    { code: 'RT',   label: 'Retiré',           color: '#64748b', ordre: 6 },
+    { code: 'NT',   label: 'Non trouvé',       color: '#eab308', ordre: 7 },
+    { code: 'INAC', label: 'Inaccessible',     color: '#8b5cf6', ordre: 8 },
+  ];
+  for (const s of controlStatuses) {
+    await prisma.controlStatus.upsert({
+      where: { code: s.code },
+      update: { label: s.label, color: s.color, ordre: s.ordre },
+      create: s,
+    });
+  }
+
   console.log('✅ Seeding completed!');
   console.log('\n📋 Comptes de test:');
   console.log('   Direction: direction@rhs.dz / password123');

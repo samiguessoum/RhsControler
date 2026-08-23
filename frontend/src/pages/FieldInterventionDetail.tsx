@@ -24,13 +24,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { fieldInterventionsApi, zoningApi } from '@/services/api';
 import { formatDate, cn } from '@/lib/utils';
 import type {
@@ -304,28 +297,44 @@ export function FieldInterventionDetailPage() {
                       {device.nom ? ` — ${device.nom}` : ''}
                     </span>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <Select
-                      value={state.statusCode || undefined}
-                      onValueChange={(v) => updateControl(device.id, { statusCode: v })}
-                      disabled={!isEditable}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="État du dispositif" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {controlStatuses.map((cs) => (
-                          <SelectItem key={cs.code} value={cs.code}>{cs.label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <Input
-                      placeholder="Observation (optionnel)"
-                      value={state.observation}
-                      disabled={!isEditable}
-                      onChange={(e) => updateControl(device.id, { observation: e.target.value })}
-                    />
+                      {/* Pastilles état — tapez pour sélectionner */}
+                  <div className="flex flex-wrap gap-2">
+                    {[...controlStatuses].sort((a, b) => (a.ordre ?? 99) - (b.ordre ?? 99)).map((cs) => {
+                      const selected = state.statusCode === cs.code;
+                      return (
+                        <button
+                          key={cs.code}
+                          type="button"
+                          disabled={!isEditable}
+                          onClick={() => updateControl(device.id, { statusCode: selected ? '' : cs.code })}
+                          className={cn(
+                            'flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium border-2 transition-all select-none',
+                            selected
+                              ? 'text-white border-transparent shadow-md'
+                              : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300',
+                            !isEditable && 'opacity-60 cursor-default'
+                          )}
+                          style={selected ? { backgroundColor: cs.color ?? '#6b7280', borderColor: cs.color ?? '#6b7280' } : {}}
+                        >
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: cs.color ?? '#6b7280' }}
+                          />
+                          <span className="font-bold">{cs.code}</span>
+                          <span className={cn('font-normal', selected ? 'opacity-90' : 'text-gray-500')}>
+                            {cs.label}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
+                  <Input
+                    placeholder="Remarque (optionnel)"
+                    value={state.observation}
+                    disabled={!isEditable}
+                    onChange={(e) => updateControl(device.id, { observation: e.target.value })}
+                    className="mt-1"
+                  />
 
                   {device.type === 'FLYING_INSECT_KILLER' && (
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
