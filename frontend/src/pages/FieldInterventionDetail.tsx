@@ -754,7 +754,7 @@ export function FieldInterventionDetailPage() {
                     value={p.nom || ''}
                     onChange={(e) => {
                       const chosen = produitsTerrainList.find((x) => x.nom === e.target.value);
-                      setProducts((prev) => prev.map((x, idx) => idx === i ? { ...x, nom: e.target.value, unite: chosen?.unite ?? x.unite } : x));
+                      setProducts((prev) => prev.map((x, idx) => idx === i ? { ...x, nom: e.target.value, produitId: chosen?.id ?? undefined, unite: chosen?.unite ?? x.unite } : x));
                     }}
                   >
                     <option value="">— Sélectionner un produit —</option>
