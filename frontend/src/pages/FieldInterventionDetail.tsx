@@ -275,6 +275,12 @@ export function FieldInterventionDetailPage() {
     onError: (error: any) => toast.error(error?.response?.data?.error || "Erreur lors de l'annulation"),
   });
 
+  const rejectMutation = useMutation({
+    mutationFn: () => fieldInterventionsApi.reject(id!),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['field-intervention', id] }); toast.success('Fiche renvoyée au technicien pour correction'); },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors du renvoi'),
+  });
+
   // ── Données calculées ────────────────────────────────────────
   const zones = useMemo(() => fi?.zoningVersion?.zones || [], [fi]);
   const sortedStatuses = useMemo(
@@ -733,8 +739,11 @@ export function FieldInterventionDetailPage() {
         )}
         {isOffice && fi.statut === 'SUBMITTED' && (
           <>
-            <Button variant="outline" className="w-full sm:w-auto text-red-600 hover:text-red-700" onClick={() => cancelMutation.mutate()}>
-              <Ban className="h-4 w-4 mr-2" /> Annuler
+            <Button variant="outline" className="w-full sm:w-auto text-red-600 hover:text-red-700" onClick={() => cancelMutation.mutate()} disabled={cancelMutation.isPending}>
+              <Ban className="h-4 w-4 mr-2" /> Annuler définitivement
+            </Button>
+            <Button variant="outline" className="w-full sm:w-auto text-orange-600 hover:text-orange-700 border-orange-200" onClick={() => rejectMutation.mutate()} disabled={rejectMutation.isPending}>
+              <ArrowLeft className="h-4 w-4 mr-2" /> Renvoyer en correction
             </Button>
             <Button className="w-full sm:w-auto" onClick={() => validateMutation.mutate()} disabled={validateMutation.isPending}>
               <ShieldCheck className="h-4 w-4 mr-2" /> Valider

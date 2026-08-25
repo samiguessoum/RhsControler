@@ -1621,6 +1621,10 @@ export const fieldInterventionsApi = {
   cancel: async (id: string) => {
     await api.post(`/field-interventions/${id}/cancel`);
   },
+  reject: async (id: string) => {
+    const { data } = await api.post(`/field-interventions/${id}/reject`);
+    return data;
+  },
   upsertControls: async (id: string, controls: unknown[]) => {
     const { data } = await api.put(`/field-interventions/${id}/controls`, { controls });
     return data;

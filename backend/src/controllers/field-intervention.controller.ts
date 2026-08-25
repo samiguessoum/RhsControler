@@ -267,6 +267,28 @@ export const fieldInterventionController = {
     }
   },
 
+  // POST /api/field-interventions/:id/reject — bureau renvoie au technicien pour correction
+  async reject(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      if (!['ADMIN', 'DIRECTION', 'SUPER_ADMIN', 'COORDINATEUR', 'SUPER_CHEF_EQUIPE'].includes(req.user!.role)) {
+        throw new AppError(403, 'Droits insuffisants');
+      }
+      const existing = await prisma.fieldIntervention.findUnique({ where: { id } });
+      if (!existing) throw new AppError(404, 'Intervention introuvable');
+      if (existing.statut !== 'SUBMITTED') throw new AppError(400, "Seule une intervention soumise peut être renvoyée en correction");
+
+      const updated = await prisma.fieldIntervention.update({
+        where: { id },
+        data: { statut: 'IN_PROGRESS', submittedAt: null },
+      });
+      await createAuditLog(req.user!.id, 'UPDATE', 'FieldIntervention', id, { after: { statut: 'IN_PROGRESS', reason: 'rejected_for_correction' } });
+      res.json(updated);
+    } catch (err) {
+      next(err);
+    }
+  },
+
   // ─── Contrôles des dispositifs ─────────────────────────────────────────────
 
   // PUT /api/field-interventions/:id/controls — upsert batch (formulaire terrain)

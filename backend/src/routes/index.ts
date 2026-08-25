@@ -522,6 +522,7 @@ router.patch('/field-interventions/:id', authMiddleware, fieldInterventionContro
 router.post('/field-interventions/:id/submit', authMiddleware, fieldInterventionController.submit);
 router.post('/field-interventions/:id/validate', authMiddleware, canDo('manageInterventions'), fieldInterventionController.validate);
 router.post('/field-interventions/:id/cancel', authMiddleware, canDo('manageInterventions'), fieldInterventionController.cancel);
+router.post('/field-interventions/:id/reject', authMiddleware, canDo('manageInterventions'), fieldInterventionController.reject);
 router.put('/field-interventions/:id/controls', authMiddleware, fieldInterventionController.upsertControls);
 router.put('/field-interventions/:id/products', authMiddleware, fieldInterventionController.upsertProducts);
 router.get('/field-interventions/:id/simple-checks', authMiddleware, fieldInterventionController.getSimpleChecks);
