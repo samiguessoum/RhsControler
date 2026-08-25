@@ -733,8 +733,8 @@ export function FieldInterventionDetailPage() {
         {renderCategoryContent()}
       </div>
 
-      {/* Produits utilisés */}
-      <Card>
+      {/* Produits utilisés — bureau uniquement */}
+      {isOffice && <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <CardTitle className="text-base">Produits utilisés</CardTitle>
           {isEditable && (
@@ -803,7 +803,7 @@ export function FieldInterventionDetailPage() {
             </Button>
           )}
         </CardContent>
-      </Card>
+      </Card>}
 
       {/* Commentaire général */}
       <Card>
