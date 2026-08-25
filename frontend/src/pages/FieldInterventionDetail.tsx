@@ -29,7 +29,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { fieldInterventionsApi, zoningApi } from '@/services/api';
+import { fieldInterventionsApi, zoningApi, produitsServicesApi } from '@/services/api';
 import { formatDate, cn } from '@/lib/utils';
 import type {
   ControlStatus,
@@ -131,6 +131,14 @@ export function FieldInterventionDetailPage() {
   const [simpleChecks, setSimpleChecks] = useState<Record<string, SimpleCheckState>>({});
   const simpleCheckTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const simpleInitialized = useRef(false);
+
+  // ── Produits terrain (catalogue CONSOMMABLE) ─────────────────
+  const { data: produitsTerrainData } = useQuery({
+    queryKey: ['produits-terrain'],
+    queryFn: () => produitsServicesApi.list({ nature: 'CONSOMMABLE', limit: 200 }),
+    staleTime: 5 * 60_000,
+  });
+  const produitsTerrainList = produitsTerrainData?.produits ?? [];
 
   // ── Audit (bureau uniquement) ────────────────────────────────
   const [showAudit, setShowAudit] = useState(false);
@@ -740,13 +748,23 @@ export function FieldInterventionDetailPage() {
           {products.map((p, i) => (
             <div key={i} className="space-y-2 pb-3 border-b last:border-0 last:pb-0">
               <div className="flex items-center gap-2">
-                <Input
-                  className="flex-1"
-                  placeholder="Nom du produit"
-                  value={p.nom || ''}
-                  disabled={!isEditable}
-                  onChange={(e) => setProducts((prev) => prev.map((x, idx) => idx === i ? { ...x, nom: e.target.value } : x))}
-                />
+                {isEditable ? (
+                  <select
+                    className="flex-1 h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    value={p.nom || ''}
+                    onChange={(e) => {
+                      const chosen = produitsTerrainList.find((x) => x.nom === e.target.value);
+                      setProducts((prev) => prev.map((x, idx) => idx === i ? { ...x, nom: e.target.value, unite: chosen?.unite ?? x.unite } : x));
+                    }}
+                  >
+                    <option value="">— Sélectionner un produit —</option>
+                    {produitsTerrainList.map((pt) => (
+                      <option key={pt.id} value={pt.nom}>{pt.nom}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="flex-1 text-sm font-medium text-gray-800">{p.nom || '—'}</span>
+                )}
                 {isEditable && (
                   <Button size="icon" variant="ghost" className="text-red-500 shrink-0" onClick={() => setProducts((prev) => prev.filter((_, idx) => idx !== i))}>
                     <Trash2 className="h-4 w-4" />

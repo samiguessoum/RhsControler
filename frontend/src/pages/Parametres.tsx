@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, MoreVertical, Building2, Hash, Users, Briefcase, Wrench, Save, Upload } from 'lucide-react';
+import { Plus, MoreVertical, Building2, Hash, Users, Briefcase, Wrench, Save, Upload, FlaskConical, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -25,9 +25,176 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import api, { prestationsApi, usersApi, employesApi, postesApi, settingsApi, rhApi } from '@/services/api';
+import api, { prestationsApi, usersApi, employesApi, postesApi, settingsApi, rhApi, produitsServicesApi } from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
-import type { Prestation, User, Role, Employe, Poste, CompanySettings, UpdateCompanySettingsInput } from '@/types';
+import type { Prestation, User, Role, Employe, Poste, CompanySettings, UpdateCompanySettingsInput, ProduitService } from '@/types';
+
+function ProduitsTerrain() {
+  const qc = useQueryClient();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<{ id: string; nom: string; unite: string } | null>(null);
+  const [form, setForm] = useState({ nom: '', unite: '' });
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; nom: string } | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['produits-terrain'],
+    queryFn: () => produitsServicesApi.list({ nature: 'CONSOMMABLE' as any, limit: 200 }),
+  });
+  const produits = data?.produits ?? [];
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm({ nom: '', unite: '' });
+    setDialogOpen(true);
+  };
+
+  const openEdit = (p: { id: string; nom: string; unite: string }) => {
+    setEditing(p);
+    setForm({ nom: p.nom, unite: p.unite });
+    setDialogOpen(true);
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!form.nom.trim() || !form.unite.trim()) throw new Error('Champs requis');
+      if (editing) {
+        return produitsServicesApi.update(editing.id, { nom: form.nom.trim(), unite: form.unite.trim() });
+      } else {
+        return produitsServicesApi.create({
+          nom: form.nom.trim(),
+          reference: form.nom.trim().toLowerCase().replace(/\s+/g, '-').slice(0, 30),
+          unite: form.unite.trim(),
+          type: 'PRODUIT' as any,
+          nature: 'CONSOMMABLE' as any,
+          aStock: false,
+          quantite: 0,
+          stockMinimum: 0,
+          lotSuivi: false,
+          dlcSuivi: false,
+        } as any);
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['produits-terrain'] });
+      qc.invalidateQueries({ queryKey: ['produits-services'] });
+      setDialogOpen(false);
+      toast.success(editing ? 'Produit mis à jour' : 'Produit ajouté');
+    },
+    onError: (err: any) => toast.error(err?.message || 'Erreur'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => produitsServicesApi.delete(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['produits-terrain'] });
+      qc.invalidateQueries({ queryKey: ['produits-services'] });
+      setDeleteTarget(null);
+      toast.success('Produit supprimé');
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.error || 'Erreur'),
+  });
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <FlaskConical className="h-5 w-5 text-green-600" />
+                Produits terrain
+              </CardTitle>
+              <CardDescription>Produits consommables utilisés lors des opérations</CardDescription>
+            </div>
+            <Button size="sm" onClick={openCreate}>
+              <Plus className="h-4 w-4 mr-1" /> Ajouter
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="text-sm text-gray-500">Chargement…</div>
+          ) : produits.length === 0 ? (
+            <div className="text-sm text-gray-400 text-center py-6">Aucun produit terrain. Cliquez sur Ajouter.</div>
+          ) : (
+            <div className="divide-y">
+              {produits.map((p: ProduitService) => (
+                <div key={p.id} className="flex items-center justify-between py-2.5">
+                  <div>
+                    <span className="text-sm font-medium text-gray-800">{p.nom}</span>
+                    <span className="ml-2 text-xs text-gray-500">({p.unite})</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(p)}>
+                      <Pencil className="h-3.5 w-3.5 text-gray-500" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeleteTarget({ id: p.id, nom: p.nom })}>
+                      <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editing ? 'Modifier le produit' : 'Nouveau produit terrain'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label htmlFor="pt-nom">Nom *</Label>
+              <Input
+                id="pt-nom"
+                value={form.nom}
+                onChange={(e) => setForm((f) => ({ ...f, nom: e.target.value }))}
+                placeholder="ex: Brodifacoum 50 ppm"
+              />
+            </div>
+            <div>
+              <Label htmlFor="pt-unite">Unité *</Label>
+              <Input
+                id="pt-unite"
+                value={form.unite}
+                onChange={(e) => setForm((f) => ({ ...f, unite: e.target.value }))}
+                placeholder="ex: kg, L, g"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
+            <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !form.nom.trim() || !form.unite.trim()}>
+              {saveMutation.isPending ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer le produit ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              « {deleteTarget?.nom} » sera supprimé. Les interventions existantes ne sont pas affectées.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
 
 export function ParametresPage() {
   const queryClient = useQueryClient();
@@ -605,6 +772,10 @@ export function ParametresPage() {
               <span className="hidden sm:inline">Prestations</span>
             </TabsTrigger>
           )}
+          <TabsTrigger value="produits-terrain" className="flex items-center gap-2">
+            <FlaskConical className="h-4 w-4" />
+            <span className="hidden sm:inline">Produits terrain</span>
+          </TabsTrigger>
           {canDo('manageRH') && (
             <TabsTrigger value="conges" className="flex items-center gap-2">
               <span className="hidden sm:inline">Conges</span>
@@ -1751,6 +1922,11 @@ export function ParametresPage() {
 
           </TabsContent>
         )}
+
+        <TabsContent value="produits-terrain">
+          <ProduitsTerrain />
+        </TabsContent>
+
       </Tabs>
 
       {/* Dialogs */}

@@ -20,6 +20,7 @@ export const produitsServicesController = {
       const {
         search,
         type,
+        nature,
         categorieId,
         fournisseurId,
         actif,
@@ -38,6 +39,10 @@ export const produitsServicesController = {
 
       if (type) {
         where.type = type;
+      }
+
+      if (nature) {
+        where.nature = nature;
       }
 
       if (fournisseurId) {

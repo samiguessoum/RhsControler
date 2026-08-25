@@ -891,6 +891,7 @@ export const produitsServicesApi = {
   list: async (params?: {
     search?: string;
     type?: TypeProduit;
+    nature?: string;
     categorieId?: string;
     fournisseurId?: string;
     actif?: boolean;
