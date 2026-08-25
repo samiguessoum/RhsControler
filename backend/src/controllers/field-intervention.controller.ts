@@ -428,6 +428,34 @@ export const fieldInterventionController = {
     }
   },
 
+  // GET /api/field-interventions/:id/audit — traçabilité bureau
+  async getAudit(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const [audits, controls, simpleChecks] = await Promise.all([
+        prisma.deviceControlAudit.findMany({
+          where: { fieldInterventionId: id },
+          include: { changedBy: { select: { id: true, prenom: true, nom: true } } },
+          orderBy: { changedAt: 'desc' },
+        }),
+        prisma.deviceControl.findMany({
+          where: { fieldInterventionId: id },
+          include: {
+            device: { select: { displayNumber: true, type: true, nom: true } },
+            updatedBy: { select: { id: true, prenom: true, nom: true } },
+          },
+        }),
+        prisma.fISimpleCheck.findMany({
+          where: { fieldInterventionId: id },
+          include: { updatedBy: { select: { id: true, prenom: true, nom: true } } },
+        }),
+      ]);
+      res.json({ audits, controls, simpleChecks });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   // ─── Produits ──────────────────────────────────────────────────────────────
 
   // PUT /api/field-interventions/:id/products — remplace la liste entière

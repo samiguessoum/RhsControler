@@ -20,6 +20,9 @@ import {
   Trash2,
   User,
   Minus,
+  History,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -120,6 +123,15 @@ export function FieldInterventionDetailPage() {
   const [simpleChecks, setSimpleChecks] = useState<Record<string, SimpleCheckState>>({});
   const simpleCheckTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const simpleInitialized = useRef(false);
+
+  // ── Audit (bureau uniquement) ────────────────────────────────
+  const [showAudit, setShowAudit] = useState(false);
+  const { data: auditData } = useQuery({
+    queryKey: ['field-intervention-audit', id],
+    queryFn: () => fieldInterventionsApi.getAudit(id!),
+    enabled: !!id && isOffice && showAudit,
+    staleTime: 30_000,
+  });
 
   // ── Navigation ──────────────────────────────────────────────
   const [activeCategory, setActiveCategory] = useState<Category>('boites');
@@ -724,6 +736,124 @@ export function FieldInterventionDetailPage() {
           />
         </CardContent>
       </Card>
+
+      {/* Traçabilité — bureau uniquement */}
+      {isOffice && (
+        <Card>
+          <CardHeader className="pb-2 cursor-pointer" onClick={() => setShowAudit((v) => !v)}>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                <History className="h-4 w-4 text-gray-500" /> Traçabilité
+              </CardTitle>
+              {showAudit ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+            </div>
+          </CardHeader>
+
+          {showAudit && (
+            <CardContent className="pt-0 space-y-4">
+              {/* État actuel par dispositif */}
+              {auditData?.controls && auditData.controls.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">État actuel par dispositif</p>
+                  <div className="space-y-1">
+                    {[...auditData.controls]
+                      .sort((a: any, b: any) => {
+                        const na = parseInt(a.device?.displayNumber, 10), nb = parseInt(b.device?.displayNumber, 10);
+                        return !isNaN(na) && !isNaN(nb) ? na - nb : 0;
+                      })
+                      .map((ctrl: any) => (
+                        <div key={ctrl.id} className="flex items-center justify-between gap-2 py-1.5 border-b last:border-0 text-sm">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-medium shrink-0">#{ctrl.device?.displayNumber}</span>
+                            <span className="text-gray-500 truncate text-xs">{ctrl.device?.nom || ''}</span>
+                            {ctrl.statusCode && (
+                              <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 text-xs font-bold shrink-0">
+                                {ctrl.statusCode}
+                              </span>
+                            )}
+                          </div>
+                          {ctrl.updatedBy ? (
+                            <span className="flex items-center gap-1 text-xs text-gray-400 shrink-0">
+                              <User className="h-3 w-3" />{ctrl.updatedBy.prenom} {ctrl.updatedBy.nom}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-300 shrink-0">—</span>
+                          )}
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Simple checks */}
+              {auditData?.simpleChecks && auditData.simpleChecks.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Contrôles simples</p>
+                  <div className="space-y-1">
+                    {auditData.simpleChecks.map((sc: any) => {
+                      const catLabel: Record<string, string> = { REGARDS: 'Regards / Avaloirs', GOLIATH: 'Goliath Gel', AUTRE: 'Autre' };
+                      const subLabel = sc.subType ? ` · ${sc.subType.replace(/_/g, ' ').toLowerCase()}` : '';
+                      return (
+                        <div key={sc.id} className="flex items-center justify-between gap-2 py-1.5 border-b last:border-0 text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{catLabel[sc.category]}{subLabel}</span>
+                            {sc.statut && (
+                              <span className={cn(
+                                'px-2 py-0.5 rounded-full text-xs font-bold',
+                                sc.statut === 'OK' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                              )}>
+                                {sc.statut === 'OK' ? 'OK' : 'Pas OK'}
+                              </span>
+                            )}
+                          </div>
+                          {sc.updatedBy ? (
+                            <span className="flex items-center gap-1 text-xs text-gray-400 shrink-0">
+                              <User className="h-3 w-3" />{sc.updatedBy.prenom} {sc.updatedBy.nom}
+                            </span>
+                          ) : <span className="text-xs text-gray-300">—</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Historique des modifications */}
+              {auditData?.audits && auditData.audits.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Historique des modifications</p>
+                  <div className="space-y-1">
+                    {auditData.audits.map((a: any) => (
+                      <div key={a.id} className="text-xs py-1.5 border-b last:border-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium text-gray-700">
+                            {a.changedBy ? `${a.changedBy.prenom} ${a.changedBy.nom}` : 'Inconnu'}
+                          </span>
+                          <span className="text-gray-400">
+                            {new Date(a.changedAt).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <div className="text-gray-500 mt-0.5">
+                          {a.oldStatusCode !== a.newStatusCode && (
+                            <span>{a.oldStatusCode || '—'} → <strong>{a.newStatusCode || '—'}</strong></span>
+                          )}
+                          {a.oldObservation !== a.newObservation && a.newObservation && (
+                            <span className="ml-2 italic">"{a.newObservation}"</span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {auditData && auditData.controls.length === 0 && auditData.simpleChecks.length === 0 && auditData.audits.length === 0 && (
+                <p className="text-sm text-gray-400">Aucune donnée de traçabilité disponible.</p>
+              )}
+            </CardContent>
+          )}
+        </Card>
+      )}
 
       {/* Barre d'actions */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2">

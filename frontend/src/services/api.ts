@@ -1633,6 +1633,10 @@ export const fieldInterventionsApi = {
     const { data } = await api.put(`/field-interventions/${id}/products`, { products });
     return data;
   },
+  getAudit: async (id: string) => {
+    const { data } = await api.get(`/field-interventions/${id}/audit`);
+    return data;
+  },
   getSimpleChecks: async (id: string) => {
     const { data } = await api.get(`/field-interventions/${id}/simple-checks`);
     return data;

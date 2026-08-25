@@ -526,6 +526,7 @@ router.post('/field-interventions/:id/reject', authMiddleware, canDo('manageInte
 router.put('/field-interventions/:id/controls', authMiddleware, fieldInterventionController.upsertControls);
 router.put('/field-interventions/:id/products', authMiddleware, fieldInterventionController.upsertProducts);
 router.get('/field-interventions/:id/simple-checks', authMiddleware, fieldInterventionController.getSimpleChecks);
+router.get('/field-interventions/:id/audit', authMiddleware, canDo('manageInterventions'), fieldInterventionController.getAudit);
 router.put('/field-interventions/:id/simple-checks', authMiddleware, fieldInterventionController.upsertSimpleCheck);
 
 // Analytics terrain par site
