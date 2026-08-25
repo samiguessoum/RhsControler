@@ -380,7 +380,11 @@ export function FieldInterventionDetailPage() {
           <div className="flex-1 min-w-0">
             <div className="text-4xl font-black text-gray-800 leading-none">#{device.displayNumber}</div>
             {device.nom && <div className="text-sm text-gray-500 mt-1 truncate">{device.nom}</div>}
-            <div className="text-xs text-gray-400 mt-0.5">{device.zoneName}{device.zoneEtage ? ` · ${device.zoneEtage}` : ''}</div>
+            <div className="mt-2">
+              <span className="inline-flex items-center gap-1 bg-gray-800 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
+                📍 {device.zoneName}{device.zoneEtage ? ` · ${device.zoneEtage}` : ''}
+              </span>
+            </div>
           </div>
           {/* Attribution */}
           {filledBy ? (
