@@ -117,7 +117,8 @@ export function FieldInterventionDetailPage() {
   const [controls, setControls] = useState<Record<string, ControlFormState>>({});
   const [products, setProducts] = useState<Partial<FIProduct>[]>([]);
   const initialized = useRef(false);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Un timer par deviceId pour n'autosauvegarder que le dispositif modifié
+  const deviceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   // ── État simple checks ──────────────────────────────────────
   const [simpleChecks, setSimpleChecks] = useState<Record<string, SimpleCheckState>>({});
@@ -173,48 +174,66 @@ export function FieldInterventionDetailPage() {
   const isEditable = fi ? ['DRAFT', 'IN_PROGRESS'].includes(fi.statut) : false;
 
   // ── Mutations contrôles dispositifs ─────────────────────────
-  const buildControlsPayload = (state: Record<string, ControlFormState>) =>
-    Object.entries(state).map(([deviceId, c]) => ({
-      deviceId,
-      statusCode: c.statusCode || undefined,
-      observation: c.observation || undefined,
-      insectCounts: Object.entries(c.insectCounts)
-        .filter(([, count]) => count > 0)
-        .map(([espece, count]) => ({ espece, count })),
-    }));
+  const buildSinglePayload = (deviceId: string, c: ControlFormState) => ([{
+    deviceId,
+    statusCode: c.statusCode || undefined,
+    observation: c.observation || undefined,
+    insectCounts: Object.entries(c.insectCounts)
+      .filter(([, count]) => count > 0)
+      .map(([espece, count]) => ({ espece, count })),
+  }]);
 
-  const saveMutation = useMutation({
-    mutationFn: (state: Record<string, ControlFormState>) =>
-      fieldInterventionsApi.upsertControls(id!, buildControlsPayload(state)),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['field-intervention', id] }),
-    onError: (error: any) => toast.error(error?.response?.data?.error || "Erreur lors de l'enregistrement"),
-  });
+  const [isSaving, setIsSaving] = useState(false);
 
-  const scheduleAutosave = (next: Record<string, ControlFormState>) => {
+  // Autosave par dispositif — n'envoie QUE ce dispositif, pas les autres
+  const scheduleDeviceSave = (deviceId: string, state: ControlFormState) => {
     if (!isEditable) return;
-    if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => saveMutation.mutate(next), 1000);
+    if (deviceTimers.current[deviceId]) clearTimeout(deviceTimers.current[deviceId]);
+    deviceTimers.current[deviceId] = setTimeout(async () => {
+      try {
+        await fieldInterventionsApi.upsertControls(id!, buildSinglePayload(deviceId, state));
+        qc.invalidateQueries({ queryKey: ['field-intervention', id] });
+      } catch (err: any) {
+        toast.error(err?.response?.data?.error || "Erreur lors de l'enregistrement");
+      }
+    }, 1000);
+  };
+
+  // Sauvegarde manuelle (bouton) — envoie uniquement les dispositifs touchés cette session
+  const touchedDevices = useRef<Set<string>>(new Set());
+
+  const saveAllTouched = async (state: Record<string, ControlFormState>) => {
+    if (touchedDevices.current.size === 0) return;
+    setIsSaving(true);
+    try {
+      const payload = [...touchedDevices.current].map((deviceId) => buildSinglePayload(deviceId, state[deviceId])[0]);
+      await fieldInterventionsApi.upsertControls(id!, payload);
+      qc.invalidateQueries({ queryKey: ['field-intervention', id] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || "Erreur lors de l'enregistrement");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const updateControl = (deviceId: string, patch: Partial<ControlFormState>) => {
+    touchedDevices.current.add(deviceId);
     setControls((prev) => {
-      const next = { ...prev, [deviceId]: { ...prev[deviceId], ...patch } };
-      scheduleAutosave(next);
-      return next;
+      const updated = { ...prev[deviceId], ...patch };
+      scheduleDeviceSave(deviceId, updated);
+      return { ...prev, [deviceId]: updated };
     });
   };
 
   const updateInsectCount = (deviceId: string, espece: string, count: number) => {
+    touchedDevices.current.add(deviceId);
     setControls((prev) => {
-      const next = {
-        ...prev,
-        [deviceId]: {
-          ...prev[deviceId],
-          insectCounts: { ...prev[deviceId]?.insectCounts, [espece]: count },
-        },
+      const updated = {
+        ...prev[deviceId],
+        insectCounts: { ...prev[deviceId]?.insectCounts, [espece]: count },
       };
-      scheduleAutosave(next);
-      return next;
+      scheduleDeviceSave(deviceId, updated);
+      return { ...prev, [deviceId]: updated };
     });
   };
 
@@ -251,7 +270,7 @@ export function FieldInterventionDetailPage() {
   // ── Submit / Validate / Cancel ───────────────────────────────
   const submitMutation = useMutation({
     mutationFn: async () => {
-      await saveMutation.mutateAsync(controls);
+      await saveAllTouched(controls);
       return fieldInterventionsApi.submit(id!);
     },
     onSuccess: () => {
@@ -588,7 +607,7 @@ export function FieldInterventionDetailPage() {
         <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
           <ArrowLeft className="h-4 w-4 mr-1" /> Retour
         </Button>
-        {saveMutation.isPending && (
+        {isSaving && (
           <span className="text-xs text-gray-400 ml-auto">Enregistrement…</span>
         )}
       </div>
@@ -859,7 +878,7 @@ export function FieldInterventionDetailPage() {
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2">
         {isEditable && (
           <>
-            <Button variant="outline" className="w-full sm:w-auto" onClick={() => saveMutation.mutate(controls)} disabled={saveMutation.isPending}>
+            <Button variant="outline" className="w-full sm:w-auto" onClick={() => saveAllTouched(controls)} disabled={isSaving}>
               <Save className="h-4 w-4 mr-2" /> Enregistrer le brouillon
             </Button>
             <Button className="w-full sm:w-auto" onClick={() => submitMutation.mutate()} disabled={submitMutation.isPending}>
