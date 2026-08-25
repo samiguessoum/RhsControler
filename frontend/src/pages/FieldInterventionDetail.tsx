@@ -57,6 +57,13 @@ const DEVICE_TYPE_LABELS: Record<DeviceType, string> = {
   FLYING_INSECT_KILLER: 'Destructeur FK',
 };
 
+const DEVICE_TYPE_STYLE: Record<DeviceType, { bg: string; text: string; code: string; emoji: string }> = {
+  BAIT_STATION:        { bg: 'bg-blue-600',   text: 'text-white', code: 'BA', emoji: '🐀' },
+  MECHANICAL_TRAP:     { bg: 'bg-orange-500', text: 'text-white', code: 'PM', emoji: '🪤' },
+  GLUE_TRAP:           { bg: 'bg-purple-600', text: 'text-white', code: 'BC', emoji: '⬛' },
+  FLYING_INSECT_KILLER:{ bg: 'bg-green-600',  text: 'text-white', code: 'FK', emoji: '⚡' },
+};
+
 const INSECT_ESPECES = ['Mouches', 'Moustiques', 'Abeilles', 'Papillons', 'Autres'];
 
 const BOITES_TYPES: DeviceType[] = ['BAIT_STATION', 'MECHANICAL_TRAP', 'GLUE_TRAP'];
@@ -358,25 +365,36 @@ export function FieldInterventionDetailPage() {
     const savedControl = fi.controls?.find((c) => c.deviceId === device.id);
     const filledBy = (savedControl as any)?.updatedBy;
     const hasContent = state.statusCode || state.observation || Object.values(state.insectCounts).some((v) => v > 0);
+    const typeStyle = DEVICE_TYPE_STYLE[device.type as DeviceType];
 
     return (
-      <Card key={device.id} className={cn(hasContent && 'border-blue-200 bg-blue-50/30')}>
-        <CardContent className="py-3 px-4 space-y-3">
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <span className="font-semibold text-sm">
-                #{device.displayNumber}
-                {device.nom ? ` — ${device.nom}` : ''}
-              </span>
-              <span className="text-xs text-gray-400 ml-1.5">{device.zoneName}{device.zoneEtage ? ` · ${device.zoneEtage}` : ''}</span>
-            </div>
-            {filledBy && (
-              <span className="flex items-center gap-1 text-xs text-gray-400 shrink-0 mt-0.5">
+      <Card key={device.id} className={cn('overflow-hidden', hasContent ? 'border-2 border-blue-300' : 'border border-gray-200')}>
+        {/* En-tête : numéro + type */}
+        <div className={cn('flex items-center gap-4 px-4 py-3', hasContent ? 'bg-blue-50' : 'bg-gray-50')}>
+          {/* Badge type */}
+          <div className={cn('w-14 h-14 rounded-2xl flex flex-col items-center justify-center shrink-0 shadow-sm', typeStyle.bg, typeStyle.text)}>
+            <span className="text-lg leading-none">{typeStyle.emoji}</span>
+            <span className="text-xs font-bold mt-0.5">{typeStyle.code}</span>
+          </div>
+          {/* Numéro */}
+          <div className="flex-1 min-w-0">
+            <div className="text-4xl font-black text-gray-800 leading-none">#{device.displayNumber}</div>
+            {device.nom && <div className="text-sm text-gray-500 mt-1 truncate">{device.nom}</div>}
+            <div className="text-xs text-gray-400 mt-0.5">{device.zoneName}{device.zoneEtage ? ` · ${device.zoneEtage}` : ''}</div>
+          </div>
+          {/* Attribution */}
+          {filledBy ? (
+            <div className="flex flex-col items-end shrink-0">
+              <span className="flex items-center gap-1 text-xs font-medium text-green-700 bg-green-100 rounded-full px-2 py-1">
                 <User className="h-3 w-3" />{filledBy.prenom}
               </span>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="w-2 h-2 rounded-full bg-gray-300 shrink-0 self-start mt-1" title="Non rempli" />
+          )}
+        </div>
 
+        <CardContent className="px-4 pt-3 pb-4 space-y-3">
           {/* Pastilles statut */}
           <div className="flex flex-wrap gap-2">
             {sortedStatuses.map((cs) => {
@@ -388,20 +406,15 @@ export function FieldInterventionDetailPage() {
                   disabled={!isEditable}
                   onClick={() => updateControl(device.id, { statusCode: selected ? '' : cs.code })}
                   className={cn(
-                    'flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium border-2 transition-all select-none min-h-[40px]',
+                    'flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-semibold border-2 transition-all select-none min-h-[44px]',
                     selected ? 'text-white border-transparent shadow-md' : 'bg-white border-gray-200 text-gray-700 active:bg-gray-50',
                     !isEditable && 'opacity-60 cursor-default'
                   )}
                   style={selected ? { backgroundColor: cs.color ?? '#6b7280', borderColor: cs.color ?? '#6b7280' } : {}}
                 >
-                  <span
-                    className="w-2.5 h-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: selected ? 'rgba(255,255,255,0.7)' : (cs.color ?? '#6b7280') }}
-                  />
-                  <span className="font-bold">{cs.code}</span>
-                  <span className={cn('hidden sm:inline font-normal text-xs', selected ? 'opacity-90' : 'text-gray-500')}>
-                    {cs.label}
-                  </span>
+                  <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: selected ? 'rgba(255,255,255,0.8)' : (cs.color ?? '#6b7280') }} />
+                  <span className="font-black">{cs.code}</span>
+                  <span className={cn('font-normal text-xs', selected ? 'opacity-90' : 'text-gray-500')}>{cs.label}</span>
                 </button>
               );
             })}
@@ -419,21 +432,21 @@ export function FieldInterventionDetailPage() {
 
           {/* Comptage insectes FK */}
           {device.type === 'FLYING_INSECT_KILLER' && (
-            <div className="space-y-2 pt-1">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Comptage insectes</p>
+            <div className="space-y-3 pt-1">
+              <p className="text-sm font-bold text-gray-600">Comptage insectes</p>
               {INSECT_ESPECES.map((espece) => {
                 const count = state.insectCounts[espece] ?? 0;
                 return (
-                  <div key={espece} className="flex items-center justify-between gap-3">
-                    <span className="text-sm text-gray-700 w-28">{espece}</span>
-                    <div className="flex items-center gap-2">
+                  <div key={espece} className="flex items-center justify-between gap-3 bg-gray-50 rounded-xl px-3 py-2">
+                    <span className="text-sm font-medium text-gray-700 w-28">{espece}</span>
+                    <div className="flex items-center gap-3">
                       <button
                         type="button"
                         disabled={!isEditable || count <= 0}
                         onClick={() => updateInsectCount(device.id, espece, Math.max(0, count - 1))}
-                        className="w-10 h-10 rounded-full border-2 border-gray-200 flex items-center justify-center text-gray-600 disabled:opacity-40 active:bg-gray-100"
+                        className="w-11 h-11 rounded-full border-2 border-gray-300 flex items-center justify-center text-gray-600 disabled:opacity-30 active:bg-gray-200 bg-white"
                       >
-                        <Minus className="h-4 w-4" />
+                        <Minus className="h-5 w-5" />
                       </button>
                       <input
                         type="number"
@@ -441,19 +454,16 @@ export function FieldInterventionDetailPage() {
                         disabled={!isEditable}
                         value={count === 0 ? '' : count}
                         placeholder="0"
-                        onChange={(e) => {
-                          const v = Math.max(0, parseInt(e.target.value, 10) || 0);
-                          updateInsectCount(device.id, espece, v);
-                        }}
-                        className="w-14 text-center font-semibold text-lg tabular-nums bg-gray-50 border border-gray-200 rounded-lg py-1 focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:opacity-50"
+                        onChange={(e) => updateInsectCount(device.id, espece, Math.max(0, parseInt(e.target.value, 10) || 0))}
+                        className="w-16 text-center font-black text-2xl tabular-nums bg-white border-2 border-gray-200 rounded-xl py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:opacity-50"
                       />
                       <button
                         type="button"
                         disabled={!isEditable}
                         onClick={() => updateInsectCount(device.id, espece, count + 1)}
-                        className="w-10 h-10 rounded-full border-2 border-blue-200 bg-blue-50 flex items-center justify-center text-blue-700 disabled:opacity-40 active:bg-blue-100"
+                        className="w-11 h-11 rounded-full border-2 border-blue-300 bg-blue-600 flex items-center justify-center text-white disabled:opacity-30 active:bg-blue-700"
                       >
-                        <Plus className="h-4 w-4" />
+                        <Plus className="h-5 w-5" />
                       </button>
                     </div>
                   </div>
@@ -529,14 +539,31 @@ export function FieldInterventionDetailPage() {
       if (boitesGroups.length === 0) {
         return <p className="text-center text-gray-400 py-8">Aucune boîte dans ce zonage.</p>;
       }
-      return boitesGroups.map(({ type, devices }) => (
-        <div key={type}>
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1 mb-2">
-            {DEVICE_TYPE_LABELS[type]}
-          </p>
-          <div className="space-y-3">{devices.map(renderDeviceCard)}</div>
-        </div>
-      ));
+      return boitesGroups.map(({ type, devices }) => {
+        const typeStyle = DEVICE_TYPE_STYLE[type];
+        const filled = devices.filter((d) => {
+          const s = controls[d.id];
+          return s?.statusCode || s?.observation;
+        }).length;
+        return (
+          <div key={type} className="space-y-3">
+            {/* En-tête type */}
+            <div className={cn('flex items-center gap-3 px-4 py-3 rounded-2xl', typeStyle.bg)}>
+              <span className="text-2xl">{typeStyle.emoji}</span>
+              <div className="flex-1">
+                <p className={cn('font-bold text-base', typeStyle.text)}>{DEVICE_TYPE_LABELS[type]}</p>
+                <p className="text-white/70 text-xs">{devices.length} dispositif{devices.length > 1 ? 's' : ''}</p>
+              </div>
+              {filled > 0 && (
+                <span className="bg-white/20 text-white text-xs font-bold px-2 py-1 rounded-full">
+                  {filled}/{devices.length} remplis
+                </span>
+              )}
+            </div>
+            {devices.map(renderDeviceCard)}
+          </div>
+        );
+      });
     }
 
     if (activeCategory === 'fk') {
@@ -544,9 +571,24 @@ export function FieldInterventionDetailPage() {
       if (fkGroups.length === 0) {
         return <p className="text-center text-gray-400 py-8">Aucun destructeur d'insectes dans ce zonage.</p>;
       }
+      const { bg, text, emoji } = DEVICE_TYPE_STYLE.FLYING_INSECT_KILLER;
+      const devices = fkGroups[0].devices;
+      const filled = devices.filter((d) => controls[d.id]?.statusCode).length;
       return (
         <div className="space-y-3">
-          {fkGroups[0].devices.map(renderDeviceCard)}
+          <div className={cn('flex items-center gap-3 px-4 py-3 rounded-2xl', bg)}>
+            <span className="text-2xl">{emoji}</span>
+            <div className="flex-1">
+              <p className={cn('font-bold text-base', text)}>Destructeurs FK</p>
+              <p className="text-white/70 text-xs">{devices.length} dispositif{devices.length > 1 ? 's' : ''}</p>
+            </div>
+            {filled > 0 && (
+              <span className="bg-white/20 text-white text-xs font-bold px-2 py-1 rounded-full">
+                {filled}/{devices.length} remplis
+              </span>
+            )}
+          </div>
+          {devices.map(renderDeviceCard)}
         </div>
       );
     }
