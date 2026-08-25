@@ -240,10 +240,44 @@ export const fieldInterventionController = {
       if (!existing) throw new AppError(404, 'Intervention introuvable');
       if (existing.statut !== 'SUBMITTED') throw new AppError(400, "L'intervention doit être soumise avant validation");
 
-      const updated = await prisma.fieldIntervention.update({
-        where: { id },
-        data: { statut: 'VALIDATED', validatedById: req.user!.id, validatedAt: new Date() },
+      const updated = await prisma.$transaction(async (tx) => {
+        const fi = await tx.fieldIntervention.update({
+          where: { id },
+          data: { statut: 'VALIDATED', validatedById: req.user!.id, validatedAt: new Date() },
+        });
+
+        // Décrémentation stock pour chaque produit utilisé lié à un ProduitService
+        const fiProducts = await tx.fIProduct.findMany({
+          where: { fieldInterventionId: id, produitId: { not: null }, quantite: { not: null } },
+          select: { produitId: true, quantite: true, lot: true },
+        });
+
+        for (const fp of fiProducts) {
+          if (!fp.produitId || !fp.quantite) continue;
+          const ps = await tx.produitService.findUnique({ where: { id: fp.produitId }, select: { id: true, quantite: true, aStock: true } });
+          if (!ps || !ps.aStock) continue;
+
+          const quantiteAvant = ps.quantite;
+          const quantiteApres = Math.max(0, quantiteAvant - fp.quantite);
+
+          await tx.produitService.update({ where: { id: ps.id }, data: { quantite: quantiteApres } });
+          await tx.mouvementStock.create({
+            data: {
+              produitServiceId: ps.id,
+              type: 'SORTIE',
+              quantite: fp.quantite,
+              quantiteAvant,
+              quantiteApres,
+              motif: `Intervention terrain #${id}`,
+              numeroLot: fp.lot ?? undefined,
+              userId: req.user!.id,
+            },
+          });
+        }
+
+        return fi;
       });
+
       await createAuditLog(req.user!.id, 'UPDATE', 'FieldIntervention', id, { after: { statut: 'VALIDATED' } });
       res.json(updated);
     } catch (err) {

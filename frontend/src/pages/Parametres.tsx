@@ -32,8 +32,8 @@ import type { Prestation, User, Role, Employe, Poste, CompanySettings, UpdateCom
 function ProduitsTerrain() {
   const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<{ id: string; nom: string; unite: string } | null>(null);
-  const [form, setForm] = useState({ nom: '', unite: '' });
+  const [editing, setEditing] = useState<{ id: string; nom: string; unite: string; stockMinimum: number } | null>(null);
+  const [form, setForm] = useState({ nom: '', unite: '', stockMinimum: '0' });
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; nom: string } | null>(null);
 
   const { data, isLoading } = useQuery({
@@ -44,21 +44,22 @@ function ProduitsTerrain() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ nom: '', unite: '' });
+    setForm({ nom: '', unite: '', stockMinimum: '0' });
     setDialogOpen(true);
   };
 
-  const openEdit = (p: { id: string; nom: string; unite: string }) => {
+  const openEdit = (p: { id: string; nom: string; unite: string; stockMinimum: number }) => {
     setEditing(p);
-    setForm({ nom: p.nom, unite: p.unite });
+    setForm({ nom: p.nom, unite: p.unite, stockMinimum: String(p.stockMinimum) });
     setDialogOpen(true);
   };
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!form.nom.trim() || !form.unite.trim()) throw new Error('Champs requis');
+      const minimum = parseFloat(form.stockMinimum) || 0;
       if (editing) {
-        return produitsServicesApi.update(editing.id, { nom: form.nom.trim(), unite: form.unite.trim() });
+        return produitsServicesApi.update(editing.id, { nom: form.nom.trim(), unite: form.unite.trim(), stockMinimum: minimum });
       } else {
         return produitsServicesApi.create({
           nom: form.nom.trim(),
@@ -66,9 +67,9 @@ function ProduitsTerrain() {
           unite: form.unite.trim(),
           type: 'PRODUIT' as any,
           nature: 'CONSOMMABLE' as any,
-          aStock: false,
+          aStock: true,
           quantite: 0,
-          stockMinimum: 0,
+          stockMinimum: minimum,
           lotSuivi: false,
           dlcSuivi: false,
         } as any);
@@ -118,22 +119,35 @@ function ProduitsTerrain() {
             <div className="text-sm text-gray-400 text-center py-6">Aucun produit terrain. Cliquez sur Ajouter.</div>
           ) : (
             <div className="divide-y">
-              {produits.map((p: ProduitService) => (
-                <div key={p.id} className="flex items-center justify-between py-2.5">
-                  <div>
-                    <span className="text-sm font-medium text-gray-800">{p.nom}</span>
-                    <span className="ml-2 text-xs text-gray-500">({p.unite})</span>
+              {produits.map((p: ProduitService) => {
+                const stockBas = p.aStock && p.quantite <= p.stockMinimum;
+                return (
+                  <div key={p.id} className="flex items-center justify-between py-2.5 gap-3">
+                    <div className="flex-1 min-w-0">
+                      <span className="text-sm font-medium text-gray-800">{p.nom}</span>
+                      <span className="ml-2 text-xs text-gray-500">({p.unite})</span>
+                    </div>
+                    {p.aStock && (
+                      <div className="text-right shrink-0">
+                        <span className={`text-sm font-semibold ${stockBas ? 'text-red-600' : 'text-gray-700'}`}>
+                          {p.quantite} {p.unite}
+                        </span>
+                        {stockBas && (
+                          <div className="text-xs text-red-500 leading-none mt-0.5">Stock bas</div>
+                        )}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit({ id: p.id, nom: p.nom, unite: p.unite, stockMinimum: p.stockMinimum })}>
+                        <Pencil className="h-3.5 w-3.5 text-gray-500" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeleteTarget({ id: p.id, nom: p.nom })}>
+                        <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(p)}>
-                      <Pencil className="h-3.5 w-3.5 text-gray-500" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setDeleteTarget({ id: p.id, nom: p.nom })}>
-                      <Trash2 className="h-3.5 w-3.5 text-red-400" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
@@ -162,6 +176,19 @@ function ProduitsTerrain() {
                 onChange={(e) => setForm((f) => ({ ...f, unite: e.target.value }))}
                 placeholder="ex: kg, L, g"
               />
+            </div>
+            <div>
+              <Label htmlFor="pt-stock-min">Seuil d'alerte stock</Label>
+              <Input
+                id="pt-stock-min"
+                type="number"
+                min="0"
+                step="0.1"
+                value={form.stockMinimum}
+                onChange={(e) => setForm((f) => ({ ...f, stockMinimum: e.target.value }))}
+                placeholder="0"
+              />
+              <p className="text-xs text-gray-400 mt-1">Affiche une alerte si le stock passe en dessous de ce seuil</p>
             </div>
           </div>
           <DialogFooter>
