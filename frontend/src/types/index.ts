@@ -2162,6 +2162,7 @@ export interface FieldIntervention {
   updatedAt: string;
   applicateurs?: FIApplicateur[];
   controls?: DeviceControl[];
+  simpleChecks?: FISimpleCheck[];
   products?: FIProduct[];
   reports?: FieldReport[];
   _count?: { controls: number; products: number; reports: number };
@@ -2232,6 +2233,21 @@ export interface FieldReport {
   generatedById: string;
   generatedBy?: { id: string; nom: string; prenom: string };
   generatedAt: string;
+}
+
+export type FICheckCategory = 'REGARDS' | 'GOLIATH' | 'AUTRE';
+
+export interface FISimpleCheck {
+  id: string;
+  fieldInterventionId: string;
+  category: FICheckCategory;
+  subType: string;
+  statut?: string;
+  commentaire?: string;
+  updatedById?: string;
+  updatedBy?: { id: string; prenom: string; nom: string };
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface SiteDocument {

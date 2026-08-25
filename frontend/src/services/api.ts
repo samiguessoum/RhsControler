@@ -1629,6 +1629,14 @@ export const fieldInterventionsApi = {
     const { data } = await api.put(`/field-interventions/${id}/products`, { products });
     return data;
   },
+  getSimpleChecks: async (id: string) => {
+    const { data } = await api.get(`/field-interventions/${id}/simple-checks`);
+    return data;
+  },
+  upsertSimpleCheck: async (id: string, payload: { category: string; subType?: string; statut?: string; commentaire?: string }) => {
+    const { data } = await api.put(`/field-interventions/${id}/simple-checks`, payload);
+    return data;
+  },
   getAnalytics: async (siteId: string, params?: { zoningVersionId?: string; dateFrom?: string; dateTo?: string }) => {
     const { data } = await api.get(`/sites/${siteId}/zoning-analytics`, { params });
     return data;

@@ -99,6 +99,9 @@ export const fieldInterventionController = {
               updatedBy: { select: { id: true, prenom: true, nom: true } },
             },
           },
+          simpleChecks: {
+            include: { updatedBy: { select: { id: true, prenom: true, nom: true } } },
+          },
           products: true,
           reports: {
             include: { generatedBy: { select: { id: true, nom: true, prenom: true } } },
@@ -290,6 +293,11 @@ export const fieldInterventionController = {
 
       await prisma.$transaction(async (tx) => {
         for (const ctrl of controls) {
+          const existing = await tx.deviceControl.findUnique({
+            where: { fieldInterventionId_deviceId: { fieldInterventionId: id, deviceId: ctrl.deviceId } },
+            select: { id: true, statusCode: true, observation: true },
+          });
+
           const dc = await tx.deviceControl.upsert({
             where: { fieldInterventionId_deviceId: { fieldInterventionId: id, deviceId: ctrl.deviceId } },
             create: {
@@ -305,6 +313,21 @@ export const fieldInterventionController = {
               updatedById: req.user!.id,
             },
           });
+
+          if (existing && (existing.statusCode !== (ctrl.statusCode ?? null) || existing.observation !== (ctrl.observation ?? null))) {
+            await tx.deviceControlAudit.create({
+              data: {
+                deviceControlId: dc.id,
+                fieldInterventionId: id,
+                deviceId: ctrl.deviceId,
+                oldStatusCode: existing.statusCode,
+                newStatusCode: ctrl.statusCode ?? null,
+                oldObservation: existing.observation,
+                newObservation: ctrl.observation ?? null,
+                changedById: req.user!.id,
+              },
+            });
+          }
 
           if (ctrl.insectCounts) {
             // Supprime les anciens puis recrée
@@ -328,6 +351,56 @@ export const fieldInterventionController = {
       });
 
       res.json({ ok: true });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // ─── Contrôles simples (Regards, Goliath, Autre) ──────────────────────────
+
+  // GET /api/field-interventions/:id/simple-checks
+  async getSimpleChecks(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      await assertFieldInterventionAccess(req, id);
+      const checks = await prisma.fISimpleCheck.findMany({
+        where: { fieldInterventionId: id },
+        include: { updatedBy: { select: { id: true, prenom: true, nom: true } } },
+      });
+      res.json(checks);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // PUT /api/field-interventions/:id/simple-checks
+  async upsertSimpleCheck(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      await assertFieldInterventionAccess(req, id);
+      const fi = await prisma.fieldIntervention.findUnique({ where: { id } });
+      if (!fi) throw new AppError(404, 'Intervention introuvable');
+      if (!['DRAFT', 'IN_PROGRESS'].includes(fi.statut)) {
+        throw new AppError(400, 'Cette intervention ne peut plus être modifiée');
+      }
+
+      const { category, subType, statut, commentaire } = req.body;
+      if (!category) throw new AppError(400, 'category est requis');
+      const sub = subType ?? '';
+
+      const check = await prisma.fISimpleCheck.upsert({
+        where: { fieldInterventionId_category_subType: { fieldInterventionId: id, category, subType: sub } },
+        create: { fieldInterventionId: id, category, subType: sub, statut, commentaire, updatedById: req.user!.id },
+        update: { statut, commentaire, updatedById: req.user!.id },
+        include: { updatedBy: { select: { id: true, prenom: true, nom: true } } },
+      });
+
+      await prisma.fieldIntervention.update({
+        where: { id },
+        data: { statut: 'IN_PROGRESS', draftSavedAt: new Date() },
+      });
+
+      res.json(check);
     } catch (err) {
       next(err);
     }

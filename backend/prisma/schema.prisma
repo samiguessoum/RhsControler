@@ -229,6 +229,8 @@ model User {
   fieldInterventionsCrees    FieldIntervention[] @relation("FICreatedBy")
   fieldInterventionsValidees FieldIntervention[] @relation("FIValidatedBy")
   deviceControls             DeviceControl[]     @relation("DeviceControlUpdatedBy")
+  simpleChecks               FISimpleCheck[]     @relation("FISimpleCheckUpdatedBy")
+  deviceControlAudits        DeviceControlAudit[] @relation("DeviceControlAuditChangedBy")
   fieldReportsGeneres        FieldReport[]       @relation("FIReportGeneratedBy")
   siteDocumentsUploades      SiteDocument[]      @relation("SiteDocumentUploadedBy")
   importLogsCrees            ImportLog[]         @relation("ImportLogCreatedBy")
@@ -1999,6 +2001,7 @@ model FieldIntervention {
 
   applicateurs FIApplicateur[]
   controls     DeviceControl[]
+  simpleChecks FISimpleCheck[]
   products     FIProduct[]
   reports      FieldReport[]
   documents    FieldInterventionDocument[]
@@ -2155,6 +2158,49 @@ model SiteDocument {
   createdAt    DateTime  @default(now())
 
   @@index([siteId])
+}
+
+// ── Contrôles simples (Regards/Avaloirs, Goliath Gel, Autre) ─
+enum FICheckCategory {
+  REGARDS
+  GOLIATH
+  AUTRE
+}
+
+model FISimpleCheck {
+  id                  String            @id @default(cuid())
+  fieldInterventionId String
+  fieldIntervention   FieldIntervention @relation(fields: [fieldInterventionId], references: [id], onDelete: Cascade)
+  category            FICheckCategory
+  subType             String            @default("") // "" pour REGARDS/GOLIATH, "ANTI_SERPENTS" etc. pour AUTRE
+  statut              String?           // "OK" | "PAS_OK"
+  commentaire         String?
+  updatedById         String?
+  updatedBy           User?             @relation("FISimpleCheckUpdatedBy", fields: [updatedById], references: [id])
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@unique([fieldInterventionId, category, subType])
+  @@index([fieldInterventionId])
+}
+
+// ── Audit log des contrôles dispositifs ───────────────────────
+model DeviceControlAudit {
+  id                  String   @id @default(cuid())
+  deviceControlId     String
+  fieldInterventionId String
+  deviceId            String
+  oldStatusCode       String?
+  newStatusCode       String?
+  oldObservation      String?
+  newObservation      String?
+  changedById         String?
+  changedBy           User?    @relation("DeviceControlAuditChangedBy", fields: [changedById], references: [id])
+  changedAt           DateTime @default(now())
+
+  @@index([deviceControlId])
+  @@index([fieldInterventionId])
+  @@index([changedById])
 }
 
 // ── Journal d'import ──────────────────────────────────────────

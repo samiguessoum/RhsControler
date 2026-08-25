@@ -524,6 +524,8 @@ router.post('/field-interventions/:id/validate', authMiddleware, canDo('manageIn
 router.post('/field-interventions/:id/cancel', authMiddleware, canDo('manageInterventions'), fieldInterventionController.cancel);
 router.put('/field-interventions/:id/controls', authMiddleware, fieldInterventionController.upsertControls);
 router.put('/field-interventions/:id/products', authMiddleware, fieldInterventionController.upsertProducts);
+router.get('/field-interventions/:id/simple-checks', authMiddleware, fieldInterventionController.getSimpleChecks);
+router.put('/field-interventions/:id/simple-checks', authMiddleware, fieldInterventionController.upsertSimpleCheck);
 
 // Analytics terrain par site
 router.get('/sites/:siteId/zoning-analytics', authMiddleware, fieldInterventionController.getSiteAnalytics);

@@ -33,8 +33,11 @@ import type {
   DeviceType,
   FieldInterventionStatut,
   FIProduct,
+  FICheckCategory,
 } from '@/types';
 import { useAuthStore } from '@/store/auth.store';
+
+// ─── Constantes ────────────────────────────────────────────────────────────
 
 const FI_STATUT_CONFIG: Record<FieldInterventionStatut, { label: string; color: string; icon: typeof CheckCircle2 }> = {
   DRAFT:       { label: 'Brouillon',  color: 'bg-gray-100 text-gray-700',   icon: Clock },
@@ -48,10 +51,32 @@ const DEVICE_TYPE_LABELS: Record<DeviceType, string> = {
   BAIT_STATION: "Poste d'appâtage",
   MECHANICAL_TRAP: 'Piège mécanique',
   GLUE_TRAP: 'Boîte à colle',
-  FLYING_INSECT_KILLER: 'Destructeur insectes (FK)',
+  FLYING_INSECT_KILLER: 'Destructeur FK',
 };
 
 const INSECT_ESPECES = ['Mouches', 'Moustiques', 'Abeilles', 'Papillons', 'Autres'];
+
+const BOITES_TYPES: DeviceType[] = ['BAIT_STATION', 'MECHANICAL_TRAP', 'GLUE_TRAP'];
+
+const AUTRE_SUBTYPES = [
+  { key: 'ANTI_SERPENTS', label: 'Lutte anti-serpents' },
+  { key: 'ANTI_CHATS',    label: 'Lutte anti-chats' },
+  { key: 'ANTI_FOURMIS',  label: 'Lutte anti-fourmis' },
+  { key: 'ANTI_PUCES',    label: 'Lutte anti-puces' },
+  { key: 'ANTI_PIGEONS',  label: 'Lutte anti-pigeons' },
+];
+
+type Category = 'boites' | 'fk' | 'regards' | 'goliath' | 'autre';
+
+const CATEGORIES: { key: Category; label: string }[] = [
+  { key: 'boites',  label: 'Boîtes' },
+  { key: 'fk',      label: 'Destructeurs FK' },
+  { key: 'regards', label: 'Regards / Avaloirs' },
+  { key: 'goliath', label: 'Goliath Gel' },
+  { key: 'autre',   label: 'Autre' },
+];
+
+// ─── Types locaux ───────────────────────────────────────────────────────────
 
 interface ControlFormState {
   statusCode: string;
@@ -59,11 +84,18 @@ interface ControlFormState {
   insectCounts: Record<string, number>;
 }
 
+interface SimpleCheckState {
+  statut: string;
+  commentaire: string;
+}
+
+// ─── Composant ──────────────────────────────────────────────────────────────
+
 export function FieldInterventionDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { user, canDo } = useAuthStore();
+  const { canDo } = useAuthStore();
   const isOffice = canDo('manageInterventions');
 
   const { data: fi, isLoading } = useQuery({
@@ -78,11 +110,22 @@ export function FieldInterventionDetailPage() {
     staleTime: Infinity,
   });
 
+  // ── État dispositifs (boîtes + FK) ─────────────────────────
   const [controls, setControls] = useState<Record<string, ControlFormState>>({});
   const [products, setProducts] = useState<Partial<FIProduct>[]>([]);
   const initialized = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── État simple checks ──────────────────────────────────────
+  const [simpleChecks, setSimpleChecks] = useState<Record<string, SimpleCheckState>>({});
+  const simpleCheckTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const simpleInitialized = useRef(false);
+
+  // ── Navigation ──────────────────────────────────────────────
+  const [activeCategory, setActiveCategory] = useState<Category>('boites');
+  const [selectedAutreSubType, setSelectedAutreSubType] = useState<string | null>(null);
+
+  // ── Initialisation controls ──────────────────────────────────
   useEffect(() => {
     if (!fi || initialized.current) return;
     initialized.current = true;
@@ -103,8 +146,21 @@ export function FieldInterventionDetailPage() {
     setProducts(fi.products?.length ? fi.products : []);
   }, [fi]);
 
+  // ── Initialisation simple checks ─────────────────────────────
+  useEffect(() => {
+    if (!fi || simpleInitialized.current) return;
+    simpleInitialized.current = true;
+    const init: Record<string, SimpleCheckState> = {};
+    for (const sc of fi.simpleChecks || []) {
+      const key = sc.subType ? `${sc.category}_${sc.subType}` : sc.category;
+      init[key] = { statut: sc.statut ?? '', commentaire: sc.commentaire ?? '' };
+    }
+    setSimpleChecks(init);
+  }, [fi]);
+
   const isEditable = fi ? ['DRAFT', 'IN_PROGRESS'].includes(fi.statut) : false;
 
+  // ── Mutations contrôles dispositifs ─────────────────────────
   const buildControlsPayload = (state: Record<string, ControlFormState>) =>
     Object.entries(state).map(([deviceId, c]) => ({
       deviceId,
@@ -150,6 +206,27 @@ export function FieldInterventionDetailPage() {
     });
   };
 
+  // ── Mutations simple checks ──────────────────────────────────
+  const updateSimpleCheck = (category: FICheckCategory, subType: string, patch: Partial<SimpleCheckState>) => {
+    if (!isEditable) return;
+    const key = subType ? `${category}_${subType}` : category;
+    setSimpleChecks((prev) => {
+      const current = prev[key] ?? { statut: '', commentaire: '' };
+      const next = { ...prev, [key]: { ...current, ...patch } };
+      if (simpleCheckTimers.current[key]) clearTimeout(simpleCheckTimers.current[key]);
+      simpleCheckTimers.current[key] = setTimeout(() => {
+        fieldInterventionsApi.upsertSimpleCheck(id!, {
+          category,
+          subType: subType || undefined,
+          statut: next[key].statut || undefined,
+          commentaire: next[key].commentaire || undefined,
+        }).catch((err: any) => toast.error(err?.response?.data?.error || 'Erreur lors de l\'enregistrement'));
+      }, 800);
+      return next;
+    });
+  };
+
+  // ── Produits ─────────────────────────────────────────────────
   const productsMutation = useMutation({
     mutationFn: (payload: Partial<FIProduct>[]) => fieldInterventionsApi.upsertProducts(id!, payload),
     onSuccess: () => {
@@ -159,6 +236,7 @@ export function FieldInterventionDetailPage() {
     onError: (error: any) => toast.error(error?.response?.data?.error || "Erreur lors de l'enregistrement des produits"),
   });
 
+  // ── Submit / Validate / Cancel ───────────────────────────────
   const submitMutation = useMutation({
     mutationFn: async () => {
       await saveMutation.mutateAsync(controls);
@@ -177,7 +255,7 @@ export function FieldInterventionDetailPage() {
   const commentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const commentMutation = useMutation({
     mutationFn: (value: string) => fieldInterventionsApi.update(id!, { commentaire: value }),
-    onError: (error: any) => toast.error(error?.response?.data?.error || "Erreur lors de l'enregistrement du commentaire"),
+    onError: (error: any) => toast.error(error?.response?.data?.error || "Erreur lors de l'enregistrement"),
   });
   const onCommentChange = (value: string) => {
     setCommentaire(value);
@@ -187,24 +265,44 @@ export function FieldInterventionDetailPage() {
 
   const validateMutation = useMutation({
     mutationFn: () => fieldInterventionsApi.validate(id!),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['field-intervention', id] });
-      toast.success('Fiche terrain validée');
-    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['field-intervention', id] }); toast.success('Fiche validée'); },
     onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la validation'),
   });
 
   const cancelMutation = useMutation({
     mutationFn: () => fieldInterventionsApi.cancel(id!),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['field-intervention', id] });
-      toast.success('Fiche terrain annulée');
-    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['field-intervention', id] }); toast.success('Fiche annulée'); },
     onError: (error: any) => toast.error(error?.response?.data?.error || "Erreur lors de l'annulation"),
   });
 
+  // ── Données calculées ────────────────────────────────────────
   const zones = useMemo(() => fi?.zoningVersion?.zones || [], [fi]);
+  const sortedStatuses = useMemo(
+    () => [...controlStatuses].sort((a, b) => (a.ordre ?? 99) - (b.ordre ?? 99)),
+    [controlStatuses]
+  );
 
+  // Dispositifs regroupés par type, triés, pour chaque catégorie
+  const devicesByType = useMemo(() => {
+    const typeOrder: DeviceType[] = ['BAIT_STATION', 'MECHANICAL_TRAP', 'GLUE_TRAP', 'FLYING_INSECT_KILLER'];
+    const allDevices = zones.flatMap((z) =>
+      (z.devices || []).map((d) => ({ ...d, zoneName: z.nom, zoneEtage: z.etage }))
+    );
+    return typeOrder.map((type) => ({
+      type,
+      devices: allDevices
+        .filter((d) => d.type === type)
+        .sort((a, b) => {
+          const na = parseInt(a.displayNumber, 10), nb = parseInt(b.displayNumber, 10);
+          return !isNaN(na) && !isNaN(nb) ? na - nb : a.displayNumber.localeCompare(b.displayNumber);
+        }),
+    })).filter((g) => g.devices.length > 0);
+  }, [zones]);
+
+  const hasBoites = devicesByType.some((g) => BOITES_TYPES.includes(g.type));
+  const hasFK = devicesByType.some((g) => g.type === 'FLYING_INSECT_KILLER');
+
+  // ── Loading / not found ──────────────────────────────────────
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-40">
@@ -212,19 +310,259 @@ export function FieldInterventionDetailPage() {
       </div>
     );
   }
-
-  if (!fi) {
-    return (
-      <div className="p-6">
-        <p className="text-gray-500">Intervention terrain introuvable.</p>
-      </div>
-    );
-  }
+  if (!fi) return <div className="p-6"><p className="text-gray-500">Intervention terrain introuvable.</p></div>;
 
   const statutConfig = FI_STATUT_CONFIG[fi.statut];
   const StatutIcon = statutConfig.icon;
-  const sortedStatuses = [...controlStatuses].sort((a, b) => (a.ordre ?? 99) - (b.ordre ?? 99));
 
+  // ── Rendu d'une carte dispositif ────────────────────────────
+  const renderDeviceCard = (device: any) => {
+    const state = controls[device.id] || { statusCode: '', observation: '', insectCounts: {} };
+    const savedControl = fi.controls?.find((c) => c.deviceId === device.id);
+    const filledBy = (savedControl as any)?.updatedBy;
+    const hasContent = state.statusCode || state.observation || Object.values(state.insectCounts).some((v) => v > 0);
+
+    return (
+      <Card key={device.id} className={cn(hasContent && 'border-blue-200 bg-blue-50/30')}>
+        <CardContent className="py-3 px-4 space-y-3">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <span className="font-semibold text-sm">
+                #{device.displayNumber}
+                {device.nom ? ` — ${device.nom}` : ''}
+              </span>
+              <span className="text-xs text-gray-400 ml-1.5">{device.zoneName}{device.zoneEtage ? ` · ${device.zoneEtage}` : ''}</span>
+            </div>
+            {filledBy && (
+              <span className="flex items-center gap-1 text-xs text-gray-400 shrink-0 mt-0.5">
+                <User className="h-3 w-3" />{filledBy.prenom}
+              </span>
+            )}
+          </div>
+
+          {/* Pastilles statut */}
+          <div className="flex flex-wrap gap-2">
+            {sortedStatuses.map((cs) => {
+              const selected = state.statusCode === cs.code;
+              return (
+                <button
+                  key={cs.code}
+                  type="button"
+                  disabled={!isEditable}
+                  onClick={() => updateControl(device.id, { statusCode: selected ? '' : cs.code })}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium border-2 transition-all select-none min-h-[40px]',
+                    selected ? 'text-white border-transparent shadow-md' : 'bg-white border-gray-200 text-gray-700 active:bg-gray-50',
+                    !isEditable && 'opacity-60 cursor-default'
+                  )}
+                  style={selected ? { backgroundColor: cs.color ?? '#6b7280', borderColor: cs.color ?? '#6b7280' } : {}}
+                >
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: selected ? 'rgba(255,255,255,0.7)' : (cs.color ?? '#6b7280') }}
+                  />
+                  <span className="font-bold">{cs.code}</span>
+                  <span className={cn('hidden sm:inline font-normal text-xs', selected ? 'opacity-90' : 'text-gray-500')}>
+                    {cs.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Observation */}
+          <Textarea
+            placeholder="Remarque (optionnel)"
+            value={state.observation}
+            disabled={!isEditable}
+            rows={2}
+            onChange={(e) => updateControl(device.id, { observation: e.target.value })}
+            className="text-sm resize-none"
+          />
+
+          {/* Comptage insectes FK */}
+          {device.type === 'FLYING_INSECT_KILLER' && (
+            <div className="space-y-2 pt-1">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Comptage insectes</p>
+              {INSECT_ESPECES.map((espece) => {
+                const count = state.insectCounts[espece] ?? 0;
+                return (
+                  <div key={espece} className="flex items-center justify-between gap-3">
+                    <span className="text-sm text-gray-700 w-28">{espece}</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={!isEditable || count <= 0}
+                        onClick={() => updateInsectCount(device.id, espece, Math.max(0, count - 1))}
+                        className="w-10 h-10 rounded-full border-2 border-gray-200 flex items-center justify-center text-gray-600 disabled:opacity-40 active:bg-gray-100"
+                      >
+                        <Minus className="h-4 w-4" />
+                      </button>
+                      <input
+                        type="number"
+                        min={0}
+                        disabled={!isEditable}
+                        value={count === 0 ? '' : count}
+                        placeholder="0"
+                        onChange={(e) => {
+                          const v = Math.max(0, parseInt(e.target.value, 10) || 0);
+                          updateInsectCount(device.id, espece, v);
+                        }}
+                        className="w-14 text-center font-semibold text-lg tabular-nums bg-gray-50 border border-gray-200 rounded-lg py-1 focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:opacity-50"
+                      />
+                      <button
+                        type="button"
+                        disabled={!isEditable}
+                        onClick={() => updateInsectCount(device.id, espece, count + 1)}
+                        className="w-10 h-10 rounded-full border-2 border-blue-200 bg-blue-50 flex items-center justify-center text-blue-700 disabled:opacity-40 active:bg-blue-100"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
+  // ── Rendu formulaire simple (Regards, Goliath, Autre) ───────
+  const renderSimpleCheck = (category: FICheckCategory, subType: string = '', label: string, filledBy?: any) => {
+    const key = subType ? `${category}_${subType}` : category;
+    const state = simpleChecks[key] || { statut: '', commentaire: '' };
+
+    return (
+      <Card className={cn(state.statut && 'border-blue-200 bg-blue-50/30')}>
+        <CardContent className="py-4 px-4 space-y-4">
+          {label && <p className="font-semibold text-sm text-gray-700">{label}</p>}
+
+          {/* OK / Pas OK */}
+          <div className="flex gap-3">
+            {(['OK', 'PAS_OK'] as const).map((s) => {
+              const selected = state.statut === s;
+              const isOk = s === 'OK';
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  disabled={!isEditable}
+                  onClick={() => updateSimpleCheck(category, subType, { statut: selected ? '' : s })}
+                  className={cn(
+                    'flex-1 py-3 rounded-xl font-semibold text-base border-2 transition-all min-h-[52px]',
+                    selected && isOk && 'bg-green-500 border-green-500 text-white',
+                    selected && !isOk && 'bg-red-500 border-red-500 text-white',
+                    !selected && 'bg-white border-gray-200 text-gray-600 active:bg-gray-50',
+                    !isEditable && 'opacity-60 cursor-default'
+                  )}
+                >
+                  {isOk ? '✓ OK' : '✗ Pas OK'}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Commentaire */}
+          <Textarea
+            placeholder="Commentaire (optionnel)"
+            value={state.commentaire}
+            disabled={!isEditable}
+            rows={3}
+            onChange={(e) => updateSimpleCheck(category, subType, { commentaire: e.target.value })}
+            className="text-sm resize-none"
+          />
+
+          {/* Attribution */}
+          {filledBy && (
+            <p className="text-xs text-gray-400 flex items-center gap-1">
+              <User className="h-3 w-3" /> Renseigné par {filledBy.prenom} {filledBy.nom}
+            </p>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
+  // ── Contenu de la catégorie active ──────────────────────────
+  const renderCategoryContent = () => {
+    if (activeCategory === 'boites') {
+      const boitesGroups = devicesByType.filter((g) => BOITES_TYPES.includes(g.type));
+      if (boitesGroups.length === 0) {
+        return <p className="text-center text-gray-400 py-8">Aucune boîte dans ce zonage.</p>;
+      }
+      return boitesGroups.map(({ type, devices }) => (
+        <div key={type}>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1 mb-2">
+            {DEVICE_TYPE_LABELS[type]}
+          </p>
+          <div className="space-y-3">{devices.map(renderDeviceCard)}</div>
+        </div>
+      ));
+    }
+
+    if (activeCategory === 'fk') {
+      const fkGroups = devicesByType.filter((g) => g.type === 'FLYING_INSECT_KILLER');
+      if (fkGroups.length === 0) {
+        return <p className="text-center text-gray-400 py-8">Aucun destructeur d'insectes dans ce zonage.</p>;
+      }
+      return (
+        <div className="space-y-3">
+          {fkGroups[0].devices.map(renderDeviceCard)}
+        </div>
+      );
+    }
+
+    if (activeCategory === 'regards') {
+      const saved = fi.simpleChecks?.find((sc) => sc.category === 'REGARDS');
+      return renderSimpleCheck('REGARDS', '', '', saved?.updatedBy as any);
+    }
+
+    if (activeCategory === 'goliath') {
+      const saved = fi.simpleChecks?.find((sc) => sc.category === 'GOLIATH');
+      return renderSimpleCheck('GOLIATH', '', '', saved?.updatedBy as any);
+    }
+
+    if (activeCategory === 'autre') {
+      return (
+        <div className="space-y-4">
+          {/* Sélection du type */}
+          <div className="flex flex-col gap-2">
+            {AUTRE_SUBTYPES.map(({ key, label }) => {
+              const selected = selectedAutreSubType === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setSelectedAutreSubType(selected ? null : key)}
+                  className={cn(
+                    'w-full text-left px-4 py-3.5 rounded-xl border-2 font-medium transition-all',
+                    selected ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-gray-200 text-gray-700 active:bg-gray-50'
+                  )}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          {selectedAutreSubType && (
+            <div className="mt-2">
+              {(() => {
+                const saved = fi.simpleChecks?.find((sc) => sc.category === 'AUTRE' && sc.subType === selectedAutreSubType);
+                return renderSimpleCheck('AUTRE', selectedAutreSubType, '', saved?.updatedBy as any);
+              })()}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  // ── Rendu ────────────────────────────────────────────────────
   return (
     <div className="p-3 sm:p-6 space-y-3 sm:space-y-4 max-w-3xl mx-auto pb-28">
       {/* Header */}
@@ -256,9 +594,7 @@ export function FieldInterventionDetailPage() {
             </div>
             <div className="flex items-center gap-1.5">
               <MapPin className="h-4 w-4 text-gray-400 shrink-0" />
-              <Link to={`/sites/${fi.siteId}`} className="text-blue-600 underline">
-                {fi.site?.nom}
-              </Link>
+              <Link to={`/sites/${fi.siteId}`} className="text-blue-600 underline">{fi.site?.nom}</Link>
             </div>
             <div className="flex items-center gap-1.5">
               <CalendarDays className="h-4 w-4 text-gray-400 shrink-0" />
@@ -277,165 +613,41 @@ export function FieldInterventionDetailPage() {
         </CardContent>
       </Card>
 
-      {zones.length === 0 && (
-        <Card>
-          <CardContent className="py-8 text-center text-gray-400">
-            Aucune zone/dispositif dans ce zonage.
-          </CardContent>
-        </Card>
-      )}
+      {/* Navigation catégories */}
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+        {CATEGORIES.map(({ key, label }) => {
+          const disabled = (key === 'boites' && !hasBoites) || (key === 'fk' && !hasFK);
+          return (
+            <button
+              key={key}
+              type="button"
+              disabled={disabled}
+              onClick={() => setActiveCategory(key)}
+              className={cn(
+                'shrink-0 px-4 py-2.5 rounded-xl font-semibold text-sm border-2 transition-all whitespace-nowrap min-h-[44px]',
+                activeCategory === key
+                  ? 'bg-blue-600 border-blue-600 text-white shadow-md'
+                  : 'bg-white border-gray-200 text-gray-700 active:bg-gray-50',
+                disabled && 'opacity-40 cursor-not-allowed'
+              )}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
 
-      {/* Zones et dispositifs */}
-      {zones.map((zone) => {
-        const typeOrder: DeviceType[] = ['BAIT_STATION', 'MECHANICAL_TRAP', 'GLUE_TRAP', 'FLYING_INSECT_KILLER'];
-        const grouped = typeOrder
-          .map((type) => ({
-            type,
-            devices: (zone.devices || [])
-              .filter((d) => d.type === type)
-              .sort((a, b) => {
-                const na = parseInt(a.displayNumber, 10), nb = parseInt(b.displayNumber, 10);
-                return !isNaN(na) && !isNaN(nb) ? na - nb : a.displayNumber.localeCompare(b.displayNumber);
-              }),
-          }))
-          .filter((g) => g.devices.length > 0);
-
-        return (
-        <div key={zone.id}>
-          <h2 className="text-sm font-bold text-gray-500 uppercase tracking-wider px-1 mb-2">
-            {zone.nom}{zone.etage ? ` — ${zone.etage}` : ''}
-          </h2>
-          <div className="space-y-4">
-            {grouped.map(({ type, devices: groupDevices }) => (
-              <div key={type}>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider px-1 mb-2">
-                  {DEVICE_TYPE_LABELS[type]}
-                </p>
-                <div className="space-y-3">
-            {groupDevices.map((device) => {
-              const state = controls[device.id] || { statusCode: '', observation: '', insectCounts: {} };
-              const savedControl = fi.controls?.find((c) => c.deviceId === device.id);
-              const filledBy = (savedControl as any)?.updatedBy;
-              const hasContent = state.statusCode || state.observation || Object.values(state.insectCounts).some((v) => v > 0);
-
-              return (
-                <Card key={device.id} className={cn(hasContent && 'border-blue-200 bg-blue-50/30')}>
-                  <CardContent className="py-3 px-4 space-y-3">
-                    {/* Device title + attribution */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <span className="font-semibold text-sm">
-                          #{device.displayNumber} — {DEVICE_TYPE_LABELS[device.type]}
-                        </span>
-                        {device.nom && (
-                          <span className="text-xs text-gray-500 ml-1">({device.nom})</span>
-                        )}
-                      </div>
-                      {filledBy && (
-                        <span className="flex items-center gap-1 text-xs text-gray-400 shrink-0 mt-0.5">
-                          <User className="h-3 w-3" />
-                          {filledBy.prenom}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Statut — pastilles */}
-                    <div className="flex flex-wrap gap-2">
-                      {sortedStatuses.map((cs) => {
-                        const selected = state.statusCode === cs.code;
-                        return (
-                          <button
-                            key={cs.code}
-                            type="button"
-                            disabled={!isEditable}
-                            onClick={() => updateControl(device.id, { statusCode: selected ? '' : cs.code })}
-                            className={cn(
-                              'flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium border-2 transition-all select-none min-h-[40px]',
-                              selected
-                                ? 'text-white border-transparent shadow-md'
-                                : 'bg-white border-gray-200 text-gray-700 active:bg-gray-50',
-                              !isEditable && 'opacity-60 cursor-default'
-                            )}
-                            style={selected ? { backgroundColor: cs.color ?? '#6b7280', borderColor: cs.color ?? '#6b7280' } : {}}
-                          >
-                            <span
-                              className="w-2.5 h-2.5 rounded-full shrink-0"
-                              style={{ backgroundColor: selected ? 'rgba(255,255,255,0.7)' : (cs.color ?? '#6b7280') }}
-                            />
-                            <span className="font-bold">{cs.code}</span>
-                            <span className={cn('hidden sm:inline font-normal text-xs', selected ? 'opacity-90' : 'text-gray-500')}>
-                              {cs.label}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {/* Observation */}
-                    <Textarea
-                      placeholder="Remarque (optionnel)"
-                      value={state.observation}
-                      disabled={!isEditable}
-                      rows={2}
-                      onChange={(e) => updateControl(device.id, { observation: e.target.value })}
-                      className="text-sm resize-none"
-                    />
-
-                    {/* Comptage insectes (FK seulement) */}
-                    {device.type === 'FLYING_INSECT_KILLER' && (
-                      <div className="space-y-2 pt-1">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Comptage insectes</p>
-                        {INSECT_ESPECES.map((espece) => {
-                          const count = state.insectCounts[espece] ?? 0;
-                          return (
-                            <div key={espece} className="flex items-center justify-between gap-3">
-                              <span className="text-sm text-gray-700 w-28">{espece}</span>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  disabled={!isEditable || count <= 0}
-                                  onClick={() => updateInsectCount(device.id, espece, Math.max(0, count - 1))}
-                                  className="w-10 h-10 rounded-full border-2 border-gray-200 flex items-center justify-center text-gray-600 disabled:opacity-40 active:bg-gray-100"
-                                >
-                                  <Minus className="h-4 w-4" />
-                                </button>
-                                <span className="w-10 text-center font-semibold text-lg tabular-nums">{count}</span>
-                                <button
-                                  type="button"
-                                  disabled={!isEditable}
-                                  onClick={() => updateInsectCount(device.id, espece, count + 1)}
-                                  className="w-10 h-10 rounded-full border-2 border-blue-200 bg-blue-50 flex items-center justify-center text-blue-700 disabled:opacity-40 active:bg-blue-100"
-                                >
-                                  <Plus className="h-4 w-4" />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        );
-      })}
+      {/* Contenu catégorie */}
+      <div className="space-y-3">
+        {renderCategoryContent()}
+      </div>
 
       {/* Produits utilisés */}
       <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <CardTitle className="text-base">Produits utilisés</CardTitle>
           {isEditable && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setProducts((p) => [...p, { nom: '', quantite: undefined, unite: '' }])}
-            >
+            <Button size="sm" variant="outline" onClick={() => setProducts((p) => [...p, { nom: '', quantite: undefined, unite: '' }])}>
               <Plus className="h-3.5 w-3.5 mr-1" /> Ajouter
             </Button>
           )}
@@ -453,12 +665,7 @@ export function FieldInterventionDetailPage() {
                   onChange={(e) => setProducts((prev) => prev.map((x, idx) => idx === i ? { ...x, nom: e.target.value } : x))}
                 />
                 {isEditable && (
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="text-red-500 shrink-0"
-                    onClick={() => setProducts((prev) => prev.filter((_, idx) => idx !== i))}
-                  >
+                  <Button size="icon" variant="ghost" className="text-red-500 shrink-0" onClick={() => setProducts((prev) => prev.filter((_, idx) => idx !== i))}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 )}
@@ -497,7 +704,7 @@ export function FieldInterventionDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Commentaire */}
+      {/* Commentaire général */}
       <Card>
         <CardContent className="py-4">
           <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Commentaire général</label>
@@ -512,41 +719,24 @@ export function FieldInterventionDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Barre d'actions fixe en bas */}
+      {/* Barre d'actions */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-3 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2">
         {isEditable && (
           <>
-            <Button
-              variant="outline"
-              className="w-full sm:w-auto"
-              onClick={() => saveMutation.mutate(controls)}
-              disabled={saveMutation.isPending}
-            >
+            <Button variant="outline" className="w-full sm:w-auto" onClick={() => saveMutation.mutate(controls)} disabled={saveMutation.isPending}>
               <Save className="h-4 w-4 mr-2" /> Enregistrer le brouillon
             </Button>
-            <Button
-              className="w-full sm:w-auto"
-              onClick={() => submitMutation.mutate()}
-              disabled={submitMutation.isPending}
-            >
+            <Button className="w-full sm:w-auto" onClick={() => submitMutation.mutate()} disabled={submitMutation.isPending}>
               <Send className="h-4 w-4 mr-2" /> Soumettre
             </Button>
           </>
         )}
         {isOffice && fi.statut === 'SUBMITTED' && (
           <>
-            <Button
-              variant="outline"
-              className="w-full sm:w-auto text-red-600 hover:text-red-700"
-              onClick={() => cancelMutation.mutate()}
-            >
+            <Button variant="outline" className="w-full sm:w-auto text-red-600 hover:text-red-700" onClick={() => cancelMutation.mutate()}>
               <Ban className="h-4 w-4 mr-2" /> Annuler
             </Button>
-            <Button
-              className="w-full sm:w-auto"
-              onClick={() => validateMutation.mutate()}
-              disabled={validateMutation.isPending}
-            >
+            <Button className="w-full sm:w-auto" onClick={() => validateMutation.mutate()} disabled={validateMutation.isPending}>
               <ShieldCheck className="h-4 w-4 mr-2" /> Valider
             </Button>
           </>
