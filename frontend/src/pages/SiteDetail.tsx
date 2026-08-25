@@ -25,6 +25,9 @@ import {
   User,
   Download,
   Upload,
+  MessageSquareWarning,
+  CheckCheck,
+  Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -57,7 +60,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import api, { zoningApi, fieldInterventionsApi, fieldReportsApi, interventionsApi } from '@/services/api';
+import api, { zoningApi, fieldInterventionsApi, fieldReportsApi, interventionsApi, reclamationsApi } from '@/services/api';
 import { formatDate, cn } from '@/lib/utils';
 import type {
   Site,
@@ -73,6 +76,7 @@ import type {
   SiteContact,
   FieldReport,
   Intervention,
+  Reclamation,
 } from '@/types';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -116,7 +120,7 @@ const ZONING_STATUT_CONFIG = {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-const VALID_TABS = ['info', 'zoning', 'rapports', 'tendances', 'documents'];
+const VALID_TABS = ['info', 'zoning', 'rapports', 'tendances', 'documents', 'reclamations'];
 
 export function SiteDetailPage() {
   const { siteId } = useParams<{ siteId: string }>();
@@ -250,6 +254,9 @@ export function SiteDetailPage() {
               </Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger value="reclamations" className="flex items-center gap-1.5">
+            <MessageSquareWarning className="h-4 w-4" /> Réclamations
+          </TabsTrigger>
         </TabsList>
 
         {/* ── Tab 1 : Informations ─────────────────────────────── */}
@@ -275,6 +282,11 @@ export function SiteDetailPage() {
         {/* ── Tab 6 : Documents ─────────────────────────────────── */}
         <TabsContent value="documents" className="mt-4">
           <DocumentsTab siteId={siteId!} documents={siteDocuments} />
+        </TabsContent>
+
+        {/* ── Tab 7 : Réclamations ──────────────────────────────── */}
+        <TabsContent value="reclamations" className="mt-4">
+          <ReclamationsTab siteId={siteId!} />
         </TabsContent>
       </Tabs>
     </div>
@@ -1634,6 +1646,214 @@ function DocumentsTab({ siteId, documents }: { siteId: string; documents: SiteDo
             <AlertDialogAction
               className="bg-red-600 hover:bg-red-700"
               onClick={() => deleteId && deleteMut.mutate(deleteId)}
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
+
+// ─── Tab 7 : Réclamations ─────────────────────────────────────────────────────
+
+function ReclamationsTab({ siteId }: { siteId: string }) {
+  const qc = useQueryClient();
+  const [newComment, setNewComment] = useState('');
+  const [newDate, setNewDate] = useState(new Date().toISOString().slice(0, 10));
+  const [editing, setEditing] = useState<Reclamation | null>(null);
+  const [editComment, setEditComment] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<Reclamation | null>(null);
+
+  const { data: reclamations = [], isLoading } = useQuery<Reclamation[]>({
+    queryKey: ['reclamations', siteId],
+    queryFn: () => reclamationsApi.list(siteId),
+    enabled: !!siteId,
+  });
+
+  const createMutation = useMutation({
+    mutationFn: () => reclamationsApi.create(siteId, { commentaire: newComment.trim(), date: newDate }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['reclamations', siteId] });
+      setNewComment('');
+      setNewDate(new Date().toISOString().slice(0, 10));
+      toast.success('Réclamation enregistrée');
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.error || 'Erreur'),
+  });
+
+  const toggleStatut = useMutation({
+    mutationFn: (r: Reclamation) => reclamationsApi.update(r.id, { statut: r.statut === 'OUVERT' ? 'RESOLU' : 'OUVERT' }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['reclamations', siteId] }),
+    onError: (err: any) => toast.error(err?.response?.data?.error || 'Erreur'),
+  });
+
+  const editMutation = useMutation({
+    mutationFn: () => reclamationsApi.update(editing!.id, { commentaire: editComment.trim() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['reclamations', siteId] });
+      setEditing(null);
+      toast.success('Réclamation mise à jour');
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.error || 'Erreur'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => reclamationsApi.delete(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['reclamations', siteId] });
+      setDeleteTarget(null);
+      toast.success('Réclamation supprimée');
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.error || 'Erreur'),
+  });
+
+  const ouvertes = reclamations.filter((r) => r.statut === 'OUVERT').length;
+
+  return (
+    <div className="space-y-4">
+      {/* Formulaire ajout */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <MessageSquareWarning className="h-4 w-4 text-orange-500" />
+            Nouvelle réclamation
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex gap-3">
+            <Input
+              type="date"
+              className="w-40 shrink-0"
+              value={newDate}
+              onChange={(e) => setNewDate(e.target.value)}
+            />
+            <Textarea
+              className="flex-1 min-h-[60px]"
+              placeholder="Décrivez la réclamation…"
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+            />
+          </div>
+          <Button
+            size="sm"
+            onClick={() => createMutation.mutate()}
+            disabled={!newComment.trim() || createMutation.isPending}
+          >
+            <Plus className="h-3.5 w-3.5 mr-1" /> Enregistrer
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Liste */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">
+              Historique ({reclamations.length})
+            </CardTitle>
+            {ouvertes > 0 && (
+              <Badge variant="destructive" className="text-xs">
+                {ouvertes} ouverte{ouvertes > 1 ? 's' : ''}
+              </Badge>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <p className="text-sm text-gray-400">Chargement…</p>
+          ) : reclamations.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-4">Aucune réclamation enregistrée.</p>
+          ) : (
+            <div className="divide-y">
+              {reclamations.map((r) => (
+                <div key={r.id} className="py-3 flex gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs font-medium text-gray-500">
+                        {new Date(r.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                      </span>
+                      <span className={cn(
+                        'text-xs font-semibold px-2 py-0.5 rounded-full',
+                        r.statut === 'OUVERT' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'
+                      )}>
+                        {r.statut === 'OUVERT' ? 'Ouvert' : 'Résolu'}
+                      </span>
+                      {r.createdBy && (
+                        <span className="text-xs text-gray-400">
+                          par {r.createdBy.prenom} {r.createdBy.nom}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-800 whitespace-pre-wrap">{r.commentaire}</p>
+                  </div>
+                  <div className="flex flex-col gap-1 shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      title={r.statut === 'OUVERT' ? 'Marquer résolu' : 'Rouvrir'}
+                      onClick={() => toggleStatut.mutate(r)}
+                    >
+                      <CheckCheck className={cn('h-3.5 w-3.5', r.statut === 'RESOLU' ? 'text-green-500' : 'text-gray-400')} />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => { setEditing(r); setEditComment(r.commentaire); }}
+                    >
+                      <Pencil className="h-3.5 w-3.5 text-gray-400" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => setDeleteTarget(r)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Dialog édition */}
+      <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Modifier la réclamation</DialogTitle>
+          </DialogHeader>
+          <Textarea
+            className="min-h-[100px]"
+            value={editComment}
+            onChange={(e) => setEditComment(e.target.value)}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditing(null)}>Annuler</Button>
+            <Button onClick={() => editMutation.mutate()} disabled={!editComment.trim() || editMutation.isPending}>
+              Enregistrer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm suppression */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer la réclamation ?</AlertDialogTitle>
+            <AlertDialogDescription>Cette action est irréversible.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
             >
               Supprimer
             </AlertDialogAction>

@@ -104,6 +104,7 @@ import notificationsController from '../controllers/notifications.controller.js'
 import { settingsController } from '../controllers/settings.controller.js';
 import { zoningController } from '../controllers/zoning.controller.js';
 import { fieldInterventionController } from '../controllers/field-intervention.controller.js';
+import { reclamationController } from '../controllers/reclamation.controller.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -541,6 +542,12 @@ router.get('/field-reports/:id/download', authMiddleware, fieldInterventionContr
 router.get('/sites/:siteId/documents', authMiddleware, fieldInterventionController.listSiteDocuments);
 router.post('/sites/:siteId/documents', authMiddleware, canDo('manageInterventions'), fieldInterventionController.createSiteDocument);
 router.delete('/site-documents/:id', authMiddleware, canDo('manageInterventions'), fieldInterventionController.deleteSiteDocument);
+
+// Réclamations
+router.get('/sites/:siteId/reclamations', authMiddleware, reclamationController.list);
+router.post('/sites/:siteId/reclamations', authMiddleware, reclamationController.create);
+router.patch('/reclamations/:id', authMiddleware, reclamationController.update);
+router.delete('/reclamations/:id', authMiddleware, canDo('manageInterventions'), reclamationController.delete);
 
 // ============ NOTIFICATIONS ============
 router.get('/notifications', authMiddleware, notificationsController.list);

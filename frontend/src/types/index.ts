@@ -2267,6 +2267,20 @@ export interface SiteDocument {
   createdAt: string;
 }
 
+export type ReclamationStatut = 'OUVERT' | 'RESOLU';
+
+export interface Reclamation {
+  id: string;
+  siteId: string;
+  date: string;
+  commentaire: string;
+  statut: ReclamationStatut;
+  createdById: string;
+  createdBy?: { id: string; prenom: string; nom: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SiteAnalytics {
   totalInterventions: number;
   deviceStats: Record<string, { interventionCount: number; statusCodes: string[]; insectTotal: number }>;

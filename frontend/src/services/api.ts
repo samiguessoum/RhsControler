@@ -1665,6 +1665,25 @@ export const fieldInterventionsApi = {
   },
 };
 
+// ─── Réclamations ────────────────────────────────────────────────────────────
+export const reclamationsApi = {
+  list: async (siteId: string) => {
+    const { data } = await api.get(`/sites/${siteId}/reclamations`);
+    return data.reclamations;
+  },
+  create: async (siteId: string, payload: { commentaire: string; date?: string }) => {
+    const { data } = await api.post(`/sites/${siteId}/reclamations`, payload);
+    return data.reclamation;
+  },
+  update: async (id: string, payload: { commentaire?: string; statut?: string; date?: string }) => {
+    const { data } = await api.patch(`/reclamations/${id}`, payload);
+    return data.reclamation;
+  },
+  delete: async (id: string) => {
+    await api.delete(`/reclamations/${id}`);
+  },
+};
+
 // ─── Rapports terrain (Excel agrégé par site) ────────────────────────────────
 export const fieldReportsApi = {
   list: async (siteId: string) => {

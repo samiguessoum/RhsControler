@@ -47,8 +47,15 @@ export const fieldReportService = {
       orderBy: { dateIntervention: 'asc' },
     });
 
-    if (interventions.length === 0) {
-      throw new AppError(400, 'Aucune intervention terrain soumise sur cette période');
+    // Réclamations sur la période
+    const reclamations = await prisma.reclamation.findMany({
+      where: { siteId, date: { gte: dateFrom, lte: dateTo } },
+      include: { createdBy: { select: { prenom: true, nom: true } } },
+      orderBy: { date: 'asc' },
+    });
+
+    if (interventions.length === 0 && reclamations.length === 0) {
+      throw new AppError(400, 'Aucune donnée (interventions ou réclamations) sur cette période');
     }
 
     const controlStatuses = await prisma.controlStatus.findMany();
@@ -99,9 +106,14 @@ export const fieldReportService = {
       });
     }
     recap.addRow({});
+    recap.addRow({ date: '--- Informations ---' }).font = { bold: true };
     recap.addRow({ date: 'Site', type: site.nom });
     recap.addRow({ date: 'Client', type: site.client?.nomEntreprise || '' });
     recap.addRow({ date: 'Période', type: `${formatDate(dateFrom)} → ${formatDate(dateTo)}` });
+    recap.addRow({ date: 'Nb interventions', type: String(interventions.length) });
+    recap.addRow({ date: 'Nb réclamations', type: String(reclamations.length) });
+    const ouvertes = reclamations.filter((r) => r.statut === 'OUVERT').length;
+    if (ouvertes > 0) recap.addRow({ date: 'Réclamations ouvertes', type: String(ouvertes) }).font = { color: { argb: 'FFCC0000' } };
 
     // ── Feuille Contrôles (tableau croisé : dispositif × date → état) ──
     const controls = workbook.addWorksheet('Contrôles');
@@ -157,6 +169,72 @@ export const fieldReportService = {
       }
     }
     autosizeColumns(insects);
+
+    // ── Feuille Réclamations ──────────────────────────────────────
+    const recSheet = workbook.addWorksheet('Réclamations');
+    recSheet.columns = [
+      { header: 'Date', key: 'date', width: 14 },
+      { header: 'Statut', key: 'statut', width: 12 },
+      { header: 'Commentaire', key: 'commentaire', width: 60 },
+      { header: 'Créé par', key: 'createdBy', width: 22 },
+    ];
+    recSheet.getRow(1).font = { bold: true };
+    recSheet.getRow(1).fill = HEADER_FILL;
+    if (reclamations.length === 0) {
+      recSheet.addRow({ date: '', statut: '', commentaire: 'Aucune réclamation sur cette période', createdBy: '' });
+    } else {
+      for (const r of reclamations) {
+        recSheet.addRow({
+          date: formatDate(r.date),
+          statut: r.statut === 'RESOLU' ? 'Résolu' : 'Ouvert',
+          commentaire: r.commentaire,
+          createdBy: `${r.createdBy.prenom} ${r.createdBy.nom}`,
+        });
+      }
+    }
+    autosizeColumns(recSheet);
+
+    // ── Feuille Activité employés ─────────────────────────────────
+    const empSheet = workbook.addWorksheet('Activité employés');
+    empSheet.columns = [
+      { header: 'Employé', key: 'employe', width: 24 },
+      { header: 'Date', key: 'date', width: 14 },
+      { header: 'Type', key: 'type', width: 14 },
+      { header: 'Statut', key: 'statut', width: 14 },
+      { header: 'Nb dispositifs contrôlés', key: 'nbControls', width: 26 },
+    ];
+    empSheet.getRow(1).font = { bold: true };
+    empSheet.getRow(1).fill = HEADER_FILL;
+
+    // Comptage par employé × passage
+    type EmpLine = { employe: string; date: string; type: string; statut: string; nbControls: number };
+    const empLines: EmpLine[] = [];
+    const empTotals = new Map<string, number>();
+    for (const fi of interventions) {
+      const applicateurs = fi.applicateurs.map((a) => `${a.employe.prenom} ${a.employe.nom}`);
+      for (const empName of applicateurs) {
+        empLines.push({
+          employe: empName,
+          date: formatDate(fi.dateIntervention),
+          type: fi.type,
+          statut: fi.statut,
+          nbControls: fi.controls.length,
+        });
+        empTotals.set(empName, (empTotals.get(empName) ?? 0) + fi.controls.length);
+      }
+    }
+    empLines.sort((a, b) => a.employe.localeCompare(b.employe) || a.date.localeCompare(b.date));
+    for (const line of empLines) empSheet.addRow(line);
+
+    // Sous-totaux par employé
+    if (empTotals.size > 0) {
+      empSheet.addRow({});
+      empSheet.addRow({ employe: 'TOTAL PAR EMPLOYÉ', date: '', type: '', statut: '', nbControls: 0 }).font = { bold: true };
+      for (const [emp, total] of [...empTotals.entries()].sort()) {
+        empSheet.addRow({ employe: emp, date: '', type: '', statut: 'Total passages : ' + [...empLines].filter((l) => l.employe === emp).length, nbControls: total });
+      }
+    }
+    autosizeColumns(empSheet);
 
     const uploadDir = path.join(process.cwd(), 'uploads', 'field-reports', siteId);
     fs.mkdirSync(uploadDir, { recursive: true });
