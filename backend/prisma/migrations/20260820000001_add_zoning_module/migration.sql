@@ -302,4 +302,4 @@ INSERT INTO "ControlStatus" ("id", "code", "label", "description", "color", "ord
   (gen_random_uuid(), 'CAS',  'Cassé',                       'Dispositif cassé',             '#ef4444', 4),
   (gen_random_uuid(), 'RT',   'Remplacé',                    'Dispositif remplacé',          '#a855f7', 5),
   (gen_random_uuid(), 'INAC', 'Inactif',                     'Dispositif désactivé',         '#64748b', 6),
-  (gen_random_uuid(), 'SOU',  'Souillé',                     'Dispositif souillé',           '#78350f', 7);
+  (gen_random_uuid(), 'SOU',  'Souris',                      'Présence de souris détectée',  '#d97706', 7);
