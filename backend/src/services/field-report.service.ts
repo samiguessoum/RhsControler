@@ -5,11 +5,35 @@ import { prisma } from '../config/database.js';
 import { AppError } from '../lib/errors.js';
 import { formatDateFr as formatDate } from '../utils/date.utils.js';
 
-const HEADER_FILL: ExcelJS.FillPattern = {
-  type: 'pattern',
-  pattern: 'solid',
-  fgColor: { argb: 'FFE2E8F0' },
+// ── Styles ────────────────────────────────────────────────────────────────────
+const HEADER_FILL: ExcelJS.FillPattern = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
+const TITLE_FILL: ExcelJS.FillPattern  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3864' } };
+const TOTAL_FILL: ExcelJS.FillPattern  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDAE3F3' } };
+const BORDER_THIN: Partial<ExcelJS.Border> = { style: 'thin', color: { argb: 'FFB8CCE4' } };
+const ALL_BORDERS = { top: BORDER_THIN, left: BORDER_THIN, bottom: BORDER_THIN, right: BORDER_THIN };
+
+const ESPECES = ['Mouches', 'Moustiques', 'Abeilles', 'Papillon', 'Autres'] as const;
+
+// Device type → label court pour la colonne "Type"
+const TYPE_LABEL: Record<string, string> = {
+  BAIT_STATION:         'Boite',
+  MECHANICAL_TRAP:      'Piège',
+  GLUE_TRAP:            'Colle',
+  FLYING_INSECT_KILLER: 'FK',
 };
+
+function styleHeader(row: ExcelJS.Row, dark = false) {
+  row.font = { bold: true, color: { argb: dark ? 'FFFFFFFF' : 'FF1F3864' } };
+  row.fill = dark ? TITLE_FILL : HEADER_FILL;
+  row.alignment = { vertical: 'middle', horizontal: 'center' };
+  row.eachCell((c) => { c.border = ALL_BORDERS; });
+}
+
+function styleTotal(row: ExcelJS.Row) {
+  row.font = { bold: true };
+  row.fill = TOTAL_FILL;
+  row.eachCell((c) => { c.border = ALL_BORDERS; });
+}
 
 function autosizeColumns(sheet: ExcelJS.Worksheet, minWidth = 10) {
   sheet.columns.forEach((col) => {
@@ -18,15 +42,35 @@ function autosizeColumns(sheet: ExcelJS.Worksheet, minWidth = 10) {
       const len = String(cell.value ?? '').length;
       if (len > max) max = len;
     });
-    col.width = Math.min(max + 2, 40);
+    col.width = Math.min(max + 2, 45);
   });
 }
 
+// Pivot : zone → { état/espèce → count }
+function buildPivot(rows: { zone: string; key: string }[]): Map<string, Map<string, number>> {
+  const pivot = new Map<string, Map<string, number>>();
+  for (const { zone, key } of rows) {
+    if (!pivot.has(zone)) pivot.set(zone, new Map());
+    pivot.get(zone)!.set(key, (pivot.get(zone)!.get(key) ?? 0) + 1);
+  }
+  return pivot;
+}
+
+function buildPivotSum(rows: { zone: string; key: string; value: number }[]): Map<string, Map<string, number>> {
+  const pivot = new Map<string, Map<string, number>>();
+  for (const { zone, key, value } of rows) {
+    if (!pivot.has(zone)) pivot.set(zone, new Map());
+    pivot.get(zone)!.set(key, (pivot.get(zone)!.get(key) ?? 0) + value);
+  }
+  return pivot;
+}
+
 export const fieldReportService = {
-  // Génère un classeur Excel agrégeant l'historique des contrôles/comptages d'un site sur une période,
-  // l'enregistre sur disque et crée l'entrée FieldReport correspondante.
   async generateSiteHistoryReport(siteId: string, dateFrom: Date, dateTo: Date, generatedById: string) {
-    const site = await prisma.site.findUnique({ where: { id: siteId }, include: { client: { select: { nomEntreprise: true } } } });
+    const site = await prisma.site.findUnique({
+      where: { id: siteId },
+      include: { client: { select: { nomEntreprise: true } } },
+    });
     if (!site) throw new AppError(404, 'Site introuvable');
 
     const interventions = await prisma.fieldIntervention.findMany({
@@ -36,10 +80,14 @@ export const fieldReportService = {
         dateIntervention: { gte: dateFrom, lte: dateTo },
       },
       include: {
-        applicateurs: { include: { employe: { select: { nom: true, prenom: true } } } },
         controls: {
           include: {
-            device: { select: { id: true, type: true, displayNumber: true, nom: true, zoneId: true, zone: { select: { nom: true, ordre: true } } } },
+            device: {
+              select: {
+                id: true, type: true, displayNumber: true, nom: true,
+                zone: { select: { nom: true, ordre: true } },
+              },
+            },
             insectCounts: true,
           },
         },
@@ -47,7 +95,6 @@ export const fieldReportService = {
       orderBy: { dateIntervention: 'asc' },
     });
 
-    // Réclamations sur la période
     const reclamations = await prisma.reclamation.findMany({
       where: { siteId, date: { gte: dateFrom, lte: dateTo } },
       include: { createdBy: { select: { prenom: true, nom: true } } },
@@ -55,187 +102,202 @@ export const fieldReportService = {
     });
 
     if (interventions.length === 0 && reclamations.length === 0) {
-      throw new AppError(400, 'Aucune donnée (interventions ou réclamations) sur cette période');
+      throw new AppError(400, 'Aucune donnée sur cette période');
     }
-
-    const controlStatuses = await prisma.controlStatus.findMany();
-    const statusLabel = new Map(controlStatuses.map((s) => [s.code, s.label]));
-
-    const dates = interventions.map((fi) => fi.dateIntervention);
-
-    // ── Collecte des dispositifs vus sur la période (groupés par zone) ──
-    type DeviceRow = { id: string; label: string; zoneNom: string; zoneOrdre: number; type: string };
-    const devicesById = new Map<string, DeviceRow>();
-    for (const fi of interventions) {
-      for (const ctrl of fi.controls) {
-        if (!devicesById.has(ctrl.device.id)) {
-          devicesById.set(ctrl.device.id, {
-            id: ctrl.device.id,
-            label: `${ctrl.device.type} ${ctrl.device.displayNumber}${ctrl.device.nom ? ' — ' + ctrl.device.nom : ''}`,
-            zoneNom: ctrl.device.zone?.nom || '—',
-            zoneOrdre: ctrl.device.zone?.ordre ?? 0,
-            type: ctrl.device.type,
-          });
-        }
-      }
-    }
-    const deviceRows = [...devicesById.values()].sort((a, b) => a.zoneOrdre - b.zoneOrdre || a.label.localeCompare(b.label));
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'RhsControler';
     workbook.created = new Date();
 
-    // ── Feuille Récapitulatif ──
-    const recap = workbook.addWorksheet('Récapitulatif');
-    recap.columns = [
-      { header: 'Date', key: 'date', width: 14 },
-      { header: 'Type', key: 'type', width: 14 },
-      { header: 'Statut', key: 'statut', width: 14 },
-      { header: 'Applicateurs', key: 'applicateurs', width: 30 },
-      { header: 'Commentaire', key: 'commentaire', width: 40 },
-    ];
-    recap.getRow(1).font = { bold: true };
-    recap.getRow(1).fill = HEADER_FILL;
+    // ─────────────────────────────────────────────────────────────────────────
+    // Collecte des lignes brutes par catégorie de dispositif
+    // ─────────────────────────────────────────────────────────────────────────
+    type RawFK    = { visite: string; date: string; zone: string; num: string; counts: Record<string, number>; obs: string };
+    type RawCtrl  = { visite: string; date: string; zone: string; typeLabel: string; num: string; etat: string; obs: string };
+
+    const fkRows:    RawFK[]   = [];
+    const boiteRows: RawCtrl[] = [];
+    const piegeRows: RawCtrl[] = [];
+
     for (const fi of interventions) {
-      recap.addRow({
-        date: formatDate(fi.dateIntervention),
-        type: fi.type,
-        statut: fi.statut,
-        applicateurs: fi.applicateurs.map((a) => `${a.employe.prenom} ${a.employe.nom}`).join(', '),
-        commentaire: fi.commentaire || '',
-      });
-    }
-    recap.addRow({});
-    recap.addRow({ date: '--- Informations ---' }).font = { bold: true };
-    recap.addRow({ date: 'Site', type: site.nom });
-    recap.addRow({ date: 'Client', type: site.client?.nomEntreprise || '' });
-    recap.addRow({ date: 'Période', type: `${formatDate(dateFrom)} → ${formatDate(dateTo)}` });
-    recap.addRow({ date: 'Nb interventions', type: String(interventions.length) });
-    recap.addRow({ date: 'Nb réclamations', type: String(reclamations.length) });
-    const ouvertes = reclamations.filter((r) => r.statut === 'OUVERT').length;
-    if (ouvertes > 0) recap.addRow({ date: 'Réclamations ouvertes', type: String(ouvertes) }).font = { color: { argb: 'FFCC0000' } };
+      const dateStr  = formatDate(fi.dateIntervention);
+      const visite   = 'Visite de contrôle';
 
-    // ── Feuille Contrôles (tableau croisé : dispositif × date → état) ──
-    const controls = workbook.addWorksheet('Contrôles');
-    controls.columns = [
-      { header: 'Zone', key: 'zone', width: 20 },
-      { header: 'Dispositif', key: 'device', width: 30 },
-      ...dates.map((d, i) => ({ header: formatDate(d), key: `d${i}`, width: 14 })),
-    ];
-    controls.getRow(1).font = { bold: true };
-    controls.getRow(1).fill = HEADER_FILL;
-    for (const dev of deviceRows) {
-      const row: Record<string, string> = { zone: dev.zoneNom, device: dev.label };
-      interventions.forEach((fi, i) => {
-        const ctrl = fi.controls.find((c) => c.device.id === dev.id);
-        if (ctrl?.statusCode) {
-          row[`d${i}`] = statusLabel.get(ctrl.statusCode) || ctrl.statusCode;
-        }
-      });
-      controls.addRow(row);
-    }
-    autosizeColumns(controls);
-
-    // ── Feuille Insectes (tableau croisé : dispositif FK × espèce × date → comptage) ──
-    const insects = workbook.addWorksheet('Insectes');
-    insects.columns = [
-      { header: 'Zone', key: 'zone', width: 20 },
-      { header: 'Dispositif', key: 'device', width: 30 },
-      { header: 'Espèce', key: 'espece', width: 18 },
-      ...dates.map((d, i) => ({ header: formatDate(d), key: `d${i}`, width: 14 })),
-    ];
-    insects.getRow(1).font = { bold: true };
-    insects.getRow(1).fill = HEADER_FILL;
-
-    const fkDevices = deviceRows.filter((d) => d.type === 'FLYING_INSECT_KILLER');
-    const especesByDevice = new Map<string, Set<string>>();
-    for (const fi of interventions) {
       for (const ctrl of fi.controls) {
-        if (ctrl.device.type !== 'FLYING_INSECT_KILLER') continue;
-        if (!especesByDevice.has(ctrl.device.id)) especesByDevice.set(ctrl.device.id, new Set());
-        for (const ic of ctrl.insectCounts) especesByDevice.get(ctrl.device.id)!.add(ic.espece);
+        const zone = ctrl.device.zone?.nom ?? '—';
+        const num  = String(ctrl.device.displayNumber ?? '');
+        const obs  = ctrl.observation ?? '';
+        const type = ctrl.device.type;
+        const typeLabel = TYPE_LABEL[type] ?? type;
+
+        if (type === 'FLYING_INSECT_KILLER') {
+          const counts: Record<string, number> = {};
+          for (const espece of ESPECES) counts[espece] = 0;
+          for (const ic of ctrl.insectCounts) {
+            if (counts[ic.espece] !== undefined) counts[ic.espece] = ic.count;
+            else counts['Autres'] = (counts['Autres'] ?? 0) + ic.count;
+          }
+          fkRows.push({ visite, date: dateStr, zone, num, counts, obs });
+        } else if (type === 'BAIT_STATION') {
+          boiteRows.push({ visite, date: dateStr, zone, typeLabel, num, etat: ctrl.statusCode ?? '', obs });
+        } else {
+          // MECHANICAL_TRAP, GLUE_TRAP → Pièges
+          piegeRows.push({ visite, date: dateStr, zone, typeLabel, num, etat: ctrl.statusCode ?? '', obs });
+        }
       }
     }
-    for (const dev of fkDevices) {
-      const especes = [...(especesByDevice.get(dev.id) || [])].sort();
-      for (const espece of especes) {
-        const row: Record<string, string | number> = { zone: dev.zoneNom, device: dev.label, espece };
-        interventions.forEach((fi, i) => {
-          const ctrl = fi.controls.find((c) => c.device.id === dev.id);
-          const ic = ctrl?.insectCounts.find((x) => x.espece === espece);
-          if (ic) row[`d${i}`] = ic.count;
-        });
-        insects.addRow(row);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Helpers pour créer une feuille titre + données brutes
+    // ─────────────────────────────────────────────────────────────────────────
+    const addTitleRow = (sheet: ExcelJS.Worksheet, title: string, nbCols: number) => {
+      const row = sheet.addRow([title]);
+      row.font = { bold: true, size: 13, color: { argb: 'FF1F3864' } };
+      sheet.mergeCells(row.number, 1, row.number, nbCols);
+      sheet.addRow([]); // ligne vide
+    };
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 1. Feuille "Graph dynamique FK"
+    // ─────────────────────────────────────────────────────────────────────────
+    const graphFK = workbook.addWorksheet('Graph dynamique FK');
+    addTitleRow(graphFK, 'Graph dynamique destructeurs d\'insectes :', ESPECES.length + 2);
+
+    // Pivot : zone → somme par espèce
+    const fkPivotRows: { zone: string; key: string; value: number }[] = [];
+    for (const r of fkRows) {
+      for (const espece of ESPECES) {
+        fkPivotRows.push({ zone: r.zone, key: espece, value: r.counts[espece] ?? 0 });
       }
     }
-    autosizeColumns(insects);
+    const fkPivot = buildPivotSum(fkPivotRows);
+    const allFkZones = [...fkPivot.keys()].sort();
 
-    // ── Feuille Réclamations ──────────────────────────────────────
-    const recSheet = workbook.addWorksheet('Réclamations');
-    recSheet.columns = [
-      { header: 'Date', key: 'date', width: 14 },
-      { header: 'Statut', key: 'statut', width: 12 },
-      { header: 'Commentaire', key: 'commentaire', width: 60 },
-      { header: 'Créé par', key: 'createdBy', width: 22 },
-    ];
-    recSheet.getRow(1).font = { bold: true };
-    recSheet.getRow(1).fill = HEADER_FILL;
-    if (reclamations.length === 0) {
-      recSheet.addRow({ date: '', statut: '', commentaire: 'Aucune réclamation sur cette période', createdBy: '' });
-    } else {
-      for (const r of reclamations) {
-        recSheet.addRow({
-          date: formatDate(r.date),
-          statut: r.statut === 'RESOLU' ? 'Résolu' : 'Ouvert',
-          commentaire: r.commentaire,
-          createdBy: `${r.createdBy.prenom} ${r.createdBy.nom}`,
-        });
-      }
+    const fkHeaderRow = graphFK.addRow(['Étiquettes de lignes', ...ESPECES.map((e) => `Somme de ${e}`), 'Total général']);
+    styleHeader(fkHeaderRow, true);
+
+    const fkTotals: Record<string, number> = {};
+    for (const espece of ESPECES) fkTotals[espece] = 0;
+    let fkGrandTotal = 0;
+
+    for (const zone of allFkZones) {
+      const zMap = fkPivot.get(zone)!;
+      const vals = ESPECES.map((e) => zMap.get(e) ?? 0);
+      const total = vals.reduce((a, b) => a + b, 0);
+      const row = graphFK.addRow([zone, ...vals, total]);
+      row.eachCell((c) => { c.border = ALL_BORDERS; });
+      ESPECES.forEach((e, i) => { fkTotals[e] = (fkTotals[e] ?? 0) + vals[i]; });
+      fkGrandTotal += total;
     }
-    autosizeColumns(recSheet);
 
-    // ── Feuille Activité employés ─────────────────────────────────
-    const empSheet = workbook.addWorksheet('Activité employés');
-    empSheet.columns = [
-      { header: 'Employé', key: 'employe', width: 24 },
-      { header: 'Date', key: 'date', width: 14 },
-      { header: 'Type', key: 'type', width: 14 },
-      { header: 'Statut', key: 'statut', width: 14 },
-      { header: 'Nb dispositifs contrôlés', key: 'nbControls', width: 26 },
-    ];
-    empSheet.getRow(1).font = { bold: true };
-    empSheet.getRow(1).fill = HEADER_FILL;
+    const fkTotalRow = graphFK.addRow(['Total général', ...ESPECES.map((e) => fkTotals[e] ?? 0), fkGrandTotal]);
+    styleTotal(fkTotalRow);
+    autosizeColumns(graphFK);
 
-    // Comptage par employé × passage
-    type EmpLine = { employe: string; date: string; type: string; statut: string; nbControls: number };
-    const empLines: EmpLine[] = [];
-    const empTotals = new Map<string, number>();
-    for (const fi of interventions) {
-      const applicateurs = fi.applicateurs.map((a) => `${a.employe.prenom} ${a.employe.nom}`);
-      for (const empName of applicateurs) {
-        empLines.push({
-          employe: empName,
-          date: formatDate(fi.dateIntervention),
-          type: fi.type,
-          statut: fi.statut,
-          nbControls: fi.controls.length,
-        });
-        empTotals.set(empName, (empTotals.get(empName) ?? 0) + fi.controls.length);
-      }
+    // ─────────────────────────────────────────────────────────────────────────
+    // 2. Feuille "FK" (données brutes)
+    // ─────────────────────────────────────────────────────────────────────────
+    const sheetFK = workbook.addWorksheet('FK');
+    addTitleRow(sheetFK, 'Contrôle destructeurs :', ESPECES.length + 6);
+
+    const fkDataHeader = sheetFK.addRow(['Opération/visite', 'Date', 'ZONE', 'Type', 'N°', ...ESPECES, 'Observation']);
+    styleHeader(fkDataHeader, true);
+
+    for (const r of fkRows) {
+      const row = sheetFK.addRow([r.visite, r.date, r.zone, 'FK', r.num, ...ESPECES.map((e) => r.counts[e] || ''), r.obs]);
+      row.eachCell((c) => { c.border = ALL_BORDERS; });
     }
-    empLines.sort((a, b) => a.employe.localeCompare(b.employe) || a.date.localeCompare(b.date));
-    for (const line of empLines) empSheet.addRow(line);
+    autosizeColumns(sheetFK);
 
-    // Sous-totaux par employé
-    if (empTotals.size > 0) {
-      empSheet.addRow({});
-      empSheet.addRow({ employe: 'TOTAL PAR EMPLOYÉ', date: '', type: '', statut: '', nbControls: 0 }).font = { bold: true };
-      for (const [emp, total] of [...empTotals.entries()].sort()) {
-        empSheet.addRow({ employe: emp, date: '', type: '', statut: 'Total passages : ' + [...empLines].filter((l) => l.employe === emp).length, nbControls: total });
-      }
+    // ─────────────────────────────────────────────────────────────────────────
+    // 3. Feuille "Graph dynamique pièges"
+    // ─────────────────────────────────────────────────────────────────────────
+    const allPiegeEtats = [...new Set(piegeRows.map((r) => r.etat).filter(Boolean))].sort();
+    const graphPieges = workbook.addWorksheet('Graph dynamique pièges');
+    addTitleRow(graphPieges, 'Graph dynamique pièges :', allPiegeEtats.length + 3);
+
+    const piegePivot = buildPivot(piegeRows.filter((r) => r.etat).map((r) => ({ zone: r.zone, key: r.etat })));
+    const allPiegeZones = [...piegePivot.keys()].sort();
+
+    const piegeHeaderRow = graphPieges.addRow(['Étiquettes de lignes', ...allPiegeEtats, 'Total général']);
+    styleHeader(piegeHeaderRow, true);
+
+    const piegeTotals: Record<string, number> = {};
+    let piegeGrandTotal = 0;
+    for (const zone of allPiegeZones) {
+      const zMap = piegePivot.get(zone)!;
+      const vals = allPiegeEtats.map((e) => zMap.get(e) ?? 0);
+      const total = vals.reduce((a, b) => a + b, 0);
+      const row = graphPieges.addRow([zone, ...vals, total]);
+      row.eachCell((c) => { c.border = ALL_BORDERS; });
+      allPiegeEtats.forEach((e, i) => { piegeTotals[e] = (piegeTotals[e] ?? 0) + vals[i]; });
+      piegeGrandTotal += total;
     }
-    autosizeColumns(empSheet);
+    const piegeTotalRow = graphPieges.addRow(['Total général', ...allPiegeEtats.map((e) => piegeTotals[e] ?? 0), piegeGrandTotal]);
+    styleTotal(piegeTotalRow);
+    autosizeColumns(graphPieges);
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // 4. Feuille "Pièges" (données brutes)
+    // ─────────────────────────────────────────────────────────────────────────
+    const sheetPieges = workbook.addWorksheet('Pièges');
+    addTitleRow(sheetPieges, 'Contrôle pièges :', 7);
+
+    const piegesDataHeader = sheetPieges.addRow(['Opération/visite', 'Date', 'ZONE', 'Type', 'N°', 'Etat', 'Observation']);
+    styleHeader(piegesDataHeader, true);
+
+    for (const r of piegeRows) {
+      const row = sheetPieges.addRow([r.visite, r.date, r.zone, r.typeLabel, r.num, r.etat, r.obs]);
+      row.eachCell((c) => { c.border = ALL_BORDERS; });
+    }
+    autosizeColumns(sheetPieges);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 5. Feuille "Graph dynamique boite"
+    // ─────────────────────────────────────────────────────────────────────────
+    const allBoiteEtats = [...new Set(boiteRows.map((r) => r.etat).filter(Boolean))].sort();
+    const graphBoite = workbook.addWorksheet('Graph dynamique boite');
+    addTitleRow(graphBoite, 'Graph dynamique boites :', allBoiteEtats.length + 3);
+
+    const boitePivot = buildPivot(boiteRows.filter((r) => r.etat).map((r) => ({ zone: r.zone, key: r.etat })));
+    const allBoiteZones = [...boitePivot.keys()].sort();
+
+    const boiteHeaderRow = graphBoite.addRow(['Étiquettes de lignes', ...allBoiteEtats, 'Total général']);
+    styleHeader(boiteHeaderRow, true);
+
+    const boiteTotals: Record<string, number> = {};
+    let boiteGrandTotal = 0;
+    for (const zone of allBoiteZones) {
+      const zMap = boitePivot.get(zone)!;
+      const vals = allBoiteEtats.map((e) => zMap.get(e) ?? 0);
+      const total = vals.reduce((a, b) => a + b, 0);
+      const row = graphBoite.addRow([zone, ...vals, total]);
+      row.eachCell((c) => { c.border = ALL_BORDERS; });
+      allBoiteEtats.forEach((e, i) => { boiteTotals[e] = (boiteTotals[e] ?? 0) + vals[i]; });
+      boiteGrandTotal += total;
+    }
+    const boiteTotalRow = graphBoite.addRow(['Total général', ...allBoiteEtats.map((e) => boiteTotals[e] ?? 0), boiteGrandTotal]);
+    styleTotal(boiteTotalRow);
+    autosizeColumns(graphBoite);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 6. Feuille "Boites" (données brutes)
+    // ─────────────────────────────────────────────────────────────────────────
+    const sheetBoites = workbook.addWorksheet('Boites');
+    addTitleRow(sheetBoites, 'Contrôle des boites :', 7);
+
+    const boitesDataHeader = sheetBoites.addRow(['Opération/visite', 'Date', 'ZONE', 'Type', 'N°', 'Etat', 'Observation']);
+    styleHeader(boitesDataHeader, true);
+
+    for (const r of boiteRows) {
+      const row = sheetBoites.addRow([r.visite, r.date, r.zone, r.typeLabel, r.num, r.etat, r.obs]);
+      row.eachCell((c) => { c.border = ALL_BORDERS; });
+    }
+    autosizeColumns(sheetBoites);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Sauvegarde
+    // ─────────────────────────────────────────────────────────────────────────
     const uploadDir = path.join(process.cwd(), 'uploads', 'field-reports', siteId);
     fs.mkdirSync(uploadDir, { recursive: true });
     const filename = `rapport-${dateFrom.toISOString().slice(0, 10)}_${dateTo.toISOString().slice(0, 10)}-${Date.now()}.xlsx`;
@@ -243,10 +305,9 @@ export const fieldReportService = {
     await workbook.xlsx.writeFile(filePath);
 
     const existingCount = await prisma.fieldReport.count({ where: { siteId } });
-
     const dateFromFr = formatDate(dateFrom);
-    const dateToFr = formatDate(dateTo);
-    const titre = `Rapport terrain — ${site.nom} — ${dateFromFr} au ${dateToFr}`;
+    const dateToFr   = formatDate(dateTo);
+    const titre = `Rapport tendance — ${site.nom} — ${dateFromFr} au ${dateToFr}`;
     const relativePath = `uploads/field-reports/${siteId}/${filename}`;
 
     const report = await prisma.fieldReport.create({
@@ -262,7 +323,6 @@ export const fieldReportService = {
       },
     });
 
-    // Auto-archivage dans les documents du site
     await prisma.siteDocument.create({
       data: {
         siteId,
