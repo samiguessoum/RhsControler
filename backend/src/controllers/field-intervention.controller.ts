@@ -630,16 +630,60 @@ export const fieldInterventionController = {
     }
   },
 
-  // GET /api/field-reports/:id/download
+  // GET /api/field-reports/:id/download — télécharge Excel ou PDF
   async downloadFieldReport(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const report = await prisma.fieldReport.findUnique({ where: { id } });
-      if (!report?.xlsxPath) throw new AppError(404, 'Rapport introuvable');
+      const filePath = report?.xlsxPath ?? report?.pdfPath;
+      if (!filePath) throw new AppError(404, 'Rapport introuvable');
 
-      const path = await import('path');
-      const absolutePath = path.join(process.cwd(), report.xlsxPath);
-      res.download(absolutePath, path.basename(report.xlsxPath));
+      const pathMod = await import('path');
+      const absolutePath = pathMod.join(process.cwd(), filePath);
+      res.download(absolutePath, pathMod.basename(filePath));
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // GET /api/sites/:siteId/rapport-context — données pour pré-remplir l'éditeur
+  async getWrittenReportContext(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { siteId } = req.params;
+      const { writtenReportService } = await import('../services/written-report.service.js');
+      const context = await writtenReportService.getReportContext(siteId);
+      res.json(context);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // POST /api/sites/:siteId/written-reports — génère le PDF rapport écrit
+  async generateWrittenReport(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { siteId } = req.params;
+      const { titre, contenu } = req.body;
+      if (!titre?.trim()) throw new AppError(400, 'Le titre est requis');
+      if (!contenu?.trim()) throw new AppError(400, 'Le contenu est requis');
+
+      const { writtenReportService } = await import('../services/written-report.service.js');
+      const report = await writtenReportService.generateWrittenReport(siteId, titre.trim(), contenu.trim(), req.user!.id);
+      res.status(201).json(report);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // GET /api/sites/:siteId/written-reports — liste des rapports écrits PDF
+  async listWrittenReports(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { siteId } = req.params;
+      const reports = await prisma.fieldReport.findMany({
+        where: { siteId, pdfPath: { not: null } },
+        include: { generatedBy: { select: { id: true, prenom: true, nom: true } } },
+        orderBy: { generatedAt: 'desc' },
+      });
+      res.json(reports);
     } catch (err) {
       next(err);
     }

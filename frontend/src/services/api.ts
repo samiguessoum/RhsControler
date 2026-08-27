@@ -1684,7 +1684,7 @@ export const reclamationsApi = {
   },
 };
 
-// ─── Rapports terrain (Excel agrégé par site) ────────────────────────────────
+// ─── Rapports terrain (Excel + PDF écrits) ───────────────────────────────────
 export const fieldReportsApi = {
   list: async (siteId: string) => {
     const { data } = await api.get(`/sites/${siteId}/field-reports`);
@@ -1696,6 +1696,19 @@ export const fieldReportsApi = {
   },
   download: async (id: string): Promise<Blob> => {
     const { data } = await api.get(`/field-reports/${id}/download`, { responseType: 'blob' });
+    return data;
+  },
+  // Rapports écrits PDF
+  listWritten: async (siteId: string) => {
+    const { data } = await api.get(`/sites/${siteId}/written-reports`);
+    return data as any[];
+  },
+  getContext: async (siteId: string) => {
+    const { data } = await api.get(`/sites/${siteId}/rapport-context`);
+    return data;
+  },
+  generateWritten: async (siteId: string, payload: { titre: string; contenu: string }) => {
+    const { data } = await api.post(`/sites/${siteId}/written-reports`, payload);
     return data;
   },
 };

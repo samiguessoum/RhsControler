@@ -1272,19 +1272,30 @@ function TendancesTab({ analytics }: { analytics?: SiteAnalytics }) {
 function RapportsTab({ siteId }: { siteId: string }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const [showDialog, setShowDialog] = useState(false);
+  const [showExcelDialog, setShowExcelDialog] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [showWrittenEditor, setShowWrittenEditor] = useState(false);
+  const [writtenTitre, setWrittenTitre] = useState('');
+  const [writtenContenu, setWrittenContenu] = useState('');
 
-  // Opérations réalisées pour ce site sans rapport généré
+  const currentYear = new Date().getFullYear();
+  const yearStart = `${currentYear}-01-01`;
+  const yearEnd = `${currentYear}-12-31`;
+
   const { data, isLoading } = useQuery({
     queryKey: ['site-operations-realisees', siteId],
     queryFn: () => interventionsApi.list({ siteId, type: 'OPERATION', statut: 'REALISEE', limit: 100, sort: 'desc' }),
   });
   const operations: Intervention[] = data?.interventions ?? [];
-
   const pendingOps = operations.filter((op) => !op.fieldIntervention || op.fieldIntervention.statut !== 'VALIDATED');
   const readyOps = operations.filter((op) => op.fieldIntervention?.statut === 'VALIDATED');
+
+  const { data: writtenReports = [] } = useQuery<any[]>({
+    queryKey: ['written-reports', siteId],
+    queryFn: () => fieldReportsApi.listWritten(siteId),
+    enabled: !!siteId,
+  });
 
   const startMut = useMutation({
     mutationFn: (interventionId: string) => interventionsApi.startFieldReport(interventionId),
@@ -1295,42 +1306,86 @@ function RapportsTab({ siteId }: { siteId: string }) {
     onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur'),
   });
 
-  const generateMut = useMutation({
-    mutationFn: () => fieldReportsApi.generate(siteId, { dateFrom, dateTo }),
+  const generateExcelMut = useMutation({
+    mutationFn: (range: { dateFrom: string; dateTo: string }) => fieldReportsApi.generate(siteId, range),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['site-documents', siteId] });
-      setShowDialog(false);
-      setDateFrom('');
-      setDateTo('');
-      toast.success('Rapport généré et archivé dans Documents');
+      setShowExcelDialog(false);
+      toast.success('Rapport Excel généré et archivé dans Documents');
     },
     onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la génération'),
   });
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
-      </div>
-    );
-  }
+  const openWrittenEditor = async () => {
+    try {
+      const ctx = await fieldReportsApi.getContext(siteId);
+      const today = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
+      setWrittenTitre(`Rapport — ${today}`);
+
+      // Pré-remplissage : dernier rapport + données auto
+      let prefill = '';
+      if (ctx.lastWrittenReport?.contenu) {
+        prefill = ctx.lastWrittenReport.contenu;
+      } else {
+        // Template initial si aucun rapport précédent
+        const lines: string[] = [];
+        if (ctx.lastIntervention) {
+          const fi = ctx.lastIntervention;
+          lines.push(`Intervention du ${fi.date}`);
+          if (fi.techniciens) lines.push(`Techniciens : ${fi.techniciens}`);
+          if (fi.produits?.length) lines.push(`Produits utilisés :\n${fi.produits.map((p: string) => `  - ${p}`).join('\n')}`);
+          lines.push(`Contrôles : ${fi.controles.nbOK}/${fi.controles.nbTotal} dispositifs OK`);
+          if (fi.controles.nbProblemes > 0) lines.push(`Dispositifs à problème : ${fi.controles.nbProblemes}`);
+        }
+        if (ctx.reclamationsOuvertes > 0) lines.push(`\nRéclamations ouvertes : ${ctx.reclamationsOuvertes}`);
+        lines.push('\nObservations :\n');
+        lines.push('Recommandations :\n');
+        prefill = lines.join('\n');
+      }
+      setWrittenContenu(prefill);
+      setShowWrittenEditor(true);
+    } catch {
+      toast.error('Erreur lors du chargement du contexte');
+    }
+  };
+
+  const generateWrittenMut = useMutation({
+    mutationFn: () => fieldReportsApi.generateWritten(siteId, { titre: writtenTitre, contenu: writtenContenu }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['written-reports', siteId] });
+      qc.invalidateQueries({ queryKey: ['site-documents', siteId] });
+      setShowWrittenEditor(false);
+      toast.success('Rapport PDF généré et archivé dans Documents');
+    },
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la génération'),
+  });
+
+  const downloadReport = async (report: any) => {
+    try {
+      const blob = await fieldReportsApi.download(report.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${report.titre ?? 'rapport'}.${report.xlsxPath ? 'xlsx' : 'pdf'}`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Erreur lors du téléchargement');
+    }
+  };
+
+  if (isLoading) return (
+    <div className="flex items-center justify-center py-12">
+      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+    </div>
+  );
 
   return (
     <div className="space-y-6">
 
-      {/* Actions */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Rapports du site</h2>
-        <Button size="sm" onClick={() => setShowDialog(true)}>
-          <Plus className="h-4 w-4 mr-1" /> Générer un rapport
-        </Button>
-      </div>
-
-      {/* Opérations sans fiche / fiche non validée */}
+      {/* ── Fiches terrain à traiter ─────────────────────────── */}
       <div className="space-y-2">
-        <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-          À traiter ({pendingOps.length})
-        </p>
+        <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Fiches terrain à traiter ({pendingOps.length})</p>
         {pendingOps.length === 0 ? (
           <Card>
             <CardContent className="flex items-center gap-3 py-4 text-green-600">
@@ -1344,38 +1399,16 @@ function RapportsTab({ siteId }: { siteId: string }) {
             return (
               <Card key={op.id} className={cn(!fi ? 'border-orange-200 bg-orange-50/30' : 'border-amber-200 bg-amber-50/30')}>
                 <CardContent className="flex items-center gap-3 py-3 px-4">
-                  {!fi ? (
-                    <AlertCircle className="h-4 w-4 text-orange-500 shrink-0" />
-                  ) : (
-                    <Clock className="h-4 w-4 text-amber-500 shrink-0" />
-                  )}
+                  {!fi ? <AlertCircle className="h-4 w-4 text-orange-500 shrink-0" /> : <Clock className="h-4 w-4 text-amber-500 shrink-0" />}
                   <div className="flex-1 min-w-0">
                     <span className="text-sm font-medium">{formatDate(op.dateRealisee || op.datePrevue)}</span>
-                    {!fi && (
-                      <Badge variant="outline" className="ml-2 text-xs text-orange-600 border-orange-300">Fiche manquante</Badge>
-                    )}
-                    {fi && (
-                      <Badge className={cn('ml-2 text-xs', FI_STATUT_CONFIG[fi.statut].color)}>
-                        Fiche {FI_STATUT_CONFIG[fi.statut].label.toLowerCase()}
-                      </Badge>
-                    )}
+                    {!fi && <Badge variant="outline" className="ml-2 text-xs text-orange-600 border-orange-300">Fiche manquante</Badge>}
+                    {fi && <Badge className={cn('ml-2 text-xs', FI_STATUT_CONFIG[fi.statut].color)}>Fiche {FI_STATUT_CONFIG[fi.statut].label.toLowerCase()}</Badge>}
                   </div>
                   {!fi ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 text-xs border-orange-300 text-orange-700 hover:bg-orange-50 shrink-0"
-                      disabled={startMut.isPending}
-                      onClick={() => startMut.mutate(op.id)}
-                    >
-                      Créer la fiche
-                    </Button>
+                    <Button variant="outline" size="sm" className="h-7 text-xs border-orange-300 text-orange-700 shrink-0" disabled={startMut.isPending} onClick={() => startMut.mutate(op.id)}>Créer la fiche</Button>
                   ) : (
-                    <Link to={`/field-interventions/${fi.id}`}>
-                      <Button variant="outline" size="sm" className="h-7 text-xs shrink-0">
-                        Voir <ChevronRight className="h-3 w-3 ml-0.5" />
-                      </Button>
-                    </Link>
+                    <Link to={`/field-interventions/${fi.id}`}><Button variant="outline" size="sm" className="h-7 text-xs shrink-0">Voir <ChevronRight className="h-3 w-3 ml-0.5" /></Button></Link>
                   )}
                 </CardContent>
               </Card>
@@ -1384,72 +1417,119 @@ function RapportsTab({ siteId }: { siteId: string }) {
         )}
       </div>
 
-      {/* Opérations prêtes à générer */}
       {readyOps.length > 0 && (
         <div className="space-y-2">
-          <p className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-            Fiches validées — prêtes pour rapport ({readyOps.length})
-          </p>
+          <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Fiches validées ({readyOps.length})</p>
           {readyOps.map((op) => (
             <Card key={op.id} className="border-green-200 bg-green-50/20">
               <CardContent className="flex items-center gap-3 py-3 px-4">
                 <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <span className="text-sm font-medium">{formatDate(op.dateRealisee || op.datePrevue)}</span>
-                  <Badge className="ml-2 text-xs bg-amber-100 text-amber-700">Rapport à générer</Badge>
-                </div>
-                <Link to={`/field-interventions/${op.fieldIntervention!.id}`}>
-                  <Button variant="ghost" size="sm" className="h-7 text-xs shrink-0">
-                    Voir <ChevronRight className="h-3 w-3 ml-0.5" />
-                  </Button>
-                </Link>
+                <span className="flex-1 text-sm font-medium">{formatDate(op.dateRealisee || op.datePrevue)}</span>
+                <Link to={`/field-interventions/${op.fieldIntervention!.id}`}><Button variant="ghost" size="sm" className="h-7 text-xs shrink-0">Voir <ChevronRight className="h-3 w-3 ml-0.5" /></Button></Link>
               </CardContent>
             </Card>
           ))}
-          <p className="text-xs text-muted-foreground pl-1">
-            Les rapports générés sont archivés automatiquement dans l'onglet Documents.
-          </p>
         </div>
       )}
 
       {operations.length === 0 && (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12 text-gray-400">
-            <FileText className="h-10 w-10 mb-3" />
-            <p className="font-medium">Aucune opération réalisée</p>
-            <p className="text-sm mt-1">Les opérations planifiées apparaissent ici une fois réalisées.</p>
-          </CardContent>
-        </Card>
+        <Card><CardContent className="flex flex-col items-center justify-center py-10 text-gray-400">
+          <FileText className="h-10 w-10 mb-3" />
+          <p className="font-medium">Aucune opération réalisée</p>
+        </CardContent></Card>
       )}
 
-      {/* Generate report dialog */}
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+      {/* ── Rapports Excel ──────────────────────────────────── */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Rapports Excel</p>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => generateExcelMut.mutate({ dateFrom: yearStart, dateTo: yearEnd })} disabled={generateExcelMut.isPending}>
+              <Download className="h-3.5 w-3.5 mr-1" /> {generateExcelMut.isPending ? 'Génération…' : `Rapport annuel ${currentYear}`}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setShowExcelDialog(true)}>Période personnalisée</Button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Rapports écrits PDF ─────────────────────────────── */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Rapports écrits PDF</p>
+          <Button size="sm" onClick={openWrittenEditor}>
+            <Plus className="h-3.5 w-3.5 mr-1" /> Nouveau rapport écrit
+          </Button>
+        </div>
+
+        {writtenReports.length === 0 ? (
+          <Card><CardContent className="py-4 text-center text-sm text-gray-400">Aucun rapport écrit pour ce site.</CardContent></Card>
+        ) : (
+          <div className="space-y-2">
+            {writtenReports.map((r) => (
+              <Card key={r.id}>
+                <CardContent className="flex items-center gap-3 py-3 px-4">
+                  <FileText className="h-4 w-4 text-blue-500 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{r.titre}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {new Date(r.generatedAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                      {r.generatedBy && ` — ${r.generatedBy.prenom} ${r.generatedBy.nom}`}
+                    </p>
+                  </div>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 shrink-0" onClick={() => downloadReport(r)}>
+                    <Download className="h-3.5 w-3.5" /> PDF
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Dialog Excel période ─────────────────────────────── */}
+      <Dialog open={showExcelDialog} onOpenChange={setShowExcelDialog}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Générer un rapport Excel</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Rapport Excel — période personnalisée</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
-            <p className="text-sm text-gray-500">
-              Agrège les contrôles et comptages des fiches terrain validées sur la période. Le fichier est archivé automatiquement dans Documents.
-            </p>
+            <p className="text-sm text-gray-500">Agrège contrôles, insectes, réclamations et activité employés sur la période choisie.</p>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label>Du *</Label>
-                <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label>Au *</Label>
-                <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-              </div>
+              <div className="space-y-1"><Label>Du *</Label><Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} /></div>
+              <div className="space-y-1"><Label>Au *</Label><Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} /></div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDialog(false)}>Annuler</Button>
-            <Button
-              onClick={() => generateMut.mutate()}
-              disabled={!dateFrom || !dateTo || generateMut.isPending}
-            >
-              {generateMut.isPending ? 'Génération...' : 'Générer'}
+            <Button variant="outline" onClick={() => setShowExcelDialog(false)}>Annuler</Button>
+            <Button onClick={() => generateExcelMut.mutate({ dateFrom, dateTo })} disabled={!dateFrom || !dateTo || generateExcelMut.isPending}>
+              {generateExcelMut.isPending ? 'Génération…' : 'Générer'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Éditeur rapport écrit ────────────────────────────── */}
+      <Dialog open={showWrittenEditor} onOpenChange={setShowWrittenEditor}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader><DialogTitle>Nouveau rapport écrit</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label>Titre *</Label>
+              <Input value={writtenTitre} onChange={(e) => setWrittenTitre(e.target.value)} placeholder="Rapport d'intervention — Janvier 2026" />
+            </div>
+            <div className="space-y-1">
+              <Label>Contenu *</Label>
+              <p className="text-xs text-gray-400">Pré-rempli avec le dernier rapport ou un gabarit automatique. Modifiez librement.</p>
+              <textarea
+                className="w-full min-h-[320px] rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring font-mono leading-relaxed resize-y"
+                value={writtenContenu}
+                onChange={(e) => setWrittenContenu(e.target.value)}
+                placeholder="Rédigez votre rapport ici…"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowWrittenEditor(false)}>Annuler</Button>
+            <Button onClick={() => generateWrittenMut.mutate()} disabled={!writtenTitre.trim() || !writtenContenu.trim() || generateWrittenMut.isPending}>
+              {generateWrittenMut.isPending ? 'Génération PDF…' : 'Générer le PDF'}
             </Button>
           </DialogFooter>
         </DialogContent>

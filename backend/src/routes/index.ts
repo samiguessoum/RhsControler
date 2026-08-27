@@ -538,6 +538,11 @@ router.get('/sites/:siteId/field-reports', authMiddleware, fieldInterventionCont
 router.post('/sites/:siteId/field-reports', authMiddleware, canDo('manageInterventions'), fieldInterventionController.generateSiteFieldReport);
 router.get('/field-reports/:id/download', authMiddleware, fieldInterventionController.downloadFieldReport);
 
+// Rapports écrits (PDF)
+router.get('/sites/:siteId/rapport-context', authMiddleware, canDo('manageInterventions'), fieldInterventionController.getWrittenReportContext);
+router.get('/sites/:siteId/written-reports', authMiddleware, fieldInterventionController.listWrittenReports);
+router.post('/sites/:siteId/written-reports', authMiddleware, canDo('manageInterventions'), fieldInterventionController.generateWrittenReport);
+
 // Documents de site
 router.get('/sites/:siteId/documents', authMiddleware, fieldInterventionController.listSiteDocuments);
 router.post('/sites/:siteId/documents', authMiddleware, canDo('manageInterventions'), fieldInterventionController.createSiteDocument);
