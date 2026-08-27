@@ -369,10 +369,11 @@ export function FieldInterventionDetailPage() {
 
   // ── Rendu d'une carte dispositif ────────────────────────────
   const renderDeviceCard = (device: any) => {
-    const state = controls[device.id] || { statusCode: '', observation: '', insectCounts: {} };
+    const state = controls[device.id] ?? { statusCode: '', observation: '', insectCounts: {} };
+    const insectCounts = state.insectCounts ?? {};
     const savedControl = fi.controls?.find((c) => c.deviceId === device.id);
     const filledBy = (savedControl as any)?.updatedBy;
-    const hasContent = state.statusCode || state.observation || Object.values(state.insectCounts).some((v) => v > 0);
+    const hasContent = state.statusCode || state.observation || Object.values(insectCounts).some((v) => v > 0);
     const typeStyle = DEVICE_TYPE_STYLE[device.type as DeviceType];
 
     return (
@@ -407,47 +408,49 @@ export function FieldInterventionDetailPage() {
         </div>
 
         <CardContent className="px-4 pt-3 pb-4 space-y-3">
-          {/* Pastilles statut */}
-          <div className="flex flex-wrap gap-2">
-            {sortedStatuses.map((cs) => {
-              const selected = state.statusCode === cs.code;
-              return (
-                <button
-                  key={cs.code}
-                  type="button"
-                  disabled={!isEditable}
-                  onClick={() => updateControl(device.id, { statusCode: selected ? '' : cs.code })}
-                  className={cn(
-                    'flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-semibold border-2 transition-all select-none min-h-[44px]',
-                    selected ? 'text-white border-transparent shadow-md' : 'bg-white border-gray-200 text-gray-700 active:bg-gray-50',
-                    !isEditable && 'opacity-60 cursor-default'
-                  )}
-                  style={selected ? { backgroundColor: cs.color ?? '#6b7280', borderColor: cs.color ?? '#6b7280' } : {}}
-                >
-                  <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: selected ? 'rgba(255,255,255,0.8)' : (cs.color ?? '#6b7280') }} />
-                  <span className="font-black">{cs.code}</span>
-                  <span className={cn('font-normal text-xs', selected ? 'opacity-90' : 'text-gray-500')}>{cs.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Observation */}
-          <Textarea
-            placeholder="Remarque (optionnel)"
-            value={state.observation}
-            disabled={!isEditable}
-            rows={2}
-            onChange={(e) => updateControl(device.id, { observation: e.target.value })}
-            className="text-sm resize-none"
-          />
+          {/* Pastilles statut + observation — masqués pour FK */}
+          {device.type !== 'FLYING_INSECT_KILLER' && (
+            <>
+              <div className="flex flex-wrap gap-2">
+                {sortedStatuses.map((cs) => {
+                  const selected = state.statusCode === cs.code;
+                  return (
+                    <button
+                      key={cs.code}
+                      type="button"
+                      disabled={!isEditable}
+                      onClick={() => updateControl(device.id, { statusCode: selected ? '' : cs.code })}
+                      className={cn(
+                        'flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-semibold border-2 transition-all select-none min-h-[44px]',
+                        selected ? 'text-white border-transparent shadow-md' : 'bg-white border-gray-200 text-gray-700 active:bg-gray-50',
+                        !isEditable && 'opacity-60 cursor-default'
+                      )}
+                      style={selected ? { backgroundColor: cs.color ?? '#6b7280', borderColor: cs.color ?? '#6b7280' } : {}}
+                    >
+                      <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: selected ? 'rgba(255,255,255,0.8)' : (cs.color ?? '#6b7280') }} />
+                      <span className="font-black">{cs.code}</span>
+                      <span className={cn('font-normal text-xs', selected ? 'opacity-90' : 'text-gray-500')}>{cs.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <Textarea
+                placeholder="Remarque (optionnel)"
+                value={state.observation}
+                disabled={!isEditable}
+                rows={2}
+                onChange={(e) => updateControl(device.id, { observation: e.target.value })}
+                className="text-sm resize-none"
+              />
+            </>
+          )}
 
           {/* Comptage insectes FK */}
           {device.type === 'FLYING_INSECT_KILLER' && (
             <div className="space-y-3 pt-1">
               <p className="text-sm font-bold text-gray-600">Comptage insectes</p>
               {INSECT_ESPECES.map((espece) => {
-                const count = state.insectCounts[espece] ?? 0;
+                const count = insectCounts[espece] ?? 0;
                 return (
                   <div key={espece} className="flex items-center justify-between gap-3 bg-gray-50 rounded-xl px-3 py-2">
                     <span className="text-sm font-medium text-gray-700 w-28">{espece}</span>
