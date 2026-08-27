@@ -1,53 +1,101 @@
 import ExcelJS from 'exceljs';
 import path from 'path';
 import fs from 'fs';
+import { createCanvas } from '@napi-rs/canvas';
+import { Chart, registerables } from 'chart.js';
 import { prisma } from '../config/database.js';
 import { AppError } from '../lib/errors.js';
 import { formatDateFr as formatDate } from '../utils/date.utils.js';
 
-// ── Styles ────────────────────────────────────────────────────────────────────
-const HEADER_FILL: ExcelJS.FillPattern = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
-const TITLE_FILL: ExcelJS.FillPattern  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3864' } };
-const TOTAL_FILL: ExcelJS.FillPattern  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDAE3F3' } };
-const BORDER_THIN: Partial<ExcelJS.Border> = { style: 'thin', color: { argb: 'FFB8CCE4' } };
-const ALL_BORDERS = { top: BORDER_THIN, left: BORDER_THIN, bottom: BORDER_THIN, right: BORDER_THIN };
+Chart.register(...registerables);
+
+// ── Couleurs ──────────────────────────────────────────────────────────────────
+const COLORS: Record<string, string> = {
+  Mouches:    '#4472C4',
+  Moustiques: '#ED7D31',
+  Abeilles:   '#70AD47',
+  Papillon:   '#FFC000',
+  Autres:     '#7030A0',
+  RAS:        '#70AD47',
+  CAS:        '#FF4444',
+  CON:        '#4472C4',
+  EBR:        '#ED7D31',
+  INAC:       '#767676',
+  RT:         '#A9D18E',
+  NT:         '#FFC000',
+  SOU:        '#C9C9C9',
+};
+const FALLBACK_COLORS = ['#4472C4','#ED7D31','#70AD47','#FFC000','#7030A0','#FF4444','#A9D18E','#767676'];
+const getColor = (key: string, i: number) => COLORS[key] ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length];
+
+// ── Référentiel abréviations (légende) ───────────────────────────────────────
+const LEGENDE_ETATS = [
+  { code: 'RAS',  label: 'Rien à signaler',  description: 'Dispositif en bon état, aucune anomalie' },
+  { code: 'CON',  label: 'Consommé',         description: 'Appât consommé totalement' },
+  { code: 'EBR',  label: 'Ébréché / Abîmé',  description: 'Dispositif endommagé, nécessite vérification' },
+  { code: 'CAS',  label: 'Cassé',            description: 'Dispositif cassé, remplacement nécessaire' },
+  { code: 'NT',   label: 'Non trouvé',       description: 'Dispositif introuvable sur site' },
+  { code: 'RT',   label: 'Remplacé',         description: 'Dispositif remplacé lors de la visite' },
+  { code: 'INAC', label: 'Inactif',          description: 'Dispositif temporairement désactivé' },
+  { code: 'SOU',  label: 'Souris',           description: 'Présence de souris détectée dans la boîte' },
+];
+const LEGENDE_TYPES = [
+  { code: 'FK',    label: 'Fly Killer',        description: 'Destructeur d\'insectes volants (lampe UV)' },
+  { code: 'Boite', label: 'Boîte appât',       description: 'Station d\'appâtage rodenticide' },
+  { code: 'Piège', label: 'Piège mécanique',   description: 'Piège à glu ou piège mécanique' },
+];
+const LEGENDE_INSECTES = [
+  { code: 'Mouches',    label: 'Mouches',     description: 'Mouches domestiques' },
+  { code: 'Moustiques', label: 'Moustiques',  description: 'Moustiques (toutes espèces)' },
+  { code: 'Abeilles',   label: 'Abeilles',    description: 'Abeilles et espèces apparentées' },
+  { code: 'Papillon',   label: 'Papillons',   description: 'Papillons / lépidoptères' },
+  { code: 'Autres',     label: 'Autres',      description: 'Autres insectes volants non classifiés' },
+];
 
 const ESPECES = ['Mouches', 'Moustiques', 'Abeilles', 'Papillon', 'Autres'] as const;
 
-// Device type → label court pour la colonne "Type"
-const TYPE_LABEL: Record<string, string> = {
-  BAIT_STATION:         'Boite',
-  MECHANICAL_TRAP:      'Piège',
-  GLUE_TRAP:            'Colle',
-  FLYING_INSECT_KILLER: 'FK',
-};
+// ── Styles ExcelJS ────────────────────────────────────────────────────────────
+const HEADER_FILL: ExcelJS.FillPattern = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F3864' } };
+const TOTAL_FILL: ExcelJS.FillPattern  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDAE3F3' } };
+const LEGEND_FILL: ExcelJS.FillPattern = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F2F2' } };
+const BORDER: Partial<ExcelJS.Border>  = { style: 'thin', color: { argb: 'FFB8CCE4' } };
+const ALL_BORDERS = { top: BORDER, left: BORDER, bottom: BORDER, right: BORDER };
 
-function styleHeader(row: ExcelJS.Row, dark = false) {
-  row.font = { bold: true, color: { argb: dark ? 'FFFFFFFF' : 'FF1F3864' } };
-  row.fill = dark ? TITLE_FILL : HEADER_FILL;
-  row.alignment = { vertical: 'middle', horizontal: 'center' };
+function styleHeader(row: ExcelJS.Row) {
+  row.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+  row.fill = HEADER_FILL;
+  row.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+  row.height = 22;
   row.eachCell((c) => { c.border = ALL_BORDERS; });
 }
 
 function styleTotal(row: ExcelJS.Row) {
-  row.font = { bold: true };
+  row.font = { bold: true, color: { argb: 'FF1F3864' } };
   row.fill = TOTAL_FILL;
   row.eachCell((c) => { c.border = ALL_BORDERS; });
 }
 
-function autosizeColumns(sheet: ExcelJS.Worksheet, minWidth = 10) {
+function addSectionTitle(sheet: ExcelJS.Worksheet, title: string, nbCols: number) {
+  const row = sheet.addRow([title]);
+  row.font = { bold: true, size: 12, color: { argb: 'FF1F3864' } };
+  row.height = 20;
+  if (nbCols > 1) sheet.mergeCells(row.number, 1, row.number, nbCols);
+  sheet.addRow([]);
+}
+
+function autosizeColumns(sheet: ExcelJS.Worksheet) {
   sheet.columns.forEach((col) => {
-    let max = minWidth;
+    let max = 10;
     col.eachCell?.({ includeEmpty: false }, (cell) => {
       const len = String(cell.value ?? '').length;
       if (len > max) max = len;
     });
-    col.width = Math.min(max + 2, 45);
+    col.width = Math.min(max + 2, 50);
   });
 }
 
-// Pivot : zone → { état/espèce → count }
-function buildPivot(rows: { zone: string; key: string }[]): Map<string, Map<string, number>> {
+// ── Pivot ─────────────────────────────────────────────────────────────────────
+function buildPivotCount(rows: { zone: string; key: string }[]): Map<string, Map<string, number>> {
   const pivot = new Map<string, Map<string, number>>();
   for (const { zone, key } of rows) {
     if (!pivot.has(zone)) pivot.set(zone, new Map());
@@ -65,6 +113,81 @@ function buildPivotSum(rows: { zone: string; key: string; value: number }[]): Ma
   return pivot;
 }
 
+// ── Rendu graphique ───────────────────────────────────────────────────────────
+async function renderBarChart(
+  zones: string[],
+  series: { label: string; data: number[] }[],
+  title: string,
+): Promise<Buffer> {
+  if (zones.length === 0 || series.every((s) => s.data.every((v) => v === 0))) return Buffer.alloc(0);
+
+  const chartWidth  = 900;
+  const chartHeight = Math.max(380, zones.length * 36 + 160);
+
+  const canvas = createCanvas(chartWidth, chartHeight);
+  const ctx    = canvas.getContext('2d');
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, chartWidth, chartHeight);
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const chart = new Chart(ctx as any, {
+    type: 'bar',
+    data: {
+      labels: zones,
+      datasets: series.map((s, i) => ({
+        label: s.label,
+        data: s.data,
+        backgroundColor: getColor(s.label, i) + 'B3',
+        borderColor: getColor(s.label, i),
+        borderWidth: 1,
+      })),
+    },
+    options: {
+      animation: false as unknown as object,
+      responsive: false,
+      indexAxis: 'y',
+      plugins: {
+        title: {
+          display: !!title,
+          text: title,
+          font: { size: 13, weight: 'bold' },
+          color: '#1F3864',
+          padding: { bottom: 12 },
+        },
+        legend: { position: 'bottom', labels: { font: { size: 11 }, padding: 16 } },
+      },
+      scales: {
+        x: { stacked: true, beginAtZero: true, ticks: { font: { size: 10 } } },
+        y: { stacked: true, ticks: { font: { size: 10 } } },
+      },
+    },
+  });
+
+  const buffer = Buffer.from(canvas.toBuffer('image/png'));
+  chart.destroy();
+  return buffer;
+}
+
+async function embedChart(
+  workbook: ExcelJS.Workbook,
+  sheet: ExcelJS.Worksheet,
+  buffer: Buffer,
+  startRow: number,
+) {
+  if (!buffer || buffer.length === 0) return;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const imageId = workbook.addImage({ buffer: buffer as any, extension: 'png' });
+  sheet.addImage(imageId, {
+    tl: { col: 0, row: startRow },
+    ext: { width: 900, height: Math.max(380, buffer.length > 0 ? 380 : 0) },
+    editAs: 'oneCell',
+  });
+  // Réserver des lignes pour l'image (≈ 20 lignes à hauteur standard)
+  for (let i = 0; i < 22; i++) sheet.addRow([]);
+}
+
+// ── Service principal ─────────────────────────────────────────────────────────
 export const fieldReportService = {
   async generateSiteHistoryReport(siteId: string, dateFrom: Date, dateTo: Date, generatedById: string) {
     const site = await prisma.site.findUnique({
@@ -85,7 +208,7 @@ export const fieldReportService = {
             device: {
               select: {
                 id: true, type: true, displayNumber: true, nom: true,
-                zone: { select: { nom: true, ordre: true } },
+                zone: { select: { nom: true } },
               },
             },
             insectCounts: true,
@@ -95,89 +218,111 @@ export const fieldReportService = {
       orderBy: { dateIntervention: 'asc' },
     });
 
-    const reclamations = await prisma.reclamation.findMany({
-      where: { siteId, date: { gte: dateFrom, lte: dateTo } },
-      include: { createdBy: { select: { prenom: true, nom: true } } },
-      orderBy: { date: 'asc' },
-    });
+    if (interventions.length === 0) throw new AppError(400, 'Aucune donnée sur cette période');
 
-    if (interventions.length === 0 && reclamations.length === 0) {
-      throw new AppError(400, 'Aucune donnée sur cette période');
-    }
-
-    const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'RhsControler';
-    workbook.created = new Date();
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Collecte des lignes brutes par catégorie de dispositif
-    // ─────────────────────────────────────────────────────────────────────────
-    type RawFK    = { visite: string; date: string; zone: string; num: string; counts: Record<string, number>; obs: string };
-    type RawCtrl  = { visite: string; date: string; zone: string; typeLabel: string; num: string; etat: string; obs: string };
+    // ── Collecte brute ────────────────────────────────────────────────────────
+    type RawFK   = { visite: string; date: string; zone: string; num: string; counts: Record<string, number>; obs: string };
+    type RawCtrl = { visite: string; date: string; zone: string; typeLabel: string; num: string; etat: string; obs: string };
 
     const fkRows:    RawFK[]   = [];
     const boiteRows: RawCtrl[] = [];
     const piegeRows: RawCtrl[] = [];
 
     for (const fi of interventions) {
-      const dateStr  = formatDate(fi.dateIntervention);
-      const visite   = 'Visite de contrôle';
+      const dateStr = formatDate(fi.dateIntervention);
+      const visite  = 'Visite de contrôle';
 
       for (const ctrl of fi.controls) {
-        const zone = ctrl.device.zone?.nom ?? '—';
-        const num  = String(ctrl.device.displayNumber ?? '');
-        const obs  = ctrl.observation ?? '';
-        const type = ctrl.device.type;
-        const typeLabel = TYPE_LABEL[type] ?? type;
+        const zone      = ctrl.device.zone?.nom ?? '—';
+        const num       = String(ctrl.device.displayNumber ?? '');
+        const obs       = ctrl.observation ?? '';
+        const type      = ctrl.device.type;
+        const typeLabel = type === 'BAIT_STATION' ? 'Boite' : type === 'MECHANICAL_TRAP' ? 'Piège' : type === 'GLUE_TRAP' ? 'Colle' : 'FK';
 
         if (type === 'FLYING_INSECT_KILLER') {
-          const counts: Record<string, number> = {};
-          for (const espece of ESPECES) counts[espece] = 0;
+          const counts: Record<string, number> = { Mouches: 0, Moustiques: 0, Abeilles: 0, Papillon: 0, Autres: 0 };
           for (const ic of ctrl.insectCounts) {
-            if (counts[ic.espece] !== undefined) counts[ic.espece] = ic.count;
-            else counts['Autres'] = (counts['Autres'] ?? 0) + ic.count;
+            if (ic.espece in counts) counts[ic.espece] = ic.count;
+            else counts['Autres'] += ic.count;
           }
           fkRows.push({ visite, date: dateStr, zone, num, counts, obs });
         } else if (type === 'BAIT_STATION') {
           boiteRows.push({ visite, date: dateStr, zone, typeLabel, num, etat: ctrl.statusCode ?? '', obs });
         } else {
-          // MECHANICAL_TRAP, GLUE_TRAP → Pièges
           piegeRows.push({ visite, date: dateStr, zone, typeLabel, num, etat: ctrl.statusCode ?? '', obs });
         }
       }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Helpers pour créer une feuille titre + données brutes
-    // ─────────────────────────────────────────────────────────────────────────
-    const addTitleRow = (sheet: ExcelJS.Worksheet, title: string, nbCols: number) => {
-      const row = sheet.addRow([title]);
-      row.font = { bold: true, size: 13, color: { argb: 'FF1F3864' } };
-      sheet.mergeCells(row.number, 1, row.number, nbCols);
-      sheet.addRow([]); // ligne vide
-    };
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'RhsControler';
+    workbook.created = new Date();
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 1. Feuille "Graph dynamique FK"
-    // ─────────────────────────────────────────────────────────────────────────
-    const graphFK = workbook.addWorksheet('Graph dynamique FK');
-    addTitleRow(graphFK, 'Graph dynamique destructeurs d\'insectes :', ESPECES.length + 2);
+    // ── 1. FEUILLE LÉGENDE ────────────────────────────────────────────────────
+    const sheetLeg = workbook.addWorksheet('Légende');
+    sheetLeg.properties.tabColor = { argb: 'FF1F3864' };
 
-    // Pivot : zone → somme par espèce
-    const fkPivotRows: { zone: string; key: string; value: number }[] = [];
-    for (const r of fkRows) {
-      for (const espece of ESPECES) {
-        fkPivotRows.push({ zone: r.zone, key: espece, value: r.counts[espece] ?? 0 });
-      }
+    addSectionTitle(sheetLeg, '📋 LÉGENDE — ÉTATS DES DISPOSITIFS', 3);
+    const legH1 = sheetLeg.addRow(['Code', 'Libellé', 'Description']);
+    styleHeader(legH1);
+    for (const e of LEGENDE_ETATS) {
+      const row = sheetLeg.addRow([e.code, e.label, e.description]);
+      row.getCell(1).font = { bold: true, color: { argb: 'FF1F3864' } };
+      row.fill = LEGEND_FILL;
+      row.eachCell((c) => { c.border = ALL_BORDERS; });
     }
-    const fkPivot = buildPivotSum(fkPivotRows);
-    const allFkZones = [...fkPivot.keys()].sort();
 
-    const fkHeaderRow = graphFK.addRow(['Étiquettes de lignes', ...ESPECES.map((e) => `Somme de ${e}`), 'Total général']);
-    styleHeader(fkHeaderRow, true);
+    sheetLeg.addRow([]);
+    addSectionTitle(sheetLeg, '🦟 ESPÈCES D\'INSECTES (FK — Destructeurs)', 3);
+    const legH2 = sheetLeg.addRow(['Espèce', 'Libellé', 'Description']);
+    styleHeader(legH2);
+    for (const e of LEGENDE_INSECTES) {
+      const row = sheetLeg.addRow([e.code, e.label, e.description]);
+      row.getCell(1).font = { bold: true, color: { argb: 'FF1F3864' } };
+      row.fill = LEGEND_FILL;
+      row.eachCell((c) => { c.border = ALL_BORDERS; });
+    }
 
-    const fkTotals: Record<string, number> = {};
-    for (const espece of ESPECES) fkTotals[espece] = 0;
+    sheetLeg.addRow([]);
+    addSectionTitle(sheetLeg, '📦 TYPES DE DISPOSITIFS', 3);
+    const legH3 = sheetLeg.addRow(['Code', 'Libellé', 'Description']);
+    styleHeader(legH3);
+    for (const e of LEGENDE_TYPES) {
+      const row = sheetLeg.addRow([e.code, e.label, e.description]);
+      row.getCell(1).font = { bold: true, color: { argb: 'FF1F3864' } };
+      row.fill = LEGEND_FILL;
+      row.eachCell((c) => { c.border = ALL_BORDERS; });
+    }
+    autosizeColumns(sheetLeg);
+
+    // ── 2. FEUILLE FK (données brutes) ────────────────────────────────────────
+    const sheetFK = workbook.addWorksheet('FK');
+    sheetFK.properties.tabColor = { argb: 'FF4472C4' };
+    addSectionTitle(sheetFK, 'Contrôle destructeurs d\'insectes', ESPECES.length + 6);
+    const fkHeader = sheetFK.addRow(['Opération / visite', 'Date', 'ZONE', 'Type', 'N°', ...ESPECES, 'Observation']);
+    styleHeader(fkHeader);
+    for (const r of fkRows) {
+      const row = sheetFK.addRow([r.visite, r.date, r.zone, 'FK', r.num, ...ESPECES.map((e) => r.counts[e] || ''), r.obs]);
+      row.eachCell((c) => { c.border = ALL_BORDERS; c.alignment = { vertical: 'middle' }; });
+    }
+    if (fkRows.length === 0) sheetFK.addRow(['— Aucun destructeur d\'insectes enregistré sur cette période —']);
+    autosizeColumns(sheetFK);
+
+    // ── 3. FEUILLE GRAPH FK (pivot + graphique) ───────────────────────────────
+    const graphFK = workbook.addWorksheet('Graph dynamique FK');
+    graphFK.properties.tabColor = { argb: 'FF4472C4' };
+    addSectionTitle(graphFK, 'Synthèse par zone — Destructeurs d\'insectes', ESPECES.length + 2);
+
+    // Pivot FK
+    const fkPivotRows: { zone: string; key: string; value: number }[] = [];
+    for (const r of fkRows) for (const e of ESPECES) fkPivotRows.push({ zone: r.zone, key: e, value: r.counts[e] ?? 0 });
+    const fkPivot     = buildPivotSum(fkPivotRows);
+    const allFkZones  = [...fkPivot.keys()].sort();
+
+    const fkPivotHeader = graphFK.addRow(['Zone', ...ESPECES.map((e) => `${e}`), 'Total']);
+    styleHeader(fkPivotHeader);
+    const fkColTotals: Record<string, number> = {};
+    for (const e of ESPECES) fkColTotals[e] = 0;
     let fkGrandTotal = 0;
 
     for (const zone of allFkZones) {
@@ -185,130 +330,129 @@ export const fieldReportService = {
       const vals = ESPECES.map((e) => zMap.get(e) ?? 0);
       const total = vals.reduce((a, b) => a + b, 0);
       const row = graphFK.addRow([zone, ...vals, total]);
-      row.eachCell((c) => { c.border = ALL_BORDERS; });
-      ESPECES.forEach((e, i) => { fkTotals[e] = (fkTotals[e] ?? 0) + vals[i]; });
+      row.eachCell((c) => { c.border = ALL_BORDERS; c.alignment = { vertical: 'middle' }; });
+      ESPECES.forEach((e, i) => { fkColTotals[e] += vals[i]; });
       fkGrandTotal += total;
     }
-
-    const fkTotalRow = graphFK.addRow(['Total général', ...ESPECES.map((e) => fkTotals[e] ?? 0), fkGrandTotal]);
+    if (allFkZones.length === 0) graphFK.addRow(['— Aucune donnée FK —']);
+    const fkTotalRow = graphFK.addRow(['TOTAL', ...ESPECES.map((e) => fkColTotals[e]), fkGrandTotal]);
     styleTotal(fkTotalRow);
     autosizeColumns(graphFK);
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 2. Feuille "FK" (données brutes)
-    // ─────────────────────────────────────────────────────────────────────────
-    const sheetFK = workbook.addWorksheet('FK');
-    addTitleRow(sheetFK, 'Contrôle destructeurs :', ESPECES.length + 6);
+    // Graphique FK
+    const fkChartBuffer = await renderBarChart(
+      allFkZones,
+      ESPECES.map((e) => ({ label: e, data: allFkZones.map((z) => fkPivot.get(z)?.get(e) ?? 0) })),
+      'Destructeurs d\'insectes — captures par zone',
+    );
+    await embedChart(workbook, graphFK, fkChartBuffer, graphFK.rowCount + 1);
 
-    const fkDataHeader = sheetFK.addRow(['Opération/visite', 'Date', 'ZONE', 'Type', 'N°', ...ESPECES, 'Observation']);
-    styleHeader(fkDataHeader, true);
-
-    for (const r of fkRows) {
-      const row = sheetFK.addRow([r.visite, r.date, r.zone, 'FK', r.num, ...ESPECES.map((e) => r.counts[e] || ''), r.obs]);
-      row.eachCell((c) => { c.border = ALL_BORDERS; });
+    // ── 4. FEUILLE PIÈGES (données brutes) ───────────────────────────────────
+    const sheetPieges = workbook.addWorksheet('Pièges');
+    sheetPieges.properties.tabColor = { argb: 'FFED7D31' };
+    addSectionTitle(sheetPieges, 'Contrôle des pièges', 7);
+    const piegesHeader = sheetPieges.addRow(['Opération / visite', 'Date', 'ZONE', 'Type', 'N°', 'État', 'Observation']);
+    styleHeader(piegesHeader);
+    for (const r of piegeRows) {
+      const row = sheetPieges.addRow([r.visite, r.date, r.zone, r.typeLabel, r.num, r.etat, r.obs]);
+      row.eachCell((c) => { c.border = ALL_BORDERS; c.alignment = { vertical: 'middle' }; });
     }
-    autosizeColumns(sheetFK);
+    if (piegeRows.length === 0) sheetPieges.addRow(['— Aucun piège enregistré sur cette période —']);
+    autosizeColumns(sheetPieges);
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 3. Feuille "Graph dynamique pièges"
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── 5. FEUILLE GRAPH PIÈGES (pivot + graphique) ───────────────────────────
     const allPiegeEtats = [...new Set(piegeRows.map((r) => r.etat).filter(Boolean))].sort();
-    const graphPieges = workbook.addWorksheet('Graph dynamique pièges');
-    addTitleRow(graphPieges, 'Graph dynamique pièges :', allPiegeEtats.length + 3);
+    const graphPieges   = workbook.addWorksheet('Graph dynamique pièges');
+    graphPieges.properties.tabColor = { argb: 'FFED7D31' };
+    addSectionTitle(graphPieges, 'Synthèse par zone — Pièges', allPiegeEtats.length + 3);
 
-    const piegePivot = buildPivot(piegeRows.filter((r) => r.etat).map((r) => ({ zone: r.zone, key: r.etat })));
+    const piegePivot    = buildPivotCount(piegeRows.filter((r) => r.etat).map((r) => ({ zone: r.zone, key: r.etat })));
     const allPiegeZones = [...piegePivot.keys()].sort();
 
-    const piegeHeaderRow = graphPieges.addRow(['Étiquettes de lignes', ...allPiegeEtats, 'Total général']);
-    styleHeader(piegeHeaderRow, true);
-
-    const piegeTotals: Record<string, number> = {};
+    const piegesGHeader = graphPieges.addRow(['Zone', ...allPiegeEtats, 'Total']);
+    styleHeader(piegesGHeader);
+    const piegeColTotals: Record<string, number> = {};
     let piegeGrandTotal = 0;
+
     for (const zone of allPiegeZones) {
       const zMap = piegePivot.get(zone)!;
       const vals = allPiegeEtats.map((e) => zMap.get(e) ?? 0);
       const total = vals.reduce((a, b) => a + b, 0);
       const row = graphPieges.addRow([zone, ...vals, total]);
       row.eachCell((c) => { c.border = ALL_BORDERS; });
-      allPiegeEtats.forEach((e, i) => { piegeTotals[e] = (piegeTotals[e] ?? 0) + vals[i]; });
+      allPiegeEtats.forEach((e, i) => { piegeColTotals[e] = (piegeColTotals[e] ?? 0) + vals[i]; });
       piegeGrandTotal += total;
     }
-    const piegeTotalRow = graphPieges.addRow(['Total général', ...allPiegeEtats.map((e) => piegeTotals[e] ?? 0), piegeGrandTotal]);
-    styleTotal(piegeTotalRow);
+    if (allPiegeZones.length === 0) graphPieges.addRow(['— Aucune donnée pièges —']);
+    const piegesTotalRow = graphPieges.addRow(['TOTAL', ...allPiegeEtats.map((e) => piegeColTotals[e] ?? 0), piegeGrandTotal]);
+    styleTotal(piegesTotalRow);
     autosizeColumns(graphPieges);
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 4. Feuille "Pièges" (données brutes)
-    // ─────────────────────────────────────────────────────────────────────────
-    const sheetPieges = workbook.addWorksheet('Pièges');
-    addTitleRow(sheetPieges, 'Contrôle pièges :', 7);
+    const piegesChartBuffer = await renderBarChart(
+      allPiegeZones,
+      allPiegeEtats.map((e) => ({ label: e, data: allPiegeZones.map((z) => piegePivot.get(z)?.get(e) ?? 0) })),
+      'Pièges — états par zone',
+    );
+    await embedChart(workbook, graphPieges, piegesChartBuffer, graphPieges.rowCount + 1);
 
-    const piegesDataHeader = sheetPieges.addRow(['Opération/visite', 'Date', 'ZONE', 'Type', 'N°', 'Etat', 'Observation']);
-    styleHeader(piegesDataHeader, true);
-
-    for (const r of piegeRows) {
-      const row = sheetPieges.addRow([r.visite, r.date, r.zone, r.typeLabel, r.num, r.etat, r.obs]);
-      row.eachCell((c) => { c.border = ALL_BORDERS; });
+    // ── 6. FEUILLE BOITES (données brutes) ───────────────────────────────────
+    const sheetBoites = workbook.addWorksheet('Boites');
+    sheetBoites.properties.tabColor = { argb: 'FF70AD47' };
+    addSectionTitle(sheetBoites, 'Contrôle des boîtes appât', 7);
+    const boitesHeader = sheetBoites.addRow(['Opération / visite', 'Date', 'ZONE', 'Type', 'N°', 'État', 'Observation']);
+    styleHeader(boitesHeader);
+    for (const r of boiteRows) {
+      const row = sheetBoites.addRow([r.visite, r.date, r.zone, r.typeLabel, r.num, r.etat, r.obs]);
+      row.eachCell((c) => { c.border = ALL_BORDERS; c.alignment = { vertical: 'middle' }; });
     }
-    autosizeColumns(sheetPieges);
+    if (boiteRows.length === 0) sheetBoites.addRow(['— Aucune boîte enregistrée sur cette période —']);
+    autosizeColumns(sheetBoites);
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 5. Feuille "Graph dynamique boite"
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── 7. FEUILLE GRAPH BOITES (pivot + graphique) ───────────────────────────
     const allBoiteEtats = [...new Set(boiteRows.map((r) => r.etat).filter(Boolean))].sort();
-    const graphBoite = workbook.addWorksheet('Graph dynamique boite');
-    addTitleRow(graphBoite, 'Graph dynamique boites :', allBoiteEtats.length + 3);
+    const graphBoite    = workbook.addWorksheet('Graph dynamique boite');
+    graphBoite.properties.tabColor = { argb: 'FF70AD47' };
+    addSectionTitle(graphBoite, 'Synthèse par zone — Boîtes appât', allBoiteEtats.length + 3);
 
-    const boitePivot = buildPivot(boiteRows.filter((r) => r.etat).map((r) => ({ zone: r.zone, key: r.etat })));
+    const boitePivot    = buildPivotCount(boiteRows.filter((r) => r.etat).map((r) => ({ zone: r.zone, key: r.etat })));
     const allBoiteZones = [...boitePivot.keys()].sort();
 
-    const boiteHeaderRow = graphBoite.addRow(['Étiquettes de lignes', ...allBoiteEtats, 'Total général']);
-    styleHeader(boiteHeaderRow, true);
-
-    const boiteTotals: Record<string, number> = {};
+    const boiteGHeader = graphBoite.addRow(['Zone', ...allBoiteEtats, 'Total']);
+    styleHeader(boiteGHeader);
+    const boiteColTotals: Record<string, number> = {};
     let boiteGrandTotal = 0;
+
     for (const zone of allBoiteZones) {
       const zMap = boitePivot.get(zone)!;
       const vals = allBoiteEtats.map((e) => zMap.get(e) ?? 0);
       const total = vals.reduce((a, b) => a + b, 0);
       const row = graphBoite.addRow([zone, ...vals, total]);
       row.eachCell((c) => { c.border = ALL_BORDERS; });
-      allBoiteEtats.forEach((e, i) => { boiteTotals[e] = (boiteTotals[e] ?? 0) + vals[i]; });
+      allBoiteEtats.forEach((e, i) => { boiteColTotals[e] = (boiteColTotals[e] ?? 0) + vals[i]; });
       boiteGrandTotal += total;
     }
-    const boiteTotalRow = graphBoite.addRow(['Total général', ...allBoiteEtats.map((e) => boiteTotals[e] ?? 0), boiteGrandTotal]);
+    if (allBoiteZones.length === 0) graphBoite.addRow(['— Aucune donnée boîtes —']);
+    const boiteTotalRow = graphBoite.addRow(['TOTAL', ...allBoiteEtats.map((e) => boiteColTotals[e] ?? 0), boiteGrandTotal]);
     styleTotal(boiteTotalRow);
     autosizeColumns(graphBoite);
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // 6. Feuille "Boites" (données brutes)
-    // ─────────────────────────────────────────────────────────────────────────
-    const sheetBoites = workbook.addWorksheet('Boites');
-    addTitleRow(sheetBoites, 'Contrôle des boites :', 7);
+    const boiteChartBuffer = await renderBarChart(
+      allBoiteZones,
+      allBoiteEtats.map((e) => ({ label: e, data: allBoiteZones.map((z) => boitePivot.get(z)?.get(e) ?? 0) })),
+      'Boîtes appât — états par zone',
+    );
+    await embedChart(workbook, graphBoite, boiteChartBuffer, graphBoite.rowCount + 1);
 
-    const boitesDataHeader = sheetBoites.addRow(['Opération/visite', 'Date', 'ZONE', 'Type', 'N°', 'Etat', 'Observation']);
-    styleHeader(boitesDataHeader, true);
-
-    for (const r of boiteRows) {
-      const row = sheetBoites.addRow([r.visite, r.date, r.zone, r.typeLabel, r.num, r.etat, r.obs]);
-      row.eachCell((c) => { c.border = ALL_BORDERS; });
-    }
-    autosizeColumns(sheetBoites);
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Sauvegarde
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── Sauvegarde ────────────────────────────────────────────────────────────
     const uploadDir = path.join(process.cwd(), 'uploads', 'field-reports', siteId);
     fs.mkdirSync(uploadDir, { recursive: true });
-    const filename = `rapport-${dateFrom.toISOString().slice(0, 10)}_${dateTo.toISOString().slice(0, 10)}-${Date.now()}.xlsx`;
-    const filePath = path.join(uploadDir, filename);
+    const filename     = `rapport-${dateFrom.toISOString().slice(0, 10)}_${dateTo.toISOString().slice(0, 10)}-${Date.now()}.xlsx`;
+    const filePath     = path.join(uploadDir, filename);
     await workbook.xlsx.writeFile(filePath);
 
     const existingCount = await prisma.fieldReport.count({ where: { siteId } });
-    const dateFromFr = formatDate(dateFrom);
-    const dateToFr   = formatDate(dateTo);
-    const titre = `Rapport tendance — ${site.nom} — ${dateFromFr} au ${dateToFr}`;
-    const relativePath = `uploads/field-reports/${siteId}/${filename}`;
+    const titre         = `Rapport tendance — ${site.nom} — ${formatDate(dateFrom)} au ${formatDate(dateTo)}`;
+    const relativePath  = `uploads/field-reports/${siteId}/${filename}`;
 
     const report = await prisma.fieldReport.create({
       data: {
