@@ -124,8 +124,8 @@ function pivotSum(rows: { zone: string; key: string; value: number }[]): Map<str
   return m;
 }
 
-// ── Rendu graphique (canvas 2D pur) ───────────────────────────────────────────
-async function renderStackedBarChart(
+// ── Rendu graphique — barres verticales empilées ──────────────────────────────
+async function renderVerticalBarChart(
   zones: string[],
   series: { label: string; data: number[] }[],
   title: string,
@@ -134,16 +134,24 @@ async function renderStackedBarChart(
   if (zones.length === 0 || activeSeries.length === 0) return null;
 
   const PAD_TOP    = 52;
-  const PAD_BOTTOM = 50; // légende
-  const PAD_LEFT   = 190;
-  const PAD_RIGHT  = 30;
-  const BAR_H      = 28;
-  const BAR_GAP    = 6;
+  const PAD_LEFT   = 52;
+  const PAD_RIGHT  = 20;
+  const PAD_LABELS = 70;  // espace pour étiquettes X tournées à 45°
+  const PAD_LEGEND = 28;  // espace pour la légende sous les labels
+  const CHART_H    = 280;
   const CANVAS_W   = 880;
-  const CHART_W    = CANVAS_W - PAD_LEFT - PAD_RIGHT;
-  const CANVAS_H   = PAD_TOP + zones.length * (BAR_H + BAR_GAP) + PAD_BOTTOM;
+  const CANVAS_H   = PAD_TOP + CHART_H + PAD_LABELS + PAD_LEGEND;
 
-  const canvas = createCanvas(CANVAS_W, Math.max(CANVAS_H, 160));
+  const chartW  = CANVAS_W - PAD_LEFT - PAD_RIGHT;
+  const barStep = chartW / zones.length;
+  const barW    = Math.max(14, Math.min(60, barStep * 0.65));
+
+  const maxVal = Math.max(
+    ...zones.map((_, zi) => activeSeries.reduce((s, sr) => s + (sr.data[zi] ?? 0), 0)),
+    1,
+  );
+
+  const canvas = createCanvas(CANVAS_W, CANVAS_H);
   const ctx    = canvas.getContext('2d');
 
   // Fond blanc
@@ -151,86 +159,97 @@ async function renderStackedBarChart(
   ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
   // Titre
-  ctx.fillStyle = '#1F3864';
-  ctx.font      = `bold 13px ${FONT}`;
+  ctx.fillStyle    = '#1F3864';
+  ctx.font         = `bold 13px ${FONT}`;
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(title, CANVAS_W / 2, 26);
 
-  // Max = total de la zone la plus chargée
-  const maxVal = Math.max(
-    ...zones.map((_, zi) => activeSeries.reduce((s, sr) => s + (sr.data[zi] ?? 0), 0)),
-    1,
-  );
+  // Grille horizontale + étiquettes axe Y
+  const TICKS = 5;
+  for (let t = 0; t <= TICKS; t++) {
+    const val = Math.ceil((maxVal * t) / TICKS);
+    const y   = PAD_TOP + CHART_H - (t / TICKS) * CHART_H;
 
-  for (let zi = 0; zi < zones.length; zi++) {
-    const barY = PAD_TOP + zi * (BAR_H + BAR_GAP);
+    ctx.strokeStyle = t === 0 ? '#AAAAAA' : '#E8E8E8';
+    ctx.lineWidth   = t === 0 ? 1 : 0.5;
+    ctx.beginPath();
+    ctx.moveTo(PAD_LEFT, y);
+    ctx.lineTo(PAD_LEFT + chartW, y);
+    ctx.stroke();
 
-    // Étiquette zone (tronquée si trop longue)
-    ctx.fillStyle    = '#333333';
-    ctx.font         = `11px ${FONT}`;
+    ctx.fillStyle    = '#666666';
+    ctx.font         = `10px ${FONT}`;
     ctx.textAlign    = 'right';
     ctx.textBaseline = 'middle';
-    let label = zones[zi];
-    while (label.length > 1 && ctx.measureText(label + '…').width > PAD_LEFT - 12)
-      label = label.slice(0, -1);
-    if (label !== zones[zi]) label += '…';
-    ctx.fillText(label, PAD_LEFT - 8, barY + BAR_H / 2);
+    ctx.fillText(String(val), PAD_LEFT - 5, y);
+  }
 
-    // Barres empilées
-    let x = PAD_LEFT;
+  // Axe Y vertical
+  ctx.strokeStyle = '#AAAAAA';
+  ctx.lineWidth   = 1;
+  ctx.beginPath();
+  ctx.moveTo(PAD_LEFT, PAD_TOP);
+  ctx.lineTo(PAD_LEFT, PAD_TOP + CHART_H);
+  ctx.stroke();
+
+  // Barres + étiquettes X
+  for (let zi = 0; zi < zones.length; zi++) {
+    const cx   = PAD_LEFT + barStep * zi + barStep / 2;
+    const barL = cx - barW / 2;
+
+    // Barres empilées (de bas en haut)
+    let yBase = PAD_TOP + CHART_H;
     for (let si = 0; si < activeSeries.length; si++) {
       const val = activeSeries[si].data[zi] ?? 0;
       if (val === 0) continue;
-      const w = Math.max((val / maxVal) * CHART_W, 2);
+      const h = Math.max((val / maxVal) * CHART_H, 2);
 
       ctx.fillStyle = getColor(activeSeries[si].label, si);
-      ctx.fillRect(x, barY, w, BAR_H);
+      ctx.fillRect(barL, yBase - h, barW, h);
 
-      // Valeur dans la barre si assez large
-      if (w > 22) {
+      // Valeur dans la barre si assez haute
+      if (h > 16 && barW > 20) {
         ctx.fillStyle    = '#FFFFFF';
         ctx.font         = `bold 10px ${FONT}`;
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(String(val), x + w / 2, barY + BAR_H / 2);
+        ctx.fillText(String(val), cx, yBase - h / 2);
       }
-      x += w;
+      yBase -= h;
     }
 
-    // Contour de la barre complète
-    ctx.strokeStyle = '#D0D0D0';
-    ctx.lineWidth   = 0.5;
-    ctx.strokeRect(PAD_LEFT, barY, CHART_W, BAR_H);
+    // Étiquette zone (tournée 45°)
+    ctx.save();
+    ctx.translate(cx, PAD_TOP + CHART_H + 8);
+    ctx.rotate(-Math.PI / 4);
+    ctx.fillStyle    = '#333333';
+    ctx.font         = `10px ${FONT}`;
+    ctx.textAlign    = 'right';
+    ctx.textBaseline = 'middle';
+    let label = zones[zi];
+    while (label.length > 1 && ctx.measureText(label + '…').width > 90)
+      label = label.slice(0, -1);
+    if (label !== zones[zi]) label += '…';
+    ctx.fillText(label, 0, 0);
+    ctx.restore();
   }
 
-  // Axe vertical gauche
-  ctx.strokeStyle = '#AAAAAA';
-  ctx.lineWidth   = 1;
-  ctx.beginPath();
-  ctx.moveTo(PAD_LEFT, PAD_TOP - 4);
-  ctx.lineTo(PAD_LEFT, PAD_TOP + zones.length * (BAR_H + BAR_GAP));
-  ctx.stroke();
-
   // Légende
-  const LEGEND_Y = PAD_TOP + zones.length * (BAR_H + BAR_GAP) + 14;
+  const LEGEND_Y = PAD_TOP + CHART_H + PAD_LABELS + 4;
   let lx = PAD_LEFT;
   for (let si = 0; si < activeSeries.length; si++) {
     const color = getColor(activeSeries[si].label, si);
     ctx.fillStyle = color;
     ctx.fillRect(lx, LEGEND_Y, 13, 13);
-    ctx.strokeStyle = '#999999';
-    ctx.lineWidth   = 0.5;
-    ctx.strokeRect(lx, LEGEND_Y, 13, 13);
 
     ctx.fillStyle    = '#333333';
     ctx.font         = `11px ${FONT}`;
     ctx.textAlign    = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText(activeSeries[si].label, lx + 17, LEGEND_Y + 6);
-
     lx += 17 + ctx.measureText(activeSeries[si].label).width + 18;
-    if (lx > CANVAS_W - 80) lx = PAD_LEFT; // wrap
+    if (lx > CANVAS_W - 80) lx = PAD_LEFT;
   }
 
   return Buffer.from(canvas.toBuffer('image/png'));
@@ -247,10 +266,10 @@ async function embedChart(
   const imgId = workbook.addImage({ buffer: buf as any, extension: 'png' });
   sheet.addImage(imgId, {
     tl: { col: 0, row: afterRow },
-    ext: { width: 880, height: Math.max(160, buf.length > 0 ? 220 : 0) },
+    ext: { width: 880, height: 430 },
     editAs: 'oneCell',
   });
-  for (let i = 0; i < 14; i++) sheet.addRow([]); // réserver la place
+  for (let i = 0; i < 22; i++) sheet.addRow([]); // réserver la place
 }
 
 // ── Service principal ─────────────────────────────────────────────────────────
@@ -391,7 +410,7 @@ export const fieldReportService = {
     styleTotal(shGFK.addRow(['TOTAL', ...ESPECES.map((e) => fkColTotals[e] ?? 0), fkGrandTotal]));
     autosize(shGFK);
 
-    const fkChart = await renderStackedBarChart(
+    const fkChart = await renderVerticalBarChart(
       fkZones,
       ESPECES.map((e) => ({ label: e, data: fkZones.map((z) => fkPivot.get(z)?.get(e) ?? 0) })),
       'Destructeurs d\'insectes — captures par zone',
@@ -435,7 +454,7 @@ export const fieldReportService = {
     styleTotal(shGPieges.addRow(['TOTAL', ...piegeEtats.map((e) => pColTotals[e] ?? 0), pGrandTotal]));
     autosize(shGPieges);
 
-    const piegeChart = await renderStackedBarChart(
+    const piegeChart = await renderVerticalBarChart(
       piegeZones,
       piegeEtats.map((e) => ({ label: e, data: piegeZones.map((z) => piegePivot.get(z)?.get(e) ?? 0) })),
       'Pièges — états par zone',
@@ -479,7 +498,7 @@ export const fieldReportService = {
     styleTotal(shGBoite.addRow(['TOTAL', ...boiteEtats.map((e) => bColTotals[e] ?? 0), bGrandTotal]));
     autosize(shGBoite);
 
-    const boiteChart = await renderStackedBarChart(
+    const boiteChart = await renderVerticalBarChart(
       boiteZones,
       boiteEtats.map((e) => ({ label: e, data: boiteZones.map((z) => boitePivot.get(z)?.get(e) ?? 0) })),
       'Boîtes appât — états par zone',
