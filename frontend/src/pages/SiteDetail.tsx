@@ -1297,6 +1297,15 @@ function RapportsTab({ siteId }: { siteId: string }) {
     enabled: !!siteId,
   });
 
+  const { data: excelReports = [] } = useQuery<any[]>({
+    queryKey: ['excel-reports', siteId],
+    queryFn: async () => {
+      const all = await fieldReportsApi.list(siteId);
+      return (Array.isArray(all) ? all : []).filter((r: any) => r.xlsxPath);
+    },
+    enabled: !!siteId,
+  });
+
   const startMut = useMutation({
     mutationFn: (interventionId: string) => interventionsApi.startFieldReport(interventionId),
     onSuccess: (fi: FieldIntervention) => {
@@ -1308,10 +1317,21 @@ function RapportsTab({ siteId }: { siteId: string }) {
 
   const generateExcelMut = useMutation({
     mutationFn: (range: { dateFrom: string; dateTo: string }) => fieldReportsApi.generate(siteId, range),
-    onSuccess: () => {
+    onSuccess: async (report: any) => {
       qc.invalidateQueries({ queryKey: ['site-documents', siteId] });
+      qc.invalidateQueries({ queryKey: ['excel-reports', siteId] });
       setShowExcelDialog(false);
-      toast.success('Rapport Excel généré et archivé dans Documents');
+      // Téléchargement automatique
+      try {
+        const blob = await fieldReportsApi.download(report.id);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${report.titre ?? 'rapport'}.xlsx`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch {}
+      toast.success('Rapport Excel généré — téléchargement démarré');
     },
     onError: (error: any) => toast.error(error?.response?.data?.error || 'Erreur lors de la génération'),
   });
@@ -1450,6 +1470,30 @@ function RapportsTab({ siteId }: { siteId: string }) {
             <Button size="sm" variant="ghost" onClick={() => setShowExcelDialog(true)}>Période personnalisée</Button>
           </div>
         </div>
+
+        {excelReports.length === 0 ? (
+          <Card><CardContent className="py-4 text-center text-sm text-gray-400">Aucun rapport Excel généré pour ce site.</CardContent></Card>
+        ) : (
+          <div className="space-y-2">
+            {excelReports.map((r) => (
+              <Card key={r.id}>
+                <CardContent className="flex items-center gap-3 py-3 px-4">
+                  <FileText className="h-4 w-4 text-green-600 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{r.titre}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {new Date(r.generatedAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                      {r.generatedBy && ` — ${r.generatedBy.prenom} ${r.generatedBy.nom}`}
+                    </p>
+                  </div>
+                  <Button variant="outline" size="sm" className="h-7 text-xs gap-1 shrink-0" onClick={() => downloadReport(r)}>
+                    <Download className="h-3.5 w-3.5" /> Télécharger
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── Rapports écrits PDF ─────────────────────────────── */}
