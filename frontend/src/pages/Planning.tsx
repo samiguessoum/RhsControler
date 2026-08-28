@@ -1859,7 +1859,7 @@ function InterventionDetailDialog({
                 Voir le rapport
               </Button>
             )}
-            {canExport && intervention.type === 'OPERATION' && intervention.statut === 'REALISEE' && (
+            {canExport && intervention.type === 'OPERATION' && intervention.statut !== 'ANNULEE' && (
               <>
                 <Button
                   variant="outline"
@@ -1877,7 +1877,7 @@ function InterventionDetailDialog({
                 </Button>
               </>
             )}
-            {canExport && intervention.type === 'CONTROLE' && intervention.statut === 'REALISEE' && (
+            {canExport && intervention.type === 'CONTROLE' && intervention.statut !== 'ANNULEE' && (
               <Button
                 variant="outline"
                 onClick={onDownloadAttestationControle}
