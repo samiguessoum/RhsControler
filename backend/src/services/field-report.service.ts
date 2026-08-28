@@ -124,8 +124,18 @@ function pivotSum(rows: { zone: string; key: string; value: number }[]): Map<str
   return m;
 }
 
+// ── Arrondi max vers un "beau" chiffre pour l'axe Y ─────────────────────────
+function niceMax(v: number): number {
+  if (v <= 0) return 10;
+  const exp   = Math.pow(10, Math.floor(Math.log10(v)));
+  const coeff = v / exp;
+  const nice  = coeff <= 1 ? 1 : coeff <= 2 ? 2 : coeff <= 5 ? 5 : 10;
+  return nice * exp;
+}
+
 // ── Rendu graphique — barres verticales groupées ──────────────────────────────
-// X = zones, Y = count, un bâtonnet par série (espèce ou état) côte à côte
+// X = zones · Y = count · un bâtonnet par série côte à côte
+// Canvas adaptatif : s'élargit automatiquement si beaucoup de zones
 async function renderVerticalBarChart(
   zones: string[],
   series: { label: string; data: number[] }[],
@@ -134,121 +144,172 @@ async function renderVerticalBarChart(
   const activeSeries = series.filter((s) => s.data.some((v) => v > 0));
   if (zones.length === 0 || activeSeries.length === 0) return null;
 
-  const PAD_TOP    = 52;
-  const PAD_LEFT   = 52;
-  const PAD_RIGHT  = 20;
-  const PAD_LABELS = 75;  // étiquettes X à 45°
-  const PAD_LEGEND = 30;
-  const CHART_H    = 280;
-  const CANVAS_W   = 880;
-  const CANVAS_H   = PAD_TOP + CHART_H + PAD_LABELS + PAD_LEGEND;
+  const n = zones.length;
+  const m = activeSeries.length;
+
+  // ── Layout adaptatif ──
+  const PAD_TOP    = 54;
+  const PAD_LEFT   = 50;
+  const PAD_RIGHT  = 28;
+  const CHART_H    = 260;
+
+  // Angle + taille des labels X selon densité
+  const labelAngle   = n > 7 ? -55 : -40;
+  const labelFontSz  = n > 12 ? 8 : n > 7 ? 9 : 10;
+  const labelMaxPx   = n > 7 ? 72 : 90;
+  const PAD_LABELS   = n > 7 ? 88 : 70;
+  const PAD_LEGEND   = 32;
+  const CANVAS_H     = PAD_TOP + CHART_H + PAD_LABELS + PAD_LEGEND;
+
+  // Largeur minimale par groupe pour que les barres restent lisibles
+  const MIN_BAR_W  = 7;
+  const BAR_GAP    = 2;
+  const minGroupW  = m * MIN_BAR_W + (m - 1) * BAR_GAP;
+  const minGroupSt = minGroupW / 0.65; // 65 % utilisé par les barres
+  const CANVAS_W   = Math.max(820, Math.ceil(PAD_LEFT + PAD_RIGHT + n * minGroupSt));
 
   const chartW    = CANVAS_W - PAD_LEFT - PAD_RIGHT;
-  const groupStep = chartW / zones.length;          // largeur d'un groupe de barres
-  const groupPad  = groupStep * 0.15;               // espace entre groupes
-  const groupW    = groupStep - groupPad * 2;
-  const barGap    = 2;
-  const barW      = Math.max(6, (groupW - barGap * (activeSeries.length - 1)) / activeSeries.length);
+  const groupStep = chartW / n;
+  const groupW    = groupStep * 0.65;
+  const groupOff  = (groupStep - groupW) / 2;
+  const barW      = Math.max(MIN_BAR_W, (groupW - BAR_GAP * (m - 1)) / m);
 
-  const maxVal = Math.max(...activeSeries.flatMap((s) => s.data), 1);
+  const yMax = niceMax(Math.max(...activeSeries.flatMap((s) => s.data), 1));
 
+  // ── Canvas ──
   const canvas = createCanvas(CANVAS_W, CANVAS_H);
   const ctx    = canvas.getContext('2d');
 
-  // Fond blanc
-  ctx.fillStyle = '#FFFFFF';
+  // Fond global très léger
+  ctx.fillStyle = '#F7F9FC';
   ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
-  // Titre
-  ctx.fillStyle    = '#1F3864';
+  // Zone de graphique blanche avec légère ombre portée simulée
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(PAD_LEFT - 4, PAD_TOP - 4, chartW + 8, CHART_H + 8);
+
+  // ── Titre ──
+  ctx.fillStyle    = '#1E3A5F';
   ctx.font         = `bold 13px ${FONT}`;
   ctx.textAlign    = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(title, CANVAS_W / 2, 26);
+  ctx.fillText(title, PAD_LEFT + chartW / 2, 27);
 
-  // Grille horizontale + étiquettes axe Y
+  // ── Grille + étiquettes Y ──
   const TICKS = 5;
   for (let t = 0; t <= TICKS; t++) {
-    const val = Math.ceil((maxVal * t) / TICKS);
+    const val = Math.round((yMax * t) / TICKS);
     const y   = PAD_TOP + CHART_H - (t / TICKS) * CHART_H;
 
-    ctx.strokeStyle = t === 0 ? '#AAAAAA' : '#E8E8E8';
-    ctx.lineWidth   = t === 0 ? 1 : 0.5;
-    ctx.beginPath();
-    ctx.moveTo(PAD_LEFT, y);
-    ctx.lineTo(PAD_LEFT + chartW, y);
-    ctx.stroke();
+    if (t > 0) {
+      ctx.setLineDash([4, 5]);
+      ctx.strokeStyle = '#DDE3EC';
+      ctx.lineWidth   = 0.8;
+      ctx.beginPath(); ctx.moveTo(PAD_LEFT, y); ctx.lineTo(PAD_LEFT + chartW, y); ctx.stroke();
+      ctx.setLineDash([]);
+    }
 
-    ctx.fillStyle    = '#666666';
-    ctx.font         = `10px ${FONT}`;
+    ctx.fillStyle    = '#8896A8';
+    ctx.font         = `9px ${FONT}`;
     ctx.textAlign    = 'right';
     ctx.textBaseline = 'middle';
-    ctx.fillText(String(val), PAD_LEFT - 5, y);
+    ctx.fillText(String(val), PAD_LEFT - 7, y);
   }
 
-  // Axe Y vertical
-  ctx.strokeStyle = '#AAAAAA';
+  // Axe bas (ligne solide)
+  ctx.strokeStyle = '#BDC7D8';
   ctx.lineWidth   = 1;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(PAD_LEFT, PAD_TOP + CHART_H);
+  ctx.lineTo(PAD_LEFT + chartW, PAD_TOP + CHART_H);
+  ctx.stroke();
+
+  // Axe gauche
   ctx.beginPath();
   ctx.moveTo(PAD_LEFT, PAD_TOP);
   ctx.lineTo(PAD_LEFT, PAD_TOP + CHART_H);
   ctx.stroke();
 
+  // ── Barres ──
   const BASE_Y = PAD_TOP + CHART_H;
 
-  // Barres groupées + étiquettes X
-  for (let zi = 0; zi < zones.length; zi++) {
-    const groupLeft = PAD_LEFT + groupStep * zi + groupPad;
+  for (let zi = 0; zi < n; zi++) {
+    const groupLeft = PAD_LEFT + groupStep * zi + groupOff;
     const groupCX   = PAD_LEFT + groupStep * zi + groupStep / 2;
 
-    for (let si = 0; si < activeSeries.length; si++) {
+    for (let si = 0; si < m; si++) {
       const val = activeSeries[si].data[zi] ?? 0;
-      const h   = Math.max((val / maxVal) * CHART_H, val > 0 ? 2 : 0);
-      const x   = groupLeft + si * (barW + barGap);
+      if (val === 0) continue;
 
-      ctx.fillStyle = getColor(activeSeries[si].label, si);
-      ctx.fillRect(x, BASE_Y - h, barW, h);
+      const h    = Math.max((val / yMax) * CHART_H, 3);
+      const x    = groupLeft + si * (barW + BAR_GAP);
+      const r    = Math.min(3, barW / 3, h / 3); // rayon des coins arrondis
+      const color = getColor(activeSeries[si].label, si);
 
-      // Valeur au-dessus de la barre
-      if (val > 0) {
-        ctx.fillStyle    = '#333333';
-        ctx.font         = `bold 9px ${FONT}`;
+      // Barre avec sommet arrondi
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(x, BASE_Y);
+      ctx.lineTo(x, BASE_Y - h + r);
+      ctx.quadraticCurveTo(x, BASE_Y - h, x + r, BASE_Y - h);
+      ctx.lineTo(x + barW - r, BASE_Y - h);
+      ctx.quadraticCurveTo(x + barW, BASE_Y - h, x + barW, BASE_Y - h + r);
+      ctx.lineTo(x + barW, BASE_Y);
+      ctx.closePath();
+      ctx.fill();
+
+      // Valeur au-dessus (seulement si suffisamment de place)
+      if (barW >= 14) {
+        ctx.fillStyle    = '#3D4B5C';
+        ctx.font         = `bold ${Math.min(9, barW - 2)}px ${FONT}`;
         ctx.textAlign    = 'center';
         ctx.textBaseline = 'bottom';
         ctx.fillText(String(val), x + barW / 2, BASE_Y - h - 2);
       }
     }
 
-    // Étiquette zone (tournée 45°)
+    // Étiquette zone (angle adaptatif)
     ctx.save();
-    ctx.translate(groupCX, BASE_Y + 8);
-    ctx.rotate(-Math.PI / 4);
-    ctx.fillStyle    = '#333333';
-    ctx.font         = `10px ${FONT}`;
+    ctx.translate(groupCX, BASE_Y + 6);
+    ctx.rotate((labelAngle * Math.PI) / 180);
+    ctx.fillStyle    = '#556070';
+    ctx.font         = `${labelFontSz}px ${FONT}`;
     ctx.textAlign    = 'right';
     ctx.textBaseline = 'middle';
     let label = zones[zi];
-    while (label.length > 1 && ctx.measureText(label + '…').width > 90)
+    while (label.length > 1 && ctx.measureText(label + '…').width > labelMaxPx)
       label = label.slice(0, -1);
     if (label !== zones[zi]) label += '…';
     ctx.fillText(label, 0, 0);
     ctx.restore();
   }
 
-  // Légende
-  const LEGEND_Y = PAD_TOP + CHART_H + PAD_LABELS + 4;
-  let lx = PAD_LEFT;
-  for (let si = 0; si < activeSeries.length; si++) {
-    const color = getColor(activeSeries[si].label, si);
-    ctx.fillStyle = color;
-    ctx.fillRect(lx, LEGEND_Y, 13, 13);
-    ctx.fillStyle    = '#333333';
-    ctx.font         = `11px ${FONT}`;
+  // ── Légende centrée ──
+  const LEG_Y = PAD_TOP + CHART_H + PAD_LABELS + 6;
+  ctx.font = `10px ${FONT}`;
+  const items = activeSeries.map((s, i) => ({
+    label: s.label,
+    color: getColor(s.label, i),
+    w: 13 + 5 + ctx.measureText(s.label).width + 14,
+  }));
+  const totalW = items.reduce((a, b) => a + b.w, 0);
+  let lx = PAD_LEFT + Math.max(0, (chartW - totalW) / 2);
+
+  for (const item of items) {
+    // Carré coloré arrondi
+    ctx.fillStyle = item.color;
+    ctx.beginPath();
+    ctx.roundRect(lx, LEG_Y, 11, 11, 2);
+    ctx.fill();
+
+    ctx.fillStyle    = '#445060';
     ctx.textAlign    = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(activeSeries[si].label, lx + 17, LEGEND_Y + 6);
-    lx += 17 + ctx.measureText(activeSeries[si].label).width + 18;
-    if (lx > CANVAS_W - 80) lx = PAD_LEFT;
+    ctx.fillText(item.label, lx + 15, LEG_Y + 5);
+    lx += item.w;
+    // Retour à la ligne si débordement
+    if (lx > PAD_LEFT + chartW - 30) lx = PAD_LEFT;
   }
 
   return Buffer.from(canvas.toBuffer('image/png'));
