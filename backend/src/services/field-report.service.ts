@@ -124,7 +124,8 @@ function pivotSum(rows: { zone: string; key: string; value: number }[]): Map<str
   return m;
 }
 
-// ── Rendu graphique — barres verticales empilées ──────────────────────────────
+// ── Rendu graphique — barres verticales groupées ──────────────────────────────
+// X = zones, Y = count, un bâtonnet par série (espèce ou état) côte à côte
 async function renderVerticalBarChart(
   zones: string[],
   series: { label: string; data: number[] }[],
@@ -136,20 +137,20 @@ async function renderVerticalBarChart(
   const PAD_TOP    = 52;
   const PAD_LEFT   = 52;
   const PAD_RIGHT  = 20;
-  const PAD_LABELS = 70;  // espace pour étiquettes X tournées à 45°
-  const PAD_LEGEND = 28;  // espace pour la légende sous les labels
+  const PAD_LABELS = 75;  // étiquettes X à 45°
+  const PAD_LEGEND = 30;
   const CHART_H    = 280;
   const CANVAS_W   = 880;
   const CANVAS_H   = PAD_TOP + CHART_H + PAD_LABELS + PAD_LEGEND;
 
-  const chartW  = CANVAS_W - PAD_LEFT - PAD_RIGHT;
-  const barStep = chartW / zones.length;
-  const barW    = Math.max(14, Math.min(60, barStep * 0.65));
+  const chartW    = CANVAS_W - PAD_LEFT - PAD_RIGHT;
+  const groupStep = chartW / zones.length;          // largeur d'un groupe de barres
+  const groupPad  = groupStep * 0.15;               // espace entre groupes
+  const groupW    = groupStep - groupPad * 2;
+  const barGap    = 2;
+  const barW      = Math.max(6, (groupW - barGap * (activeSeries.length - 1)) / activeSeries.length);
 
-  const maxVal = Math.max(
-    ...zones.map((_, zi) => activeSeries.reduce((s, sr) => s + (sr.data[zi] ?? 0), 0)),
-    1,
-  );
+  const maxVal = Math.max(...activeSeries.flatMap((s) => s.data), 1);
 
   const canvas = createCanvas(CANVAS_W, CANVAS_H);
   const ctx    = canvas.getContext('2d');
@@ -193,35 +194,34 @@ async function renderVerticalBarChart(
   ctx.lineTo(PAD_LEFT, PAD_TOP + CHART_H);
   ctx.stroke();
 
-  // Barres + étiquettes X
-  for (let zi = 0; zi < zones.length; zi++) {
-    const cx   = PAD_LEFT + barStep * zi + barStep / 2;
-    const barL = cx - barW / 2;
+  const BASE_Y = PAD_TOP + CHART_H;
 
-    // Barres empilées (de bas en haut)
-    let yBase = PAD_TOP + CHART_H;
+  // Barres groupées + étiquettes X
+  for (let zi = 0; zi < zones.length; zi++) {
+    const groupLeft = PAD_LEFT + groupStep * zi + groupPad;
+    const groupCX   = PAD_LEFT + groupStep * zi + groupStep / 2;
+
     for (let si = 0; si < activeSeries.length; si++) {
       const val = activeSeries[si].data[zi] ?? 0;
-      if (val === 0) continue;
-      const h = Math.max((val / maxVal) * CHART_H, 2);
+      const h   = Math.max((val / maxVal) * CHART_H, val > 0 ? 2 : 0);
+      const x   = groupLeft + si * (barW + barGap);
 
       ctx.fillStyle = getColor(activeSeries[si].label, si);
-      ctx.fillRect(barL, yBase - h, barW, h);
+      ctx.fillRect(x, BASE_Y - h, barW, h);
 
-      // Valeur dans la barre si assez haute
-      if (h > 16 && barW > 20) {
-        ctx.fillStyle    = '#FFFFFF';
-        ctx.font         = `bold 10px ${FONT}`;
+      // Valeur au-dessus de la barre
+      if (val > 0) {
+        ctx.fillStyle    = '#333333';
+        ctx.font         = `bold 9px ${FONT}`;
         ctx.textAlign    = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(String(val), cx, yBase - h / 2);
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(String(val), x + barW / 2, BASE_Y - h - 2);
       }
-      yBase -= h;
     }
 
     // Étiquette zone (tournée 45°)
     ctx.save();
-    ctx.translate(cx, PAD_TOP + CHART_H + 8);
+    ctx.translate(groupCX, BASE_Y + 8);
     ctx.rotate(-Math.PI / 4);
     ctx.fillStyle    = '#333333';
     ctx.font         = `10px ${FONT}`;
@@ -242,7 +242,6 @@ async function renderVerticalBarChart(
     const color = getColor(activeSeries[si].label, si);
     ctx.fillStyle = color;
     ctx.fillRect(lx, LEGEND_Y, 13, 13);
-
     ctx.fillStyle    = '#333333';
     ctx.font         = `11px ${FONT}`;
     ctx.textAlign    = 'left';
