@@ -124,7 +124,7 @@ function pivotSum(rows: { zone: string; key: string; value: number }[]): Map<str
   return m;
 }
 
-// ── Arrondi max vers un "beau" chiffre pour l'axe Y ─────────────────────────
+// ── Arrondi max vers un "beau" chiffre pour l'axe ───────────────────────────
 function niceMax(v: number): number {
   if (v <= 0) return 10;
   const exp   = Math.pow(10, Math.floor(Math.log10(v)));
@@ -133,203 +133,199 @@ function niceMax(v: number): number {
   return nice * exp;
 }
 
-// ── Rendu graphique — barres verticales groupées ──────────────────────────────
-// X = zones · Y = count · un bâtonnet par série côte à côte
-// Canvas adaptatif : s'élargit automatiquement si beaucoup de zones
-async function renderVerticalBarChart(
+// ── Rendu graphique — barres groupées, adaptatif ──────────────────────────────
+// ≤ 8 zones → barres verticales  |  > 8 zones → barres horizontales
+// Retourne [buffer, hauteurPixels] pour calibrer l'embed Excel
+async function renderBarChart(
   zones: string[],
   series: { label: string; data: number[] }[],
   title: string,
-): Promise<Buffer | null> {
+): Promise<[Buffer, number] | null> {
   const activeSeries = series.filter((s) => s.data.some((v) => v > 0));
   if (zones.length === 0 || activeSeries.length === 0) return null;
 
-  const n = zones.length;
-  const m = activeSeries.length;
+  const n   = zones.length;
+  const m   = activeSeries.length;
+  const axM = niceMax(Math.max(...activeSeries.flatMap((s) => s.data), 1));
 
-  // ── Layout adaptatif ──
-  const PAD_TOP    = 54;
-  const PAD_LEFT   = 50;
-  const PAD_RIGHT  = 28;
-  const CHART_H    = 260;
+  if (n <= 8) {
+    // ── VERTICAL ────────────────────────────────────────────────────────────
+    const PAD_TOP    = 54;
+    const PAD_LEFT   = 50;
+    const PAD_RIGHT  = 28;
+    const CHART_H    = 260;
+    const labelAngle = n > 5 ? -50 : -38;
+    const labelFontSz = n > 5 ? 9 : 10;
+    const labelMaxPx  = n > 5 ? 78 : 90;
+    const PAD_LABELS  = n > 5 ? 82 : 68;
+    const PAD_LEGEND  = 32;
+    const CANVAS_H    = PAD_TOP + CHART_H + PAD_LABELS + PAD_LEGEND;
 
-  // Angle + taille des labels X selon densité
-  const labelAngle   = n > 7 ? -55 : -40;
-  const labelFontSz  = n > 12 ? 8 : n > 7 ? 9 : 10;
-  const labelMaxPx   = n > 7 ? 72 : 90;
-  const PAD_LABELS   = n > 7 ? 88 : 70;
-  const PAD_LEGEND   = 32;
-  const CANVAS_H     = PAD_TOP + CHART_H + PAD_LABELS + PAD_LEGEND;
+    const MIN_BAR_W = 10;
+    const BAR_GAP   = 2;
+    const CANVAS_W  = Math.max(820, Math.ceil(PAD_LEFT + PAD_RIGHT + n * ((m * MIN_BAR_W + (m - 1) * BAR_GAP) / 0.65)));
+    const chartW    = CANVAS_W - PAD_LEFT - PAD_RIGHT;
+    const groupStep = chartW / n;
+    const groupW    = groupStep * 0.65;
+    const groupOff  = (groupStep - groupW) / 2;
+    const barW      = Math.max(MIN_BAR_W, (groupW - BAR_GAP * (m - 1)) / m);
 
-  // Largeur minimale par groupe pour que les barres restent lisibles
-  const MIN_BAR_W  = 7;
-  const BAR_GAP    = 2;
-  const minGroupW  = m * MIN_BAR_W + (m - 1) * BAR_GAP;
-  const minGroupSt = minGroupW / 0.65; // 65 % utilisé par les barres
-  const CANVAS_W   = Math.max(820, Math.ceil(PAD_LEFT + PAD_RIGHT + n * minGroupSt));
+    const canvas = createCanvas(CANVAS_W, CANVAS_H);
+    const ctx    = canvas.getContext('2d');
 
-  const chartW    = CANVAS_W - PAD_LEFT - PAD_RIGHT;
-  const groupStep = chartW / n;
-  const groupW    = groupStep * 0.65;
-  const groupOff  = (groupStep - groupW) / 2;
-  const barW      = Math.max(MIN_BAR_W, (groupW - BAR_GAP * (m - 1)) / m);
+    ctx.fillStyle = '#F7F9FC'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(PAD_LEFT - 4, PAD_TOP - 4, chartW + 8, CHART_H + 8);
 
-  const yMax = niceMax(Math.max(...activeSeries.flatMap((s) => s.data), 1));
+    ctx.fillStyle = '#1E3A5F'; ctx.font = `bold 13px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(title, PAD_LEFT + chartW / 2, 27);
 
-  // ── Canvas ──
-  const canvas = createCanvas(CANVAS_W, CANVAS_H);
-  const ctx    = canvas.getContext('2d');
+    for (let t = 0; t <= 5; t++) {
+      const val = Math.round((axM * t) / 5);
+      const y   = PAD_TOP + CHART_H - (t / 5) * CHART_H;
+      if (t > 0) { ctx.setLineDash([4, 5]); ctx.strokeStyle = '#DDE3EC'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(PAD_LEFT, y); ctx.lineTo(PAD_LEFT + chartW, y); ctx.stroke(); ctx.setLineDash([]); }
+      ctx.fillStyle = '#8896A8'; ctx.font = `9px ${FONT}`; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(val), PAD_LEFT - 7, y);
+    }
+    ctx.strokeStyle = '#BDC7D8'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(PAD_LEFT, PAD_TOP + CHART_H); ctx.lineTo(PAD_LEFT + chartW, PAD_TOP + CHART_H); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(PAD_LEFT, PAD_TOP); ctx.lineTo(PAD_LEFT, PAD_TOP + CHART_H); ctx.stroke();
 
-  // Fond global très léger
-  ctx.fillStyle = '#F7F9FC';
-  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
-
-  // Zone de graphique blanche avec légère ombre portée simulée
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(PAD_LEFT - 4, PAD_TOP - 4, chartW + 8, CHART_H + 8);
-
-  // ── Titre ──
-  ctx.fillStyle    = '#1E3A5F';
-  ctx.font         = `bold 13px ${FONT}`;
-  ctx.textAlign    = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(title, PAD_LEFT + chartW / 2, 27);
-
-  // ── Grille + étiquettes Y ──
-  const TICKS = 5;
-  for (let t = 0; t <= TICKS; t++) {
-    const val = Math.round((yMax * t) / TICKS);
-    const y   = PAD_TOP + CHART_H - (t / TICKS) * CHART_H;
-
-    if (t > 0) {
-      ctx.setLineDash([4, 5]);
-      ctx.strokeStyle = '#DDE3EC';
-      ctx.lineWidth   = 0.8;
-      ctx.beginPath(); ctx.moveTo(PAD_LEFT, y); ctx.lineTo(PAD_LEFT + chartW, y); ctx.stroke();
-      ctx.setLineDash([]);
+    const BASE_Y = PAD_TOP + CHART_H;
+    for (let zi = 0; zi < n; zi++) {
+      const gLeft = PAD_LEFT + groupStep * zi + groupOff;
+      const gCX   = PAD_LEFT + groupStep * zi + groupStep / 2;
+      for (let si = 0; si < m; si++) {
+        const val = activeSeries[si].data[zi] ?? 0;
+        if (!val) continue;
+        const h = Math.max((val / axM) * CHART_H, 3);
+        const x = gLeft + si * (barW + BAR_GAP);
+        const r = Math.min(3, barW / 3, h / 3);
+        ctx.fillStyle = getColor(activeSeries[si].label, si);
+        ctx.beginPath(); ctx.moveTo(x, BASE_Y); ctx.lineTo(x, BASE_Y - h + r);
+        ctx.quadraticCurveTo(x, BASE_Y - h, x + r, BASE_Y - h);
+        ctx.lineTo(x + barW - r, BASE_Y - h);
+        ctx.quadraticCurveTo(x + barW, BASE_Y - h, x + barW, BASE_Y - h + r);
+        ctx.lineTo(x + barW, BASE_Y); ctx.closePath(); ctx.fill();
+        if (barW >= 14) { ctx.fillStyle = '#3D4B5C'; ctx.font = `bold ${Math.min(9, barW - 2)}px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText(String(val), x + barW / 2, BASE_Y - h - 2); }
+      }
+      ctx.save(); ctx.translate(gCX, BASE_Y + 6); ctx.rotate((labelAngle * Math.PI) / 180);
+      ctx.fillStyle = '#556070'; ctx.font = `${labelFontSz}px ${FONT}`; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      let lbl = zones[zi];
+      while (lbl.length > 1 && ctx.measureText(lbl + '…').width > labelMaxPx) lbl = lbl.slice(0, -1);
+      if (lbl !== zones[zi]) lbl += '…';
+      ctx.fillText(lbl, 0, 0); ctx.restore();
     }
 
-    ctx.fillStyle    = '#8896A8';
-    ctx.font         = `9px ${FONT}`;
-    ctx.textAlign    = 'right';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(val), PAD_LEFT - 7, y);
-  }
+    ctx.font = `10px ${FONT}`;
+    const items = activeSeries.map((s, i) => ({ label: s.label, color: getColor(s.label, i), w: 13 + 5 + ctx.measureText(s.label).width + 14 }));
+    const totalW = items.reduce((a, b) => a + b.w, 0);
+    let lx = PAD_LEFT + Math.max(0, (chartW - totalW) / 2);
+    const LEG_Y = PAD_TOP + CHART_H + PAD_LABELS + 6;
+    for (const item of items) {
+      ctx.fillStyle = item.color; ctx.beginPath(); ctx.roundRect(lx, LEG_Y, 11, 11, 2); ctx.fill();
+      ctx.fillStyle = '#445060'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(item.label, lx + 15, LEG_Y + 5);
+      lx += item.w; if (lx > PAD_LEFT + chartW - 30) lx = PAD_LEFT;
+    }
 
-  // Axe bas (ligne solide)
-  ctx.strokeStyle = '#BDC7D8';
-  ctx.lineWidth   = 1;
-  ctx.setLineDash([]);
-  ctx.beginPath();
-  ctx.moveTo(PAD_LEFT, PAD_TOP + CHART_H);
-  ctx.lineTo(PAD_LEFT + chartW, PAD_TOP + CHART_H);
-  ctx.stroke();
+    return [Buffer.from(canvas.toBuffer('image/png')), CANVAS_H];
 
-  // Axe gauche
-  ctx.beginPath();
-  ctx.moveTo(PAD_LEFT, PAD_TOP);
-  ctx.lineTo(PAD_LEFT, PAD_TOP + CHART_H);
-  ctx.stroke();
+  } else {
+    // ── HORIZONTAL (> 8 zones) ───────────────────────────────────────────────
+    const PAD_TOP    = 50;
+    const PAD_LEFT   = 172; // espace pour les noms de zones
+    const PAD_RIGHT  = 24;
+    const PAD_BOTTOM = 32; // axe X valeurs
+    const PAD_LEGEND = 28;
+    const BAR_H      = 9;
+    const BAR_GAP    = 2;
+    const GROUP_GAP  = 10;
+    const CHART_W    = 640;
+    const groupH     = m * BAR_H + (m - 1) * BAR_GAP;
+    const groupStep  = groupH + GROUP_GAP;
+    const CANVAS_W   = PAD_LEFT + CHART_W + PAD_RIGHT;
+    const CANVAS_H   = PAD_TOP + n * groupStep + GROUP_GAP + PAD_BOTTOM + PAD_LEGEND;
 
-  // ── Barres ──
-  const BASE_Y = PAD_TOP + CHART_H;
+    const canvas = createCanvas(CANVAS_W, CANVAS_H);
+    const ctx    = canvas.getContext('2d');
 
-  for (let zi = 0; zi < n; zi++) {
-    const groupLeft = PAD_LEFT + groupStep * zi + groupOff;
-    const groupCX   = PAD_LEFT + groupStep * zi + groupStep / 2;
+    ctx.fillStyle = '#F7F9FC'; ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(PAD_LEFT - 4, PAD_TOP - 4, CHART_W + 8, n * groupStep + GROUP_GAP + 8);
 
-    for (let si = 0; si < m; si++) {
-      const val = activeSeries[si].data[zi] ?? 0;
-      if (val === 0) continue;
+    ctx.fillStyle = '#1E3A5F'; ctx.font = `bold 12px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(title, PAD_LEFT + CHART_W / 2, 26);
 
-      const h    = Math.max((val / yMax) * CHART_H, 3);
-      const x    = groupLeft + si * (barW + BAR_GAP);
-      const r    = Math.min(3, barW / 3, h / 3); // rayon des coins arrondis
-      const color = getColor(activeSeries[si].label, si);
+    // Grille verticale + axe X
+    for (let t = 0; t <= 5; t++) {
+      const val = Math.round((axM * t) / 5);
+      const x   = PAD_LEFT + (t / 5) * CHART_W;
+      if (t > 0) { ctx.setLineDash([4, 5]); ctx.strokeStyle = '#DDE3EC'; ctx.lineWidth = 0.8; ctx.beginPath(); ctx.moveTo(x, PAD_TOP); ctx.lineTo(x, PAD_TOP + n * groupStep + GROUP_GAP); ctx.stroke(); ctx.setLineDash([]); }
+      ctx.fillStyle = '#8896A8'; ctx.font = `8px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.fillText(String(val), x, PAD_TOP + n * groupStep + GROUP_GAP + 5);
+    }
+    ctx.strokeStyle = '#BDC7D8'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(PAD_LEFT, PAD_TOP); ctx.lineTo(PAD_LEFT, PAD_TOP + n * groupStep + GROUP_GAP); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(PAD_LEFT, PAD_TOP + n * groupStep + GROUP_GAP); ctx.lineTo(PAD_LEFT + CHART_W, PAD_TOP + n * groupStep + GROUP_GAP); ctx.stroke();
 
-      // Barre avec sommet arrondi
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.moveTo(x, BASE_Y);
-      ctx.lineTo(x, BASE_Y - h + r);
-      ctx.quadraticCurveTo(x, BASE_Y - h, x + r, BASE_Y - h);
-      ctx.lineTo(x + barW - r, BASE_Y - h);
-      ctx.quadraticCurveTo(x + barW, BASE_Y - h, x + barW, BASE_Y - h + r);
-      ctx.lineTo(x + barW, BASE_Y);
-      ctx.closePath();
-      ctx.fill();
+    // Barres + labels zones
+    for (let zi = 0; zi < n; zi++) {
+      const gTop = PAD_TOP + GROUP_GAP / 2 + zi * groupStep;
+      const gMid = gTop + groupH / 2;
 
-      // Valeur au-dessus (seulement si suffisamment de place)
-      if (barW >= 14) {
-        ctx.fillStyle    = '#3D4B5C';
-        ctx.font         = `bold ${Math.min(9, barW - 2)}px ${FONT}`;
-        ctx.textAlign    = 'center';
-        ctx.textBaseline = 'bottom';
-        ctx.fillText(String(val), x + barW / 2, BASE_Y - h - 2);
+      ctx.fillStyle = '#445060'; ctx.font = `9px ${FONT}`; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      let lbl = zones[zi];
+      while (lbl.length > 1 && ctx.measureText(lbl + '…').width > PAD_LEFT - 12) lbl = lbl.slice(0, -1);
+      if (lbl !== zones[zi]) lbl += '…';
+      ctx.fillText(lbl, PAD_LEFT - 8, gMid);
+
+      for (let si = 0; si < m; si++) {
+        const val = activeSeries[si].data[zi] ?? 0;
+        if (!val) continue;
+        const w = Math.max((val / axM) * CHART_W, 2);
+        const y = gTop + si * (BAR_H + BAR_GAP);
+        const r = Math.min(2, BAR_H / 3);
+        ctx.fillStyle = getColor(activeSeries[si].label, si);
+        ctx.beginPath(); ctx.moveTo(PAD_LEFT, y + BAR_H); ctx.lineTo(PAD_LEFT, y + r);
+        ctx.quadraticCurveTo(PAD_LEFT, y, PAD_LEFT + r, y);
+        ctx.lineTo(PAD_LEFT + w - r, y); ctx.quadraticCurveTo(PAD_LEFT + w, y, PAD_LEFT + w, y + r);
+        ctx.lineTo(PAD_LEFT + w, y + BAR_H); ctx.closePath(); ctx.fill();
+        if (w > 22) { ctx.fillStyle = '#FFFFFF'; ctx.font = `bold 7px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(val), PAD_LEFT + w / 2, y + BAR_H / 2); }
       }
     }
 
-    // Étiquette zone (angle adaptatif)
-    ctx.save();
-    ctx.translate(groupCX, BASE_Y + 6);
-    ctx.rotate((labelAngle * Math.PI) / 180);
-    ctx.fillStyle    = '#556070';
-    ctx.font         = `${labelFontSz}px ${FONT}`;
-    ctx.textAlign    = 'right';
-    ctx.textBaseline = 'middle';
-    let label = zones[zi];
-    while (label.length > 1 && ctx.measureText(label + '…').width > labelMaxPx)
-      label = label.slice(0, -1);
-    if (label !== zones[zi]) label += '…';
-    ctx.fillText(label, 0, 0);
-    ctx.restore();
+    // Légende
+    const LEG_Y = CANVAS_H - PAD_LEGEND + 4;
+    ctx.font = `10px ${FONT}`;
+    const items = activeSeries.map((s, i) => ({ label: s.label, color: getColor(s.label, i), w: 13 + 4 + ctx.measureText(s.label).width + 14 }));
+    const totalW = items.reduce((a, b) => a + b.w, 0);
+    let lx = PAD_LEFT + Math.max(0, (CHART_W - totalW) / 2);
+    for (const item of items) {
+      ctx.fillStyle = item.color; ctx.beginPath(); ctx.roundRect(lx, LEG_Y, 11, 11, 2); ctx.fill();
+      ctx.fillStyle = '#445060'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(item.label, lx + 14, LEG_Y + 5);
+      lx += item.w; if (lx > PAD_LEFT + CHART_W - 30) lx = PAD_LEFT;
+    }
+
+    return [Buffer.from(canvas.toBuffer('image/png')), CANVAS_H];
   }
-
-  // ── Légende centrée ──
-  const LEG_Y = PAD_TOP + CHART_H + PAD_LABELS + 6;
-  ctx.font = `10px ${FONT}`;
-  const items = activeSeries.map((s, i) => ({
-    label: s.label,
-    color: getColor(s.label, i),
-    w: 13 + 5 + ctx.measureText(s.label).width + 14,
-  }));
-  const totalW = items.reduce((a, b) => a + b.w, 0);
-  let lx = PAD_LEFT + Math.max(0, (chartW - totalW) / 2);
-
-  for (const item of items) {
-    // Carré coloré arrondi
-    ctx.fillStyle = item.color;
-    ctx.beginPath();
-    ctx.roundRect(lx, LEG_Y, 11, 11, 2);
-    ctx.fill();
-
-    ctx.fillStyle    = '#445060';
-    ctx.textAlign    = 'left';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(item.label, lx + 15, LEG_Y + 5);
-    lx += item.w;
-    // Retour à la ligne si débordement
-    if (lx > PAD_LEFT + chartW - 30) lx = PAD_LEFT;
-  }
-
-  return Buffer.from(canvas.toBuffer('image/png'));
 }
 
 async function embedChart(
   workbook: ExcelJS.Workbook,
   sheet: ExcelJS.Worksheet,
-  buf: Buffer | null,
+  result: [Buffer, number] | null,
   afterRow: number,
 ) {
-  if (!buf) return;
+  if (!result) return;
+  const [buf, imgH] = result;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const imgId = workbook.addImage({ buffer: buf as any, extension: 'png' });
   sheet.addImage(imgId, {
     tl: { col: 0, row: afterRow },
-    ext: { width: 880, height: 430 },
+    ext: { width: 860, height: imgH },
     editAs: 'oneCell',
   });
-  for (let i = 0; i < 22; i++) sheet.addRow([]); // réserver la place
+  // Réserver des lignes proportionnelles à la hauteur (≈ 18px par ligne)
+  const rowsToReserve = Math.ceil(imgH / 18) + 2;
+  for (let i = 0; i < rowsToReserve; i++) sheet.addRow([]);
 }
 
 // ── Service principal ─────────────────────────────────────────────────────────
@@ -470,7 +466,7 @@ export const fieldReportService = {
     styleTotal(shGFK.addRow(['TOTAL', ...ESPECES.map((e) => fkColTotals[e] ?? 0), fkGrandTotal]));
     autosize(shGFK);
 
-    const fkChart = await renderVerticalBarChart(
+    const fkChart = await renderBarChart(
       fkZones,
       ESPECES.map((e) => ({ label: e, data: fkZones.map((z) => fkPivot.get(z)?.get(e) ?? 0) })),
       'Destructeurs d\'insectes — captures par zone',
@@ -514,7 +510,7 @@ export const fieldReportService = {
     styleTotal(shGPieges.addRow(['TOTAL', ...piegeEtats.map((e) => pColTotals[e] ?? 0), pGrandTotal]));
     autosize(shGPieges);
 
-    const piegeChart = await renderVerticalBarChart(
+    const piegeChart = await renderBarChart(
       piegeZones,
       piegeEtats.map((e) => ({ label: e, data: piegeZones.map((z) => piegePivot.get(z)?.get(e) ?? 0) })),
       'Pièges — états par zone',
@@ -558,7 +554,7 @@ export const fieldReportService = {
     styleTotal(shGBoite.addRow(['TOTAL', ...boiteEtats.map((e) => bColTotals[e] ?? 0), bGrandTotal]));
     autosize(shGBoite);
 
-    const boiteChart = await renderVerticalBarChart(
+    const boiteChart = await renderBarChart(
       boiteZones,
       boiteEtats.map((e) => ({ label: e, data: boiteZones.map((z) => boitePivot.get(z)?.get(e) ?? 0) })),
       'Boîtes appât — états par zone',
