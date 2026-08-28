@@ -640,6 +640,16 @@ export const fieldInterventionController = {
 
       const pathMod = await import('path');
       const absolutePath = pathMod.join(process.cwd(), filePath);
+      const ext = pathMod.extname(filePath).toLowerCase();
+
+      const MIME: Record<string, string> = {
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        '.pdf':  'application/pdf',
+      };
+
+      res.setHeader('Content-Type', MIME[ext] ?? 'application/octet-stream');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cache-Control', 'no-store');
       res.download(absolutePath, pathMod.basename(filePath));
     } catch (err) {
       next(err);
