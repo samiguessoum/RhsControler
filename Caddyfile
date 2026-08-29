@@ -1,20 +1,10 @@
-{env.DOMAIN} {
-    encode gzip
-
-    # Headers de sécurité globaux
-    header {
-        X-Content-Type-Options nosniff
-        X-Frame-Options SAMEORIGIN
-        Referrer-Policy strict-origin-when-cross-origin
-        -Server
-    }
-
+:80 {
     # API backend
     handle /api/* {
         reverse_proxy backend:3000
     }
 
-    # Fichiers uploadés (protégés par le backend)
+    # Fichiers uploadés (logos publics + fiches techniques protégées par le backend)
     handle /uploads/* {
         reverse_proxy backend:3000
     }
@@ -23,9 +13,4 @@
     handle {
         reverse_proxy frontend:80
     }
-}
-
-# Redirection HTTP → HTTPS automatique
-http://{env.DOMAIN} {
-    redir https://{env.DOMAIN}{uri} permanent
 }
