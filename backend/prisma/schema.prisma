@@ -1108,6 +1108,7 @@ model DevisLigne {
   totalTVA         Float           @default(0)
   totalTTC         Float           @default(0)
   ordre            Int             @default(0)
+  fichesTechniques Json?
 
   @@index([devisId])
   @@index([produitServiceId])
@@ -1176,6 +1177,7 @@ model CommandeLigne {
   totalTVA           Float               @default(0)
   totalTTC           Float               @default(0)
   ordre              Int                 @default(0)
+  fichesTechniques   Json?
   bonLivraisonLignes BonLivraisonLigne[]
 
   @@index([commandeId])
@@ -1331,6 +1333,7 @@ model FactureLigne {
   totalTVA         Float           @default(0)
   totalTTC         Float           @default(0)
   ordre            Int             @default(0)
+  fichesTechniques Json?
 
   @@index([factureId])
   @@index([produitServiceId])
