@@ -470,11 +470,11 @@ export default function ProduitsServices() {
   const createProduitMutation = useMutation({
     mutationFn: (data: CreateProduitServiceInput) => produitsServicesApi.create(data),
     onSuccess: async (createdProduit) => {
-      if (pendingFicheTechnique) {
+      if (pendingFichesTechniques.length > 0) {
         try {
-          await produitsServicesApi.uploadFicheTechnique(createdProduit.id, pendingFicheTechnique);
+          await produitsServicesApi.uploadFichesTechniques(createdProduit.id, pendingFichesTechniques);
         } catch {
-          toast.error('Produit créé, mais erreur lors de l\'upload de la fiche technique');
+          toast.error('Produit créé, mais erreur lors de l\'upload des fiches techniques');
         }
       }
       queryClient.invalidateQueries({ queryKey: ['produits-services'] });
@@ -661,7 +661,7 @@ export default function ProduitsServices() {
   type ModeGestionStock = 'STOCKE' | 'MIXTE' | 'FLUX_TENDU';
   const [modeGestionStock, setModeGestionStock] = useState<ModeGestionStock>('STOCKE');
   const [entrepotInitialId, setEntrepotInitialId] = useState<string>('');
-  const [pendingFicheTechnique, setPendingFicheTechnique] = useState<File | null>(null);
+  const [pendingFichesTechniques, setPendingFichesTechniques] = useState<File[]>([]);
 
   const [categorieForm, setCategorieForm] = useState<CreateCategorieProduitInput>({
     nom: '',
@@ -688,7 +688,7 @@ export default function ProduitsServices() {
     setUniteCustom('');
     setModeGestionStock('STOCKE');
     setEntrepotInitialId('');
-    setPendingFicheTechnique(null);
+    setPendingFichesTechniques([]);
     setPrixVenteMode('direct');
     setMargePercent('');
   };
@@ -2196,99 +2196,103 @@ export default function ProduitsServices() {
             </div>
           </div>
 
-          {/* Fiche technique PDF */}
+          {/* Fiches techniques PDF */}
           <div className="border rounded-lg p-4 space-y-3">
-            <p className="text-sm font-medium flex items-center gap-2">
-              <FileText className="h-4 w-4" />
-              Fiche technique (PDF)
-            </p>
-            {editingProduit ? (
-              editingProduit.ficheTechniqueUrl ? (
-                <div className="flex items-center gap-2">
-                  <a
-                    href={editingProduit.ficheTechniqueUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 flex-1"
-                  >
-                    <FileText className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{editingProduit.ficheTechniqueNom || 'Fiche technique.pdf'}</span>
-                    <ExternalLink className="h-3 w-3 shrink-0" />
-                  </a>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-red-500 hover:text-red-700"
-                    onClick={async () => {
-                      await produitsServicesApi.deleteFicheTechnique(editingProduit.id);
-                      setEditingProduit({ ...editingProduit, ficheTechniqueUrl: null, ficheTechniqueNom: null });
-                      queryClient.invalidateQueries({ queryKey: ['produits-services'] });
-                      toast.success('Fiche technique supprimée');
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : (
-                <label className="flex items-center gap-2 cursor-pointer w-fit">
-                  <input
-                    type="file"
-                    accept=".pdf"
-                    className="hidden"
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium flex items-center gap-2">
+                <FileText className="h-4 w-4" />
+                Fiches techniques (PDF)
+              </p>
+              <label className="cursor-pointer">
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  multiple
+                  className="hidden"
+                  onChange={async (e) => {
+                    const files = Array.from(e.target.files ?? []);
+                    if (!files.length) return;
+                    if (editingProduit) {
                       try {
-                        const result = await produitsServicesApi.uploadFicheTechnique(editingProduit.id, file);
-                        setEditingProduit({ ...editingProduit, ficheTechniqueUrl: result.ficheTechniqueUrl, ficheTechniqueNom: result.ficheTechniqueNom });
+                        const updated = await produitsServicesApi.uploadFichesTechniques(editingProduit.id, files);
+                        setEditingProduit({ ...editingProduit, fichesTechniques: updated });
                         queryClient.invalidateQueries({ queryKey: ['produits-services'] });
-                        toast.success('Fiche technique uploadée');
+                        toast.success('Fiche(s) ajoutée(s)');
                       } catch {
                         toast.error('Erreur lors de l\'upload');
                       }
-                    }}
-                  />
-                  <Button type="button" variant="outline" size="sm" asChild>
-                    <span className="flex items-center gap-2">
-                      <Upload className="h-4 w-4" />
-                      Joindre un PDF
-                    </span>
-                  </Button>
-                </label>
-              )
-            ) : pendingFicheTechnique ? (
-              <div className="flex items-center gap-2">
-                <FileText className="h-4 w-4 text-blue-600 shrink-0" />
-                <span className="text-sm text-blue-700 flex-1 truncate">{pendingFicheTechnique.name}</span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-red-500 hover:text-red-700"
-                  onClick={() => setPendingFicheTechnique(null)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : (
-              <label className="flex items-center gap-2 cursor-pointer w-fit">
-                <input
-                  type="file"
-                  accept=".pdf"
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) setPendingFicheTechnique(file);
+                    } else {
+                      setPendingFichesTechniques((prev) => [...prev, ...files]);
+                    }
+                    e.target.value = '';
                   }}
                 />
-                <Button type="button" variant="outline" size="sm" asChild>
-                  <span className="flex items-center gap-2">
-                    <Upload className="h-4 w-4" />
-                    Joindre un PDF
-                  </span>
-                </Button>
+                <span className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-lg transition-colors">
+                  <Upload className="h-3 w-3" />
+                  Ajouter
+                </span>
               </label>
+            </div>
+
+            {/* Fiches existantes (mode édition) */}
+            {editingProduit && (editingProduit.fichesTechniques?.length ?? 0) > 0 && (
+              <div className="flex flex-col gap-1.5">
+                {editingProduit.fichesTechniques!.map((fiche) => (
+                  <div key={fiche.id} className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-lg group">
+                    <FileText className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                    <a
+                      href={`/uploads/fiches-techniques/${fiche.filename}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 text-sm text-blue-700 truncate hover:underline"
+                    >
+                      {fiche.nom}
+                    </a>
+                    <button
+                      type="button"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-600"
+                      onClick={async () => {
+                        try {
+                          await produitsServicesApi.deleteFicheTechniqueById(fiche.id);
+                          setEditingProduit({
+                            ...editingProduit,
+                            fichesTechniques: (editingProduit.fichesTechniques ?? []).filter((f) => f.id !== fiche.id),
+                          });
+                          queryClient.invalidateQueries({ queryKey: ['produits-services'] });
+                          toast.success('Fiche supprimée');
+                        } catch {
+                          toast.error('Erreur lors de la suppression');
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Fiches en attente (mode création) */}
+            {!editingProduit && pendingFichesTechniques.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                {pendingFichesTechniques.map((file, idx) => (
+                  <div key={idx} className="flex items-center gap-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                    <FileText className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                    <span className="flex-1 text-sm text-blue-700 truncate">{file.name}</span>
+                    <button
+                      type="button"
+                      className="text-red-400 hover:text-red-600"
+                      onClick={() => setPendingFichesTechniques((prev) => prev.filter((_, i) => i !== idx))}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!editingProduit && pendingFichesTechniques.length === 0 && (
+              <p className="text-xs text-muted-foreground">Aucune fiche — sera uploadée à la création du produit</p>
             )}
           </div>
 
