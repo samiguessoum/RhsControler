@@ -241,7 +241,7 @@ function ProduitCard({
             </div>
           </div>
           <div className="flex items-center gap-1.5">
-            {produit.ficheTechniqueUrl && (
+            {((produit.fichesTechniques?.length ?? 0) > 0 || produit.ficheTechniqueUrl) && (
               <Paperclip className="h-3.5 w-3.5 text-gray-400" aria-label="Fiche technique disponible" />
             )}
             {!produit.actif && (
@@ -613,6 +613,33 @@ export default function ProduitsServices() {
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Erreur lors de l\'enregistrement');
+    },
+  });
+
+  const uploadFichesTechniquesMutation = useMutation({
+    mutationFn: ({ produitId, files }: { produitId: string; files: File[] }) =>
+      produitsServicesApi.uploadFichesTechniques(produitId, files),
+    onSuccess: (data, { produitId }) => {
+      queryClient.invalidateQueries({ queryKey: ['produits-services'] });
+      setSelectedProduit((prev) => prev ? { ...prev, fichesTechniques: data } : prev);
+      toast.success('Fiche(s) technique(s) ajoutée(s)');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de l\'upload');
+    },
+  });
+
+  const deleteFicheTechniqueMutation = useMutation({
+    mutationFn: (ficheId: string) => produitsServicesApi.deleteFicheTechniqueById(ficheId),
+    onSuccess: (_, ficheId) => {
+      queryClient.invalidateQueries({ queryKey: ['produits-services'] });
+      setSelectedProduit((prev) =>
+        prev ? { ...prev, fichesTechniques: (prev.fichesTechniques ?? []).filter((f) => f.id !== ficheId) } : prev
+      );
+      toast.success('Fiche supprimée');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de la suppression');
     },
   });
 
@@ -2894,35 +2921,78 @@ export default function ProduitsServices() {
                     )}
                   </div>
 
-                  {/* Fiche technique */}
+                  {/* Fiches techniques */}
                   <div>
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Fiche technique</p>
-                    {selectedProduit.ficheTechniqueUrl ? (
-                      <a
-                        href={selectedProduit.ficheTechniqueUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-700 hover:bg-blue-100 transition-colors group"
-                      >
-                        <div className="p-2 bg-white rounded-lg shadow-sm">
-                          <FileText className="h-4 w-4 text-blue-600" />
-                        </div>
-                        <span className="flex-1 font-medium truncate">{selectedProduit.ficheTechniqueNom || 'Fiche technique.pdf'}</span>
-                        <ExternalLink className="h-4 w-4 opacity-60 group-hover:opacity-100 shrink-0" />
-                      </a>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                        Fiches techniques
+                        {(selectedProduit.fichesTechniques?.length ?? 0) > 0 && (
+                          <span className="ml-1.5 text-gray-400 font-normal">({selectedProduit.fichesTechniques!.length})</span>
+                        )}
+                      </p>
+                      {canManage && (
+                        <label className="cursor-pointer">
+                          <input
+                            type="file"
+                            accept="application/pdf"
+                            multiple
+                            className="hidden"
+                            onChange={(e) => {
+                              const files = Array.from(e.target.files ?? []);
+                              if (files.length > 0) {
+                                uploadFichesTechniquesMutation.mutate({ produitId: selectedProduit.id, files });
+                              }
+                              e.target.value = '';
+                            }}
+                          />
+                          <span className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 border border-blue-200 bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded-lg transition-colors">
+                            <Upload className="h-3 w-3" />
+                            Ajouter
+                          </span>
+                        </label>
+                      )}
+                    </div>
+                    {(selectedProduit.fichesTechniques?.length ?? 0) > 0 ? (
+                      <div className="flex flex-col gap-1.5">
+                        {selectedProduit.fichesTechniques!.map((fiche) => (
+                          <div key={fiche.id} className="flex items-center gap-2 p-2.5 bg-blue-50 border border-blue-200 rounded-xl group">
+                            <FileText className="h-4 w-4 text-blue-600 shrink-0" />
+                            <a
+                              href={`/uploads/fiches-techniques/${fiche.filename}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex-1 text-sm text-blue-700 font-medium truncate hover:underline"
+                            >
+                              {fiche.nom}
+                            </a>
+                            <a
+                              href={`/uploads/fiches-techniques/${fiche.filename}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="opacity-40 hover:opacity-80 transition-opacity"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5 text-blue-600" />
+                            </a>
+                            {canManage && (
+                              <button
+                                onClick={() => deleteFicheTechniqueMutation.mutate(fiche.id)}
+                                disabled={deleteFicheTechniqueMutation.isPending}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-600"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     ) : (
                       <div className="flex items-center gap-2 p-3 bg-gray-50 border border-dashed border-gray-200 rounded-xl text-sm text-muted-foreground">
                         <FileText className="h-4 w-4" />
-                        <span>Aucune fiche technique — </span>
-                        {canManage && (
-                          <button
-                            className="text-blue-600 hover:underline"
-                            onClick={() => { setShowDetailModal(false); handleEditProduit(selectedProduit); }}
-                          >
-                            Ajouter via Modifier
-                          </button>
-                        )}
+                        <span>Aucune fiche technique</span>
                       </div>
+                    )}
+                    {uploadFichesTechniquesMutation.isPending && (
+                      <p className="text-xs text-blue-500 mt-1">Envoi en cours...</p>
                     )}
                   </div>
 

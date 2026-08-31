@@ -868,6 +868,7 @@ model ProduitService {
 
   fournisseursDefaut ProduitFournisseurDefaut[]
   fiProducts         FIProduct[]
+  fichesTechniques   FicheTechnique[]
 
   @@index([reference])
   @@index([codeBarres])
@@ -877,6 +878,19 @@ model ProduitService {
 }
 
 // Fournisseurs par défaut avec ordre de préférence
+model FicheTechnique {
+  id        String         @id @default(cuid())
+  produitId String
+  produit   ProduitService @relation(fields: [produitId], references: [id], onDelete: Cascade)
+  nom       String         // nom original du fichier
+  filename  String         // nom sur le disque
+  path      String         // chemin relatif ex: uploads/fiches-techniques/xxx.pdf
+  taille    Int?
+  createdAt DateTime       @default(now())
+
+  @@index([produitId])
+}
+
 model ProduitFournisseurDefaut {
   id            String         @id @default(uuid())
   produitId     String

@@ -953,6 +953,21 @@ export const produitsServicesApi = {
     const { data } = await api.delete(`/produits-services/${id}/fiche-technique`);
     return data;
   },
+
+  // Fiches techniques multiples
+  uploadFichesTechniques: async (produitId: string, files: File[]) => {
+    const formData = new FormData();
+    files.forEach((f) => formData.append('fiches', f));
+    const { data } = await api.post(`/produits-services/${produitId}/fiches-techniques`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
+  },
+
+  deleteFicheTechniqueById: async (ficheId: string): Promise<{ success: boolean }> => {
+    const { data } = await api.delete(`/fiches-techniques/${ficheId}`);
+    return data;
+  },
 };
 
 // ============ CATEGORIES PRODUITS ============

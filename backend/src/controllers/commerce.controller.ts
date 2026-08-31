@@ -117,6 +117,7 @@ async function buildLignes(
           unite: true,
           prixVenteHT: true,
           tauxTVA: true,
+          fichesTechniques: { select: { id: true, nom: true, path: true }, orderBy: { createdAt: 'asc' } },
         },
       })
     : [];
@@ -144,6 +145,12 @@ async function buildLignes(
     const totalTVA = totalHT * (tauxTVA / 100);
     const totalTTC = totalHT + totalTVA;
 
+    const baseUrl = process.env.FRONTEND_URL ?? `http://localhost:${process.env.PORT ?? 3000}`;
+    const fichesTechniques = produit?.fichesTechniques?.map((f) => ({
+      nom: f.nom,
+      url: `${baseUrl}/${f.path}`,
+    })) ?? [];
+
     return {
       produitServiceId: ligne.produitServiceId,
       libelle,
@@ -157,6 +164,7 @@ async function buildLignes(
       totalTVA,
       totalTTC,
       ordre: ligne.ordre ?? index + 1,
+      fichesTechniques: fichesTechniques.length > 0 ? fichesTechniques : undefined,
     };
   });
 }

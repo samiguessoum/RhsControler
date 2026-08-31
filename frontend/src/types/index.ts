@@ -1078,6 +1078,7 @@ export interface ProduitService {
   urlExterne?: string;
   ficheTechniqueUrl?: string | null;
   ficheTechniqueNom?: string | null;
+  fichesTechniques?: FicheTechnique[];
 
   enVente: boolean;
   enAchat: boolean;
@@ -2264,6 +2265,16 @@ export interface SiteDocument {
   commentaire?: string;
   uploadedById: string;
   uploadedBy?: { id: string; nom: string; prenom: string };
+  createdAt: string;
+}
+
+export interface FicheTechnique {
+  id: string;
+  produitId: string;
+  nom: string;
+  filename: string;
+  path: string;
+  taille?: number | null;
   createdAt: string;
 }
 

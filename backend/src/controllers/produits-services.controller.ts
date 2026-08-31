@@ -1618,35 +1618,79 @@ export const produitsServicesController = {
 
   /**
    * DELETE /api/produits-services/:id/fiche-technique
-   * Supprime la fiche technique d'un produit
+   * Supprime l'ancienne fiche technique unique (rétrocompatibilité)
    */
   async deleteFicheTechnique(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-
-      const produit = await prisma.produitService.findUnique({
-        where: { id },
-        select: { id: true, ficheTechniqueUrl: true },
-      });
-
-      if (!produit) {
-        return res.status(404).json({ error: 'Produit non trouvé' });
-      }
-
+      const produit = await prisma.produitService.findUnique({ where: { id }, select: { id: true, ficheTechniqueUrl: true } });
+      if (!produit) return res.status(404).json({ error: 'Produit non trouvé' });
       if (produit.ficheTechniqueUrl) {
         const filePath = path.join(process.cwd(), produit.ficheTechniqueUrl.replace(/^\//, ''));
         fs.unlink(filePath, () => {});
       }
-
-      await prisma.produitService.update({
-        where: { id },
-        data: { ficheTechniqueUrl: null, ficheTechniqueNom: null },
-      });
-
+      await prisma.produitService.update({ where: { id }, data: { ficheTechniqueUrl: null, ficheTechniqueNom: null } });
       res.json({ success: true });
     } catch (error) {
       logger.error({ err: error }, 'Delete fiche technique error');
       return next(new AppError(500, 'Erreur lors de la suppression de la fiche technique'));
+    }
+  },
+
+  // ── Fiches techniques multiples ────────────────────────────────────────────
+
+  /**
+   * POST /api/produits-services/:id/fiches-techniques
+   * Upload d'une ou plusieurs fiches techniques (PDF)
+   */
+  async uploadFichesTechniques(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const files = req.files as Express.Multer.File[];
+
+      if (!files || files.length === 0) return res.status(400).json({ error: 'Aucun fichier reçu' });
+
+      const produit = await prisma.produitService.findUnique({ where: { id }, select: { id: true } });
+      if (!produit) {
+        files.forEach((f) => fs.unlink(f.path, () => {}));
+        return res.status(404).json({ error: 'Produit non trouvé' });
+      }
+
+      const created = await prisma.ficheTechnique.createMany({
+        data: files.map((f) => ({
+          produitId: id,
+          nom: f.originalname,
+          filename: f.filename,
+          path: `uploads/fiches-techniques/${f.filename}`,
+          taille: f.size,
+        })),
+      });
+
+      const fiches = await prisma.ficheTechnique.findMany({ where: { produitId: id }, orderBy: { createdAt: 'asc' } });
+      res.json(fiches);
+    } catch (error) {
+      logger.error({ err: error }, 'Upload fiches techniques error');
+      return next(new AppError(500, 'Erreur lors de l\'upload'));
+    }
+  },
+
+  /**
+   * DELETE /api/fiches-techniques/:ficheId
+   * Supprime une fiche technique par son id
+   */
+  async deleteFicheTechniqueById(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { ficheId } = req.params;
+      const fiche = await prisma.ficheTechnique.findUnique({ where: { id: ficheId } });
+      if (!fiche) return res.status(404).json({ error: 'Fiche technique non trouvée' });
+
+      const absPath = path.join(process.cwd(), fiche.path);
+      fs.unlink(absPath, () => {});
+      await prisma.ficheTechnique.delete({ where: { id: ficheId } });
+      res.json({ success: true });
+    } catch (error) {
+      logger.error({ err: error }, 'Delete fiche technique error');
+      return next(new AppError(500, 'Erreur lors de la suppression'));
     }
   },
 };

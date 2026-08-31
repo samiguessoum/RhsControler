@@ -21,6 +21,7 @@ interface DocumentLigne {
   totalHT: number;
   totalTVA: number;
   totalTTC: number;
+  fichesTechniques?: { nom: string; url: string }[];
 }
 
 interface DocumentBase {
@@ -1341,7 +1342,8 @@ function drawDevisLinesTable(doc: PDFKit.PDFDocument, lignes: DocumentLigne[], s
       doc.font('Helvetica').fontSize(8);
       descHeight = doc.heightOfString(ligne.description, { width: cols.designation - 10 });
     }
-    const rowHeight = Math.max(24, libelleHeight + descHeight + 10);
+    const fichesH = (ligne.fichesTechniques?.length ?? 0) * 11;
+    const rowHeight = Math.max(24, libelleHeight + descHeight + fichesH + 10);
 
     doc.rect(margin, y, tableW, rowHeight).lineWidth(0.8).strokeColor('#9ca3af').stroke();
     doc.moveTo(x.tva, y).lineTo(x.tva, y + rowHeight).stroke();
@@ -1359,6 +1361,19 @@ function drawDevisLinesTable(doc: PDFKit.PDFDocument, lignes: DocumentLigne[], s
         width: cols.designation - 10,
         lineGap: 1,
       });
+    }
+    // Liens fiches techniques cliquables
+    if (ligne.fichesTechniques && ligne.fichesTechniques.length > 0) {
+      let ftY = y + 4 + libelleHeight + (descHeight > 0 ? descHeight + 4 : 0);
+      for (const fiche of ligne.fichesTechniques) {
+        doc.font('Helvetica').fontSize(7).fillColor('#2563eb')
+          .text(`📄 ${fiche.nom}`, x.designation + 5, ftY, {
+            width: cols.designation - 10,
+            link: fiche.url,
+            underline: true,
+          });
+        ftY += 11;
+      }
     }
 
     doc.font('Helvetica').fontSize(9).fillColor('#111827');

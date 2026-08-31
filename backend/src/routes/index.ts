@@ -347,6 +347,9 @@ router.delete('/produits-services/:id', authMiddleware, canDo('manageStock'), pr
 router.post('/produits-services/:id/mouvement', authMiddleware, canDo('manageStock'), validate(createMouvementProduitServiceSchema), produitsServicesController.createMouvementProduitService);
 router.post('/produits-services/:id/fiche-technique', authMiddleware, canDo('manageStock'), ficheTechniqueUpload.single('ficheTechnique'), produitsServicesController.uploadFicheTechnique);
 router.delete('/produits-services/:id/fiche-technique', authMiddleware, canDo('manageStock'), produitsServicesController.deleteFicheTechnique);
+// Fiches techniques multiples
+router.post('/produits-services/:id/fiches-techniques', authMiddleware, canDo('manageStock'), ficheTechniqueUpload.array('fiches', 10), produitsServicesController.uploadFichesTechniques);
+router.delete('/fiches-techniques/:ficheId', authMiddleware, canDo('manageStock'), produitsServicesController.deleteFicheTechniqueById);
 
 // Catégories de produits
 router.get('/categories-produits', authMiddleware, produitsServicesController.listCategories);
