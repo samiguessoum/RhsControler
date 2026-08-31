@@ -278,8 +278,11 @@ export function ContratsPage() {
       })) || []
     );
 
-    // État pour les sites dépliés/repliés
-    const [expandedSites, setExpandedSites] = useState<Set<string>>(new Set());
+    // État pour les sites dépliés/repliés — dépliés par défaut pour ne pas cacher
+    // les prestations/prix (source d'oublis fréquente)
+    const [expandedSites, setExpandedSites] = useState<Set<string>>(
+      new Set((contrat?.contratSites || []).map(cs => cs.siteId))
+    );
 
     // Get selected client's sites
     const selectedClient = clients.find(c => c.id === clientId);
@@ -431,6 +434,13 @@ export function ContratsPage() {
               if (!cs.prestations || cs.prestations.length === 0) {
                 const siteName = availableSites.find(s => s.id === cs.siteId)?.nom || 'Site';
                 toast.error(`Sélectionnez au moins une prestation pour ${siteName}`);
+                return;
+              }
+              const prestationSansPrix = cs.prestations.find(nom => !cs.prixPrestations?.[nom]);
+              if (prestationSansPrix) {
+                const siteName = availableSites.find(s => s.id === cs.siteId)?.nom || 'Site';
+                toast.error(`Indiquez le prix de "${prestationSansPrix}" pour ${siteName}`);
+                setExpandedSites(prev => new Set([...prev, cs.siteId]));
                 return;
               }
               if (isPonctuel) {
@@ -611,9 +621,15 @@ export function ContratsPage() {
                   const isExpanded = expandedSites.has(cs.siteId);
                   const sitePrestations = cs.prestations || [];
                   const availablePrestationsForSite = prestations.filter(p => !sitePrestations.includes(p.nom));
+                  const missingPriceCount = sitePrestations.filter(nom => !cs.prixPrestations?.[nom]).length;
 
                   return (
-                    <div key={cs.siteId} className="bg-white rounded border overflow-hidden">
+                    <div
+                      key={cs.siteId}
+                      className={`bg-white rounded border overflow-hidden ${
+                        sitePrestations.length === 0 || missingPriceCount > 0 ? 'border-amber-300' : ''
+                      }`}
+                    >
                       {/* En-tête du site */}
                       <div
                         className="p-3 flex items-center justify-between cursor-pointer hover:bg-gray-50"
@@ -622,9 +638,18 @@ export function ContratsPage() {
                         <div className="flex items-center gap-2">
                           {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                           <span className="font-medium">{site?.nom || 'Site'}</span>
-                          {sitePrestations.length > 0 && (
+                          {sitePrestations.length > 0 ? (
                             <Badge variant="secondary" className="text-xs">
                               {sitePrestations.length} prestation(s)
+                            </Badge>
+                          ) : (
+                            <Badge className="text-xs bg-amber-100 text-amber-800 hover:bg-amber-100 border border-amber-300">
+                              Aucune prestation
+                            </Badge>
+                          )}
+                          {missingPriceCount > 0 && (
+                            <Badge className="text-xs bg-amber-100 text-amber-800 hover:bg-amber-100 border border-amber-300">
+                              {missingPriceCount} prix manquant{missingPriceCount > 1 ? 's' : ''}
                             </Badge>
                           )}
                         </div>
@@ -646,11 +671,20 @@ export function ContratsPage() {
                         <div className="p-3 border-t space-y-4">
                           {/* Prestations du site */}
                           <div className="space-y-2">
-                            <Label className="text-xs font-medium">Prestations *</Label>
+                            <Label className="text-xs font-medium">Prestations et prix *</Label>
                             {availablePrestationsForSite.length > 0 && (
                               <Select onValueChange={(v) => addPrestationToSite(cs.siteId, v)}>
-                                <SelectTrigger className="h-8">
-                                  <SelectValue placeholder="Ajouter une prestation" />
+                                <SelectTrigger className="h-9 border-dashed border-amber-300 text-amber-800 hover:bg-amber-50">
+                                  <span className="flex items-center gap-2 min-w-0">
+                                    <Plus className="h-4 w-4 flex-shrink-0" />
+                                    <SelectValue
+                                      placeholder={
+                                        sitePrestations.length === 0
+                                          ? 'Ajouter une prestation'
+                                          : 'Ajouter une autre prestation'
+                                      }
+                                    />
+                                  </span>
                                 </SelectTrigger>
                                 <SelectContent>
                                   {availablePrestationsForSite.map((p) => (
@@ -661,44 +695,64 @@ export function ContratsPage() {
                                 </SelectContent>
                               </Select>
                             )}
+                            {sitePrestations.length === 0 && (
+                              <p className="text-xs text-amber-700">
+                                Au moins une prestation requise pour ce site.
+                              </p>
+                            )}
                             {sitePrestations.length > 0 && (
                               <div className="space-y-1.5">
-                                {sitePrestations.map((nom) => (
-                                  <div key={nom} className="flex items-center gap-2 p-1.5 bg-white rounded border border-gray-100">
-                                    {/* Nom */}
-                                    <span className="text-xs font-medium text-gray-700 flex-1 min-w-0 truncate">{nom}</span>
-                                    {/* Prix */}
-                                    <div className="flex items-center gap-1 flex-shrink-0">
-                                      <Input
-                                        type="number"
-                                        min={0}
-                                        step={100}
-                                        className="h-6 w-24 text-xs px-2"
-                                        placeholder="Prix DA"
-                                        value={(cs.prixPrestations?.[nom]) ?? ''}
-                                        onChange={(e) => {
-                                          const prix = e.target.value ? Number(e.target.value) : undefined;
-                                          updateSite(cs.siteId, {
-                                            prixPrestations: {
-                                              ...(cs.prixPrestations || {}),
-                                              ...(prix !== undefined ? { [nom]: prix } : Object.fromEntries(
-                                                Object.entries(cs.prixPrestations || {}).filter(([k]) => k !== nom)
-                                              )),
-                                            },
-                                          });
-                                        }}
-                                      />
-                                      <span className="text-[10px] text-gray-400">DA</span>
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => removePrestationFromSite(cs.siteId, nom)}
-                                      className="hover:bg-gray-100 rounded-full p-0.5 flex-shrink-0"
+                                {sitePrestations.map((nom) => {
+                                  const priceMissing = !cs.prixPrestations?.[nom];
+                                  return (
+                                    <div
+                                      key={nom}
+                                      className={`flex items-center gap-2 p-2 rounded border ${
+                                        priceMissing ? 'bg-amber-50 border-amber-300' : 'bg-white border-gray-100'
+                                      }`}
                                     >
-                                      <X className="h-3 w-3 text-gray-400" />
-                                    </button>
-                                  </div>
-                                ))}
+                                      {/* Nom */}
+                                      <span className="text-sm font-medium text-gray-700 flex-1 min-w-0 truncate">{nom}</span>
+                                      {/* Prix */}
+                                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                                        <Input
+                                          type="number"
+                                          min={0}
+                                          step={100}
+                                          className={`h-8 w-28 text-sm px-2 font-medium ${
+                                            priceMissing ? 'border-amber-400 focus-visible:ring-amber-400' : ''
+                                          }`}
+                                          placeholder="Prix *"
+                                          value={(cs.prixPrestations?.[nom]) ?? ''}
+                                          onChange={(e) => {
+                                            const prix = e.target.value ? Number(e.target.value) : undefined;
+                                            updateSite(cs.siteId, {
+                                              prixPrestations: {
+                                                ...(cs.prixPrestations || {}),
+                                                ...(prix !== undefined ? { [nom]: prix } : Object.fromEntries(
+                                                  Object.entries(cs.prixPrestations || {}).filter(([k]) => k !== nom)
+                                                )),
+                                              },
+                                            });
+                                          }}
+                                        />
+                                        <span className="text-xs text-gray-400">DA</span>
+                                      </div>
+                                      {priceMissing && (
+                                        <span className="text-[11px] font-medium text-amber-700 flex-shrink-0">
+                                          Prix manquant
+                                        </span>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => removePrestationFromSite(cs.siteId, nom)}
+                                        className="hover:bg-gray-100 rounded-full p-0.5 flex-shrink-0"
+                                      >
+                                        <X className="h-3 w-3 text-gray-400" />
+                                      </button>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             )}
                           </div>
@@ -909,11 +963,14 @@ export function ContratsPage() {
                   <SelectValue placeholder="Sélectionner (optionnel)" />
                 </SelectTrigger>
                 <SelectContent>
-                  {users.map((u: User) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.prenom} {u.nom}
-                    </SelectItem>
-                  ))}
+                  {users
+                    .filter((u: User) => u.actif || u.id === responsablePlanningId)
+                    .map((u: User) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.prenom} {u.nom}
+                        {!u.actif ? ' (désactivé)' : ''}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
