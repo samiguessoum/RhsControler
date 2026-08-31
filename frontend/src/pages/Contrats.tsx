@@ -674,17 +674,14 @@ export function ContratsPage() {
                             <Label className="text-xs font-medium">Prestations et prix *</Label>
                             {availablePrestationsForSite.length > 0 && (
                               <Select onValueChange={(v) => addPrestationToSite(cs.siteId, v)}>
-                                <SelectTrigger className="h-9 border-dashed border-amber-300 text-amber-800 hover:bg-amber-50">
-                                  <span className="flex items-center gap-2 min-w-0">
-                                    <Plus className="h-4 w-4 flex-shrink-0" />
-                                    <SelectValue
-                                      placeholder={
-                                        sitePrestations.length === 0
-                                          ? 'Ajouter une prestation'
-                                          : 'Ajouter une autre prestation'
-                                      }
-                                    />
-                                  </span>
+                                <SelectTrigger className="h-8 w-56 border-dashed border-amber-300 text-amber-800 hover:bg-amber-50">
+                                  <SelectValue
+                                    placeholder={
+                                      sitePrestations.length === 0
+                                        ? 'Ajouter une prestation'
+                                        : 'Ajouter une autre prestation'
+                                    }
+                                  />
                                 </SelectTrigger>
                                 <SelectContent>
                                   {availablePrestationsForSite.map((p) => (
