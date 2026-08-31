@@ -28,7 +28,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       NODE_ENV: production
-      FRONTEND_URL: https://${DOMAIN}
+      FRONTEND_URL: ${PUBLIC_URL}
       PORT: 3000
     volumes:
       - uploads:/app/uploads
