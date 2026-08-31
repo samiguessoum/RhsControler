@@ -95,6 +95,10 @@ export const produitsServicesController = {
               },
               orderBy: { ordre: 'asc' }
             },
+            fichesTechniques: {
+              select: { id: true, nom: true, filename: true, taille: true },
+              orderBy: { createdAt: 'asc' }
+            },
             _count: {
               select: {
                 prixFournisseurs: true,
@@ -179,6 +183,10 @@ export const produitsServicesController = {
               user: { select: { id: true, nom: true, prenom: true } },
               entrepot: { select: { id: true, code: true, nom: true } },
             }
+          },
+          fichesTechniques: {
+            select: { id: true, nom: true, filename: true, taille: true },
+            orderBy: { createdAt: 'asc' }
           }
         }
       });
