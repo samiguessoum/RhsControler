@@ -117,8 +117,18 @@ async function buildLignes(
           unite: true,
           prixVenteHT: true,
           tauxTVA: true,
-          fichesTechniques: { select: { id: true, nom: true, path: true }, orderBy: { createdAt: 'asc' } },
         },
+      }).then(async (ps) => {
+        try {
+          const withFiches = await prisma.produitService.findMany({
+            where: { id: { in: produitIds } },
+            select: { id: true, fichesTechniques: { select: { id: true, nom: true, path: true }, orderBy: { createdAt: 'asc' } } },
+          });
+          const fichesMap = new Map(withFiches.map((p) => [p.id, p.fichesTechniques]));
+          return ps.map((p) => ({ ...p, fichesTechniques: fichesMap.get(p.id) ?? [] }));
+        } catch {
+          return ps.map((p) => ({ ...p, fichesTechniques: [] }));
+        }
       })
     : [];
 

@@ -1367,7 +1367,7 @@ function drawDevisLinesTable(doc: PDFKit.PDFDocument, lignes: DocumentLigne[], s
       let ftY = y + 4 + libelleHeight + (descHeight > 0 ? descHeight + 4 : 0);
       for (const fiche of ligne.fichesTechniques) {
         doc.font('Helvetica').fontSize(7).fillColor('#2563eb')
-          .text(`📄 ${fiche.nom}`, x.designation + 5, ftY, {
+          .text(`> ${fiche.nom}`, x.designation + 5, ftY, {
             width: cols.designation - 10,
             link: fiche.url,
             underline: true,
