@@ -7,7 +7,7 @@ const CLIENT_SELECT = {
   id: true, nomEntreprise: true, code: true,
   siegeAdresse: true, siegeVille: true, siegePays: true,
   siegeRC: true, siegeNIF: true, siegeAI: true, siegeNIS: true, siegeNIN: true,
-  email: true, telephone: true,
+  siegeEmail: true, siegeTel: true,
 };
 
 const SITE_SELECT = { nom: true, ville: true, adresse: true };

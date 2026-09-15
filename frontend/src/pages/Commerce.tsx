@@ -6791,7 +6791,7 @@ export function CommercePage() {
             emailModal.type === 'commande' ? `Envoyer la commande ${emailModal.document.ref}` :
             `Envoyer la facture ${emailModal.document.ref}`
           }
-          defaultTo={emailModal.document.client?.email || ''}
+          defaultTo={emailModal.document.client?.siegeEmail || ''}
           defaultToNom={emailModal.document.client?.nomEntreprise || ''}
           defaultSubject={
             emailModal.type === 'devis' ? `Devis ${emailModal.document.ref}` :
