@@ -85,8 +85,11 @@ export function Sidebar({ stats, mobileOpen = false, onMobileClose }: SidebarPro
 
   const isTeamOnly = user?.role === 'EQUIPE' || user?.role === 'SUPER_CHEF_EQUIPE';
 
+  const unreadCount = (unreadData as any)?.total ?? 0;
+
   const topItems: NavItem[] = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard', show: !isTeamOnly },
+    { to: '/messagerie', icon: Inbox, label: 'Messagerie', badge: unreadCount || undefined, badgeVariant: 'default' as const, show: !isTeamOnly },
     {
       to: '/planning',
       icon: Calendar,
@@ -100,14 +103,11 @@ export function Sidebar({ stats, mobileOpen = false, onMobileClose }: SidebarPro
     { to: '/contrats', icon: FileText, label: 'Contrats', show: !isTeamOnly },
   ];
 
-  const unreadCount = (unreadData as any)?.total ?? 0;
-
   const moduleItems: NavItem[] = [
     { to: '/commerce', icon: TrendingUp, label: 'Cycle de vente', show: !isTeamOnly },
     { to: '/suivi-ventes', icon: KanbanSquare, label: 'Suivi des ventes', show: !isTeamOnly },
     { to: '/produits-services', icon: ShoppingBag, label: 'Produits & Services', show: !isTeamOnly },
     { to: '/entrepots', icon: Warehouse, label: 'Entrepôts', show: !isTeamOnly },
-    { to: '/messagerie', icon: Inbox, label: 'Messagerie', badge: unreadCount || undefined, badgeVariant: 'default' as const, show: !isTeamOnly },
     { to: '/facturation', icon: Wallet, label: 'Fournisseurs & Charges', show: canDo('viewFacturation') },
     { to: '/finance', icon: Landmark, label: 'Finance & Trésorerie', show: canDo('viewDashboardFinance') },
   ];
