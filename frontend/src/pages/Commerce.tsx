@@ -79,7 +79,8 @@ import {
 } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import { commerceApi, produitsServicesApi, tiersApi } from '@/services/api';
+import { commerceApi, produitsServicesApi, tiersApi, emailApi } from '@/services/api';
+import SendEmailModal from '@/components/SendEmailModal';
 import type { CreateCommandeInput, CreateDevisInput, CreateFactureInput, ProduitService, Tiers, FactureType, BonLivraison, CreateBonLivraisonInput, BonLivraisonStatut } from '@/types';
 import { useAuthStore } from '@/store/auth.store';
 import { cn } from '@/lib/utils';
@@ -764,6 +765,7 @@ function DevisDetailDialog({
   onEdit,
   onDelete,
   onDownloadPdf,
+  onSendEmail,
   canManage,
   canDelete,
   isValidating,
@@ -777,6 +779,7 @@ function DevisDetailDialog({
   onEdit: () => void;
   onDelete: () => void;
   onDownloadPdf: () => void;
+  onSendEmail: () => void;
   canManage: boolean;
   canDelete: boolean;
   isValidating: boolean;
@@ -1100,12 +1103,13 @@ function DevisDetailDialog({
               </div>
 
               {/* Actions principales à droite */}
-              <Button
-                variant="outline"
-                onClick={onDownloadPdf}
-              >
+              <Button variant="outline" onClick={onDownloadPdf}>
                 <FileDown className="h-4 w-4 mr-2" />
                 Devis
+              </Button>
+              <Button variant="outline" onClick={onSendEmail}>
+                <Mail className="h-4 w-4 mr-2" />
+                Envoyer
               </Button>
 
               {canManage && isBrouillon && (
@@ -1277,6 +1281,7 @@ function CommandeDetailDialog({
   onEdit,
   onDelete,
   onDownloadPdf,
+  onSendEmail,
   canManage,
   canDelete,
   isValidating,
@@ -1291,6 +1296,7 @@ function CommandeDetailDialog({
   onEdit: () => void;
   onDelete: () => void;
   onDownloadPdf: () => void;
+  onSendEmail: () => void;
   canManage: boolean;
   canDelete: boolean;
   isValidating: boolean;
@@ -1708,12 +1714,13 @@ function CommandeDetailDialog({
               </div>
 
               {/* Actions principales à droite */}
-              <Button
-                variant="outline"
-                onClick={onDownloadPdf}
-              >
+              <Button variant="outline" onClick={onDownloadPdf}>
                 <FileDown className="h-4 w-4 mr-2" />
                 Bon de commande
+              </Button>
+              <Button variant="outline" onClick={onSendEmail}>
+                <Mail className="h-4 w-4 mr-2" />
+                Envoyer
               </Button>
 
               {canManage && isBrouillon && (
@@ -2029,6 +2036,7 @@ function FactureDetailDialog({
   onEdit,
   onDelete,
   onDownloadPdf,
+  onSendEmail,
   onPayment,
   onRelance,
   onChequeAction,
@@ -2044,6 +2052,7 @@ function FactureDetailDialog({
   onEdit: () => void;
   onDelete: () => void;
   onDownloadPdf: () => void;
+  onSendEmail: () => void;
   onPayment: () => void;
   onRelance: () => void;
   onChequeAction: (paiementId: string, newStatut: 'DEPOSE' | 'ENCAISSE' | 'REJETE', label: string) => void;
@@ -2591,12 +2600,13 @@ function FactureDetailDialog({
                 </Button>
               )}
 
-              <Button
-                variant="outline"
-                onClick={onDownloadPdf}
-              >
+              <Button variant="outline" onClick={onDownloadPdf}>
                 <FileDown className="h-4 w-4 mr-2" />
                 {isAvoir ? 'Avoir' : 'Facture'}
+              </Button>
+              <Button variant="outline" onClick={onSendEmail}>
+                <Mail className="h-4 w-4 mr-2" />
+                Envoyer
               </Button>
 
               {canManage && !isBrouillon && facture.statut !== 'PAYEE' && (
@@ -2789,6 +2799,13 @@ export function CommercePage() {
 
   // Detail sheet state
   const [viewingDocument, setViewingDocument] = useState<{
+    type: 'devis' | 'commande' | 'facture';
+    document: any;
+  } | null>(null);
+
+  // Email modal state
+  const [emailModal, setEmailModal] = useState<{
+    open: boolean;
     type: 'devis' | 'commande' | 'facture';
     document: any;
   } | null>(null);
@@ -5765,6 +5782,11 @@ export function CommercePage() {
             commerceApi.downloadDevisPdf(viewingDocument.document.id).catch(() => toast.error('Erreur téléchargement'));
           }
         }}
+        onSendEmail={() => {
+          if (viewingDocument?.type === 'devis') {
+            setEmailModal({ open: true, type: 'devis', document: viewingDocument.document });
+          }
+        }}
         isValidating={validerDevis.isPending}
         isConverting={convertirDevis.isPending}
       />
@@ -5835,6 +5857,11 @@ export function CommercePage() {
         onDownloadPdf={() => {
           if (viewingDocument?.type === 'commande') {
             commerceApi.downloadCommandePdf(viewingDocument.document.id).catch(() => toast.error('Erreur téléchargement'));
+          }
+        }}
+        onSendEmail={() => {
+          if (viewingDocument?.type === 'commande') {
+            setEmailModal({ open: true, type: 'commande', document: viewingDocument.document });
           }
         }}
         isValidating={validerCommande.isPending}
@@ -5913,6 +5940,11 @@ export function CommercePage() {
         onDownloadPdf={() => {
           if (viewingDocument?.type === 'facture') {
             commerceApi.downloadFacturePdf(viewingDocument.document.id).catch(() => toast.error('Erreur téléchargement'));
+          }
+        }}
+        onSendEmail={() => {
+          if (viewingDocument?.type === 'facture') {
+            setEmailModal({ open: true, type: 'facture', document: viewingDocument.document });
           }
         }}
         onPayment={() => {
@@ -6749,6 +6781,43 @@ export function CommercePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {/* Send Email Modal */}
+      {emailModal && (
+        <SendEmailModal
+          open={emailModal.open}
+          onClose={() => setEmailModal(null)}
+          title={
+            emailModal.type === 'devis' ? `Envoyer le devis ${emailModal.document.ref}` :
+            emailModal.type === 'commande' ? `Envoyer la commande ${emailModal.document.ref}` :
+            `Envoyer la facture ${emailModal.document.ref}`
+          }
+          defaultTo={emailModal.document.client?.email || ''}
+          defaultToNom={emailModal.document.client?.nomEntreprise || ''}
+          defaultSubject={
+            emailModal.type === 'devis' ? `Devis ${emailModal.document.ref}` :
+            emailModal.type === 'commande' ? `Bon de commande ${emailModal.document.ref}` :
+            `Facture ${emailModal.document.ref}`
+          }
+          defaultBody={
+            emailModal.type === 'devis'
+              ? `Bonjour,\n\nVeuillez trouver ci-joint notre devis ${emailModal.document.ref}.\n\nN'hésitez pas à nous contacter pour toute question.\n\nCordialement,`
+              : emailModal.type === 'facture'
+              ? `Bonjour,\n\nVeuillez trouver ci-joint notre facture ${emailModal.document.ref}.\n\nCordialement,`
+              : `Bonjour,\n\nVeuillez trouver ci-joint notre bon de commande ${emailModal.document.ref}.\n\nCordialement,`
+          }
+          attachmentLabel={
+            emailModal.type === 'devis' ? `Devis ${emailModal.document.ref}.pdf` :
+            emailModal.type === 'commande' ? `Commande ${emailModal.document.ref}.pdf` :
+            `Facture ${emailModal.document.ref}.pdf`
+          }
+          sendFn={(payload) => {
+            if (emailModal.type === 'devis') return emailApi.sendDevis(emailModal.document.id, payload);
+            if (emailModal.type === 'facture') return emailApi.sendFacture(emailModal.document.id, payload);
+            return emailApi.sendDevis(emailModal.document.id, payload); // fallback commande client
+          }}
+        />
+      )}
+
     </div>
     </div>
   );

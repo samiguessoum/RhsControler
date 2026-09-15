@@ -235,6 +235,7 @@ model User {
   fieldReportsGeneres        FieldReport[]       @relation("FIReportGeneratedBy")
   siteDocumentsUploades      SiteDocument[]      @relation("SiteDocumentUploadedBy")
   importLogsCrees            ImportLog[]         @relation("ImportLogCreatedBy")
+  emailsEnvoyes              EmailLog[]          @relation("EmailLogSentBy")
 }
 
 model Employe {
@@ -2257,4 +2258,63 @@ model ImportLog {
   createdAt   DateTime @default(now())
 
   @@index([siteId])
+}
+
+// ── Email ─────────────────────────────────────────────────────
+
+enum EmailProfileType {
+  DEVIS
+  FACTURATION
+  RAPPORT
+  INTERVENTION
+  COMMANDE_FOURNISSEUR
+}
+
+enum EmailStatut {
+  ENVOYE
+  ERREUR
+}
+
+model EmailProfile {
+  id         String           @id @default(cuid())
+  type       EmailProfileType @unique
+  nom        String
+  emailFrom  String
+  nomFrom    String?
+  smtpHost   String
+  smtpPort   Int              @default(587)
+  smtpUser   String
+  smtpPass   String
+  smtpSecure Boolean          @default(false)
+  actif      Boolean          @default(true)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  logs       EmailLog[]
+
+  @@index([type])
+}
+
+model EmailLog {
+  id             String        @id @default(cuid())
+  profileId      String?
+  profile        EmailProfile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  to             String
+  toNom          String?
+  cc             String?
+  subject        String
+  statut         EmailStatut   @default(ENVOYE)
+  errorMessage   String?
+  devisId        String?
+  factureId      String?
+  interventionId String?
+  commandeId     String?
+  sentById       String?
+  sentBy         User?         @relation("EmailLogSentBy", fields: [sentById], references: [id], onDelete: SetNull)
+  createdAt      DateTime      @default(now())
+
+  @@index([profileId])
+  @@index([devisId])
+  @@index([factureId])
+  @@index([interventionId])
+  @@index([commandeId])
 }

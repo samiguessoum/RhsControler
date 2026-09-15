@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, MoreVertical, Building2, Hash, Users, Briefcase, Wrench, Save, Upload, FlaskConical, Pencil, Trash2 } from 'lucide-react';
+import { Plus, MoreVertical, Building2, Hash, Users, Briefcase, Wrench, Save, Upload, FlaskConical, Pencil, Trash2, Mail, CheckCircle, XCircle, Loader2, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -25,9 +25,237 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import api, { prestationsApi, usersApi, employesApi, postesApi, settingsApi, rhApi, produitsServicesApi } from '@/services/api';
+import api, { prestationsApi, usersApi, employesApi, postesApi, settingsApi, rhApi, produitsServicesApi, emailApi } from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
-import type { Prestation, User, Role, Employe, Poste, CompanySettings, UpdateCompanySettingsInput, ProduitService } from '@/types';
+import type { Prestation, User, Role, Employe, Poste, CompanySettings, UpdateCompanySettingsInput, ProduitService, EmailProfile, EmailProfileType } from '@/types';
+
+// ── Profils SMTP / Email ──────────────────────────────────────
+
+const EMAIL_PROFILE_LABELS: Record<EmailProfileType, string> = {
+  DEVIS: 'Devis',
+  FACTURATION: 'Facturation',
+  RAPPORT: 'Rapports',
+  INTERVENTION: 'Interventions',
+  COMMANDE_FOURNISSEUR: 'Commandes fournisseur',
+};
+
+const EMAIL_PROFILE_ADDRESSES: Record<EmailProfileType, string> = {
+  DEVIS: 'commercial@',
+  FACTURATION: 'finance@',
+  RAPPORT: 'rapports@',
+  INTERVENTION: 'prestations@',
+  COMMANDE_FOURNISSEUR: 'achats@',
+};
+
+const PROFILE_TYPES: EmailProfileType[] = ['DEVIS', 'FACTURATION', 'RAPPORT', 'INTERVENTION', 'COMMANDE_FOURNISSEUR'];
+
+const EMPTY_FORM = { nom: '', emailFrom: '', nomFrom: '', smtpHost: '', smtpPort: '587', smtpSecure: false, smtpUser: '', smtpPass: '' };
+
+function EmailProfilesTab() {
+  const qc = useQueryClient();
+  const [editingType, setEditingType] = useState<EmailProfileType | null>(null);
+  const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [showPass, setShowPass] = useState(false);
+  const [testingId, setTestingId] = useState<string | null>(null);
+
+  const { data: profiles = [], isLoading } = useQuery<EmailProfile[]>({
+    queryKey: ['email-profiles'],
+    queryFn: () => emailApi.listProfiles(),
+  });
+
+  const profileByType = (type: EmailProfileType) => profiles.find((p) => p.type === type);
+
+  const saveMutation = useMutation({
+    mutationFn: (payload: any) => emailApi.upsertProfile(payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['email-profiles'] });
+      toast.success('Profil email enregistré');
+      setEditingType(null);
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error || 'Erreur lors de la sauvegarde'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => emailApi.deleteProfile(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['email-profiles'] });
+      toast.success('Profil supprimé');
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error || 'Erreur'),
+  });
+
+  const handleEdit = (type: EmailProfileType) => {
+    const existing = profileByType(type);
+    setForm(existing
+      ? { nom: existing.nom, emailFrom: existing.emailFrom, nomFrom: existing.nomFrom || '', smtpHost: existing.smtpHost, smtpPort: String(existing.smtpPort), smtpSecure: existing.smtpSecure, smtpUser: existing.smtpUser, smtpPass: '' }
+      : { ...EMPTY_FORM, nom: EMAIL_PROFILE_LABELS[type], emailFrom: EMAIL_PROFILE_ADDRESSES[type] }
+    );
+    setShowPass(false);
+    setEditingType(type);
+  };
+
+  const handleSave = () => {
+    if (!form.smtpHost || !form.emailFrom || !form.smtpUser || !form.smtpPass) {
+      toast.error('Remplissez tous les champs requis (*)');
+      return;
+    }
+    saveMutation.mutate({ type: editingType, ...form, smtpPort: Number(form.smtpPort) });
+  };
+
+  const handleTest = async (id: string) => {
+    setTestingId(id);
+    try {
+      const res = await emailApi.testProfile(id);
+      toast.success(res.message || 'Connexion SMTP OK');
+    } catch (err: any) {
+      toast.error(err.response?.data?.error || 'Connexion SMTP échouée');
+    } finally {
+      setTestingId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold flex items-center gap-2">
+          <Mail className="h-5 w-5 text-blue-600" />
+          Profils email sortants
+        </h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Configurez un compte SMTP par type de communication. Ces profils seront utilisés pour l'envoi des emails depuis la plateforme.
+        </p>
+      </div>
+
+      <div className="grid gap-4">
+        {PROFILE_TYPES.map((type) => {
+          const profile = profileByType(type);
+          return (
+            <Card key={type} className="border">
+              <CardContent className="pt-4 pb-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${profile?.actif ? 'bg-blue-50' : 'bg-gray-100'}`}>
+                      <Mail className={`h-4 w-4 ${profile?.actif ? 'text-blue-600' : 'text-gray-400'}`} />
+                    </div>
+                    <div>
+                      <p className="font-medium text-sm">{EMAIL_PROFILE_LABELS[type]}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {profile ? profile.emailFrom : <span className="text-orange-500">Non configuré</span>}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {profile && (
+                      <>
+                        {profile.actif
+                          ? <span className="flex items-center gap-1 text-xs text-green-600"><CheckCircle className="h-3.5 w-3.5" />Actif</span>
+                          : <span className="flex items-center gap-1 text-xs text-gray-400"><XCircle className="h-3.5 w-3.5" />Inactif</span>
+                        }
+                        <Button
+                          size="sm" variant="outline"
+                          onClick={() => handleTest(profile.id)}
+                          disabled={testingId === profile.id}
+                        >
+                          {testingId === profile.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Tester'}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => handleEdit(type)}>
+                          <Pencil className="h-3.5 w-3.5 mr-1" />Modifier
+                        </Button>
+                        <Button size="sm" variant="ghost" className="text-red-500"
+                          onClick={() => deleteMutation.mutate(profile.id)}>
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </>
+                    )}
+                    {!profile && (
+                      <Button size="sm" onClick={() => handleEdit(type)}>
+                        <Plus className="h-3.5 w-3.5 mr-1" />Configurer
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Dialog édition profil */}
+      <Dialog open={!!editingType} onOpenChange={(v) => !v && setEditingType(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="h-5 w-5 text-blue-600" />
+              {editingType ? `Profil — ${EMAIL_PROFILE_LABELS[editingType]}` : ''}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Nom affiché *</Label>
+                <Input placeholder="RHS Commercial" value={form.nom} onChange={(e) => setForm({ ...form, nom: e.target.value })} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Email expéditeur *</Label>
+                <Input type="email" placeholder="commercial@rhs.dz" value={form.emailFrom} onChange={(e) => setForm({ ...form, emailFrom: e.target.value })} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Nom affiché dans l'email <span className="text-muted-foreground text-xs">(optionnel)</span></Label>
+              <Input placeholder="RHS Controler" value={form.nomFrom} onChange={(e) => setForm({ ...form, nomFrom: e.target.value })} />
+            </div>
+            <div className="border-t pt-3 space-y-3">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Configuration SMTP</p>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2 space-y-1.5">
+                  <Label>Serveur SMTP *</Label>
+                  <Input placeholder="smtp.gmail.com" value={form.smtpHost} onChange={(e) => setForm({ ...form, smtpHost: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Port *</Label>
+                  <Input type="number" placeholder="587" value={form.smtpPort} onChange={(e) => setForm({ ...form, smtpPort: e.target.value })} />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="smtpSecure" checked={form.smtpSecure}
+                  onChange={(e) => setForm({ ...form, smtpSecure: e.target.checked })} className="h-4 w-4" />
+                <label htmlFor="smtpSecure" className="text-sm">Connexion SSL/TLS (port 465)</label>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Login SMTP *</Label>
+                  <Input placeholder="utilisateur@smtp" value={form.smtpUser} onChange={(e) => setForm({ ...form, smtpUser: e.target.value })} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Mot de passe *</Label>
+                  <div className="relative">
+                    <Input
+                      type={showPass ? 'text' : 'password'}
+                      placeholder="••••••••"
+                      value={form.smtpPass}
+                      onChange={(e) => setForm({ ...form, smtpPass: e.target.value })}
+                    />
+                    <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      onClick={() => setShowPass(!showPass)}>
+                      {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingType(null)}>Annuler</Button>
+            <Button onClick={handleSave} disabled={saveMutation.isPending}>
+              {saveMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+              Enregistrer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
 
 function ProduitsTerrain() {
   const qc = useQueryClient();
@@ -762,7 +990,7 @@ export function ParametresPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-7 lg:w-auto lg:inline-flex">
+        <TabsList className="grid w-full grid-cols-8 lg:w-auto lg:inline-flex">
           {canDo('manageSettings') && (
             <TabsTrigger value="entreprise" className="flex items-center gap-2">
               <Building2 className="h-4 w-4" />
@@ -806,6 +1034,12 @@ export function ParametresPage() {
           {canDo('manageRH') && (
             <TabsTrigger value="conges" className="flex items-center gap-2">
               <span className="hidden sm:inline">Conges</span>
+            </TabsTrigger>
+          )}
+          {canDo('manageSettings') && (
+            <TabsTrigger value="email" className="flex items-center gap-2">
+              <Mail className="h-4 w-4" />
+              <span className="hidden sm:inline">Email</span>
             </TabsTrigger>
           )}
         </TabsList>
@@ -1953,6 +2187,12 @@ export function ParametresPage() {
         <TabsContent value="produits-terrain">
           <ProduitsTerrain />
         </TabsContent>
+
+        {canDo('manageSettings') && (
+          <TabsContent value="email">
+            <EmailProfilesTab />
+          </TabsContent>
+        )}
 
       </Tabs>
 

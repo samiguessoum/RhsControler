@@ -2297,3 +2297,49 @@ export interface SiteAnalytics {
   deviceStats: Record<string, { interventionCount: number; statusCodes: string[]; insectTotal: number }>;
   insectTrend: Array<{ month: string; count: number }>;
 }
+
+// ── Email ──────────────────────────────────────────────────────
+
+export type EmailProfileType = 'DEVIS' | 'FACTURATION' | 'RAPPORT' | 'INTERVENTION' | 'COMMANDE_FOURNISSEUR';
+export type EmailStatut = 'ENVOYE' | 'ERREUR';
+
+export interface EmailProfile {
+  id: string;
+  type: EmailProfileType;
+  nom: string;
+  emailFrom: string;
+  nomFrom?: string | null;
+  smtpHost: string;
+  smtpPort: number;
+  smtpSecure: boolean;
+  smtpUser: string;
+  actif: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EmailLog {
+  id: string;
+  profileId?: string | null;
+  profile?: { nom: string; emailFrom: string } | null;
+  to: string;
+  toNom?: string | null;
+  cc?: string | null;
+  subject: string;
+  statut: EmailStatut;
+  errorMessage?: string | null;
+  devisId?: string | null;
+  factureId?: string | null;
+  interventionId?: string | null;
+  commandeId?: string | null;
+  sentBy?: { nom: string; prenom: string } | null;
+  createdAt: string;
+}
+
+export interface SendEmailPayload {
+  to: string;
+  toNom?: string;
+  cc?: string;
+  subject: string;
+  body: string;
+}

@@ -1728,4 +1728,55 @@ export const fieldReportsApi = {
   },
 };
 
+// ─── Email ───────────────────────────────────────────────────────────────────
+export const emailApi = {
+  // Profils SMTP
+  listProfiles: async () => {
+    const { data } = await api.get('/email/profiles');
+    return data;
+  },
+  upsertProfile: async (payload: any) => {
+    const { data } = await api.post('/email/profiles', payload);
+    return data;
+  },
+  updateProfile: async (id: string, payload: any) => {
+    const { data } = await api.put(`/email/profiles/${id}`, payload);
+    return data;
+  },
+  deleteProfile: async (id: string) => {
+    const { data } = await api.delete(`/email/profiles/${id}`);
+    return data;
+  },
+  testProfile: async (id: string): Promise<{ success: boolean; message: string }> => {
+    const { data } = await api.post(`/email/profiles/${id}/test`);
+    return data;
+  },
+  // Envoi
+  sendDevis: async (devisId: string, payload: { to: string; toNom?: string; cc?: string; subject: string; body: string }) => {
+    const { data } = await api.post(`/email/send/devis/${devisId}`, payload);
+    return data;
+  },
+  sendFacture: async (factureId: string, payload: { to: string; toNom?: string; cc?: string; subject: string; body: string }) => {
+    const { data } = await api.post(`/email/send/facture/${factureId}`, payload);
+    return data;
+  },
+  sendIntervention: async (interventionId: string, payload: { to: string; toNom?: string; cc?: string; subject: string; body: string }) => {
+    const { data } = await api.post(`/email/send/intervention/${interventionId}`, payload);
+    return data;
+  },
+  sendCommandeFournisseur: async (commandeId: string, payload: { to: string; toNom?: string; cc?: string; subject: string; body: string }) => {
+    const { data } = await api.post(`/email/send/commande-fournisseur/${commandeId}`, payload);
+    return data;
+  },
+  sendRapport: async (payload: { to: string; toNom?: string; cc?: string; subject: string; body: string; fieldInterventionId?: string }) => {
+    const { data } = await api.post('/email/send/rapport', payload);
+    return data;
+  },
+  // Logs
+  listLogs: async (filters?: { devisId?: string; factureId?: string; interventionId?: string; commandeId?: string }) => {
+    const { data } = await api.get('/email/logs', { params: filters });
+    return data;
+  },
+};
+
 export default api;

@@ -570,4 +570,22 @@ router.put('/settings', authMiddleware, canDo('manageSettings'), settingsControl
 router.post('/settings/logo', authMiddleware, canDo('manageSettings'), logoUpload.single('logo'), settingsController.uploadLogo);
 router.post('/settings/logo-carre', authMiddleware, canDo('manageSettings'), logoUpload.single('logo'), settingsController.uploadLogoCarre);
 
+// ============ EMAIL ============
+import { emailController } from '../controllers/email.controller.js';
+// Profils SMTP
+router.get('/email/profiles', authMiddleware, canDo('manageSettings'), emailController.listProfiles);
+router.post('/email/profiles', authMiddleware, canDo('manageSettings'), emailController.upsertProfile);
+router.put('/email/profiles/:id', authMiddleware, canDo('manageSettings'), emailController.updateProfile);
+router.delete('/email/profiles/:id', authMiddleware, canDo('manageSettings'), emailController.deleteProfile);
+router.post('/email/profiles/:id/test', authMiddleware, canDo('manageSettings'), emailController.testProfile);
+// Envoi
+router.post('/email/send/devis/:devisId', authMiddleware, emailController.sendDevis);
+router.post('/email/send/facture/:factureId', authMiddleware, emailController.sendFacture);
+router.post('/email/send/intervention/:interventionId', authMiddleware, emailController.sendIntervention);
+router.post('/email/send/commande/:commandeId', authMiddleware, emailController.sendCommande);
+router.post('/email/send/commande-fournisseur/:commandeId', authMiddleware, emailController.sendCommandeFournisseur);
+router.post('/email/send/rapport', authMiddleware, emailController.sendRapport);
+// Logs
+router.get('/email/logs', authMiddleware, emailController.listLogs);
+
 export default router;
