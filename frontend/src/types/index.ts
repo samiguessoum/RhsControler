@@ -2343,3 +2343,49 @@ export interface SendEmailPayload {
   subject: string;
   body: string;
 }
+
+// ── Messagerie ────────────────────────────────────────────────
+
+export type MessageDirection = 'INBOUND' | 'OUTBOUND';
+
+export interface EmailMessageAttachment {
+  id: string;
+  filename: string;
+  contentType: string;
+  size?: number | null;
+  path?: string | null;
+}
+
+export interface EmailMessageItem {
+  id: string;
+  threadId: string;
+  messageId?: string | null;
+  direction: MessageDirection;
+  fromEmail: string;
+  fromNom?: string | null;
+  toEmail: string;
+  ccEmail?: string | null;
+  subject: string;
+  bodyHtml?: string | null;
+  bodyText?: string | null;
+  readAt?: string | null;
+  sentBy?: { id: string; nom: string; prenom: string } | null;
+  attachments: EmailMessageAttachment[];
+  createdAt: string;
+}
+
+export interface EmailThread {
+  id: string;
+  profileId: string;
+  profile: { id: string; type: EmailProfileType; nom: string; emailFrom: string };
+  subject: string;
+  devisId?: string | null;
+  factureId?: string | null;
+  commandeId?: string | null;
+  interventionId?: string | null;
+  lastMessageAt: string;
+  unreadCount: number;
+  archived: boolean;
+  messages: EmailMessageItem[];
+  createdAt: string;
+}

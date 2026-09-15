@@ -10,6 +10,8 @@ import logger from './lib/logger.js';
 import { errorMiddleware } from './middleware/error.middleware.js';
 import { authMiddleware } from './middleware/auth.middleware.js';
 import { startAccrualScheduler } from './services/conges-accrual.service.js';
+import { syncAllInboxes } from './services/imap-sync.service.js';
+import cron from 'node-cron';
 
 
 const app = express();
@@ -85,6 +87,10 @@ app.listen(PORT, () => {
   logger.info(`🚀 RHS Controler API running on http://localhost:${PORT}`);
   logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
   startAccrualScheduler();
+  // Sync IMAP toutes les 3 minutes
+  cron.schedule('*/3 * * * *', () => {
+    syncAllInboxes().catch((err) => logger.error({ err }, 'Erreur sync IMAP cron'));
+  });
 });
 
 export default app;

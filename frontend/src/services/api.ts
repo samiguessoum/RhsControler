@@ -1779,4 +1779,40 @@ export const emailApi = {
   },
 };
 
+// ─── Messagerie ──────────────────────────────────────────────────────────────
+export const messerieApi = {
+  listThreads: async (filters?: {
+    profileType?: string; devisId?: string; factureId?: string;
+    commandeId?: string; interventionId?: string; archived?: boolean;
+    limit?: number; offset?: number;
+  }) => {
+    const { data } = await api.get('/messagerie/threads', { params: filters });
+    return data as { threads: any[]; total: number };
+  },
+  getThread: async (id: string) => {
+    const { data } = await api.get(`/messagerie/threads/${id}`);
+    return data;
+  },
+  reply: async (threadId: string, payload: { body: string; cc?: string }) => {
+    const { data } = await api.post(`/messagerie/threads/${threadId}/reply`, payload);
+    return data;
+  },
+  updateThread: async (id: string, patch: { archived?: boolean; devisId?: string; factureId?: string; commandeId?: string }) => {
+    const { data } = await api.patch(`/messagerie/threads/${id}`, patch);
+    return data;
+  },
+  deleteThread: async (id: string) => {
+    const { data } = await api.delete(`/messagerie/threads/${id}`);
+    return data;
+  },
+  sync: async (profileId?: string) => {
+    const { data } = await api.post('/messagerie/sync', profileId ? { profileId } : {});
+    return data;
+  },
+  unreadCount: async (): Promise<{ total: number }> => {
+    const { data } = await api.get('/messagerie/unread-count');
+    return data;
+  },
+};
+
 export default api;

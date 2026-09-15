@@ -572,6 +572,7 @@ router.post('/settings/logo-carre', authMiddleware, canDo('manageSettings'), log
 
 // ============ EMAIL ============
 import { emailController } from '../controllers/email.controller.js';
+import { messerieController } from '../controllers/messagerie.controller.js';
 // Profils SMTP
 router.get('/email/profiles', authMiddleware, canDo('manageSettings'), emailController.listProfiles);
 router.post('/email/profiles', authMiddleware, canDo('manageSettings'), emailController.upsertProfile);
@@ -587,5 +588,14 @@ router.post('/email/send/commande-fournisseur/:commandeId', authMiddleware, emai
 router.post('/email/send/rapport', authMiddleware, emailController.sendRapport);
 // Logs
 router.get('/email/logs', authMiddleware, emailController.listLogs);
+
+// ============ MESSAGERIE ============
+router.get('/messagerie/threads', authMiddleware, messerieController.listThreads);
+router.get('/messagerie/threads/:id', authMiddleware, messerieController.getThread);
+router.post('/messagerie/threads/:id/reply', authMiddleware, messerieController.replyToThread);
+router.patch('/messagerie/threads/:id', authMiddleware, messerieController.updateThread);
+router.delete('/messagerie/threads/:id', authMiddleware, messerieController.deleteThread);
+router.post('/messagerie/sync', authMiddleware, messerieController.syncNow);
+router.get('/messagerie/unread-count', authMiddleware, messerieController.unreadCount);
 
 export default router;

@@ -236,6 +236,7 @@ model User {
   siteDocumentsUploades      SiteDocument[]      @relation("SiteDocumentUploadedBy")
   importLogsCrees            ImportLog[]         @relation("ImportLogCreatedBy")
   emailsEnvoyes              EmailLog[]          @relation("EmailLogSentBy")
+  emailMessagesSent          EmailMessage[]      @relation("EmailMessageSentBy")
 }
 
 model Employe {
@@ -2286,10 +2287,16 @@ model EmailProfile {
   smtpUser   String
   smtpPass   String
   smtpSecure Boolean          @default(false)
+  // IMAP (réception)
+  imapHost   String?
+  imapPort   Int?             @default(993)
+  imapSecure Boolean          @default(true)
+  lastImapUid Int?            @default(0)
   actif      Boolean          @default(true)
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
   logs       EmailLog[]
+  threads    EmailThread[]
 
   @@index([type])
 }
@@ -2317,4 +2324,75 @@ model EmailLog {
   @@index([factureId])
   @@index([interventionId])
   @@index([commandeId])
+}
+
+// ── Messagerie (threads + messages IMAP/SMTP) ─────────────────
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+model EmailThread {
+  id             String           @id @default(cuid())
+  profileId      String
+  profile        EmailProfile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  subject        String
+  // Liaisons documents
+  devisId        String?
+  factureId      String?
+  commandeId     String?
+  interventionId String?
+  // Méta
+  lastMessageAt  DateTime         @default(now())
+  unreadCount    Int              @default(0)
+  archived       Boolean          @default(false)
+  messages       EmailMessage[]
+  createdAt      DateTime         @default(now())
+
+  @@index([profileId])
+  @@index([devisId])
+  @@index([factureId])
+  @@index([commandeId])
+  @@index([interventionId])
+  @@index([lastMessageAt])
+}
+
+model EmailMessage {
+  id           String           @id @default(cuid())
+  threadId     String
+  thread       EmailThread      @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  messageId    String?          @unique // En-tête Message-ID RFC
+  inReplyTo    String?          // En-tête In-Reply-To
+  direction    MessageDirection
+  fromEmail    String
+  fromNom      String?
+  toEmail      String
+  ccEmail      String?
+  subject      String
+  bodyHtml     String?
+  bodyText     String?
+  imapUid      Int?             // UID IMAP pour éviter doublons
+  readAt       DateTime?
+  sentById     String?
+  sentBy       User?            @relation("EmailMessageSentBy", fields: [sentById], references: [id], onDelete: SetNull)
+  attachments  EmailMessageAttachment[]
+  createdAt    DateTime         @default(now())
+
+  @@index([threadId])
+  @@index([imapUid])
+  @@index([messageId])
+}
+
+model EmailMessageAttachment {
+  id          String       @id @default(cuid())
+  messageId   String
+  message     EmailMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  filename    String
+  contentType String
+  size        Int?
+  path        String?
+  createdAt   DateTime     @default(now())
+
+  @@index([messageId])
 }

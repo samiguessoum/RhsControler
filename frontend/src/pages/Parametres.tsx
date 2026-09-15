@@ -49,7 +49,7 @@ const EMAIL_PROFILE_ADDRESSES: Record<EmailProfileType, string> = {
 
 const PROFILE_TYPES: EmailProfileType[] = ['DEVIS', 'FACTURATION', 'RAPPORT', 'INTERVENTION', 'COMMANDE_FOURNISSEUR'];
 
-const EMPTY_FORM = { nom: '', emailFrom: '', nomFrom: '', smtpHost: '', smtpPort: '587', smtpSecure: false, smtpUser: '', smtpPass: '' };
+const EMPTY_FORM = { nom: '', emailFrom: '', nomFrom: '', smtpHost: '', smtpPort: '587', smtpSecure: false, smtpUser: '', smtpPass: '', imapHost: '', imapPort: '993', imapSecure: true };
 
 function EmailProfilesTab() {
   const qc = useQueryClient();
@@ -87,7 +87,7 @@ function EmailProfilesTab() {
   const handleEdit = (type: EmailProfileType) => {
     const existing = profileByType(type);
     setForm(existing
-      ? { nom: existing.nom, emailFrom: existing.emailFrom, nomFrom: existing.nomFrom || '', smtpHost: existing.smtpHost, smtpPort: String(existing.smtpPort), smtpSecure: existing.smtpSecure, smtpUser: existing.smtpUser, smtpPass: '' }
+      ? { nom: existing.nom, emailFrom: existing.emailFrom, nomFrom: existing.nomFrom || '', smtpHost: existing.smtpHost, smtpPort: String(existing.smtpPort), smtpSecure: existing.smtpSecure, smtpUser: existing.smtpUser, smtpPass: '', imapHost: (existing as any).imapHost || '', imapPort: String((existing as any).imapPort || 993), imapSecure: (existing as any).imapSecure ?? true }
       : { ...EMPTY_FORM, nom: EMAIL_PROFILE_LABELS[type], emailFrom: EMAIL_PROFILE_ADDRESSES[type] }
     );
     setShowPass(false);
@@ -99,7 +99,7 @@ function EmailProfilesTab() {
       toast.error('Remplissez tous les champs requis (*)');
       return;
     }
-    saveMutation.mutate({ type: editingType, ...form, smtpPort: Number(form.smtpPort) });
+    saveMutation.mutate({ type: editingType, ...form, smtpPort: Number(form.smtpPort), imapPort: Number((form as any).imapPort || 993) });
   };
 
   const handleTest = async (id: string) => {
@@ -242,6 +242,25 @@ function EmailProfilesTab() {
                   </div>
                 </div>
               </div>
+            </div>
+            <div className="border-t pt-3 space-y-3">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Configuration IMAP <span className="font-normal normal-case text-gray-400">(réception emails)</span></p>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2 space-y-1.5">
+                  <Label>Serveur IMAP</Label>
+                  <Input placeholder="mail.rhs.dz" value={(form as any).imapHost || ''} onChange={(e) => setForm({ ...form, imapHost: e.target.value } as any)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Port</Label>
+                  <Input type="number" placeholder="993" value={(form as any).imapPort || '993'} onChange={(e) => setForm({ ...form, imapPort: e.target.value } as any)} />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="imapSecure" checked={(form as any).imapSecure ?? true}
+                  onChange={(e) => setForm({ ...form, imapSecure: e.target.checked } as any)} className="h-4 w-4" />
+                <label htmlFor="imapSecure" className="text-sm">Connexion SSL/TLS (recommandé, port 993)</label>
+              </div>
+              <p className="text-xs text-muted-foreground">Les identifiants IMAP sont les mêmes que SMTP. Laisser le serveur vide pour désactiver la réception.</p>
             </div>
           </div>
           <DialogFooter>

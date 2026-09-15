@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   LayoutDashboard,
   Calendar,
@@ -17,12 +17,14 @@ import {
   Warehouse,
   KanbanSquare,
   ClipboardCheck,
+  Inbox,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
+import { messerieApi } from '@/services/api';
 
 interface SidebarProps {
   stats?: {
@@ -45,6 +47,12 @@ interface NavItem {
 export function Sidebar({ stats, mobileOpen = false, onMobileClose }: SidebarProps) {
   const { user, logout, canDo } = useAuthStore();
   const queryClient = useQueryClient();
+
+  const { data: unreadData } = useQuery({
+    queryKey: ['messagerie-unread'],
+    queryFn: () => messerieApi.unreadCount(),
+    refetchInterval: 60000,
+  });
 
   const handleNavClick = () => {
     queryClient.invalidateQueries();
@@ -92,11 +100,14 @@ export function Sidebar({ stats, mobileOpen = false, onMobileClose }: SidebarPro
     { to: '/contrats', icon: FileText, label: 'Contrats', show: !isTeamOnly },
   ];
 
+  const unreadCount = (unreadData as any)?.total ?? 0;
+
   const moduleItems: NavItem[] = [
     { to: '/commerce', icon: TrendingUp, label: 'Cycle de vente', show: !isTeamOnly },
     { to: '/suivi-ventes', icon: KanbanSquare, label: 'Suivi des ventes', show: !isTeamOnly },
     { to: '/produits-services', icon: ShoppingBag, label: 'Produits & Services', show: !isTeamOnly },
     { to: '/entrepots', icon: Warehouse, label: 'Entrepôts', show: !isTeamOnly },
+    { to: '/messagerie', icon: Inbox, label: 'Messagerie', badge: unreadCount || undefined, badgeVariant: 'default' as const, show: !isTeamOnly },
     { to: '/facturation', icon: Wallet, label: 'Fournisseurs & Charges', show: canDo('viewFacturation') },
     { to: '/finance', icon: Landmark, label: 'Finance & Trésorerie', show: canDo('viewDashboardFinance') },
   ];
