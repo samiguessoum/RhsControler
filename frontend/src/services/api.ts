@@ -1747,7 +1747,7 @@ export const emailApi = {
     const { data } = await api.delete(`/email/profiles/${id}`);
     return data;
   },
-  testProfile: async (id: string): Promise<{ success: boolean; message: string }> => {
+  testProfile: async (id: string): Promise<{ smtpOk: boolean; smtpError: string | null; imapOk: boolean | null; imapError: string | null }> => {
     const { data } = await api.post(`/email/profiles/${id}/test`);
     return data;
   },
