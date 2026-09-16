@@ -12,6 +12,17 @@ const CLIENT_SELECT = {
 
 const SITE_SELECT = { nom: true, ville: true, adresse: true };
 
+// Récupère companyName + senderName (nomFrom du profil) en parallèle
+async function getEmailContext(profileType: EmailProfileType) {
+  const [settings, profile] = await Promise.all([
+    prisma.companySettings.findFirst(),
+    prisma.emailProfile.findFirst({ where: { type: profileType, actif: true }, select: { nomFrom: true, nom: true } }),
+  ]);
+  const companyName = settings?.nomEntreprise || 'RHS Controler';
+  const senderName = profile?.nomFrom || profile?.nom || companyName;
+  return { companyName, senderName };
+}
+
 // ── Profils SMTP ──────────────────────────────────────────────
 
 export const emailController = {
@@ -153,10 +164,8 @@ export const emailController = {
       if (!devis) return res.status(404).json({ error: 'Devis introuvable' });
 
       const { generateDevisPDF } = await import('../services/pdf.service.js');
-      const pdfBuffer = await generateDevisPDF(devis as any);
-
-      const settings = await prisma.companySettings.findFirst();
-      const html = buildEmailHtml({ title: subject, body, companyName: settings?.nomEntreprise || 'RHS' });
+      const [pdfBuffer, ctx] = await Promise.all([generateDevisPDF(devis as any), getEmailContext('DEVIS')]);
+      const html = buildEmailHtml({ title: subject, body, ...ctx });
 
       await sendEmail({
         profileType: 'DEVIS', to, toNom, cc, subject, html,
@@ -180,10 +189,8 @@ export const emailController = {
       if (!facture) return res.status(404).json({ error: 'Facture introuvable' });
 
       const { generateFacturePDF } = await import('../services/pdf.service.js');
-      const pdfBuffer = await generateFacturePDF(facture as any);
-
-      const settings = await prisma.companySettings.findFirst();
-      const html = buildEmailHtml({ title: subject, body, companyName: settings?.nomEntreprise || 'RHS' });
+      const [pdfBuffer, ctx] = await Promise.all([generateFacturePDF(facture as any), getEmailContext('FACTURATION')]);
+      const html = buildEmailHtml({ title: subject, body, ...ctx });
 
       await sendEmail({
         profileType: 'FACTURATION', to, toNom, cc, subject, html,
@@ -200,8 +207,8 @@ export const emailController = {
       const { to, toNom, cc, subject, body } = req.body;
       const userId = (req as any).user?.id;
 
-      const settings = await prisma.companySettings.findFirst();
-      const html = buildEmailHtml({ title: subject, body, companyName: settings?.nomEntreprise || 'RHS' });
+      const ctx = await getEmailContext('INTERVENTION');
+      const html = buildEmailHtml({ title: subject, body, ...ctx });
       await sendEmail({ profileType: 'INTERVENTION', to, toNom, cc, subject, html, sentById: userId, interventionId });
       res.json({ success: true });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -220,10 +227,8 @@ export const emailController = {
       if (!commande) return res.status(404).json({ error: 'Commande introuvable' });
 
       const { generateCommandePDF } = await import('../services/pdf.service.js');
-      const pdfBuffer = await generateCommandePDF(commande as any);
-
-      const settings = await prisma.companySettings.findFirst();
-      const html = buildEmailHtml({ title: subject, body, companyName: settings?.nomEntreprise || 'RHS' });
+      const [pdfBuffer, ctx] = await Promise.all([generateCommandePDF(commande as any), getEmailContext('COMMANDE_FOURNISSEUR')]);
+      const html = buildEmailHtml({ title: subject, body, ...ctx });
 
       await sendEmail({
         profileType: 'COMMANDE_FOURNISSEUR', to, toNom, cc, subject, html,
@@ -250,10 +255,8 @@ export const emailController = {
       if (!commande) return res.status(404).json({ error: 'Commande fournisseur introuvable' });
 
       const { generateCommandeFournisseurPDF } = await import('../services/pdf.service.js');
-      const pdfBuffer = await generateCommandeFournisseurPDF(commande as any);
-
-      const settings = await prisma.companySettings.findFirst();
-      const html = buildEmailHtml({ title: subject, body, companyName: settings?.nomEntreprise || 'RHS' });
+      const [pdfBuffer, ctx] = await Promise.all([generateCommandeFournisseurPDF(commande as any), getEmailContext('COMMANDE_FOURNISSEUR')]);
+      const html = buildEmailHtml({ title: subject, body, ...ctx });
 
       await sendEmail({
         profileType: 'COMMANDE_FOURNISSEUR', to, toNom, cc, subject, html,
@@ -269,8 +272,8 @@ export const emailController = {
       const { to, toNom, cc, subject, body, fieldInterventionId } = req.body;
       const userId = (req as any).user?.id;
 
-      const settings = await prisma.companySettings.findFirst();
-      const html = buildEmailHtml({ title: subject, body, companyName: settings?.nomEntreprise || 'RHS' });
+      const ctx = await getEmailContext('RAPPORT');
+      const html = buildEmailHtml({ title: subject, body, ...ctx });
       await sendEmail({ profileType: 'RAPPORT', to, toNom, cc, subject, html, sentById: userId });
       res.json({ success: true });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
