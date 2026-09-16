@@ -106,6 +106,7 @@ export function buildEmailHtml(opts: {
   const company = opts.companyName || 'RHS Controler';
   const sender = opts.senderName || company;
   const footer = opts.footerNote || `Pour toute question, vous pouvez répondre directement à cet email. Notre équipe vous répondra dans les plus brefs délais.`;
+  const bodyHtml = opts.body.replace(/\n/g, '<br />');
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -150,7 +151,7 @@ export function buildEmailHtml(opts: {
         <!-- Body -->
         <tr>
           <td style="padding:28px 36px 32px 36px;color:#1f2937;font-size:14px;line-height:1.75;">
-            ${opts.body}
+            ${bodyHtml}
           </td>
         </tr>
 
@@ -165,7 +166,7 @@ export function buildEmailHtml(opts: {
               </tr>
               <tr>
                 <td style="padding-top:10px;font-size:11px;color:#9ca3af;">
-                  ${company} — Gestion des interventions et services
+                  ${company}
                 </td>
               </tr>
             </table>
