@@ -157,7 +157,7 @@ export function buildEmailHtml(opts: {
               </tr>
               <tr>
                 <td style="padding-top:10px;font-size:11px;color:#9ca3af;">
-                  ${company}
+                  ${sender}
                 </td>
               </tr>
             </table>
