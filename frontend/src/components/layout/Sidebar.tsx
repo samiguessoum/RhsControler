@@ -73,13 +73,15 @@ export function Sidebar({ stats, mobileOpen = false, onMobileClose }: SidebarPro
         )
       }
     >
-      <item.icon className="h-5 w-5 flex-shrink-0" />
+      <span className="relative flex-shrink-0">
+        <item.icon className="h-5 w-5" />
+        {item.badge !== undefined && item.badge > 0 && (
+          <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-0.5 text-[10px] font-bold text-white leading-none">
+            {item.badge > 99 ? '99+' : item.badge}
+          </span>
+        )}
+      </span>
       <span className="flex-1 truncate">{item.label}</span>
-      {item.badge !== undefined && item.badge > 0 && (
-        <Badge variant={item.badgeVariant} className="ml-auto">
-          {item.badge}
-        </Badge>
-      )}
     </NavLink>
   );
 
