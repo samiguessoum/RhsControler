@@ -106,9 +106,29 @@ function EmailProfilesTab() {
     setTestingId(id);
     try {
       const res = await emailApi.testProfile(id);
-      toast.success(res.message || 'Connexion SMTP OK');
+      const lines: string[] = [];
+      lines.push(res.smtpOk ? '✓ SMTP OK' : `✗ SMTP : ${res.smtpError}`);
+      if (res.imapOk !== null && res.imapOk !== undefined) {
+        lines.push(res.imapOk ? '✓ IMAP OK' : `✗ IMAP : ${res.imapError}`);
+      }
+      const allOk = res.smtpOk && (res.imapOk === null || res.imapOk === undefined || res.imapOk === true);
+      if (allOk) {
+        toast.success(lines.join('\n'));
+      } else {
+        toast.error(lines.join('\n'));
+      }
     } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Connexion SMTP échouée');
+      const data = err.response?.data;
+      if (data?.smtpError || data?.imapError) {
+        const lines: string[] = [];
+        if (data.smtpOk !== undefined) lines.push(data.smtpOk ? '✓ SMTP OK' : `✗ SMTP : ${data.smtpError}`);
+        if (data.imapOk !== null && data.imapOk !== undefined) {
+          lines.push(data.imapOk ? '✓ IMAP OK' : `✗ IMAP : ${data.imapError}`);
+        }
+        toast.error(lines.join('\n'));
+      } else {
+        toast.error(data?.error || 'Connexion échouée');
+      }
     } finally {
       setTestingId(null);
     }
@@ -142,6 +162,9 @@ function EmailProfilesTab() {
                       <p className="text-xs text-muted-foreground">
                         {profile ? profile.emailFrom : <span className="text-orange-500">Non configuré</span>}
                       </p>
+                      {profile && (profile as any).imapHost && (
+                        <p className="text-xs text-blue-500">IMAP : {(profile as any).imapHost}</p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">

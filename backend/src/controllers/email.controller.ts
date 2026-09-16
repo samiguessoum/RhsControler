@@ -23,6 +23,7 @@ export const emailController = {
         select: {
           id: true, type: true, nom: true, emailFrom: true, nomFrom: true,
           smtpHost: true, smtpPort: true, smtpSecure: true, smtpUser: true,
+          imapHost: true, imapPort: true, imapSecure: true,
           actif: true, createdAt: true, updatedAt: true,
         },
       });
@@ -32,17 +33,23 @@ export const emailController = {
 
   async upsertProfile(req: Request, res: Response, next: NextFunction) {
     try {
-      const { type, nom, emailFrom, nomFrom, smtpHost, smtpPort, smtpSecure, smtpUser, smtpPass } = req.body;
+      const { type, nom, emailFrom, nomFrom, smtpHost, smtpPort, smtpSecure, smtpUser, smtpPass, imapHost, imapPort, imapSecure } = req.body;
       if (!type || !nom || !emailFrom || !smtpHost || !smtpUser || !smtpPass) {
         return res.status(400).json({ error: 'Champs requis : type, nom, emailFrom, smtpHost, smtpUser, smtpPass' });
       }
+      const imapData = {
+        imapHost: imapHost || null,
+        imapPort: imapHost ? (imapPort ?? 993) : null,
+        imapSecure: imapHost ? (imapSecure ?? true) : true,
+      };
       const profile = await prisma.emailProfile.upsert({
         where: { type: type as EmailProfileType },
-        create: { type, nom, emailFrom, nomFrom, smtpHost, smtpPort: smtpPort ?? 587, smtpSecure: smtpSecure ?? false, smtpUser, smtpPass },
-        update: { nom, emailFrom, nomFrom, smtpHost, smtpPort: smtpPort ?? 587, smtpSecure: smtpSecure ?? false, smtpUser, smtpPass, actif: true },
+        create: { type, nom, emailFrom, nomFrom, smtpHost, smtpPort: smtpPort ?? 587, smtpSecure: smtpSecure ?? false, smtpUser, smtpPass, ...imapData },
+        update: { nom, emailFrom, nomFrom, smtpHost, smtpPort: smtpPort ?? 587, smtpSecure: smtpSecure ?? false, smtpUser, smtpPass, actif: true, ...imapData },
         select: {
           id: true, type: true, nom: true, emailFrom: true, nomFrom: true,
           smtpHost: true, smtpPort: true, smtpSecure: true, smtpUser: true,
+          imapHost: true, imapPort: true, imapSecure: true,
           actif: true, updatedAt: true,
         },
       });
@@ -53,7 +60,7 @@ export const emailController = {
   async updateProfile(req: Request, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const { nom, emailFrom, nomFrom, smtpHost, smtpPort, smtpSecure, smtpUser, smtpPass, actif } = req.body;
+      const { nom, emailFrom, nomFrom, smtpHost, smtpPort, smtpSecure, smtpUser, smtpPass, actif, imapHost, imapPort, imapSecure } = req.body;
       const data: any = {};
       if (nom !== undefined) data.nom = nom;
       if (emailFrom !== undefined) data.emailFrom = emailFrom;
@@ -64,11 +71,15 @@ export const emailController = {
       if (smtpUser !== undefined) data.smtpUser = smtpUser;
       if (smtpPass !== undefined) data.smtpPass = smtpPass;
       if (actif !== undefined) data.actif = actif;
+      if (imapHost !== undefined) data.imapHost = imapHost || null;
+      if (imapPort !== undefined) data.imapPort = imapPort;
+      if (imapSecure !== undefined) data.imapSecure = imapSecure;
       const profile = await prisma.emailProfile.update({
         where: { id }, data,
         select: {
           id: true, type: true, nom: true, emailFrom: true, nomFrom: true,
           smtpHost: true, smtpPort: true, smtpSecure: true, smtpUser: true,
+          imapHost: true, imapPort: true, imapSecure: true,
           actif: true, updatedAt: true,
         },
       });
@@ -84,17 +95,47 @@ export const emailController = {
   },
 
   async testProfile(req: Request, res: Response, next: NextFunction) {
+    const profile = await prisma.emailProfile.findUnique({ where: { id: req.params.id } });
+    if (!profile) return res.status(404).json({ error: 'Profil introuvable' });
+
+    // Test SMTP
+    let smtpOk = false;
+    let smtpError: string | null = null;
     try {
-      const profile = await prisma.emailProfile.findUnique({ where: { id: req.params.id } });
-      if (!profile) return res.status(404).json({ error: 'Profil introuvable' });
       await testSmtpConnection({
         smtpHost: profile.smtpHost, smtpPort: profile.smtpPort,
         smtpSecure: profile.smtpSecure, smtpUser: profile.smtpUser, smtpPass: profile.smtpPass,
       });
-      res.json({ success: true, message: 'Connexion SMTP OK' });
+      smtpOk = true;
     } catch (err: any) {
-      res.status(400).json({ error: err.message || 'Connexion SMTP échouée' });
+      smtpError = err.message || 'Connexion SMTP échouée';
     }
+
+    // Test IMAP (si configuré)
+    let imapOk: boolean | null = null;
+    let imapError: string | null = null;
+    if (profile.imapHost) {
+      try {
+        const { ImapFlow } = await import('imapflow');
+        const client = new ImapFlow({
+          host: profile.imapHost,
+          port: profile.imapPort ?? 993,
+          secure: profile.imapSecure,
+          auth: { user: profile.smtpUser, pass: profile.smtpPass },
+          logger: false,
+        });
+        await client.connect();
+        await client.logout();
+        imapOk = true;
+      } catch (err: any) {
+        imapOk = false;
+        imapError = err.message || 'Connexion IMAP échouée';
+      }
+    }
+
+    const allOk = smtpOk && (imapOk === null || imapOk === true);
+    const statusCode = allOk ? 200 : 400;
+    res.status(statusCode).json({ smtpOk, smtpError, imapOk, imapError });
   },
 
   // ── Envoi ────────────────────────────────────────────────────
