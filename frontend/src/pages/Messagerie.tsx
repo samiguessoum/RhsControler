@@ -309,7 +309,7 @@ function ThreadView({ threadId, onBack }: { threadId: string; onBack: () => void
 export default function MessageriePage() {
   const qc = useQueryClient();
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
-  const [filterType, setFilterType] = useState<string>('');
+  const [filterType, setFilterType] = useState<string>('all');
   const [showArchived, setShowArchived] = useState(false);
   const [search, setSearch] = useState('');
   const [isSyncing, setIsSyncing] = useState(false);
@@ -322,7 +322,7 @@ export default function MessageriePage() {
   const { data: threadsData, isLoading } = useQuery({
     queryKey: ['messagerie-threads', filterType, showArchived],
     queryFn: () => messerieApi.listThreads({
-      profileType: filterType || undefined,
+      profileType: filterType !== 'all' ? filterType : undefined,
       archived: showArchived,
       limit: 100,
     }),
@@ -405,7 +405,7 @@ export default function MessageriePage() {
                 <SelectValue placeholder="Tous les profils" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Tous les profils</SelectItem>
+                <SelectItem value="all">Tous les profils</SelectItem>
                 {(profiles as any[]).map((p) => (
                   <SelectItem key={p.id} value={p.type}>
                     {p.nom} — {p.emailFrom}
