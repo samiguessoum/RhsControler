@@ -128,16 +128,7 @@ export function buildEmailHtml(opts: {
         <!-- Header -->
         <tr>
           <td style="padding:28px 36px 20px 36px;">
-            <table width="100%" cellpadding="0" cellspacing="0">
-              <tr>
-                <td>
-                  <span style="font-size:18px;font-weight:700;color:#15803d;letter-spacing:-0.3px;">${company}</span>
-                </td>
-                <td align="right">
-                  <span style="font-size:11px;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;">${sender}</span>
-                </td>
-              </tr>
-            </table>
+            <span style="font-size:18px;font-weight:700;color:#15803d;letter-spacing:-0.3px;">${company}</span>
           </td>
         </tr>
 
