@@ -252,7 +252,12 @@ function AlertesPanel({ alertes }: { alertes: Alerte[] }) {
     );
   }
 
-  const getConfig = (type: string, joursRestants?: number) => {
+  const getConfig = (type: string, joursRestants?: number, niveauAlerte?: string) => {
+    if (type === 'BC_EN_ALERTE') {
+      if (niveauAlerte === 'EPUISE') return { dot: 'bg-red-600', pill: 'bg-red-100 text-red-700', label: 'text-red-600' };
+      if (niveauAlerte === 'DERNIER') return { dot: 'bg-orange-500', pill: 'bg-orange-100 text-orange-700', label: 'text-orange-600' };
+      return { dot: 'bg-yellow-500', pill: 'bg-yellow-100 text-yellow-700', label: 'text-yellow-600' };
+    }
     if (type === 'CONTRAT_SANS_INTERVENTION' || type === 'CONTRAT_HORS_VALIDITE') {
       return { dot: 'bg-red-500', pill: 'bg-red-100 text-red-700', label: 'text-red-600' };
     }
@@ -267,7 +272,12 @@ function AlertesPanel({ alertes }: { alertes: Alerte[] }) {
     return { dot: 'bg-gray-400', pill: 'bg-gray-100 text-gray-600', label: 'text-gray-600' };
   };
 
-  const getTypeLabel = (type: string) => {
+  const getTypeLabel = (type: string, niveauAlerte?: string) => {
+    if (type === 'BC_EN_ALERTE') {
+      if (niveauAlerte === 'EPUISE') return 'BC épuisé';
+      if (niveauAlerte === 'DERNIER') return 'BC — dernier passage';
+      return 'BC en alerte';
+    }
     if (type === 'CONTRAT_SANS_INTERVENTION') return 'Sans intervention';
     if (type === 'CONTRAT_HORS_VALIDITE') return 'Hors validité';
     if (type === 'ANNUEL_FIN_PROCHE') return 'Renouvellement';
@@ -289,22 +299,31 @@ function AlertesPanel({ alertes }: { alertes: Alerte[] }) {
 
       <div className="p-3 space-y-1.5">
         {visible.map((a) => {
-          const cfg = getConfig(a.type, a.joursRestants);
+          const cfg = getConfig(a.type, a.joursRestants, (a as any).niveauAlerte);
+          // Pour les BC, naviguer vers la page bons-commandes
+          const href = a.type === 'BC_EN_ALERTE' && (a as any).bcId
+            ? `/bons-commandes?id=${(a as any).bcId}`
+            : `/contrats/${a.contratId}`;
           return (
             <Link
               key={a.id}
-              to={`/contrats/${a.contratId}`}
+              to={href}
               className="group flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors"
             >
               <div className={`w-2 h-2 rounded-full flex-shrink-0 ${cfg.dot}`} />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-gray-900 truncate">
-                  {a.client?.nomEntreprise || '—'}
+                  {a.client?.nomEntreprise || (a as any).numero || '—'}
                 </p>
-                <p className={`text-xs ${cfg.label}`}>{getTypeLabel(a.type)}</p>
+                <p className={`text-xs ${cfg.label}`}>{getTypeLabel(a.type, (a as any).niveauAlerte)}</p>
               </div>
               <div className={`text-center px-3 py-1.5 rounded-xl ${cfg.pill} flex-shrink-0`}>
-                {a.type === 'ANNUEL_FIN_PROCHE' && a.joursRestants !== undefined ? (
+                {a.type === 'BC_EN_ALERTE' && (a as any).passagesRestants !== undefined ? (
+                  <>
+                    <p className="text-base font-black leading-none">{(a as any).passagesRestants}</p>
+                    <p className="text-[9px] font-semibold mt-0.5 opacity-70">pass.</p>
+                  </>
+                ) : a.type === 'ANNUEL_FIN_PROCHE' && a.joursRestants !== undefined ? (
                   <>
                     <p className="text-base font-black leading-none">{a.joursRestants}</p>
                     <p className="text-[9px] font-semibold mt-0.5 opacity-70">jours</p>

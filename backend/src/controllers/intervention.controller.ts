@@ -477,30 +477,53 @@ export const interventionController = {
         return res.status(404).json({ error: 'Intervention non trouvée' });
       }
 
-      // BC reverse : si l'intervention passe de REALISEE à un autre statut, rendre le passage
+      const estOperation = existing.type !== 'CONTROLE';
       const corrigeStatut = data.statut && data.statut !== 'REALISEE' && existing.statut === 'REALISEE';
-      if (corrigeStatut && (existing as any).bonCommandeId) {
-        await prisma.bonCommande.update({
-          where: { id: (existing as any).bonCommandeId },
-          data: { passagesConsommes: { decrement: 1 } },
-        });
-      }
+      const bcChange = data.bonCommandeId !== undefined && data.bonCommandeId !== (existing as any).bonCommandeId;
 
-      // Si employes fourni, mettre à jour la liste
-      if (data.employes !== undefined) {
-        await prisma.interventionEmploye.deleteMany({
-          where: { interventionId: id },
-        });
-        if (data.employes?.length) {
-          await prisma.interventionEmploye.createMany({
-            data: data.employes.map((emp: { employeId: string; posteId: string }) => ({
-              interventionId: id,
-              employeId: emp.employeId,
-              posteId: emp.posteId,
-            })),
-          });
+      // Gérer BC reverse/déplacement dans une transaction pour éviter des incohérences
+      await prisma.$transaction(async (tx) => {
+        // BC cohérence pour les opérations uniquement (pas les contrôles)
+        if (estOperation && existing.statut === 'REALISEE') {
+          if (corrigeStatut) {
+            // Intervention dé-réalisée : rendre le passage à l'ancien BC
+            if ((existing as any).bonCommandeId) {
+              await tx.bonCommande.update({
+                where: { id: (existing as any).bonCommandeId },
+                data: { passagesConsommes: { decrement: 1 } },
+              });
+            }
+          } else if (bcChange && (existing as any).bonCommandeId) {
+            // Déplacement vers un autre BC : décrémente l'ancien, incrémente le nouveau
+            await tx.bonCommande.update({
+              where: { id: (existing as any).bonCommandeId },
+              data: { passagesConsommes: { decrement: 1 } },
+            });
+            if (data.bonCommandeId) {
+              await tx.bonCommande.update({
+                where: { id: data.bonCommandeId },
+                data: { passagesConsommes: { increment: 1 } },
+              });
+            }
+          }
         }
-      }
+
+        // Si employes fourni, mettre à jour la liste
+        if (data.employes !== undefined) {
+          await tx.interventionEmploye.deleteMany({
+            where: { interventionId: id },
+          });
+          if (data.employes?.length) {
+            await tx.interventionEmploye.createMany({
+              data: data.employes.map((emp: { employeId: string; posteId: string }) => ({
+                interventionId: id,
+                employeId: emp.employeId,
+                posteId: emp.posteId,
+              })),
+            });
+          }
+        }
+      });
 
       // Déterminer le statut final
       let finalStatut = data.statut ?? existing.statut;
@@ -534,6 +557,7 @@ export const interventionController = {
           statut: finalStatut,
           notesTerrain: data.notesTerrain ?? existing.notesTerrain,
           responsable: data.responsable !== undefined ? data.responsable : existing.responsable,
+          bonCommandeId: data.bonCommandeId !== undefined ? data.bonCommandeId : (existing as any).bonCommandeId,
           updatedById: req.user!.id,
         },
         include: {

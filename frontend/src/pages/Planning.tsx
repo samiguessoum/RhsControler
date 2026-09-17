@@ -114,6 +114,7 @@ import {
   postesApi,
   commerceApi,
   rhApi,
+  bonCommandeApi,
 } from '@/services/api';
 import { cn, formatDate, getStatutColor, getStatutLabel } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -2417,6 +2418,8 @@ function CreateInterventionDialog({
   const [heureFin, setHeureFin] = useState('');
   const [notesTerrain, setNotesTerrain] = useState('');
   const [selectedEmployes, setSelectedEmployes] = useState<InterventionEmployeInput[]>([]);
+  const [bonCommandeId, setBonCommandeId] = useState('');
+  const [clientBcs, setClientBcs] = useState<{ id: string; numero: string; passagesRestants: number | null }[]>([]);
   const [previousNotes, setPreviousNotes] = useState<{
     notesTerrain: string;
     dateRealisee: string;
@@ -2428,6 +2431,30 @@ function CreateInterventionDialog({
   const selectedClient = clients.find((c) => c.id === clientId);
   const sites = selectedClient?.sites || [];
   const typeConfig = INTERVENTION_TYPES_CONFIG[interventionType];
+
+  // Fetch BCs when client changes
+  useEffect(() => {
+    if (!clientId) {
+      setClientBcs([]);
+      setBonCommandeId('');
+      return;
+    }
+    bonCommandeApi
+      .list({ actif: true })
+      .then((res: any) => {
+        const all: any[] = res?.bonsCommandes ?? [];
+        const forClient = all
+          .filter((bc: any) => bc.client?.id === clientId || bc.clientId === clientId)
+          .map((bc: any) => ({
+            id: bc.id,
+            numero: bc.numero,
+            passagesRestants:
+              bc.quotaPassages != null ? bc.quotaPassages - bc.passagesConsommes : null,
+          }));
+        setClientBcs(forClient);
+      })
+      .catch(() => setClientBcs([]));
+  }, [clientId]);
 
   // Fetch last notes when client or site changes
   useEffect(() => {
@@ -2471,6 +2498,8 @@ function CreateInterventionDialog({
     setHeureFin('');
     setNotesTerrain('');
     setSelectedEmployes([]);
+    setBonCommandeId('');
+    setClientBcs([]);
     setPreviousNotes(null);
   };
 
@@ -2501,6 +2530,7 @@ function CreateInterventionDialog({
       notesTerrain: notesTerrain || undefined,
       statut: 'A_PLANIFIER',
       employes: selectedEmployes.length > 0 ? selectedEmployes : undefined,
+      bonCommandeId: bonCommandeId || undefined,
     });
   };
 
@@ -2591,6 +2621,27 @@ function CreateInterventionDialog({
                     <SelectItem key={site.id} value={site.id}>
                       {site.nom}
                       {site.adresse && ` - ${site.adresse}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Bon de commande */}
+          {clientBcs.length > 0 && (
+            <div className="space-y-2">
+              <Label>Bon de commande</Label>
+              <Select value={bonCommandeId} onValueChange={setBonCommandeId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Aucun BC (optionnel)" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Aucun</SelectItem>
+                  {clientBcs.map((bc) => (
+                    <SelectItem key={bc.id} value={bc.id}>
+                      BC-{bc.numero}
+                      {bc.passagesRestants != null ? ` (${bc.passagesRestants} restant${bc.passagesRestants > 1 ? 's' : ''})` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>

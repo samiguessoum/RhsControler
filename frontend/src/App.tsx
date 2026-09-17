@@ -25,6 +25,7 @@ const SiteDetailPage = lazy(() => import('@/pages/SiteDetail').then((m) => ({ de
 const TerrainPage = lazy(() => import('@/pages/Terrain').then((m) => ({ default: m.TerrainPage })));
 const FieldInterventionDetailPage = lazy(() => import('@/pages/FieldInterventionDetail').then((m) => ({ default: m.FieldInterventionDetailPage })));
 const MessageriePage = lazy(() => import('@/pages/Messagerie'));
+const BonCommandesPage = lazy(() => import('@/pages/BonCommandes').then((m) => ({ default: m.BonCommandesPage })));
 
 const AUTH_BOOT_TIMEOUT_MS = 2500;
 
@@ -136,6 +137,7 @@ export default function App() {
               <Route path="/commerce" element={<Suspense fallback={<PageFallback />}><CommercePage /></Suspense>} />
               <Route path="/suivi-ventes" element={<Suspense fallback={<PageFallback />}><SuiviVentesPage /></Suspense>} />
               <Route path="/messagerie" element={<Suspense fallback={<PageFallback />}><MessageriePage /></Suspense>} />
+              <Route path="/bons-commandes" element={<Suspense fallback={<PageFallback />}><BonCommandesPage /></Suspense>} />
               <Route path="/facturation" element={<Suspense fallback={<PageFallback />}><FacturationPage /></Suspense>} />
               <Route path="/finance" element={<Suspense fallback={<PageFallback />}><FinancePage /></Suspense>} />
               <Route path="/rh" element={<Suspense fallback={<PageFallback />}><RHPage /></Suspense>} />

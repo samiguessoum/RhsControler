@@ -467,6 +467,7 @@ export interface CreateInterventionInput {
   notesTerrain?: string;
   responsable?: string;
   employes?: InterventionEmployeInput[];
+  bonCommandeId?: string;
 }
 
 // ============ STOCK ============

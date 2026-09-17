@@ -3,8 +3,32 @@ import { stringify } from 'csv-stringify/sync';
 import { prisma } from '../config/database.js';
 import { parseDate } from '../utils/date.utils.js';
 import planningService from './planning.service.js';
+import { Prisma } from '@prisma/client';
 
 const CONTRAT_STATUT_VALUES = ['ACTIF', 'SUSPENDU', 'TERMINE'];
+
+/**
+ * Retourne undefined pour les cellules CSV vides/null/whitespace.
+ * Utilisé dans les blocs UPDATE pour éviter d'écraser involontairement une valeur existante.
+ * Convention : cellule vide = conserver la valeur existante.
+ */
+function csvVal<T>(raw: T | null | undefined): T | undefined {
+  if (raw === null || raw === undefined) return undefined;
+  if (typeof raw === 'string' && raw.trim() === '') return undefined;
+  return raw;
+}
+
+/**
+ * Comme csvVal, mais permet l'effacement explicite en préfixant la valeur par "NULL:".
+ * Ex: "NULL:" → null (effacement), "" → undefined (conserver), "valeur" → "valeur"
+ */
+function csvValOrNull<T>(raw: T | null | undefined): T | null | undefined {
+  if (typeof raw === 'string') {
+    if (raw.trim().toUpperCase() === 'NULL:') return null; // effacement explicite
+    if (raw.trim() === '') return undefined; // cellule vide = conserver
+  }
+  return raw ?? undefined;
+}
 const INTERVENTION_STATUT_VALUES = ['A_PLANIFIER', 'PLANIFIEE', 'REALISEE', 'REPORTEE', 'ANNULEE'];
 
 export interface ImportError {
@@ -419,9 +443,22 @@ export const csvService = {
     const errors: ImportError[] = [];
     const warnings: ImportWarning[] = [];
     const rows = this.parseCSV(content);
+    const seenRefExternes = new Set<string>();
 
     const preview = await Promise.all(rows.map(async (row, index) => {
       const rowNum = index + 2;
+
+      // ref_externe obligatoire pour déduplication sans doublons
+      if (!row.ref_externe?.trim()) {
+        errors.push({ row: rowNum, field: 'ref_externe', message: 'ref_externe est obligatoire pour garantir la déduplication sans doublons' });
+      } else {
+        const refNorm = row.ref_externe.trim();
+        if (seenRefExternes.has(refNorm)) {
+          errors.push({ row: rowNum, field: 'ref_externe', message: 'ref_externe en doublon dans le fichier' });
+        } else {
+          seenRefExternes.add(refNorm);
+        }
+      }
 
       if (!row.client_nom?.trim()) {
         errors.push({ row: rowNum, field: 'client_nom', message: 'Nom du client requis' });
@@ -655,7 +692,7 @@ export const csvService = {
           statut: row.statut,
           refExterne: row.refExterne,
           dateSignature: row.dateSignature ? parseDate(row.dateSignature) : null,
-          montantHT: row.montantHT,
+          montantHT: row.montantHT != null ? new Prisma.Decimal(row.montantHT) : null,
           dureeType: row.dureeType,
           notes: row.notes,
           datePriseEnComptePlanification: row.dateReprisePlanification ? parseDate(row.dateReprisePlanification) : null,
@@ -666,10 +703,36 @@ export const csvService = {
         let contrat: any;
 
         if (row._action === 'UPDATE' && row._existingContratId) {
-          // Upsert via refExterne
+          // Upsert via refExterne — cellule vide = ne pas écraser (csvVal)
+          const updateData: any = {
+            type: csvVal(contratData.type),
+            dateDebut: csvVal(contratData.dateDebut),
+            dateFin: csvValOrNull(contratData.dateFin !== null ? contratData.dateFin : undefined),
+            reconductionAuto: csvVal(contratData.reconductionAuto),
+            prestations: csvVal(contratData.prestations),
+            frequenceOperationsJours: csvVal(contratData.frequenceOperationsJours),
+            frequenceControleJours: csvVal(contratData.frequenceControleJours),
+            frequenceOperationsMois: csvVal(contratData.frequenceOperationsMois),
+            frequenceControleMois: csvVal(contratData.frequenceControleMois),
+            frequenceRegles: csvValOrNull(contratData.frequenceRegles),
+            frequenceReglesControle: csvValOrNull(contratData.frequenceReglesControle),
+            planningAajuster: csvVal(contratData.planningAajuster),
+            premiereDateOperation: csvValOrNull(contratData.premiereDateOperation),
+            premiereDateControle: csvValOrNull(contratData.premiereDateControle),
+            statut: csvVal(contratData.statut),
+            dateSignature: csvValOrNull(contratData.dateSignature),
+            montantHT: csvValOrNull(contratData.montantHT),
+            dureeType: csvValOrNull(contratData.dureeType),
+            notes: csvValOrNull(contratData.notes),
+            datePriseEnComptePlanification: csvValOrNull(contratData.datePriseEnComptePlanification),
+            nombrePassagesAnnuels: csvVal(contratData.nombrePassagesAnnuels),
+            numeroBonCommande: csvValOrNull(contratData.numeroBonCommande),
+          };
+          // Supprimer les clés undefined pour ne pas écraser
+          Object.keys(updateData).forEach((k) => updateData[k] === undefined && delete updateData[k]);
           contrat = await tx.contrat.update({
             where: { id: row._existingContratId },
-            data: contratData,
+            data: updateData,
           });
           updated++;
         } else {
@@ -679,6 +742,7 @@ export const csvService = {
 
         // Upsert ContratSite si site fourni
         if (row._siteId) {
+          const montantHTDecimal = row.montantHT != null ? new Prisma.Decimal(row.montantHT) : null;
           await tx.contratSite.upsert({
             where: { contratId_siteId: { contratId: contrat.id, siteId: row._siteId } },
             create: {
@@ -694,18 +758,18 @@ export const csvService = {
               frequenceReglesControle: row.frequenceReglesControle,
               premiereDateOperation: row.premiereDateOperation ? parseDate(row.premiereDateOperation) : null,
               premiereDateControle: row.premiereDateControle ? parseDate(row.premiereDateControle) : null,
-              montantHT: row.montantHT,
+              montantHT: montantHTDecimal,
               nombrePassagesAnnuels: row.nombrePassagesAnnuels,
             },
             update: {
-              frequenceOperationsJours: row.frequenceOperationsJours !== undefined ? row.frequenceOperationsJours : undefined,
-              frequenceControleJours: row.frequenceControleJours !== undefined ? row.frequenceControleJours : undefined,
-              frequenceOperationsMois: row.frequenceOperationsMois !== undefined ? row.frequenceOperationsMois : undefined,
-              frequenceControleMois: row.frequenceControleMois !== undefined ? row.frequenceControleMois : undefined,
-              frequenceRegles: row.frequenceRegles !== undefined ? row.frequenceRegles : undefined,
-              frequenceReglesControle: row.frequenceReglesControle !== undefined ? row.frequenceReglesControle : undefined,
-              montantHT: row.montantHT !== undefined ? row.montantHT : undefined,
-              nombrePassagesAnnuels: row.nombrePassagesAnnuels !== undefined ? row.nombrePassagesAnnuels : undefined,
+              frequenceOperationsJours: csvVal(row.frequenceOperationsJours),
+              frequenceControleJours: csvVal(row.frequenceControleJours),
+              frequenceOperationsMois: csvVal(row.frequenceOperationsMois),
+              frequenceControleMois: csvVal(row.frequenceControleMois),
+              frequenceRegles: csvValOrNull(row.frequenceRegles),
+              frequenceReglesControle: csvValOrNull(row.frequenceReglesControle),
+              montantHT: row.montantHT != null ? new Prisma.Decimal(row.montantHT) : undefined,
+              nombrePassagesAnnuels: csvVal(row.nombrePassagesAnnuels),
             },
           });
         }
@@ -1088,6 +1152,8 @@ export const csvService = {
       'nombre_passages_annuels',
     ];
 
+    // Convention : cellule vide = conserver la valeur existante (au réimport).
+    // Pour effacer volontairement un champ, écrire "NULL:" dans la cellule.
     const exampleRow = {
       client_nom: 'SARL Dupont',
       site_nom: 'Entrepôt Nord',
@@ -1110,7 +1176,7 @@ export const csvService = {
       montant_ht: '15000',
       duree_type: 'DETERMINEE',
       numero_bon_commande: 'BC-2026-123',
-      notes: 'Contrat annuel standard',
+      notes: 'Cellule vide = conserver existant. NULL: = effacer.',
       date_reprise_planification: '',
       nombre_passages_annuels: '6',
     };

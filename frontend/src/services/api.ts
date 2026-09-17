@@ -1779,6 +1779,42 @@ export const emailApi = {
   },
 };
 
+// ─── Bons de commande ────────────────────────────────────────────────────────
+export const bonCommandeApi = {
+  list: async (params?: { clientId?: string; actif?: boolean; enAlerte?: boolean }) => {
+    const { data } = await api.get('/bons-commandes', { params });
+    return data as { bonsCommandes: any[]; count: number };
+  },
+  getOne: async (id: string) => {
+    const { data } = await api.get(`/bons-commandes/${id}`);
+    return data as { bonCommande: any };
+  },
+  getAlerts: async () => {
+    const { data } = await api.get('/bons-commandes/alertes');
+    return data as { bonsCommandes: any[]; count: number };
+  },
+  create: async (payload: { numero: string; clientId: string; contratId?: string; quotaPassages?: number | null; seuilAlerte?: number; notes?: string; siteIds?: string[] }) => {
+    const { data } = await api.post('/bons-commandes', payload);
+    return data as { bonCommande: any };
+  },
+  update: async (id: string, payload: { quotaPassages?: number | null; notes?: string; seuilAlerte?: number; actif?: boolean; numero?: string }) => {
+    const { data } = await api.put(`/bons-commandes/${id}`, payload);
+    return data as { bonCommande: any };
+  },
+  delete: async (id: string) => {
+    const { data } = await api.delete(`/bons-commandes/${id}`);
+    return data;
+  },
+  addSite: async (id: string, siteId: string) => {
+    const { data } = await api.post(`/bons-commandes/${id}/sites`, { siteId });
+    return data;
+  },
+  removeSite: async (id: string, siteId: string) => {
+    const { data } = await api.delete(`/bons-commandes/${id}/sites/${siteId}`);
+    return data;
+  },
+};
+
 // ─── Messagerie ──────────────────────────────────────────────────────────────
 export const messerieApi = {
   listThreads: async (filters?: {

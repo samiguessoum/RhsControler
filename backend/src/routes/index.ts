@@ -103,6 +103,7 @@ import facturationStatsController from '../controllers/facturation-stats.control
 import notificationsController from '../controllers/notifications.controller.js';
 import { settingsController } from '../controllers/settings.controller.js';
 import bonCommandeController from '../controllers/bon-commande.controller.js';
+import planningController from '../controllers/planning.controller.js';
 import { zoningController } from '../controllers/zoning.controller.js';
 import { fieldInterventionController } from '../controllers/field-intervention.controller.js';
 import { reclamationController } from '../controllers/reclamation.controller.js';
@@ -249,6 +250,9 @@ router.get('/dashboard/aujourdhui', authMiddleware, dashboardController.aujourdh
 router.get('/dashboard/alertes', authMiddleware, dashboardController.alertes);
 router.get('/dashboard/employes-stats', authMiddleware, dashboardController.employesStats);
 router.get('/dashboard/operations-stats', authMiddleware, dashboardController.operationsStats);
+
+// ============ PLANNING ============
+router.post('/planning/renouveler', authMiddleware, canDo('editContrat'), planningController.renouveler);
 
 // ============ BONS DE COMMANDE ============
 router.get('/bons-commandes/alertes', authMiddleware, bonCommandeController.getAlerts);

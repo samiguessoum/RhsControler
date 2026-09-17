@@ -588,7 +588,7 @@ model Contrat {
   // Nouveaux champs v2
   refExterne                         String?       @unique
   dateSignature                      DateTime?
-  montantHT                          Float?
+  montantHT                          Decimal?      @db.Decimal(15, 2)
   dureeType                          String?
   frequenceRegles                    String?
   frequenceReglesControle            String?
@@ -625,7 +625,7 @@ model ContratSite {
   nombreVisitesControle    Int?
   notes                    String?
   // Nouveaux champs v2
-  montantHT                Float?
+  montantHT                Decimal?  @db.Decimal(15, 2)
   frequenceRegles          String?
   frequenceReglesControle  String?
   frequenceOperationsMois  Int?
@@ -659,7 +659,7 @@ model Intervention {
   // Nouveaux champs v2
   bonCommandeId         String?
   bonCommande           BonCommande? @relation(fields: [bonCommandeId], references: [id], onDelete: SetNull)
-  montantApplique       Float?
+  montantApplique       Decimal?     @db.Decimal(15, 2)
   estPassageContractuel Boolean      @default(true)
   exporteGCal  Boolean            @default(false)
   createdById  String

@@ -18,6 +18,7 @@ import {
   KanbanSquare,
   ClipboardCheck,
   Inbox,
+  Receipt,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
@@ -101,6 +102,7 @@ export function Sidebar({ stats, mobileOpen = false, onMobileClose }: SidebarPro
     { to: '/terrain', icon: ClipboardCheck, label: 'Terrain & Rapports', show: true },
     { to: '/tiers', icon: Building2, label: 'Tiers', show: !isTeamOnly },
     { to: '/contrats', icon: FileText, label: 'Contrats', show: !isTeamOnly },
+    { to: '/bons-commandes', icon: Receipt, label: 'Bons de commande', show: !isTeamOnly },
   ];
 
   const moduleItems: NavItem[] = [

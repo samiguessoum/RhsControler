@@ -12,6 +12,8 @@ import { authMiddleware } from './middleware/auth.middleware.js';
 import { startAccrualScheduler } from './services/conges-accrual.service.js';
 import { syncAllInboxes } from './services/imap-sync.service.js';
 import cron from 'node-cron';
+import planningService from './services/planning.service.js';
+import { serializeDecimals } from './utils/decimal.utils.js';
 
 
 const app = express();
@@ -48,6 +50,14 @@ app.use('/api/auth/login', loginLimiter);
 // Body parsing
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Serialize Prisma Decimal → number in all JSON responses
+app.set('json replacer', (_key: string, value: unknown) => {
+  if (value !== null && typeof value === 'object' && (value as any)._isDecimal === true) {
+    return parseFloat((value as any).toString());
+  }
+  return value;
+});
 
 // Health check
 app.get('/health', (req, res) => {
@@ -90,6 +100,23 @@ app.listen(PORT, () => {
   // Sync IMAP toutes les 3 minutes
   cron.schedule('*/3 * * * *', () => {
     syncAllInboxes().catch((err) => logger.error({ err }, 'Erreur sync IMAP cron'));
+  });
+  // Reconduction automatique des contrats — chaque jour à 2h00
+  cron.schedule('0 2 * * *', async () => {
+    try {
+      // Trouver le premier utilisateur admin pour traçabilité
+      const adminUser = await prisma.user.findFirst({
+        where: { actif: true, role: { in: ['SUPER_ADMIN', 'DIRECTION'] } },
+        select: { id: true },
+      });
+      const systemUserId = adminUser?.id ?? 'system';
+      const result = await planningService.renouvelerContratsEligibles(systemUserId);
+      if (result.traites > 0) {
+        logger.info({ result }, `Reconduction auto : ${result.crees} contrats créés, ${result.erreurs.length} erreurs`);
+      }
+    } catch (err) {
+      logger.error({ err }, 'Erreur cron reconduction automatique');
+    }
   });
 });
 
