@@ -102,6 +102,7 @@ import paiementDiversController from '../controllers/paiement-divers.controller.
 import facturationStatsController from '../controllers/facturation-stats.controller.js';
 import notificationsController from '../controllers/notifications.controller.js';
 import { settingsController } from '../controllers/settings.controller.js';
+import bonCommandeController from '../controllers/bon-commande.controller.js';
 import { zoningController } from '../controllers/zoning.controller.js';
 import { fieldInterventionController } from '../controllers/field-intervention.controller.js';
 import { reclamationController } from '../controllers/reclamation.controller.js';
@@ -249,6 +250,16 @@ router.get('/dashboard/alertes', authMiddleware, dashboardController.alertes);
 router.get('/dashboard/employes-stats', authMiddleware, dashboardController.employesStats);
 router.get('/dashboard/operations-stats', authMiddleware, dashboardController.operationsStats);
 
+// ============ BONS DE COMMANDE ============
+router.get('/bons-commandes/alertes', authMiddleware, bonCommandeController.getAlerts);
+router.get('/bons-commandes', authMiddleware, bonCommandeController.list);
+router.post('/bons-commandes', authMiddleware, bonCommandeController.create);
+router.get('/bons-commandes/:id', authMiddleware, bonCommandeController.getOne);
+router.put('/bons-commandes/:id', authMiddleware, bonCommandeController.update);
+router.delete('/bons-commandes/:id', authMiddleware, bonCommandeController.delete);
+router.post('/bons-commandes/:id/sites', authMiddleware, bonCommandeController.addSite);
+router.delete('/bons-commandes/:id/sites/:siteId', authMiddleware, bonCommandeController.removeSite);
+
 // ============ IMPORT/EXPORT ============
 router.get('/export/clients', authMiddleware, canDo('exportData'), importExportController.exportClients);
 router.get('/export/contrats', authMiddleware, canDo('exportData'), importExportController.exportContrats);
@@ -256,6 +267,7 @@ router.get('/export/interventions', authMiddleware, canDo('exportData'), importE
 router.get('/export/employes', authMiddleware, canDo('exportData'), importExportController.exportEmployes);
 router.get('/export/google-calendar', authMiddleware, canDo('exportData'), importExportController.exportGoogleCalendar);
 router.get('/import/templates/:type', authMiddleware, importExportController.getTemplate);
+router.get('/import-export/template/contrats', authMiddleware, importExportController.getContratsTemplate);
 router.post('/import/preview', authMiddleware, canDo('importData'), importExportController.preview);
 router.post('/import/execute', authMiddleware, canDo('importData'), importExportController.execute);
 

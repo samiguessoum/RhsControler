@@ -359,6 +359,7 @@ model Client {
   facturesFournisseur  FactureFournisseur[]  @relation("FacturesFournisseur")
   charges              Charge[]              @relation("ChargesFournisseur")
   paiementsDivers      PaiementDivers[]      @relation("PaiementsDivers")
+  bonsCommandes        BonCommande[]
 
   @@index([typeTiers])
   @@index([code])
@@ -523,6 +524,7 @@ model Site {
   fieldReports       FieldReport[]
   siteDocuments      SiteDocument[]
   reclamations       Reclamation[]
+  bonCommandeSites   BonCommandeSite[]
 
   @@index([clientId])
   @@index([code])
@@ -583,12 +585,25 @@ model Contrat {
   numeroBonCommande                  String?
   nombreOperations                   Int?
   nombreVisitesControle              Int?
+  // Nouveaux champs v2
+  refExterne                         String?       @unique
+  dateSignature                      DateTime?
+  montantHT                          Float?
+  dureeType                          String?
+  frequenceRegles                    String?
+  frequenceReglesControle            String?
+  frequenceOperationsMois            Int?
+  frequenceControleMois              Int?
+  planningAajuster                   Boolean       @default(false)
+  datePriseEnComptePlanification     DateTime?
+  nombrePassagesAnnuels              Int?
   createdAt                          DateTime      @default(now())
   updatedAt                          DateTime      @updatedAt
 
   interventions      Intervention[]
   contratSites       ContratSite[]
   fieldInterventions FieldIntervention[]
+  bonsCommandes      BonCommande[]
 
   @@index([clientId])
   @@index([statut])
@@ -609,6 +624,12 @@ model ContratSite {
   nombreOperations         Int?
   nombreVisitesControle    Int?
   notes                    String?
+  // Nouveaux champs v2
+  montantHT                Float?
+  frequenceRegles          String?
+  frequenceOperationsMois  Int?
+  frequenceControleMois    Int?
+  nombrePassagesAnnuels    Int?
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
 
@@ -634,6 +655,11 @@ model Intervention {
   statut       InterventionStatut @default(A_PLANIFIER)
   notesTerrain String?
   responsable  String?
+  // Nouveaux champs v2
+  bonCommandeId         String?
+  bonCommande           BonCommande? @relation(fields: [bonCommandeId], references: [id], onDelete: SetNull)
+  montantApplique       Float?
+  estPassageContractuel Boolean      @default(true)
   exporteGCal  Boolean            @default(false)
   createdById  String
   createdBy    User               @relation("CreatedBy", fields: [createdById], references: [id])
@@ -2395,4 +2421,40 @@ model EmailMessageAttachment {
   createdAt   DateTime     @default(now())
 
   @@index([messageId])
+}
+
+// ============ BONS DE COMMANDE PASSAGES ============
+
+model BonCommande {
+  id                String    @id @default(cuid())
+  numero            String
+  clientId          String
+  client            Client    @relation(fields: [clientId], references: [id])
+  contratId         String?
+  contrat           Contrat?  @relation(fields: [contratId], references: [id])
+  quotaPassages     Int?
+  passagesConsommes Int       @default(0)
+  seuilAlerte       Int       @default(2)
+  notes             String?
+  actif             Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  interventions  Intervention[]
+  sites          BonCommandeSite[]
+
+  @@unique([numero, clientId])
+  @@index([clientId])
+}
+
+model BonCommandeSite {
+  id     String      @id @default(cuid())
+  bcId   String
+  bc     BonCommande @relation(fields: [bcId], references: [id], onDelete: Cascade)
+  siteId String
+  site   Site        @relation(fields: [siteId], references: [id])
+
+  @@unique([bcId, siteId])
+  @@index([bcId])
+  @@index([siteId])
 }

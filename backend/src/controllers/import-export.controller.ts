@@ -130,9 +130,7 @@ Yacine,Amrani,ADMINISTRATION`,
         },
         contrats: {
           filename: 'template_contrats.csv',
-          content: `client_nom,type,date_debut,date_fin,reconduction_auto,prestations,frequence_operations_jours,frequence_controle_jours,premiere_date_operation,premiere_date_controle,statut
-"SARL Exemple","ANNUEL","2024-01-01","2024-12-31","true","dératisation,désinsectisation","30","90","2024-01-15","2024-03-15","ACTIF"
-"EURL Test","PONCTUEL","2024-02-01","","false","3D","","","2024-02-15","","ACTIF"`,
+          content: csvService.generateContratsCsvTemplate(),
         },
         interventions: {
           filename: 'template_interventions.csv',
@@ -153,6 +151,22 @@ Yacine,Amrani,ADMINISTRATION`,
       res.send('\ufeff' + template.content);
     } catch (error) {
       logger.error({ err: error }, 'Get template error');
+      return next(new AppError(500, 'Erreur serveur'));
+    }
+  },
+
+  /**
+   * GET /api/import-export/template/contrats
+   * Template CSV complet pour l'import de contrats (v2)
+   */
+  async getContratsTemplate(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const content = csvService.generateContratsCsvTemplate();
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename=template_contrats_v2.csv');
+      res.send('﻿' + content);
+    } catch (error) {
+      logger.error({ err: error }, 'Get contrats template error');
       return next(new AppError(500, 'Erreur serveur'));
     }
   },

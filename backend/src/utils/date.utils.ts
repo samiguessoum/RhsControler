@@ -1,14 +1,23 @@
-import { addDays, startOfDay, endOfDay, startOfWeek, endOfWeek, format } from 'date-fns';
+import { addDays, addMonths, startOfDay, endOfDay, startOfWeek, endOfWeek, format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 /**
- * Calcule la prochaine date d'intervention selon un intervalle en jours
+ * Calcule la prochaine date d'intervention selon un intervalle en jours ou en mois calendaires
  */
 export function getProchaineDateIntervention(
   derniereDate: Date,
-  jours: number | null | undefined
+  jours?: number | null,
+  mois?: number | null
 ): Date {
+  if (mois) return addMonths(derniereDate, mois);
   return addDays(derniereDate, jours || 30);
+}
+
+/**
+ * Retourne la plus grande des deux dates
+ */
+export function maxDate(a: Date, b: Date): Date {
+  return a > b ? a : b;
 }
 
 /**

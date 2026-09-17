@@ -2,6 +2,7 @@ import { parse } from 'csv-parse/sync';
 import { stringify } from 'csv-stringify/sync';
 import { prisma } from '../config/database.js';
 import { parseDate } from '../utils/date.utils.js';
+import planningService from './planning.service.js';
 
 const CONTRAT_STATUT_VALUES = ['ACTIF', 'SUSPENDU', 'TERMINE'];
 const INTERVENTION_STATUT_VALUES = ['A_PLANIFIER', 'PLANIFIEE', 'REALISEE', 'REPORTEE', 'ANNULEE'];
@@ -13,12 +14,46 @@ export interface ImportError {
   value?: string;
 }
 
+export interface ImportWarning {
+  row: number;
+  field: string;
+  message: string;
+}
+
 export interface ImportResult {
   success: boolean;
   created: number;
   updated: number;
   errors: ImportError[];
+  warnings?: ImportWarning[];
   preview?: any[];
+  bcsCreated?: number;
+  bcsLinked?: number;
+  planningGenere?: number;
+}
+
+/**
+ * Parse une fréquence texte en jours/mois/règles complexes
+ */
+function parseFrequence(raw: string | null | undefined): {
+  jours: number | null;
+  mois: number | null;
+  regles: string | null;
+  planningAajuster: boolean;
+} {
+  if (!raw?.trim()) return { jours: null, mois: null, regles: null, planningAajuster: false };
+  const normalized = raw.trim()
+    .replace(/mpis/gi, 'mois')
+    .replace(/préiode|preíode/gi, 'période');
+  const isComplex = /[/]|et\s+p[ée]riode|chaude|saison/i.test(normalized);
+  const moisMatch = /(\d+)\s*mois/i.exec(normalized);
+  const jourMatch = /(\d+)\s*jours?/i.exec(normalized);
+  return {
+    mois: moisMatch ? parseInt(moisMatch[1]) : null,
+    jours: (!moisMatch && jourMatch) ? parseInt(jourMatch[1]) : null,
+    regles: isComplex ? raw.trim() : null,
+    planningAajuster: isComplex,
+  };
 }
 
 /**
@@ -378,10 +413,11 @@ export const csvService = {
   },
 
   /**
-   * Preview import contrats
+   * Preview import contrats (v2 — avec site, BC, fréquences calendaires, déduplication refExterne)
    */
   async previewContrats(content: string): Promise<ImportResult> {
     const errors: ImportError[] = [];
+    const warnings: ImportWarning[] = [];
     const rows = this.parseCSV(content);
 
     const preview = await Promise.all(rows.map(async (row, index) => {
@@ -392,12 +428,23 @@ export const csvService = {
       }
 
       // Vérifier que le client existe
-      const client = await prisma.client.findFirst({
-        where: { nomEntreprise: row.client_nom },
-      });
+      const client = row.client_nom?.trim()
+        ? await prisma.client.findFirst({ where: { nomEntreprise: row.client_nom.trim() } })
+        : null;
 
-      if (!client && row.client_nom) {
+      if (!client && row.client_nom?.trim()) {
         errors.push({ row: rowNum, field: 'client_nom', message: 'Client non trouvé', value: row.client_nom });
+      }
+
+      // Lookup site si fourni
+      let site = null;
+      if (row.site_nom?.trim() && client) {
+        site = await prisma.site.findFirst({
+          where: { clientId: client.id, nom: { equals: row.site_nom.trim(), mode: 'insensitive' } },
+        });
+        if (!site) {
+          errors.push({ row: rowNum, field: 'site_nom', message: `Site "${row.site_nom}" non trouvé pour ce client`, value: row.site_nom });
+        }
       }
 
       if (!row.type || !['ANNUEL', 'PONCTUEL'].includes(row.type.toUpperCase())) {
@@ -412,14 +459,51 @@ export const csvService = {
         errors.push({ row: rowNum, field: 'prestations', message: 'Au moins une prestation requise' });
       }
 
-      const frequenceOperationsJours = row.frequence_operations_jours?.trim() ? parseInt(row.frequence_operations_jours) : null;
-      if (row.frequence_operations_jours?.trim() && (!Number.isInteger(frequenceOperationsJours) || frequenceOperationsJours! <= 0)) {
-        errors.push({ row: rowNum, field: 'frequence_operations_jours', message: 'Doit être un nombre de jours positif', value: row.frequence_operations_jours });
+      // Fréquence opérations — jours OU mois
+      let frequenceOperationsJours: number | null = null;
+      let frequenceOperationsMois: number | null = null;
+      let frequenceRegles: string | null = null;
+      let planningAajuster = false;
+
+      if (row.frequence_regles?.trim()) {
+        const parsed = parseFrequence(row.frequence_regles);
+        frequenceOperationsJours = parsed.jours;
+        frequenceOperationsMois = parsed.mois;
+        frequenceRegles = parsed.regles;
+        planningAajuster = parsed.planningAajuster;
+        if (planningAajuster) {
+          warnings.push({ row: rowNum, field: 'frequence_regles', message: 'Fréquence complexe détectée — planningAajuster=true, ajustement manuel requis' });
+        }
+      } else if (row.frequence_operations_mois?.trim()) {
+        frequenceOperationsMois = parseInt(row.frequence_operations_mois);
+        if (isNaN(frequenceOperationsMois) || frequenceOperationsMois <= 0) {
+          errors.push({ row: rowNum, field: 'frequence_operations_mois', message: 'Doit être un nombre de mois positif', value: row.frequence_operations_mois });
+          frequenceOperationsMois = null;
+        }
+      } else if (row.frequence_operations_jours?.trim()) {
+        frequenceOperationsJours = parseInt(row.frequence_operations_jours);
+        if (isNaN(frequenceOperationsJours) || frequenceOperationsJours <= 0) {
+          errors.push({ row: rowNum, field: 'frequence_operations_jours', message: 'Doit être un nombre de jours positif', value: row.frequence_operations_jours });
+          frequenceOperationsJours = null;
+        }
       }
 
-      const frequenceControleJours = row.frequence_controle_jours?.trim() ? parseInt(row.frequence_controle_jours) : null;
-      if (row.frequence_controle_jours?.trim() && (!Number.isInteger(frequenceControleJours) || frequenceControleJours! <= 0)) {
-        errors.push({ row: rowNum, field: 'frequence_controle_jours', message: 'Doit être un nombre de jours positif', value: row.frequence_controle_jours });
+      // Fréquence contrôle — jours OU mois
+      let frequenceControleJours: number | null = null;
+      let frequenceControleMois: number | null = null;
+
+      if (row.frequence_controle_mois?.trim()) {
+        frequenceControleMois = parseInt(row.frequence_controle_mois);
+        if (isNaN(frequenceControleMois) || frequenceControleMois <= 0) {
+          errors.push({ row: rowNum, field: 'frequence_controle_mois', message: 'Doit être un nombre de mois positif', value: row.frequence_controle_mois });
+          frequenceControleMois = null;
+        }
+      } else if (row.frequence_controle_jours?.trim()) {
+        frequenceControleJours = parseInt(row.frequence_controle_jours);
+        if (isNaN(frequenceControleJours) || frequenceControleJours <= 0) {
+          errors.push({ row: rowNum, field: 'frequence_controle_jours', message: 'Doit être un nombre de jours positif', value: row.frequence_controle_jours });
+          frequenceControleJours = null;
+        }
       }
 
       const statut = row.statut?.trim() ? row.statut.toUpperCase() : 'ACTIF';
@@ -439,21 +523,75 @@ export const csvService = {
         errors.push({ row: rowNum, field: 'premiere_date_controle', message: 'Date invalide', value: row.premiere_date_controle });
       }
 
+      if (row.date_reprise_planification && !parseDate(row.date_reprise_planification)) {
+        errors.push({ row: rowNum, field: 'date_reprise_planification', message: 'Date invalide', value: row.date_reprise_planification });
+      }
+
+      // Déduplication par refExterne
+      let existingContrat = null;
+      let action: 'CREATE' | 'UPDATE' = 'CREATE';
+      if (row.ref_externe?.trim()) {
+        existingContrat = await prisma.contrat.findUnique({ where: { refExterne: row.ref_externe.trim() } });
+        if (existingContrat) action = 'UPDATE';
+      }
+
+      // Reconduction auto — warning si vide et dureeType = INDETERMINEE
+      const dureeType = row.duree_type?.trim() || null;
+      let reconductionAuto: boolean;
+      if (row.reconduction_auto?.trim()) {
+        reconductionAuto = row.reconduction_auto.toLowerCase() === 'true';
+      } else {
+        reconductionAuto = dureeType === 'INDETERMINEE';
+        if (dureeType === 'INDETERMINEE' && !row.reconduction_auto?.trim()) {
+          warnings.push({ row: rowNum, field: 'reconduction_auto', message: 'reconduction_auto déduit à true car duree_type=INDETERMINEE' });
+        }
+      }
+
+      // BC status preview
+      let bcAction: 'CREATE' | 'LINK' | null = null;
+      if (row.numero_bon_commande?.trim() && client) {
+        const existingBc = await prisma.bonCommande.findFirst({
+          where: { numero: row.numero_bon_commande.trim(), clientId: client.id },
+        });
+        bcAction = existingBc ? 'LINK' : 'CREATE';
+      }
+
+      const montantHT = row.montant_ht?.trim() ? parseFloat(row.montant_ht) : null;
+      const nombrePassagesAnnuels = row.nombre_passages_annuels?.trim() ? parseInt(row.nombre_passages_annuels) : null;
+
       return {
         _row: rowNum,
         _valid: errors.filter(e => e.row === rowNum).length === 0,
+        _warnings: warnings.filter(w => w.row === rowNum),
         _clientId: client?.id,
+        _siteId: site?.id,
+        _action: action,
+        _bcAction: bcAction,
+        _existingContratId: existingContrat?.id,
         clientNom: row.client_nom,
+        siteNom: row.site_nom?.trim() || null,
         type: row.type?.toUpperCase(),
         dateDebut: row.date_debut,
         dateFin: row.date_fin,
-        reconductionAuto: row.reconduction_auto?.toLowerCase() === 'true',
+        reconductionAuto,
         prestations: row.prestations?.split(',').map((p: string) => p.trim()).filter(Boolean),
         frequenceOperationsJours,
+        frequenceOperationsMois,
         frequenceControleJours,
+        frequenceControleMois,
+        frequenceRegles,
+        planningAajuster,
         premiereDateOperation: row.premiere_date_operation,
         premiereDateControle: row.premiere_date_controle,
         statut,
+        refExterne: row.ref_externe?.trim() || null,
+        dateSignature: row.date_signature?.trim() || null,
+        montantHT,
+        dureeType,
+        numeroBonCommande: row.numero_bon_commande?.trim() || null,
+        notes: row.notes?.trim() || null,
+        dateReprisePlanification: row.date_reprise_planification?.trim() || null,
+        nombrePassagesAnnuels,
       };
     }));
 
@@ -462,14 +600,15 @@ export const csvService = {
       created: 0,
       updated: 0,
       errors,
+      warnings,
       preview,
     };
   },
 
   /**
-   * Import contrats
+   * Import contrats v2 (avec BC, site, refExterne, fréquences calendaires)
    */
-  async importContrats(content: string, userId: string): Promise<ImportResult> {
+  async importContrats(content: string, userId: string, genererPlanning: boolean = false): Promise<ImportResult> {
     const preview = await this.previewContrats(content);
 
     if (!preview.success) {
@@ -477,12 +616,17 @@ export const csvService = {
     }
 
     let created = 0;
+    let updated = 0;
+    let bcsCreated = 0;
+    let bcsLinked = 0;
+    let planningGenere = 0;
 
-    for (const row of preview.preview!) {
-      if (!row._clientId) continue;
+    // Wrap in transaction for atomicity
+    await prisma.$transaction(async (tx) => {
+      for (const row of preview.preview!) {
+        if (!row._clientId) continue;
 
-      await prisma.contrat.create({
-        data: {
+        const contratData: any = {
           clientId: row._clientId,
           type: row.type,
           dateDebut: parseDate(row.dateDebut)!,
@@ -491,15 +635,133 @@ export const csvService = {
           prestations: row.prestations,
           frequenceOperationsJours: row.frequenceOperationsJours,
           frequenceControleJours: row.frequenceControleJours,
+          frequenceOperationsMois: row.frequenceOperationsMois,
+          frequenceControleMois: row.frequenceControleMois,
+          frequenceRegles: row.frequenceRegles,
+          planningAajuster: row.planningAajuster,
           premiereDateOperation: row.premiereDateOperation ? parseDate(row.premiereDateOperation) : null,
           premiereDateControle: row.premiereDateControle ? parseDate(row.premiereDateControle) : null,
           statut: row.statut,
-        },
-      });
-      created++;
+          refExterne: row.refExterne,
+          dateSignature: row.dateSignature ? parseDate(row.dateSignature) : null,
+          montantHT: row.montantHT,
+          dureeType: row.dureeType,
+          notes: row.notes,
+          datePriseEnComptePlanification: row.dateReprisePlanification ? parseDate(row.dateReprisePlanification) : null,
+          nombrePassagesAnnuels: row.nombrePassagesAnnuels,
+          numeroBonCommande: row.numeroBonCommande,
+        };
+
+        let contrat: any;
+
+        if (row._action === 'UPDATE' && row._existingContratId) {
+          // Upsert via refExterne
+          contrat = await tx.contrat.update({
+            where: { id: row._existingContratId },
+            data: contratData,
+          });
+          updated++;
+        } else {
+          contrat = await tx.contrat.create({ data: contratData });
+          created++;
+        }
+
+        // Upsert ContratSite si site fourni
+        if (row._siteId) {
+          await tx.contratSite.upsert({
+            where: { contratId_siteId: { contratId: contrat.id, siteId: row._siteId } },
+            create: {
+              contratId: contrat.id,
+              siteId: row._siteId,
+              prestations: row.prestations || [],
+              prixPrestations: {},
+              frequenceOperationsJours: row.frequenceOperationsJours,
+              frequenceControleJours: row.frequenceControleJours,
+              frequenceOperationsMois: row.frequenceOperationsMois,
+              frequenceControleMois: row.frequenceControleMois,
+              frequenceRegles: row.frequenceRegles,
+              premiereDateOperation: row.premiereDateOperation ? parseDate(row.premiereDateOperation) : null,
+              premiereDateControle: row.premiereDateControle ? parseDate(row.premiereDateControle) : null,
+              montantHT: row.montantHT,
+              nombrePassagesAnnuels: row.nombrePassagesAnnuels,
+            },
+            update: {
+              frequenceOperationsJours: row.frequenceOperationsJours,
+              frequenceControleJours: row.frequenceControleJours,
+              frequenceOperationsMois: row.frequenceOperationsMois,
+              frequenceControleMois: row.frequenceControleMois,
+              frequenceRegles: row.frequenceRegles,
+              montantHT: row.montantHT,
+              nombrePassagesAnnuels: row.nombrePassagesAnnuels,
+            },
+          });
+        }
+
+        // Find-or-create BonCommande + BonCommandeSite si numéro fourni
+        if (row.numeroBonCommande && row._clientId) {
+          const existingBc = await tx.bonCommande.findFirst({
+            where: { numero: row.numeroBonCommande, clientId: row._clientId },
+          });
+
+          let bc: any;
+          if (existingBc) {
+            bc = existingBc;
+            bcsLinked++;
+          } else {
+            bc = await tx.bonCommande.create({
+              data: {
+                numero: row.numeroBonCommande,
+                clientId: row._clientId,
+                contratId: contrat.id,
+                notes: null,
+              },
+            });
+            bcsCreated++;
+          }
+
+          // Lier le site au BC si fourni
+          if (row._siteId) {
+            await tx.bonCommandeSite.upsert({
+              where: { bcId_siteId: { bcId: bc.id, siteId: row._siteId } },
+              create: { bcId: bc.id, siteId: row._siteId },
+              update: {},
+            });
+          }
+        }
+      }
+    });
+
+    // Génération du planning hors transaction (lourd)
+    if (genererPlanning) {
+      for (const row of preview.preview!) {
+        if (!row._valid || !row._existingContratId && row._action !== 'CREATE') continue;
+        if (!row.dateReprisePlanification) continue; // sécurité : ne génère que si date_reprise fournie
+        // Find contrat by refExterne or last created
+        let contrat: any = null;
+        if (row.refExterne) {
+          contrat = await prisma.contrat.findUnique({ where: { refExterne: row.refExterne } });
+        }
+        if (contrat) {
+          try {
+            await planningService.genererPlanningContrat(contrat.id, userId);
+            planningGenere++;
+          } catch (_e) {
+            // Non-blocking
+          }
+        }
+      }
     }
 
-    return { success: true, created, updated: 0, errors: [] };
+    return {
+      success: true,
+      created,
+      updated,
+      errors: [],
+      warnings: preview.warnings,
+      bcsCreated,
+      bcsLinked,
+      planningGenere,
+    };
   },
 
   /**
@@ -665,41 +927,41 @@ export const csvService = {
       return c.sites.map((s) => {
         const siteContact = s.contacts?.find((contact) => contact.estPrincipal) || s.contacts?.[0];
         return ({
-        nom_entreprise: c.nomEntreprise,
-        siege_nom: c.siegeNom || '',
-        siege_adresse: c.siegeAdresse || '',
-        siege_code_postal: c.siegeCodePostal || '',
-        siege_ville: c.siegeVille || '',
-        siege_pays: c.siegePays || '',
-        siege_contact_nom: siegeContact?.nom || '',
-        siege_contact_fonction: siegeContact?.fonction || '',
-        siege_contact_tel: siegeContact?.tel || '',
-        siege_contact_email: siegeContact?.email || '',
-        siege_tel: c.siegeTel || '',
-        siege_email: c.siegeEmail || '',
-        siege_notes: c.siegeNotes || '',
-        siege_rc: c.siegeRC || '',
-        siege_nif: c.siegeNIF || '',
-        siege_ai: c.siegeAI || '',
-        siege_nis: c.siegeNIS || '',
-        siege_tin: c.siegeTIN || '',
-        site_code: s.code || '',
-        site_nom: s.nom || '',
-        site_adresse: s.adresse || '',
-        site_complement: s.complement || '',
-        site_code_postal: s.codePostal || '',
-        site_ville: s.ville || '',
-        site_pays: s.pays || '',
-        secteur: c.secteur || '',
-        contact_nom: siteContact?.nom || '',
-        contact_fonction: siteContact?.fonction || '',
-        tel: s.tel || '',
-        fax: s.fax || '',
-        email: s.email || '',
-        horaires_ouverture: s.horairesOuverture || '',
-        accessibilite: s.accessibilite || '',
-        notes: s.notes || '',
-        actif: c.actif ? 'true' : 'false',
+          nom_entreprise: c.nomEntreprise,
+          siege_nom: c.siegeNom || '',
+          siege_adresse: c.siegeAdresse || '',
+          siege_code_postal: c.siegeCodePostal || '',
+          siege_ville: c.siegeVille || '',
+          siege_pays: c.siegePays || '',
+          siege_contact_nom: siegeContact?.nom || '',
+          siege_contact_fonction: siegeContact?.fonction || '',
+          siege_contact_tel: siegeContact?.tel || '',
+          siege_contact_email: siegeContact?.email || '',
+          siege_tel: c.siegeTel || '',
+          siege_email: c.siegeEmail || '',
+          siege_notes: c.siegeNotes || '',
+          siege_rc: c.siegeRC || '',
+          siege_nif: c.siegeNIF || '',
+          siege_ai: c.siegeAI || '',
+          siege_nis: c.siegeNIS || '',
+          siege_tin: c.siegeTIN || '',
+          site_code: s.code || '',
+          site_nom: s.nom || '',
+          site_adresse: s.adresse || '',
+          site_complement: s.complement || '',
+          site_code_postal: s.codePostal || '',
+          site_ville: s.ville || '',
+          site_pays: s.pays || '',
+          secteur: c.secteur || '',
+          contact_nom: siteContact?.nom || '',
+          contact_fonction: siteContact?.fonction || '',
+          tel: s.tel || '',
+          fax: s.fax || '',
+          email: s.email || '',
+          horaires_ouverture: s.horairesOuverture || '',
+          accessibilite: s.accessibilite || '',
+          notes: s.notes || '',
+          actif: c.actif ? 'true' : 'false',
         });
       });
     });
@@ -708,26 +970,41 @@ export const csvService = {
   },
 
   /**
-   * Export contrats en CSV
+   * Export contrats en CSV (v2 avec nouveaux champs)
    */
   async exportContrats(): Promise<string> {
     const contrats = await prisma.contrat.findMany({
-      include: { client: { select: { nomEntreprise: true } } },
+      include: {
+        client: { select: { nomEntreprise: true } },
+        contratSites: { include: { site: { select: { nom: true } } }, take: 1 },
+      },
       orderBy: { dateDebut: 'desc' },
     });
 
     return stringify(contrats.map(c => ({
       client_nom: c.client.nomEntreprise,
+      site_nom: c.contratSites?.[0]?.site?.nom || '',
       type: c.type,
       date_debut: c.dateDebut.toISOString().split('T')[0],
       date_fin: c.dateFin?.toISOString().split('T')[0] || '',
       reconduction_auto: c.reconductionAuto ? 'true' : 'false',
       prestations: c.prestations.join(','),
       frequence_operations_jours: c.frequenceOperationsJours || '',
+      frequence_operations_mois: (c as any).frequenceOperationsMois || '',
       frequence_controle_jours: c.frequenceControleJours || '',
+      frequence_controle_mois: (c as any).frequenceControleMois || '',
+      frequence_regles: (c as any).frequenceRegles || '',
       premiere_date_operation: c.premiereDateOperation?.toISOString().split('T')[0] || '',
       premiere_date_controle: c.premiereDateControle?.toISOString().split('T')[0] || '',
       statut: c.statut,
+      ref_externe: (c as any).refExterne || '',
+      date_signature: (c as any).dateSignature?.toISOString().split('T')[0] || '',
+      montant_ht: (c as any).montantHT || '',
+      duree_type: (c as any).dureeType || '',
+      numero_bon_commande: c.numeroBonCommande || '',
+      notes: c.notes || '',
+      date_reprise_planification: (c as any).datePriseEnComptePlanification?.toISOString().split('T')[0] || '',
+      nombre_passages_annuels: (c as any).nombrePassagesAnnuels || '',
     })), { header: true });
   },
 
@@ -764,6 +1041,65 @@ export const csvService = {
       responsable: i.responsable || '',
       notes: i.notesTerrain || '',
     })), { header: true });
+  },
+
+  /**
+   * Génère le template CSV contrats avec colonnes commentées et ligne exemple
+   */
+  generateContratsCsvTemplate(): string {
+    const headers = [
+      'client_nom',
+      'site_nom',
+      'type',
+      'date_debut',
+      'date_fin',
+      'reconduction_auto',
+      'prestations',
+      'frequence_operations_jours',
+      'frequence_operations_mois',
+      'frequence_controle_jours',
+      'frequence_controle_mois',
+      'frequence_regles',
+      'premiere_date_operation',
+      'premiere_date_controle',
+      'statut',
+      'ref_externe',
+      'date_signature',
+      'montant_ht',
+      'duree_type',
+      'numero_bon_commande',
+      'notes',
+      'date_reprise_planification',
+      'nombre_passages_annuels',
+    ];
+
+    const exampleRow = {
+      client_nom: 'SARL Dupont',
+      site_nom: 'Entrepôt Nord',
+      type: 'ANNUEL',
+      date_debut: '2026-01-01',
+      date_fin: '2026-12-31',
+      reconduction_auto: 'false',
+      prestations: 'Dératisation,Désinsectisation',
+      frequence_operations_jours: '',
+      frequence_operations_mois: '2',
+      frequence_controle_jours: '',
+      frequence_controle_mois: '6',
+      frequence_regles: '',
+      premiere_date_operation: '2026-01-15',
+      premiere_date_controle: '2026-06-15',
+      statut: 'ACTIF',
+      ref_externe: 'CTR-2026-001',
+      date_signature: '2025-12-20',
+      montant_ht: '15000',
+      duree_type: 'DETERMINEE',
+      numero_bon_commande: 'BC-2026-123',
+      notes: 'Contrat annuel standard',
+      date_reprise_planification: '',
+      nombre_passages_annuels: '6',
+    };
+
+    return stringify([exampleRow], { header: true, columns: headers });
   },
 };
 

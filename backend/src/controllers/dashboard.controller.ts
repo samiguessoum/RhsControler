@@ -45,6 +45,7 @@ export const dashboardController = {
         controles30j,
         contratsEnAlerte,
         ponctuelAlerte,
+        bcsEnAlerte,
         contratsAnnuelsFinProche,
         // Stats du jour
         interventionsAujourdhui,
@@ -87,6 +88,8 @@ export const dashboardController = {
         // Contrats en alerte
         planningService.getContratsEnAlerte(),
         planningService.getContratsPonctuelAlerte(),
+        // BCs en alerte
+        planningService.getBcsEnAlerte(),
         // Contrats annuels proches de la fin (60 jours)
         planningService.getContratsAnnuelsFinProche(60),
         // Interventions aujourd'hui
@@ -184,6 +187,7 @@ export const dashboardController = {
           controles30j,
           contratsEnAlerte: contratsEnAlerte.length,
           ponctuelAlerte: ponctuelAlerte.length,
+          bcEnAlerte: bcsEnAlerte.length,
           contratsAnnuelsFinProche: contratsAnnuelsFinProche.length,
           // Stats aujourd'hui
           interventionsAujourdhui,
