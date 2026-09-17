@@ -477,6 +477,15 @@ export const interventionController = {
         return res.status(404).json({ error: 'Intervention non trouvée' });
       }
 
+      // BC reverse : si l'intervention passe de REALISEE à un autre statut, rendre le passage
+      const corrigeStatut = data.statut && data.statut !== 'REALISEE' && existing.statut === 'REALISEE';
+      if (corrigeStatut && (existing as any).bonCommandeId) {
+        await prisma.bonCommande.update({
+          where: { id: (existing as any).bonCommandeId },
+          data: { passagesConsommes: { decrement: 1 } },
+        });
+      }
+
       // Si employes fourni, mettre à jour la liste
       if (data.employes !== undefined) {
         await prisma.interventionEmploye.deleteMany({

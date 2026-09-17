@@ -252,11 +252,12 @@ export const dashboardController = {
    */
   async alertes(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const [contrats, ponctuelContrats, contratsHorsValidite, contratsAnnuelsFinProche] = await Promise.all([
+      const [contrats, ponctuelContrats, contratsHorsValidite, contratsAnnuelsFinProche, bcsEnAlerte] = await Promise.all([
         planningService.getContratsEnAlerte(),
         planningService.getContratsPonctuelAlerte(),
         planningService.getContratsHorsValidite(),
         planningService.getContratsAnnuelsFinProche(60),
+        planningService.getBcsEnAlerte(),
       ]);
 
       const alertes = contrats.map((c) => ({
@@ -313,9 +314,32 @@ export const dashboardController = {
         reconductionAuto: c.reconductionAuto,
       }));
 
+      const bcAlertes = bcsEnAlerte.map((bc: any) => {
+        const sitesLabel = bc.sites?.map((s: any) => s.site?.nom).filter(Boolean).join(', ') || null;
+        const niveauLabel = bc.niveauAlerte === 'EPUISE' ? 'BC épuisé'
+          : bc.niveauAlerte === 'DERNIER' ? 'Dernier passage restant'
+          : `${bc.passagesRestants} passages restants`;
+        const quotaLabel = bc.quotaPassages == null ? '(quota inconnu — à compléter)' : `sur ${bc.quotaPassages}`;
+        return {
+          id: `bc-${bc.id}`,
+          type: 'BC_EN_ALERTE',
+          niveauAlerte: bc.niveauAlerte,
+          message: bc.quotaPassages == null
+            ? `BC ${bc.numero} — quota inconnu, à renseigner`
+            : `BC ${bc.numero} — ${niveauLabel} ${quotaLabel}`,
+          client: bc.client,
+          bcId: bc.id,
+          bcNumero: bc.numero,
+          sitesLabel,
+          passagesRestants: bc.passagesRestants,
+          passagesConsommes: bc.passagesConsommes,
+          quotaPassages: bc.quotaPassages,
+        };
+      });
+
       res.json({
-        alertes: [...alertes, ...ponctuelAlertes, ...horsValiditeAlertes, ...annuelFinProcheAlertes],
-        count: alertes.length + ponctuelAlertes.length + horsValiditeAlertes.length + annuelFinProcheAlertes.length,
+        alertes: [...alertes, ...ponctuelAlertes, ...horsValiditeAlertes, ...annuelFinProcheAlertes, ...bcAlertes],
+        count: alertes.length + ponctuelAlertes.length + horsValiditeAlertes.length + annuelFinProcheAlertes.length + bcAlertes.length,
       });
     } catch (error) {
       logger.error({ err: error }, 'Dashboard alertes error');

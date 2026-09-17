@@ -488,11 +488,20 @@ export const csvService = {
         }
       }
 
-      // Fréquence contrôle — jours OU mois
+      // Fréquence contrôle — règle brute OU mois OU jours
       let frequenceControleJours: number | null = null;
       let frequenceControleMois: number | null = null;
+      let frequenceReglesControle: string | null = null;
 
-      if (row.frequence_controle_mois?.trim()) {
+      if (row.frequence_regles_controle?.trim()) {
+        const parsedCtrl = parseFrequence(row.frequence_regles_controle);
+        frequenceControleJours = parsedCtrl.jours;
+        frequenceControleMois = parsedCtrl.mois;
+        frequenceReglesControle = parsedCtrl.regles;
+        if (parsedCtrl.planningAajuster) {
+          warnings.push({ row: rowNum, field: 'frequence_regles_controle', message: 'Fréquence contrôle complexe — ajustement manuel requis' });
+        }
+      } else if (row.frequence_controle_mois?.trim()) {
         frequenceControleMois = parseInt(row.frequence_controle_mois);
         if (isNaN(frequenceControleMois) || frequenceControleMois <= 0) {
           errors.push({ row: rowNum, field: 'frequence_controle_mois', message: 'Doit être un nombre de mois positif', value: row.frequence_controle_mois });
@@ -580,6 +589,7 @@ export const csvService = {
         frequenceControleJours,
         frequenceControleMois,
         frequenceRegles,
+        frequenceReglesControle,
         planningAajuster,
         premiereDateOperation: row.premiere_date_operation,
         premiereDateControle: row.premiere_date_controle,
@@ -638,6 +648,7 @@ export const csvService = {
           frequenceOperationsMois: row.frequenceOperationsMois,
           frequenceControleMois: row.frequenceControleMois,
           frequenceRegles: row.frequenceRegles,
+          frequenceReglesControle: row.frequenceReglesControle,
           planningAajuster: row.planningAajuster,
           premiereDateOperation: row.premiereDateOperation ? parseDate(row.premiereDateOperation) : null,
           premiereDateControle: row.premiereDateControle ? parseDate(row.premiereDateControle) : null,
@@ -680,19 +691,21 @@ export const csvService = {
               frequenceOperationsMois: row.frequenceOperationsMois,
               frequenceControleMois: row.frequenceControleMois,
               frequenceRegles: row.frequenceRegles,
+              frequenceReglesControle: row.frequenceReglesControle,
               premiereDateOperation: row.premiereDateOperation ? parseDate(row.premiereDateOperation) : null,
               premiereDateControle: row.premiereDateControle ? parseDate(row.premiereDateControle) : null,
               montantHT: row.montantHT,
               nombrePassagesAnnuels: row.nombrePassagesAnnuels,
             },
             update: {
-              frequenceOperationsJours: row.frequenceOperationsJours,
-              frequenceControleJours: row.frequenceControleJours,
-              frequenceOperationsMois: row.frequenceOperationsMois,
-              frequenceControleMois: row.frequenceControleMois,
-              frequenceRegles: row.frequenceRegles,
-              montantHT: row.montantHT,
-              nombrePassagesAnnuels: row.nombrePassagesAnnuels,
+              frequenceOperationsJours: row.frequenceOperationsJours !== undefined ? row.frequenceOperationsJours : undefined,
+              frequenceControleJours: row.frequenceControleJours !== undefined ? row.frequenceControleJours : undefined,
+              frequenceOperationsMois: row.frequenceOperationsMois !== undefined ? row.frequenceOperationsMois : undefined,
+              frequenceControleMois: row.frequenceControleMois !== undefined ? row.frequenceControleMois : undefined,
+              frequenceRegles: row.frequenceRegles !== undefined ? row.frequenceRegles : undefined,
+              frequenceReglesControle: row.frequenceReglesControle !== undefined ? row.frequenceReglesControle : undefined,
+              montantHT: row.montantHT !== undefined ? row.montantHT : undefined,
+              nombrePassagesAnnuels: row.nombrePassagesAnnuels !== undefined ? row.nombrePassagesAnnuels : undefined,
             },
           });
         }
@@ -994,6 +1007,7 @@ export const csvService = {
       frequence_controle_jours: c.frequenceControleJours || '',
       frequence_controle_mois: (c as any).frequenceControleMois || '',
       frequence_regles: (c as any).frequenceRegles || '',
+      frequence_regles_controle: (c as any).frequenceReglesControle || '',
       premiere_date_operation: c.premiereDateOperation?.toISOString().split('T')[0] || '',
       premiere_date_controle: c.premiereDateControle?.toISOString().split('T')[0] || '',
       statut: c.statut,
@@ -1060,6 +1074,7 @@ export const csvService = {
       'frequence_controle_jours',
       'frequence_controle_mois',
       'frequence_regles',
+      'frequence_regles_controle',
       'premiere_date_operation',
       'premiere_date_controle',
       'statut',
@@ -1086,6 +1101,7 @@ export const csvService = {
       frequence_controle_jours: '',
       frequence_controle_mois: '6',
       frequence_regles: '',
+      frequence_regles_controle: '',
       premiere_date_operation: '2026-01-15',
       premiere_date_controle: '2026-06-15',
       statut: 'ACTIF',

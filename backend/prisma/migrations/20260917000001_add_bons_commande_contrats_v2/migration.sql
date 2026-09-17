@@ -70,3 +70,4 @@ ALTER TABLE "BonCommande" ADD CONSTRAINT "BonCommande_contratId_fkey" FOREIGN KE
 ALTER TABLE "BonCommandeSite" ADD CONSTRAINT "BonCommandeSite_bcId_fkey" FOREIGN KEY ("bcId") REFERENCES "BonCommande"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "BonCommandeSite" ADD CONSTRAINT "BonCommandeSite_siteId_fkey" FOREIGN KEY ("siteId") REFERENCES "Site"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 ALTER TABLE "Intervention" ADD CONSTRAINT "Intervention_bonCommandeId_fkey" FOREIGN KEY ("bonCommandeId") REFERENCES "BonCommande"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "ContratSite" ADD COLUMN IF NOT EXISTS "frequenceReglesControle" TEXT;

@@ -335,41 +335,38 @@ export const planningService = {
     const dateRealiseeEffective = options.dateRealisee || intervention.datePrevue;
     const datePrevueInitiale = intervention.datePrevue;
 
-    // Mettre à jour l'intervention
-    const updated = await prisma.intervention.update({
-      where: { id: interventionId },
-      data: {
-        statut: 'REALISEE',
-        dateRealisee: dateRealiseeEffective,
-        datePrevue: dateRealiseeEffective,
-        updatedById: userId,
-        notesTerrain: options.notesTerrain || intervention.notesTerrain,
-      },
-      include: {
-        client: true,
-        contrat: true,
-      },
-    });
+    // Mise à jour atomique + consommation BC dans une transaction pour éviter les doubles consommations simultanées
+    const updated = await prisma.$transaction(async (tx) => {
+      // Tente le passage à REALISEE uniquement si pas déjà REALISEE (garde concurrente)
+      const result = await tx.intervention.updateMany({
+        where: { id: interventionId, statut: { not: 'REALISEE' } },
+        data: {
+          statut: 'REALISEE',
+          dateRealisee: dateRealiseeEffective,
+          datePrevue: dateRealiseeEffective,
+          updatedById: userId,
+          notesTerrain: options.notesTerrain || intervention.notesTerrain,
+        },
+      });
 
-    // BC consumption — only if not already REALISEE (idempotency)
-    if (intervention.bonCommandeId && intervention.statut !== 'REALISEE') {
-      const bc = await prisma.bonCommande.findUnique({ where: { id: intervention.bonCommandeId } });
-      if (bc && bc.actif) {
-        const newCount = bc.passagesConsommes + 1;
-        if (bc.quotaPassages !== null && newCount > bc.quotaPassages) {
-          // Over quota — allow but record (visible in BC view)
-          await prisma.bonCommande.update({
-            where: { id: intervention.bonCommandeId },
-            data: { passagesConsommes: newCount },
-          });
-        } else {
-          await prisma.bonCommande.update({
+      const wasAlreadyRealisee = result.count === 0;
+
+      // BC consumption — uniquement si cette requête a effectué le changement (pas une autre concurrente)
+      if (!wasAlreadyRealisee && intervention.bonCommandeId) {
+        const bc = await tx.bonCommande.findUnique({ where: { id: intervention.bonCommandeId } });
+        if (bc && bc.actif) {
+          await tx.bonCommande.update({
             where: { id: intervention.bonCommandeId },
             data: { passagesConsommes: { increment: 1 } },
           });
         }
       }
-    }
+
+      return tx.intervention.findUnique({
+        where: { id: interventionId },
+        include: { client: true, contrat: true },
+      });
+    });
 
     let nextIntervention = null;
     let suggestedDate = null;
@@ -607,6 +604,16 @@ export const planningService = {
 
     if (contrat.statut !== 'ACTIF') {
       throw new Error('Seuls les contrats actifs peuvent générer un planning');
+    }
+
+    // Contrats saisonniers : ne pas générer automatiquement, l'utilisateur doit ajuster manuellement
+    if ((contrat as any).planningAajuster) {
+      return {
+        interventionsCreees: [],
+        planningAajuster: true,
+        message: 'Planning à ajuster manuellement — fréquence saisonnière ou complexe détectée. Règle conservée : ' +
+          ([(contrat as any).frequenceRegles, (contrat as any).frequenceReglesControle].filter(Boolean).join(' | ') || 'voir notes contrat'),
+      };
     }
 
     const interventionsCreees: any[] = [];

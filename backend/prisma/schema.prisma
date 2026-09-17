@@ -627,6 +627,7 @@ model ContratSite {
   // Nouveaux champs v2
   montantHT                Float?
   frequenceRegles          String?
+  frequenceReglesControle  String?
   frequenceOperationsMois  Int?
   frequenceControleMois    Int?
   nombrePassagesAnnuels    Int?
