@@ -464,21 +464,31 @@ export const csvService = {
         errors.push({ row: rowNum, field: 'client_nom', message: 'Nom du client requis' });
       }
 
-      // Vérifier que le client existe
-      const client = row.client_nom?.trim()
-        ? await prisma.client.findFirst({ where: { nomEntreprise: row.client_nom.trim() } })
-        : null;
+      // Vérifier que le client existe (insensible à la casse et aux espaces en fin de nom)
+      let client = null;
+      if (row.client_nom?.trim()) {
+        client = await prisma.client.findFirst({
+          where: { nomEntreprise: { equals: row.client_nom.trim(), mode: 'insensitive' } },
+        });
+        if (!client) {
+          // Fallback: récupérer tous les clients et comparer en trimmant les deux côtés
+          const allClients = await prisma.client.findMany({ select: { id: true, nomEntreprise: true } });
+          const nom = row.client_nom.trim().toLowerCase();
+          const match = allClients.find(c => c.nomEntreprise.trim().toLowerCase() === nom);
+          if (match) client = await prisma.client.findUnique({ where: { id: match.id } });
+        }
+      }
 
       if (!client && row.client_nom?.trim()) {
         errors.push({ row: rowNum, field: 'client_nom', message: 'Client non trouvé', value: row.client_nom });
       }
 
-      // Lookup site si fourni
+      // Lookup site si fourni (trim des deux côtés pour gérer les espaces dans les noms ERP)
       let site = null;
       if (row.site_nom?.trim() && client) {
-        site = await prisma.site.findFirst({
-          where: { clientId: client.id, nom: { equals: row.site_nom.trim(), mode: 'insensitive' } },
-        });
+        const allSites = await prisma.site.findMany({ where: { clientId: client.id } });
+        const siteNomNorm = row.site_nom.trim().toLowerCase();
+        site = allSites.find(s => s.nom.trim().toLowerCase() === siteNomNorm) || null;
         if (!site) {
           errors.push({ row: rowNum, field: 'site_nom', message: `Site "${row.site_nom}" non trouvé pour ce client`, value: row.site_nom });
         }
