@@ -74,7 +74,7 @@ export function ContratsPage() {
 
   const { data: contratsData, isLoading } = useQuery({
     queryKey: ['contrats', clientIdFilter],
-    queryFn: () => contratsApi.list({ clientId: clientIdFilter, limit: 200 }),
+    queryFn: () => contratsApi.list({ clientId: clientIdFilter, limit: 1000 }),
   });
 
   const { data: clientsData } = useQuery({
