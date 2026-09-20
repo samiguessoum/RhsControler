@@ -1128,6 +1128,7 @@ export const commerceController = {
             ref,
             clientId: data.clientId,
             siteId: data.siteId || null,
+            contratId: data.contratId || null,
             typeDocument: data.typeDocument || null,
             devisId: data.devisId,
             commandeId: data.commandeId,
@@ -1292,6 +1293,7 @@ export const commerceController = {
             devise: data.devise,
             notes: data.notes,
             conditions: data.conditions,
+            contratId: data.contratId !== undefined ? (data.contratId || null) : undefined,
             mentionSpeciale: data.mentionSpeciale !== undefined ? (data.mentionSpeciale || null) : undefined,
             updatedById: req.user?.id,
             lignes: lignesData
@@ -1782,6 +1784,18 @@ export const commerceController = {
             },
           },
           commande: { select: { refBonCommandeClient: true } },
+          contrat: {
+            select: {
+              refExterne: true,
+              dateDebutConvention: true,
+              numeroBonCommande: true,
+              bonsCommandes: {
+                select: { numero: true, date: true },
+                orderBy: { createdAt: 'desc' },
+                take: 1,
+              },
+            },
+          },
           site: { select: { id: true, nom: true, ville: true, adresse: true } },
           lignes: { orderBy: { ordre: 'asc' } },
         },
@@ -1791,9 +1805,28 @@ export const commerceController = {
         return res.status(404).json({ error: 'Facture non trouvée' });
       }
 
+      // Construire la mentionSpeciale depuis le contrat lié si non déjà définie manuellement
+      let mentionSpeciale = (facture as any).mentionSpeciale ?? null;
+      const contrat = (facture as any).contrat;
+      if (!mentionSpeciale && contrat) {
+        const parts: string[] = [];
+        if (contrat.refExterne) parts.push(`Selon le contrat N° ${contrat.refExterne}`);
+        const bc = contrat.bonsCommandes?.[0] ?? (contrat.numeroBonCommande ? { numero: contrat.numeroBonCommande, date: null } : null);
+        if (bc?.numero) {
+          const bcDate = bc.date ? ` du ${new Intl.DateTimeFormat('fr-FR').format(new Date(bc.date))}` : '';
+          parts.push(`Selon le Bon de commande "${bc.numero}"${bcDate}`);
+        }
+        if (contrat.dateDebutConvention) {
+          const convDate = new Intl.DateTimeFormat('fr-FR').format(new Date(contrat.dateDebutConvention));
+          parts.push(`Convention signée le ${convDate}`);
+        }
+        if (parts.length > 0) mentionSpeciale = parts.join(' — ');
+      }
+
       const { generateFacturePDF } = await import('../services/pdf.service.js');
       const pdfBuffer = await generateFacturePDF({
         ...facture,
+        mentionSpeciale,
         refBonCommandeClient: facture.commande?.refBonCommandeClient ?? null,
       } as any);
 

@@ -2873,6 +2873,30 @@ export function CommercePage() {
     }
   }, []);
 
+  // Pré-remplir et ouvrir le formulaire de création facture depuis un contrat
+  useEffect(() => {
+    const sp = new URLSearchParams(location.search);
+    const contratId = sp.get('contratId');
+    if (!contratId) return;
+    const clientId = sp.get('clientId') ?? '';
+    const siteId = sp.get('siteId') ?? undefined;
+    const mentionSpeciale = sp.get('mentionSpeciale') ?? undefined;
+    setFactureForm({
+      clientId,
+      siteId: siteId || undefined,
+      contratId,
+      typeDocument: 'SERVICE',
+      lignes: [{ ...EMPTY_LINE }],
+      type: 'FACTURE',
+      dateFacture: new Date().toISOString().split('T')[0],
+      delaiPaiementJours: 45,
+      mentionSpeciale: mentionSpeciale || undefined,
+    });
+    setShowFactureDialog(true);
+    // Nettoyer les params pour éviter ré-ouverture au rechargement
+    navigate(`${location.pathname}?tab=factures`, { replace: true });
+  }, [location.search]);
+
   // ============ QUERIES ============
 
   const { data: devisData, isLoading: devisLoading } = useQuery({

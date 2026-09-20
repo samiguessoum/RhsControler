@@ -144,6 +144,12 @@ export interface Contrat {
   // Ponctuel fields
   numeroBonCommande?: string;
   nombreOperations?: number;
+  // Identification / convention
+  refExterne?: string;
+  dateSignature?: string;
+  dateDebutConvention?: string;
+  dateFinConvention?: string;
+  montantHT?: number;
   // Sites
   contratSites?: ContratSite[];
   createdAt: string;
@@ -1564,6 +1570,7 @@ export type CreateCommandeInput = Omit<CreateDevisInput, 'statut' | 'dateDevis' 
 export type CreateFactureInput = Omit<CreateDevisInput, 'statut' | 'dateDevis' | 'dateValidite'> & {
   devisId?: string;
   commandeId?: string;
+  contratId?: string;
   dateFacture?: string;
   dateOperation?: string;
   dateEcheance?: string;

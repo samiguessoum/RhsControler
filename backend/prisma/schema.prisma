@@ -606,6 +606,7 @@ model Contrat {
   contratSites       ContratSite[]
   fieldInterventions FieldIntervention[]
   bonsCommandes      BonCommande[]
+  factures           Facture[]           @relation("FacturesContrat")
 
   @@index([clientId])
   @@index([statut])
@@ -1285,6 +1286,8 @@ model Facture {
   devis                Devis?        @relation(fields: [devisId], references: [id])
   commandeId           String?
   commande             Commande?     @relation(fields: [commandeId], references: [id])
+  contratId            String?
+  contrat              Contrat?      @relation("FacturesContrat", fields: [contratId], references: [id])
   adresseFacturationId String?
   adresseFacturation   Adresse?      @relation("FactureAdresseFacturation", fields: [adresseFacturationId], references: [id])
   adresseLivraisonId   String?
@@ -1324,6 +1327,7 @@ model Facture {
 
   @@index([clientId])
   @@index([siteId])
+  @@index([contratId])
   @@index([statut])
   @@index([type])
   @@index([ref])
@@ -2435,6 +2439,7 @@ model BonCommande {
   client            Client    @relation(fields: [clientId], references: [id])
   contratId         String?
   contrat           Contrat?  @relation(fields: [contratId], references: [id])
+  date              DateTime? // Date du bon de commande (affiché "Selon le BC X du DATE" sur facture)
   quotaPassages     Int?
   passagesConsommes Int       @default(0)
   seuilAlerte       Int       @default(2)

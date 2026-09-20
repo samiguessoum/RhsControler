@@ -583,6 +583,18 @@ export const csvService = {
         errors.push({ row: rowNum, field: 'date_reprise_planification', message: 'Date invalide', value: row.date_reprise_planification });
       }
 
+      if (row.date_debut_convention && !parseDate(row.date_debut_convention)) {
+        errors.push({ row: rowNum, field: 'date_debut_convention', message: 'Date invalide', value: row.date_debut_convention });
+      }
+
+      if (row.date_fin_convention && !parseDate(row.date_fin_convention)) {
+        errors.push({ row: rowNum, field: 'date_fin_convention', message: 'Date invalide', value: row.date_fin_convention });
+      }
+
+      if (row.date_bc && !parseDate(row.date_bc)) {
+        errors.push({ row: rowNum, field: 'date_bc', message: 'Date invalide', value: row.date_bc });
+      }
+
       // Déduplication par refExterne
       let existingContrat = null;
       let action: 'CREATE' | 'UPDATE' = 'CREATE';
@@ -643,9 +655,12 @@ export const csvService = {
         statut,
         refExterne: row.ref_externe?.trim() || null,
         dateSignature: row.date_signature?.trim() || null,
+        dateDebutConvention: row.date_debut_convention?.trim() || null,
+        dateFinConvention: row.date_fin_convention?.trim() || null,
         montantHT,
         dureeType,
         numeroBonCommande: row.numero_bon_commande?.trim() || null,
+        dateBonCommande: row.date_bc?.trim() || null,
         notes: row.notes?.trim() || null,
         dateReprisePlanification: row.date_reprise_planification?.trim() || null,
         nombrePassagesAnnuels,
@@ -702,6 +717,8 @@ export const csvService = {
           statut: row.statut,
           refExterne: row.refExterne,
           dateSignature: row.dateSignature ? parseDate(row.dateSignature) : null,
+          dateDebutConvention: row.dateDebutConvention ? parseDate(row.dateDebutConvention) : null,
+          dateFinConvention: row.dateFinConvention ? parseDate(row.dateFinConvention) : null,
           montantHT: row.montantHT != null ? new Prisma.Decimal(row.montantHT) : null,
           dureeType: row.dureeType,
           notes: row.notes,
@@ -731,6 +748,8 @@ export const csvService = {
             premiereDateControle: csvValOrNull(contratData.premiereDateControle),
             statut: csvVal(contratData.statut),
             dateSignature: csvValOrNull(contratData.dateSignature),
+            dateDebutConvention: csvValOrNull(contratData.dateDebutConvention),
+            dateFinConvention: csvValOrNull(contratData.dateFinConvention),
             montantHT: csvValOrNull(contratData.montantHT),
             dureeType: csvValOrNull(contratData.dureeType),
             notes: csvValOrNull(contratData.notes),
@@ -800,6 +819,7 @@ export const csvService = {
                 numero: row.numeroBonCommande,
                 clientId: row._clientId,
                 contratId: contrat.id,
+                date: row.dateBonCommande ? parseDate(row.dateBonCommande) : null,
                 notes: null,
               },
             });

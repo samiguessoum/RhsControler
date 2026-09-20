@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Plus, MoreVertical, FileText, CalendarClock, MapPin, Trash2, X, ChevronDown, ChevronUp, Search, Clock, CheckCircle2, Calendar, Pencil, Check } from 'lucide-react';
+import { Plus, MoreVertical, FileText, CalendarClock, MapPin, Trash2, X, ChevronDown, ChevronUp, Search, Clock, CheckCircle2, Calendar, Pencil, Check, Receipt } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -1449,6 +1449,20 @@ export function ContratsPage() {
                   </Link>
                 </Button>
                 <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                    asChild
+                  >
+                    <Link
+                      to={`/commerce?tab=factures&contratId=${selectedContrat.id}&clientId=${selectedContrat.clientId}&siteId=${selectedContrat.contratSites?.[0]?.siteId || ''}&mentionSpeciale=${encodeURIComponent([selectedContrat.refExterne ? `Selon le contrat N° ${(selectedContrat as any).refExterne}` : '', selectedContrat.numeroBonCommande ? `Selon le Bon de commande "${selectedContrat.numeroBonCommande}"` : '', (selectedContrat as any).dateDebutConvention ? `Convention signée le ${new Date((selectedContrat as any).dateDebutConvention).toLocaleDateString('fr-FR')}` : ''].filter(Boolean).join(' — '))}`}
+                      onClick={() => setSelectedContrat(null)}
+                    >
+                      <Receipt className="h-3.5 w-3.5 mr-1.5" />
+                      Créer une facture
+                    </Link>
+                  </Button>
                   <Button
                     size="sm"
                     variant="outline"
