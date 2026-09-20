@@ -248,6 +248,8 @@ export function ContratsPage() {
     const [statut, setStatut] = useState<ContratStatut>(contrat?.statut || 'ACTIF');
     const [dateDebut, setDateDebut] = useState(contrat?.dateDebut?.split('T')[0] || '');
     const [dateFin, setDateFin] = useState(contrat?.dateFin?.split('T')[0] || '');
+    const [dateDebutConvention, setDateDebutConvention] = useState((contrat as any)?.dateDebutConvention?.split('T')[0] || '');
+    const [dateFinConvention, setDateFinConvention] = useState((contrat as any)?.dateFinConvention?.split('T')[0] || '');
 
     const handleDateDebutChange = (value: string) => {
       setDateDebut(value);
@@ -491,6 +493,8 @@ export function ContratsPage() {
             statut,
             notes: (formData.get('notes') as string) || undefined,
             autoCreerProchaine: true,
+            dateDebutConvention: dateDebutConvention || undefined,
+            dateFinConvention: dateFinConvention || undefined,
             // Ponctuel fields
             numeroBonCommande: isPonctuel ? (formData.get('numeroBonCommande') as string) : undefined,
             // Sites avec leurs configurations
@@ -561,6 +565,26 @@ export function ContratsPage() {
                 type="date"
                 value={dateFin}
                 onChange={(e) => setDateFin(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* Dates convention */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Début convention</Label>
+              <Input
+                type="date"
+                value={dateDebutConvention}
+                onChange={(e) => setDateDebutConvention(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Fin convention</Label>
+              <Input
+                type="date"
+                value={dateFinConvention}
+                onChange={(e) => setDateFinConvention(e.target.value)}
               />
             </div>
           </div>
@@ -1265,6 +1289,15 @@ export function ContratsPage() {
                     {formatDate(selectedContrat.dateDebut)}
                     {selectedContrat.dateFin && <> → {formatDate(selectedContrat.dateFin)}</>}
                   </span>
+                  {((selectedContrat as any).dateDebutConvention || (selectedContrat as any).dateFinConvention) && (
+                    <span className="flex items-center gap-1 text-blue-600">
+                      <Calendar className="h-3 w-3" />
+                      Convention&nbsp;:&nbsp;
+                      {(selectedContrat as any).dateDebutConvention && formatDate((selectedContrat as any).dateDebutConvention)}
+                      {(selectedContrat as any).dateDebutConvention && (selectedContrat as any).dateFinConvention && ' → '}
+                      {(selectedContrat as any).dateFinConvention && formatDate((selectedContrat as any).dateFinConvention)}
+                    </span>
+                  )}
                   {selectedContrat.responsablePlanning && (
                     <span>
                       {selectedContrat.responsablePlanning.prenom} {selectedContrat.responsablePlanning.nom}

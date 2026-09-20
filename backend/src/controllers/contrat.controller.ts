@@ -155,6 +155,8 @@ export const contratController = {
           autoCreerProchaine: true,
           numeroBonCommande: data.numeroBonCommande,
           nombreOperations: data.nombreOperations,
+          dateDebutConvention: data.dateDebutConvention,
+          dateFinConvention: data.dateFinConvention,
         },
         include: {
           client: {
@@ -281,6 +283,8 @@ export const contratController = {
           autoCreerProchaine: true,
           numeroBonCommande: data.numeroBonCommande !== undefined ? data.numeroBonCommande : existing.numeroBonCommande,
           nombreOperations: data.nombreOperations !== undefined ? data.nombreOperations : existing.nombreOperations,
+          dateDebutConvention: data.dateDebutConvention !== undefined ? data.dateDebutConvention : existing.dateDebutConvention,
+          dateFinConvention: data.dateFinConvention !== undefined ? data.dateFinConvention : existing.dateFinConvention,
         },
         include: {
           client: {

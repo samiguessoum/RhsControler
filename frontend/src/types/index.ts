@@ -445,6 +445,9 @@ export interface CreateContratInput {
   // Ponctuel fields
   numeroBonCommande?: string;
   nombreOperations?: number;
+  // Convention
+  dateDebutConvention?: string;
+  dateFinConvention?: string;
   // Sites
   contratSites?: ContratSiteInput[];
 }

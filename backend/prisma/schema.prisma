@@ -588,6 +588,8 @@ model Contrat {
   // Nouveaux champs v2
   refExterne                         String?       @unique
   dateSignature                      DateTime?
+  dateDebutConvention                DateTime?
+  dateFinConvention                  DateTime?
   montantHT                          Decimal?      @db.Decimal(15, 2)
   dureeType                          String?
   frequenceRegles                    String?

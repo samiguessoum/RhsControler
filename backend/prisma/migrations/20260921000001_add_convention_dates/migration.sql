@@ -1,0 +1,2 @@
+ALTER TABLE "Contrat" ADD COLUMN IF NOT EXISTS "dateDebutConvention" TIMESTAMP(3);
+ALTER TABLE "Contrat" ADD COLUMN IF NOT EXISTS "dateFinConvention" TIMESTAMP(3);
