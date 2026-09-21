@@ -586,6 +586,7 @@ model Contrat {
   nombreOperations                   Int?
   nombreVisitesControle              Int?
   // Nouveaux champs v2
+  nom                                String?       // Libellé libre (ex: "Contrat annuel dératisation 2026")
   refExterne                         String?       @unique
   dateSignature                      DateTime?
   dateDebutConvention                DateTime?

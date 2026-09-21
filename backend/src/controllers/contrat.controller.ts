@@ -140,6 +140,7 @@ export const contratController = {
       const contrat = await prisma.contrat.create({
         data: {
           clientId: data.clientId,
+          nom: data.nom || null,
           type: data.type,
           dateDebut: data.dateDebut,
           dateFin: data.dateFin,
@@ -268,6 +269,7 @@ export const contratController = {
         where: { id },
         data: {
           clientId: data.clientId ?? existing.clientId,
+          nom: data.nom !== undefined ? (data.nom || null) : existing.nom,
           type: data.type ?? existing.type,
           dateDebut: data.dateDebut ?? existing.dateDebut,
           dateFin: data.dateFin !== undefined ? data.dateFin : existing.dateFin,

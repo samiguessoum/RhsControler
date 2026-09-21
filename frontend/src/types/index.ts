@@ -145,6 +145,7 @@ export interface Contrat {
   numeroBonCommande?: string;
   nombreOperations?: number;
   // Identification / convention
+  nom?: string;
   refExterne?: string;
   dateSignature?: string;
   dateDebutConvention?: string;
@@ -435,6 +436,7 @@ export interface CreateSiteContactInput {
 
 export interface CreateContratInput {
   clientId: string;
+  nom?: string;
   type: ContratType;
   dateDebut: string;
   dateFin?: string;

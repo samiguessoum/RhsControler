@@ -242,6 +242,7 @@ export function ContratsPage() {
     isEdit: boolean;
   }) => {
     const defaultClientId = clientIdFilter || contrat?.clientId || '';
+    const [nom, setNom] = useState((contrat as any)?.nom || '');
     const [clientId, setClientId] = useState<string | undefined>(defaultClientId || undefined);
     const [type, setType] = useState<ContratType>(contrat?.type || 'ANNUEL');
     const [responsablePlanningId, setResponsablePlanningId] = useState<string | undefined>(contrat?.responsablePlanningId || undefined);
@@ -484,6 +485,7 @@ export function ContratsPage() {
 
           const data: CreateContratInput = {
             clientId: clientId as string,
+            nom: nom || undefined,
             type,
             dateDebut: dateDebut,
             dateFin: dateFin || undefined,
@@ -513,6 +515,15 @@ export function ContratsPage() {
         {/* Section 1: Informations de base */}
         <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
           <h3 className="font-medium text-sm text-gray-700">Informations générales</h3>
+
+          <div className="space-y-2">
+            <Label>Nom du contrat</Label>
+            <Input
+              placeholder="Ex: Dératisation annuelle 2026 — Site Alger"
+              value={nom}
+              onChange={(e) => setNom(e.target.value)}
+            />
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
@@ -1192,6 +1203,9 @@ export function ContratsPage() {
                         <p className="font-bold text-gray-900 truncate">
                           {contrat.client?.nomEntreprise || clientMap.get(contrat.clientId)}
                         </p>
+                        {(contrat as any).nom && (
+                          <p className="text-[11px] text-gray-500 truncate">{(contrat as any).nom}</p>
+                        )}
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${sty.bg} ${sty.text}`}>
                             {contrat.statut}
@@ -1269,6 +1283,9 @@ export function ContratsPage() {
                   <h2 className="text-lg font-semibold truncate">
                     {selectedContrat.client?.nomEntreprise || clientMap.get(selectedContrat.clientId)}
                   </h2>
+                  {selectedContrat.nom && (
+                    <p className="text-sm text-muted-foreground truncate mt-0.5">{selectedContrat.nom}</p>
+                  )}
                   <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                     <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${selectedContrat.type === 'PONCTUEL' ? 'bg-orange-100 text-orange-700' : 'bg-indigo-100 text-indigo-700'}`}>
                       {selectedContrat.type === 'PONCTUEL' ? 'Ponctuel' : 'Annuel'}
