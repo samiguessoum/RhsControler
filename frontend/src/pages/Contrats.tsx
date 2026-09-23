@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { clientsApi, contratsApi, interventionsApi, prestationsApi, usersApi } from '@/services/api';
-import { formatDate } from '@/lib/utils';
+import { formatDate, cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/auth.store';
 import type { Contrat, CreateContratInput, Client, User, ContratStatut, ContratType, ContratSiteInput } from '@/types';
 
@@ -53,6 +53,103 @@ function computeProjectionDates(
     }
   }
   return dates;
+}
+
+// Sélecteur de client avec recherche côté serveur : la liste des clients actifs chargée en
+// arrière-plan est plafonnée (voir clientController.list), donc taper une recherche interroge
+// le backend sur l'ensemble des clients au lieu de se limiter aux ~100 premiers par ordre alphabétique.
+function ClientCombobox({
+  selected,
+  onSelect,
+  initialClients,
+}: {
+  selected: Client | undefined;
+  onSelect: (client: Client) => void;
+  initialClients: Client[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 250);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const { data: searchData, isFetching } = useQuery({
+    queryKey: ['clients-search', debouncedSearch],
+    queryFn: () => clientsApi.list({ search: debouncedSearch, actif: true, limit: 50 }),
+    enabled: debouncedSearch.length > 0,
+    staleTime: 30000,
+  });
+
+  const options: Client[] = debouncedSearch ? (searchData?.clients || []) : initialClients;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-9 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+      >
+        <span className={cn('truncate', selected ? 'text-foreground' : 'text-muted-foreground')}>
+          {selected ? selected.nomEntreprise : 'Sélectionner un client...'}
+        </span>
+        <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full rounded-md border bg-white shadow-lg">
+          <div className="p-2 border-b">
+            <div className="relative">
+              <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
+              <input
+                autoFocus
+                className="w-full pl-7 pr-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-1 focus:ring-ring"
+                placeholder="Rechercher un client..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="max-h-60 overflow-y-auto py-1">
+            {debouncedSearch && isFetching ? (
+              <p className="px-3 py-2 text-sm text-muted-foreground">Recherche...</p>
+            ) : options.length === 0 ? (
+              <p className="px-3 py-2 text-sm text-muted-foreground">Aucun client trouvé</p>
+            ) : (
+              options.map((client) => (
+                <button
+                  key={client.id}
+                  type="button"
+                  onClick={() => {
+                    onSelect(client);
+                    setOpen(false);
+                    setSearch('');
+                  }}
+                  className={cn(
+                    'w-full text-left px-3 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground truncate',
+                    selected?.id === client.id && 'bg-accent font-medium'
+                  )}
+                >
+                  {client.nomEntreprise}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function ContratsPage() {
@@ -244,6 +341,12 @@ export function ContratsPage() {
     const defaultClientId = clientIdFilter || contrat?.clientId || '';
     const [nom, setNom] = useState((contrat as any)?.nom || '');
     const [clientId, setClientId] = useState<string | undefined>(defaultClientId || undefined);
+    // Objet client complet (avec sites) pour le client sélectionné — conservé séparément de la
+    // liste `clients` chargée en arrière-plan, car celle-ci ne contient pas forcément le client
+    // choisi via la recherche (voir ClientCombobox).
+    const [selectedClientObj, setSelectedClientObj] = useState<Client | undefined>(
+      () => (contrat?.client as Client | undefined) || clients.find((c) => c.id === defaultClientId)
+    );
     const [type, setType] = useState<ContratType>(contrat?.type || 'ANNUEL');
     const [responsablePlanningId, setResponsablePlanningId] = useState<string | undefined>(contrat?.responsablePlanningId || undefined);
     const [statut, setStatut] = useState<ContratStatut>(contrat?.statut || 'ACTIF');
@@ -288,7 +391,7 @@ export function ContratsPage() {
     );
 
     // Get selected client's sites
-    const selectedClient = clients.find(c => c.id === clientId);
+    const selectedClient = selectedClientObj;
     const availableSites = selectedClient?.sites || [];
 
     // Sites non encore ajoutés au contrat
@@ -528,18 +631,14 @@ export function ContratsPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Client *</Label>
-              <Select value={clientId} onValueChange={setClientId} required>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner un client" />
-                </SelectTrigger>
-                <SelectContent>
-                  {clients.map((client: Client) => (
-                    <SelectItem key={client.id} value={client.id}>
-                      {client.nomEntreprise}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <ClientCombobox
+                selected={selectedClientObj}
+                onSelect={(client) => {
+                  setClientId(client.id);
+                  setSelectedClientObj(client);
+                }}
+                initialClients={clients}
+              />
             </div>
             <div className="space-y-2">
               <Label>Type *</Label>
