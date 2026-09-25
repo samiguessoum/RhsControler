@@ -3587,6 +3587,12 @@ export function PlanningPage() {
   const interventions = useMemo(() => {
     let result = interventionsData?.interventions || [];
 
+    // Les interventions supprimées ne s'affichent plus dans le planning par défaut ;
+    // elles restent consultables uniquement en filtrant explicitement dessus.
+    if (filters.statut !== 'ANNULEE') {
+      result = result.filter((i) => i.statut !== 'ANNULEE');
+    }
+
     if (filters.siteId) {
       result = result.filter((i) => i.siteId === filters.siteId);
     }
