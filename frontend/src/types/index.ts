@@ -156,9 +156,44 @@ export interface Contrat {
   createdAt: string;
   updatedAt: string;
   interventions?: Intervention[];
+  bonsCommandes?: BonCommande[];
+  avenants?: Avenant[];
   _count?: {
     interventions: number;
   };
+}
+
+// ============ BON DE COMMANDE (contrats annuels) ============
+export interface BonCommande {
+  id: string;
+  numero: string;
+  clientId: string;
+  contratId?: string | null;
+  date?: string | null;
+  quotaPassages?: number | null;
+  passagesConsommes: number;
+  passagesRestants?: number | null;
+  seuilAlerte: number;
+  notes?: string | null;
+  actif: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ============ AVENANT (contrats ponctuels) ============
+export interface Avenant {
+  id: string;
+  contratId: string;
+  numero: number;
+  dateSignature?: string | null;
+  montantHT?: number | null;
+  nombreOperationsSupplementaires: number;
+  nombreVisitesControleSupplementaires: number;
+  notes?: string | null;
+  createdById: string;
+  createdBy?: User;
+  createdAt: string;
+  interventions?: Pick<Intervention, 'id' | 'type' | 'datePrevue' | 'statut'>[];
 }
 
 // ============ INTERVENTION ============

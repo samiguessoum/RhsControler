@@ -1012,6 +1012,107 @@ export const planningService = {
   },
 
   /**
+   * Génère les interventions supplémentaires d'un avenant (contrat ponctuel uniquement).
+   * Poursuit la séquence à partir de la dernière intervention existante (non annulée) du contrat
+   * pour ce type, en respectant la fréquence déjà définie sur le contrat. S'il n'existe aucune
+   * intervention de ce type, repart de la première date prévue du contrat.
+   */
+  async genererInterventionsAvenant(
+    contratId: string,
+    avenantId: string,
+    userId: string,
+    nbOperations: number,
+    nbControles: number,
+  ) {
+    const contrat = await prisma.contrat.findUnique({
+      where: { id: contratId },
+      include: { interventions: { where: { statut: { not: 'ANNULEE' } } } },
+    });
+
+    if (!contrat) {
+      throw new Error('Contrat non trouvé');
+    }
+    if (contrat.type !== 'PONCTUEL') {
+      throw new Error('Les avenants ne concernent que les contrats ponctuels');
+    }
+
+    const interventionsCreees: any[] = [];
+    const montantApplique = (contrat as any).montantHT ?? null;
+
+    const freqOpsMois: number | null = (contrat as any).frequenceOperationsMois ?? null;
+    const freqOpsJours: number | null = freqOpsMois ? null : (contrat.frequenceOperationsJours ?? null);
+    const freqCtrlMois: number | null = (contrat as any).frequenceControleMois ?? null;
+    const freqCtrlJours: number | null = freqCtrlMois ? null : (contrat.frequenceControleJours ?? null);
+
+    const genererSerie = async (
+      type: InterventionType,
+      count: number,
+      freqJours: number | null,
+      freqMois: number | null,
+      dateDepart: Date | null,
+      prestations: string[],
+    ) => {
+      if (count <= 0) return;
+      if (!freqJours && !freqMois) {
+        throw new Error(
+          type === 'OPERATION'
+            ? "Le contrat n'a pas de fréquence d'opérations définie"
+            : "Le contrat n'a pas de fréquence de visites de contrôle définie"
+        );
+      }
+
+      const existantes = contrat.interventions
+        .filter((i) => i.type === type)
+        .sort((a, b) => b.datePrevue.getTime() - a.datePrevue.getTime());
+
+      let currentDate: Date = existantes.length > 0
+        ? getProchaineDateIntervention(existantes[0].datePrevue, freqJours, freqMois)
+        : (dateDepart ? new Date(dateDepart) : new Date());
+
+      for (let i = 0; i < count; i++) {
+        if (type === 'OPERATION') {
+          for (const prestation of prestations) {
+            const intervention = await prisma.intervention.create({
+              data: {
+                contratId: contrat.id,
+                clientId: contrat.clientId,
+                avenantId,
+                type,
+                prestation,
+                datePrevue: currentDate,
+                statut: 'A_PLANIFIER',
+                createdById: userId,
+                montantApplique,
+              },
+            });
+            interventionsCreees.push(intervention);
+          }
+        } else {
+          const intervention = await prisma.intervention.create({
+            data: {
+              contratId: contrat.id,
+              clientId: contrat.clientId,
+              avenantId,
+              type,
+              datePrevue: currentDate,
+              statut: 'A_PLANIFIER',
+              createdById: userId,
+              montantApplique,
+            },
+          });
+          interventionsCreees.push(intervention);
+        }
+        currentDate = getProchaineDateIntervention(currentDate, freqJours, freqMois);
+      }
+    };
+
+    await genererSerie('OPERATION', nbOperations, freqOpsJours, freqOpsMois, contrat.premiereDateOperation, contrat.prestations);
+    await genererSerie('CONTROLE', nbControles, freqCtrlJours, freqCtrlMois, contrat.premiereDateControle, []);
+
+    return { interventionsCreees, count: interventionsCreees.length };
+  },
+
+  /**
    * Renouvelle automatiquement les contrats dont reconductionAuto=true et dateFin <= today.
    * Idempotent : ne crée pas de successeur si un contrat fils existe déjà.
    * Gère le rattrapage : si le serveur était arrêté depuis plusieurs mois, la migration

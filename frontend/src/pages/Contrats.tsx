@@ -1533,7 +1533,7 @@ export function ContratsPage() {
                                       {iv.dateRealisee && new Date(iv.dateRealisee).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
                                     </span>
                                   ) : iv.statut === 'ANNULEE' ? (
-                                    <span className="text-gray-400">Annulée</span>
+                                    <span className="text-gray-400">Supprimée</span>
                                   ) : iv.statut === 'PLANIFIEE' ? (
                                     <span className="text-blue-600 font-medium">Planifiée</span>
                                   ) : isPast ? (

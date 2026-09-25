@@ -102,6 +102,15 @@ export const contratController = {
               },
             },
           },
+          bonsCommandes: {
+            orderBy: { createdAt: 'desc' },
+          },
+          avenants: {
+            orderBy: { numero: 'asc' },
+            include: {
+              createdBy: { select: { id: true, nom: true, prenom: true } },
+            },
+          },
         },
       });
 

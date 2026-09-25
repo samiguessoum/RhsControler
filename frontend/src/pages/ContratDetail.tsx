@@ -1,6 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import {
   CalendarClock,
   ArrowLeft,
@@ -22,6 +23,8 @@ import {
   Wrench,
   ClipboardCheck,
   Search,
+  ShoppingCart,
+  FileSignature,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,7 +40,10 @@ import {
 import { Separator } from '@/components/ui/separator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
-import { contratsApi, interventionsApi, prestationsApi } from '@/services/api';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { contratsApi, interventionsApi, prestationsApi, bonCommandeApi, avenantApi } from '@/services/api';
 import { formatDate, getStatutColor, getStatutLabel, cn } from '@/lib/utils';
 import type { Prestation, InterventionStatut } from '@/types';
 
@@ -61,6 +67,18 @@ export function ContratDetailPage() {
   const [selectedIntervention, setSelectedIntervention] = useState<any | null>(null);
   const [interventionFilter, setInterventionFilter] = useState<'all' | 'pending' | 'done'>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'operations' | 'controles'>('all');
+  const [showAvenantDialog, setShowAvenantDialog] = useState(false);
+  const [avenantForm, setAvenantForm] = useState({
+    dateSignature: '',
+    montantHT: '',
+    nombreOperationsSupplementaires: '',
+    nombreVisitesControleSupplementaires: '',
+    notes: '',
+  });
+  const [showBcDialog, setShowBcDialog] = useState(false);
+  const [bcForm, setBcForm] = useState({ numero: '', quotaPassages: '', notes: '' });
+
+  const queryClient = useQueryClient();
 
   const { data: contrat, isLoading } = useQuery({
     queryKey: ['contrat', id],
@@ -69,6 +87,55 @@ export function ContratDetailPage() {
     refetchOnWindowFocus: true,
     refetchOnMount: 'always', // Recharger à chaque montage du composant
     staleTime: 0,
+  });
+
+  const createAvenantMutation = useMutation({
+    mutationFn: () =>
+      avenantApi.create(id!, {
+        dateSignature: avenantForm.dateSignature || undefined,
+        montantHT: avenantForm.montantHT ? parseFloat(avenantForm.montantHT) : undefined,
+        nombreOperationsSupplementaires: avenantForm.nombreOperationsSupplementaires
+          ? parseInt(avenantForm.nombreOperationsSupplementaires)
+          : 0,
+        nombreVisitesControleSupplementaires: avenantForm.nombreVisitesControleSupplementaires
+          ? parseInt(avenantForm.nombreVisitesControleSupplementaires)
+          : 0,
+        notes: avenantForm.notes || undefined,
+      }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['contrat', id] });
+      queryClient.invalidateQueries({ queryKey: ['interventions-contrat', id] });
+      if (res.warning) {
+        toast.warning(res.warning);
+      } else {
+        toast.success(`Avenant enregistré — ${res.count ?? res.interventionsCreees?.length ?? 0} intervention(s) créée(s)`);
+      }
+      setShowAvenantDialog(false);
+      setAvenantForm({ dateSignature: '', montantHT: '', nombreOperationsSupplementaires: '', nombreVisitesControleSupplementaires: '', notes: '' });
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de la création de l\'avenant');
+    },
+  });
+
+  const createBcMutation = useMutation({
+    mutationFn: () =>
+      bonCommandeApi.create({
+        numero: bcForm.numero.trim(),
+        clientId: contrat!.clientId,
+        contratId: id!,
+        quotaPassages: bcForm.quotaPassages ? parseInt(bcForm.quotaPassages) : null,
+        notes: bcForm.notes || undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contrat', id] });
+      toast.success('Bon de commande ajouté au contrat');
+      setShowBcDialog(false);
+      setBcForm({ numero: '', quotaPassages: '', notes: '' });
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de la création du bon de commande');
+    },
   });
 
   const { data: interventionsData } = useQuery({
@@ -526,6 +593,78 @@ export function ContratDetailPage() {
             </CardContent>
           </Card>
 
+          {/* Carte Avenants (ponctuel) / Bons de commande (annuel) */}
+          {isPonctuel ? (
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <FileSignature className="h-5 w-5 text-primary" />
+                    Avenants
+                  </CardTitle>
+                  <Button size="sm" variant="outline" onClick={() => setShowAvenantDialog(true)}>
+                    <Plus className="h-3.5 w-3.5 mr-1" />
+                    Ajouter
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {(!contrat.avenants || contrat.avenants.length === 0) && (
+                  <p className="text-sm text-muted-foreground">Aucun avenant pour ce contrat.</p>
+                )}
+                {contrat.avenants?.map((av) => (
+                  <div key={av.id} className="p-3 rounded-lg bg-amber-50 border border-amber-100 text-sm space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-amber-900">Avenant n°{av.numero}</span>
+                      {av.dateSignature && (
+                        <span className="text-xs text-amber-700">{formatDate(av.dateSignature)}</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-amber-700">
+                      +{av.nombreOperationsSupplementaires} opération(s), +{av.nombreVisitesControleSupplementaires} visite(s) de contrôle
+                      {av.montantHT != null && ` — ${av.montantHT} € HT`}
+                    </p>
+                    {av.notes && <p className="text-xs text-muted-foreground whitespace-pre-wrap">{av.notes}</p>}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <ShoppingCart className="h-5 w-5 text-primary" />
+                    Bons de commande
+                  </CardTitle>
+                  <Button size="sm" variant="outline" onClick={() => setShowBcDialog(true)}>
+                    <Plus className="h-3.5 w-3.5 mr-1" />
+                    Ajouter
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {(!contrat.bonsCommandes || contrat.bonsCommandes.length === 0) && (
+                  <p className="text-sm text-muted-foreground">Aucun bon de commande lié à ce contrat.</p>
+                )}
+                {contrat.bonsCommandes?.map((bc) => (
+                  <Link
+                    key={bc.id}
+                    to={`/bons-commandes?id=${bc.id}`}
+                    className="block p-3 rounded-lg bg-blue-50 border border-blue-100 text-sm hover:bg-blue-100 transition-colors"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-blue-900">BC-{bc.numero}</span>
+                      <span className="text-xs text-blue-700">
+                        {bc.quotaPassages != null ? `${bc.passagesConsommes}/${bc.quotaPassages} passages` : 'Quota à renseigner'}
+                      </span>
+                    </div>
+                  </Link>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
           {/* Carte Options */}
           <Card>
             <CardHeader className="pb-3">
@@ -920,6 +1059,156 @@ export function ContratDetailPage() {
                 </Link>
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Avenant */}
+      <Dialog open={showAvenantDialog} onOpenChange={setShowAvenantDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileSignature className="h-5 w-5 text-primary" />
+              Nouvel avenant
+            </DialogTitle>
+            <DialogDescription>
+              Étend ce contrat ponctuel avec des interventions supplémentaires, rattachées au contrat d'origine.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="av-nbops">Opérations supplémentaires</Label>
+                <Input
+                  id="av-nbops"
+                  type="number"
+                  min={0}
+                  value={avenantForm.nombreOperationsSupplementaires}
+                  onChange={(e) => setAvenantForm((f) => ({ ...f, nombreOperationsSupplementaires: e.target.value }))}
+                  placeholder="0"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="av-nbctrl">Visites de contrôle sup.</Label>
+                <Input
+                  id="av-nbctrl"
+                  type="number"
+                  min={0}
+                  value={avenantForm.nombreVisitesControleSupplementaires}
+                  onChange={(e) => setAvenantForm((f) => ({ ...f, nombreVisitesControleSupplementaires: e.target.value }))}
+                  placeholder="0"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="av-date">Date de signature</Label>
+                <Input
+                  id="av-date"
+                  type="date"
+                  value={avenantForm.dateSignature}
+                  onChange={(e) => setAvenantForm((f) => ({ ...f, dateSignature: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="av-montant">Montant HT</Label>
+                <Input
+                  id="av-montant"
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={avenantForm.montantHT}
+                  onChange={(e) => setAvenantForm((f) => ({ ...f, montantHT: e.target.value }))}
+                  placeholder="ex: 1500"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="av-notes">Notes</Label>
+              <Textarea
+                id="av-notes"
+                rows={3}
+                value={avenantForm.notes}
+                onChange={(e) => setAvenantForm((f) => ({ ...f, notes: e.target.value }))}
+                placeholder="Contexte de l'avenant..."
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAvenantDialog(false)}>
+              Annuler
+            </Button>
+            <Button
+              onClick={() => createAvenantMutation.mutate()}
+              disabled={
+                createAvenantMutation.isPending ||
+                (!avenantForm.nombreOperationsSupplementaires && !avenantForm.nombreVisitesControleSupplementaires)
+              }
+            >
+              {createAvenantMutation.isPending ? 'Création...' : "Créer l'avenant"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Bon de commande */}
+      <Dialog open={showBcDialog} onOpenChange={setShowBcDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShoppingCart className="h-5 w-5 text-primary" />
+              Nouveau bon de commande
+            </DialogTitle>
+            <DialogDescription>
+              Ajoute un bon de commande pour des prestations en complément de ce contrat annuel.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="bc-numero">Numéro *</Label>
+              <Input
+                id="bc-numero"
+                value={bcForm.numero}
+                onChange={(e) => setBcForm((f) => ({ ...f, numero: e.target.value }))}
+                placeholder="ex: BC-2026-042"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="bc-quota">Quota de passages</Label>
+              <Input
+                id="bc-quota"
+                type="number"
+                min={0}
+                value={bcForm.quotaPassages}
+                onChange={(e) => setBcForm((f) => ({ ...f, quotaPassages: e.target.value }))}
+                placeholder="ex: 5"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="bc-notes">Notes</Label>
+              <Textarea
+                id="bc-notes"
+                rows={3}
+                value={bcForm.notes}
+                onChange={(e) => setBcForm((f) => ({ ...f, notes: e.target.value }))}
+                placeholder="Notes internes..."
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBcDialog(false)}>
+              Annuler
+            </Button>
+            <Button
+              onClick={() => createBcMutation.mutate()}
+              disabled={createBcMutation.isPending || !bcForm.numero.trim()}
+            >
+              {createBcMutation.isPending ? 'Création...' : 'Créer le bon de commande'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -237,6 +237,7 @@ model User {
   importLogsCrees            ImportLog[]         @relation("ImportLogCreatedBy")
   emailsEnvoyes              EmailLog[]          @relation("EmailLogSentBy")
   emailMessagesSent          EmailMessage[]      @relation("EmailMessageSentBy")
+  avenantsCrees               Avenant[]           @relation("AvenantCreatedBy")
 }
 
 model Employe {
@@ -607,6 +608,7 @@ model Contrat {
   contratSites       ContratSite[]
   fieldInterventions FieldIntervention[]
   bonsCommandes      BonCommande[]
+  avenants           Avenant[]
   factures           Facture[]           @relation("FacturesContrat")
 
   @@index([clientId])
@@ -663,6 +665,8 @@ model Intervention {
   // Nouveaux champs v2
   bonCommandeId         String?
   bonCommande           BonCommande? @relation(fields: [bonCommandeId], references: [id], onDelete: SetNull)
+  avenantId             String?
+  avenant               Avenant?     @relation(fields: [avenantId], references: [id], onDelete: SetNull)
   montantApplique       Decimal?     @db.Decimal(15, 2)
   estPassageContractuel Boolean      @default(true)
   exporteGCal  Boolean            @default(false)
@@ -682,6 +686,7 @@ model Intervention {
   @@index([siteId])
   @@index([datePrevue])
   @@index([statut])
+  @@index([avenantId])
 }
 
 model InterventionEmploye {
@@ -2466,4 +2471,26 @@ model BonCommandeSite {
   @@unique([bcId, siteId])
   @@index([bcId])
   @@index([siteId])
+}
+
+// ============ AVENANTS (CONTRATS PONCTUELS) ============
+
+model Avenant {
+  id                                   String    @id @default(cuid())
+  contratId                            String
+  contrat                              Contrat   @relation(fields: [contratId], references: [id], onDelete: Cascade)
+  numero                               Int // Numéro séquentiel de l'avenant au sein du contrat (1, 2, 3...)
+  dateSignature                        DateTime?
+  montantHT                            Decimal?  @db.Decimal(15, 2)
+  nombreOperationsSupplementaires      Int       @default(0)
+  nombreVisitesControleSupplementaires Int       @default(0)
+  notes                                String?
+  createdById                          String
+  createdBy                            User      @relation("AvenantCreatedBy", fields: [createdById], references: [id])
+  createdAt                            DateTime  @default(now())
+
+  interventions Intervention[]
+
+  @@unique([contratId, numero])
+  @@index([contratId])
 }

@@ -41,7 +41,7 @@ export function getStatutLabel(statut: string): string {
     PLANIFIEE: 'Planifiée',
     REALISEE: 'Réalisée',
     REPORTEE: 'Reportée',
-    ANNULEE: 'Annulée',
+    ANNULEE: 'Supprimée',
     ACTIF: 'Actif',
     SUSPENDU: 'Suspendu',
     TERMINE: 'Terminé',

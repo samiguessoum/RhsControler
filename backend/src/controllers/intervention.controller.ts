@@ -727,7 +727,7 @@ export const interventionController = {
       const { raison } = req.body;
 
       if (!raison) {
-        return res.status(400).json({ error: 'Raison de l\'annulation requise' });
+        return res.status(400).json({ error: 'Motif de la suppression requis' });
       }
 
       const existing = await prisma.intervention.findUnique({ where: { id } });
@@ -737,17 +737,17 @@ export const interventionController = {
       }
 
       if (existing.statut === 'REALISEE') {
-        return res.status(400).json({ error: 'Impossible d\'annuler une intervention déjà réalisée' });
+        return res.status(400).json({ error: 'Impossible de supprimer une intervention déjà réalisée' });
       }
 
       if (existing.statut === 'ANNULEE') {
-        return res.status(400).json({ error: 'Cette intervention est déjà annulée' });
+        return res.status(400).json({ error: 'Cette intervention est déjà supprimée' });
       }
 
       // Ajouter la raison aux notes existantes
       const notesFinales = existing.notesTerrain
-        ? `${existing.notesTerrain}\n\n[ANNULÉE] ${raison}`
-        : `[ANNULÉE] ${raison}`;
+        ? `${existing.notesTerrain}\n\n[SUPPRIMÉE] ${raison}`
+        : `[SUPPRIMÉE] ${raison}`;
 
       const intervention = await prisma.intervention.update({
         where: { id },

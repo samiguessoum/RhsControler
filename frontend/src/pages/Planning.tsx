@@ -1925,7 +1925,7 @@ function InterventionDetailDialog({
                     className="text-red-600 border-red-300 hover:bg-red-50"
                   >
                     <XCircle className="h-4 w-4 mr-2" />
-                    Annuler
+                    Supprimer
                   </Button>
                 </>
               )}
@@ -2220,7 +2220,7 @@ function AnnulerDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-red-600">
             <XCircle className="h-5 w-5" />
-            Annuler l'intervention
+            Supprimer l'intervention
           </DialogTitle>
           <DialogDescription>
             {intervention.client?.nomEntreprise} - {getStatutLabel(intervention.type)}
@@ -2238,17 +2238,17 @@ function AnnulerDialog({
               <strong>Attention :</strong> Cette action est irréversible.
             </p>
             <p className="text-xs text-red-700 mt-1">
-              Une intervention annulée ne pourra plus être modifiée ni déplacée.
+              Une intervention supprimée ne pourra plus être modifiée ni déplacée. Elle reste consultable dans l'historique.
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="raison">Raison de l'annulation *</Label>
+            <Label htmlFor="raison">Motif de la suppression *</Label>
             <Textarea
               id="raison"
               value={raison}
               onChange={(e) => setRaison(e.target.value)}
-              placeholder="Indiquez la raison de l'annulation..."
+              placeholder="Indiquez le motif de la suppression..."
               rows={3}
             />
           </div>
@@ -2263,7 +2263,7 @@ function AnnulerDialog({
             disabled={isPending || !canConfirm}
             variant="destructive"
           >
-            {isPending ? 'En cours...' : 'Confirmer l\'annulation'}
+            {isPending ? 'En cours...' : 'Confirmer la suppression'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -2820,7 +2820,7 @@ function FiltersSheet({
                   <SelectItem value="EN_RETARD">En retard</SelectItem>
                   <SelectItem value="REALISEE">Réalisée</SelectItem>
                   <SelectItem value="REPORTEE">Reportée</SelectItem>
-                  <SelectItem value="ANNULEE">Annulée</SelectItem>
+                  <SelectItem value="ANNULEE">Supprimée</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -3841,12 +3841,12 @@ export function PlanningPage() {
       queryClient.invalidateQueries({ queryKey: ['interventions'] });
       queryClient.refetchQueries({ queryKey: ['interventions'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      toast.success('Intervention annulée');
+      toast.success('Intervention supprimée');
       setAnnulerIntervention(null);
       setSelectedIntervention(null);
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Erreur lors de l\'annulation');
+      toast.error(error.response?.data?.error || 'Erreur lors de la suppression');
     },
   });
 

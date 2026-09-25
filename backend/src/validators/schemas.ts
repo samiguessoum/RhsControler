@@ -135,6 +135,7 @@ const contratSiteSchema = z.object({
 export const createContratSchema = z.object({
   clientId: z.string().uuid('ID client invalide'),
   type: z.enum(['ANNUEL', 'PONCTUEL']),
+  nom: z.string().optional(),
   dateDebut: z.string().or(z.date()).transform((val) => new Date(val)),
   dateFin: z.string().or(z.date()).transform((val) => new Date(val)).optional(),
   reconductionAuto: z.boolean().optional().default(false),
@@ -187,9 +188,21 @@ export const createContratSchema = z.object({
   message: 'Un contrat actif nécessite au moins une fréquence (en jours) avec sa date de première intervention',
 });
 
+export const createAvenantSchema = z.object({
+  dateSignature: z.string().or(z.date()).transform((val) => new Date(val)).optional(),
+  montantHT: z.number().nonnegative().optional(),
+  nombreOperationsSupplementaires: z.number().int().nonnegative().optional().default(0),
+  nombreVisitesControleSupplementaires: z.number().int().nonnegative().optional().default(0),
+  notes: z.string().optional(),
+}).refine(
+  (data) => data.nombreOperationsSupplementaires > 0 || data.nombreVisitesControleSupplementaires > 0,
+  { message: 'Un avenant doit ajouter au moins une opération ou une visite de contrôle' }
+);
+
 export const updateContratSchema = z.object({
   clientId: z.string().uuid('ID client invalide').optional(),
   type: z.enum(['ANNUEL', 'PONCTUEL']).optional(),
+  nom: z.string().optional().nullable(),
   dateDebut: z.string().or(z.date()).transform((val) => new Date(val)).optional(),
   dateFin: z.string().or(z.date()).transform((val) => new Date(val)).optional().nullable(),
   reconductionAuto: z.boolean().optional(),
@@ -242,7 +255,7 @@ export const reporterInterventionSchema = z.object({
 });
 
 export const annulerInterventionSchema = z.object({
-  raison: z.string().min(1, 'Raison de l\'annulation requise'),
+  raison: z.string().min(1, 'Motif de la suppression requis'),
 });
 
 // ============ QUERY PARAMS ============

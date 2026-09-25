@@ -1815,6 +1815,26 @@ export const bonCommandeApi = {
   },
 };
 
+export const avenantApi = {
+  list: async (contratId: string) => {
+    const { data } = await api.get(`/contrats/${contratId}/avenants`);
+    return data as { avenants: any[]; count: number };
+  },
+  create: async (
+    contratId: string,
+    payload: {
+      dateSignature?: string;
+      montantHT?: number;
+      nombreOperationsSupplementaires?: number;
+      nombreVisitesControleSupplementaires?: number;
+      notes?: string;
+    }
+  ) => {
+    const { data } = await api.post(`/contrats/${contratId}/avenants`, payload);
+    return data as { avenant: any; interventionsCreees: any[]; count?: number; warning?: string };
+  },
+};
+
 // ─── Messagerie ──────────────────────────────────────────────────────────────
 export const messerieApi = {
   listThreads: async (filters?: {

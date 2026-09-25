@@ -79,7 +79,7 @@ const STATUT_BADGE: Record<string, { bg: string; text: string; label: string }> 
   PLANIFIEE:  { bg: '#dbeafe', text: '#1d4ed8', label: 'Planifiée' },
   A_PLANIFIER:{ bg: '#fef9c3', text: '#854d0e', label: 'À planifier' },
   REPORTEE:   { bg: '#f3e8ff', text: '#7e22ce', label: 'Reportée' },
-  ANNULEE:    { bg: '#f1f5f9', text: '#64748b', label: 'Annulée' },
+  ANNULEE:    { bg: '#f1f5f9', text: '#64748b', label: 'Supprimée' },
 };
 
 // ── Custom SVG pin marker ─────────────────────────────────────────────────────

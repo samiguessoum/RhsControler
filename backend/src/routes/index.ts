@@ -17,6 +17,7 @@ import {
   updateEmployeSchema,
   createContratSchema,
   updateContratSchema,
+  createAvenantSchema,
   createInterventionSchema,
   updateInterventionSchema,
   realiserInterventionSchema,
@@ -103,6 +104,7 @@ import facturationStatsController from '../controllers/facturation-stats.control
 import notificationsController from '../controllers/notifications.controller.js';
 import { settingsController } from '../controllers/settings.controller.js';
 import bonCommandeController from '../controllers/bon-commande.controller.js';
+import avenantController from '../controllers/avenant.controller.js';
 import planningController from '../controllers/planning.controller.js';
 import { zoningController } from '../controllers/zoning.controller.js';
 import { fieldInterventionController } from '../controllers/field-intervention.controller.js';
@@ -218,6 +220,8 @@ router.get('/contrats/:id', authMiddleware, contratController.get);
 router.post('/contrats', authMiddleware, canDo('createContrat'), validate(createContratSchema), contratController.create);
 router.put('/contrats/:id', authMiddleware, canDo('editContrat'), validate(updateContratSchema), contratController.update);
 router.delete('/contrats/:id', authMiddleware, canDo('deleteContrat'), contratController.delete);
+router.get('/contrats/:contratId/avenants', authMiddleware, avenantController.list);
+router.post('/contrats/:contratId/avenants', authMiddleware, canDo('editContrat'), validate(createAvenantSchema), avenantController.create);
 
 // ============ INTERVENTIONS ============
 router.get('/interventions', authMiddleware, interventionController.list);
