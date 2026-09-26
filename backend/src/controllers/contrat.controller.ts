@@ -40,6 +40,28 @@ function siteOverrides(contratSites?: SiteInput[]) {
 }
 
 /**
+ * Garde-fou : aucune date saisie dans la projection avant la signature de la convention (à défaut,
+ * avant le début de la période) ni après la fin de convention. Renvoie le message d'erreur éventuel.
+ */
+function dateHorsConvention(contrat: Record<string, any>, contratSites?: SiteInput[]): string | null {
+  const jour = (d: any) => (d ? new Date(d).toISOString().slice(0, 10) : null);
+  const debut = jour(contrat.dateDebutConvention) ?? jour(contrat.dateDebut);
+  const fin = jour(contrat.dateFinConvention);
+  if (contrat.dateDebutConvention && fin && fin < debut!) return 'La fin de convention est antérieure à sa date de signature';
+  for (const cs of contratSites || []) {
+    // Les visites après la dernière opération ne sont pas planifiées : elles ne comptent pas
+    const ops: string[] = (cs.datesPrevuesOperations || []).map(jour).filter(Boolean);
+    const derniereOp = ops.reduce((max: string | null, d) => (!max || d > max ? d : max), null);
+    const ctrl: string[] = (cs.datesPrevuesControles || []).map(jour).filter((d: string | null) => d && (!derniereOp || d <= derniereOp));
+    for (const j of [...ops, ...ctrl]) {
+      if (debut && j < debut) return `Intervention prévue le ${j} avant le début de la convention (${debut})`;
+      if (fin && j > fin) return `Intervention prévue le ${j} après la fin de la convention (${fin})`;
+    }
+  }
+  return null;
+}
+
+/**
  * Empreinte des paramètres qui déterminent le planning d'un contrat : si elle ne change pas
  * (nom, notes, responsable, BC, convention…), le planning existant n'est pas touché.
  */
@@ -210,6 +232,11 @@ export const contratController = {
         return res.status(400).json({ error: 'Impossible de créer un contrat pour un client inactif' });
       }
 
+      const horsConvention = dateHorsConvention(data, data.contratSites);
+      if (horsConvention) {
+        return res.status(400).json({ error: horsConvention });
+      }
+
       const contrat = await prisma.contrat.create({
         data: {
           clientId: data.clientId,
@@ -311,6 +338,18 @@ export const contratController = {
             });
           }
         }
+      }
+
+      const horsConvention = dateHorsConvention(
+        {
+          dateDebut: data.dateDebut ?? existing.dateDebut,
+          dateDebutConvention: data.dateDebutConvention !== undefined ? data.dateDebutConvention : existing.dateDebutConvention,
+          dateFinConvention: data.dateFinConvention !== undefined ? data.dateFinConvention : existing.dateFinConvention,
+        },
+        data.contratSites,
+      );
+      if (horsConvention) {
+        return res.status(400).json({ error: horsConvention });
       }
 
       const contrat = await prisma.contrat.update({

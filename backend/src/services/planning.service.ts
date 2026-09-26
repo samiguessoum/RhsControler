@@ -820,6 +820,11 @@ export const planningService = {
       ? new Date((contrat as any).datePriseEnComptePlanification)
       : null;
     const dateFinAnnuel = contrat.dateFin || addDays(new Date(), 365);
+    // Garde-fou : rien avant la signature de la convention ni après sa fin (si renseignées)
+    const debutConvention = contrat.dateDebutConvention ? startOfDay(contrat.dateDebutConvention) : null;
+    const finConvention = contrat.dateFinConvention ? endOfDay(contrat.dateFinConvention) : null;
+    const dansConvention = (d: Date) =>
+      (!debutConvention || d >= debutConvention) && (!finConvention || d <= finConvention);
 
     type Freq = { jours: number | null; mois: number | null } | null;
     const frequence = (src: any, kind: 'Operations' | 'Controle'): Freq => {
@@ -889,7 +894,7 @@ export const planningService = {
       const base = { contratId: contrat.id, clientId: contrat.clientId, siteId: s.siteId, createdById: userId, montantApplique: s.montantApplique };
 
       // ── Opérations
-      const datesOps = s.datesOps?.length ? s.datesOps : echeances(s.premiereOp, s.freqOps, s.nbOps);
+      const datesOps = (s.datesOps?.length ? s.datesOps : echeances(s.premiereOp, s.freqOps, s.nbOps)).filter(dansConvention);
       for (const date of datesOps) {
         for (const prestation of s.prestations) {
           if (consommer(s.siteId, 'OPERATION', prestation)) continue;
@@ -905,7 +910,7 @@ export const planningService = {
         ...interventionsCreees.filter((iv) => iv.type === 'OPERATION' && iv.siteId === s.siteId),
         ...opsConservees.filter((iv) => iv.siteId === s.siteId),
       ].map((iv) => iv.datePrevue as Date);
-      const datesCtrl = s.datesCtrl?.length ? s.datesCtrl : echeances(s.premiereCtrl, s.freqCtrl, s.nbCtrl);
+      const datesCtrl = (s.datesCtrl?.length ? s.datesCtrl : echeances(s.premiereCtrl, s.freqCtrl, s.nbCtrl)).filter(dansConvention);
       for (const date of datesCtrl) {
         if (apresDerniereOperation(date, opDates)) continue;
         const couverte = visiteCouverteParOperation(date, s.freqCtrl?.jours ?? null, s.freqCtrl?.mois ?? null, opDates);
@@ -1158,6 +1163,9 @@ export const planningService = {
         const newDateDebut = addDays(contrat.dateFin, 1);
         const newDateFin = addDays(newDateDebut, duration);
 
+        // Convention arrivée à son terme : pas de nouvelle période
+        if (contrat.dateFinConvention && newDateDebut > endOfDay(contrat.dateFinConvention)) continue;
+
         let newContratId: string = '';
 
         await prisma.$transaction(async (tx) => {
@@ -1194,6 +1202,9 @@ export const planningService = {
               nombrePassagesAnnuels: (contrat as any).nombrePassagesAnnuels ?? null,
               statut: 'ACTIF',
               refExterne: null, // Nouvelle période — la référence sera attribuée manuellement
+              // La convention reste la même d'une période à l'autre
+              dateDebutConvention: contrat.dateDebutConvention,
+              dateFinConvention: contrat.dateFinConvention,
               datePriseEnComptePlanification: newDateDebut,
             },
           });
