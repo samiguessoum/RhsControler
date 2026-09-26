@@ -176,7 +176,7 @@ export function ContratsPage() {
 
   const { data: clientsData } = useQuery({
     queryKey: ['clients-active'],
-    queryFn: () => clientsApi.list({ actif: true, limit: 200 }),
+    queryFn: () => clientsApi.list({ actif: true, limit: 1000 }),
   });
 
   const { data: usersData } = useQuery({

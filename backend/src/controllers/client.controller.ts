@@ -67,7 +67,7 @@ export const clientController = {
       }
 
       const pageNum = parseInt(page as string) || 1;
-      const limitNum = Math.min(parseInt(limit as string) || 20, 100);
+      const limitNum = Math.min(parseInt(limit as string) || 20, 1000);
       const skip = (pageNum - 1) * limitNum;
 
       const [clients, total] = await Promise.all([
