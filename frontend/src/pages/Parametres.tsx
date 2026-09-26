@@ -2540,7 +2540,7 @@ export function ParametresPage() {
                   <Input
                     type="number"
                     min={0}
-                    step={500}
+                    step="any"
                     placeholder="Ex: 45000"
                     value={newEmployeSalaire}
                     onChange={(e) => setNewEmployeSalaire(e.target.value)}
@@ -2634,7 +2634,7 @@ export function ParametresPage() {
                     <Input
                       type="number"
                       min={0}
-                      step={500}
+                      step="any"
                       placeholder="Ex: 45000"
                       value={editEmployeSalaire}
                       onChange={(e) => setEditEmployeSalaire(e.target.value)}

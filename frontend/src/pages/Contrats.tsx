@@ -849,7 +849,7 @@ export function ContratsPage() {
                                         <Input
                                           type="number"
                                           min={0}
-                                          step={100}
+                                          step="any"
                                           className={`h-8 w-28 text-sm px-2 font-medium ${
                                             priceMissing ? 'border-amber-400 focus-visible:ring-amber-400' : ''
                                           }`}
