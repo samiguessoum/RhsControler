@@ -1842,7 +1842,8 @@ function InterventionDetailDialog({
             </div>
           )}
 
-          <DialogFooter className="gap-2">
+          {/* Boutons toujours visibles en bas de la fenêtre, et renvoyés à la ligne s'ils ne tiennent pas en largeur */}
+          <DialogFooter className="sticky bottom-0 -mx-6 -mb-6 px-6 py-4 border-t bg-background flex-wrap gap-2 sm:space-x-0">
             {(intervention.fieldIntervention || canRealiser) && (
               <Button
                 variant="outline"
