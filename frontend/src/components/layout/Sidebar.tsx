@@ -102,7 +102,8 @@ export function Sidebar({ stats, mobileOpen = false, onMobileClose }: SidebarPro
     { to: '/terrain', icon: ClipboardCheck, label: 'Terrain & Rapports', show: true },
     { to: '/tiers', icon: Building2, label: 'Tiers', show: !isTeamOnly },
     { to: '/contrats', icon: FileText, label: 'Contrats', show: !isTeamOnly },
-    { to: '/bons-commandes', icon: Receipt, label: 'Bons de commande', show: !isTeamOnly },
+    // Masqué : suivi de quota inachevé (pas de création ni de rattachement des interventions dans l'appli)
+    { to: '/bons-commandes', icon: Receipt, label: 'Bons de commande', show: false },
   ];
 
   const moduleItems: NavItem[] = [
