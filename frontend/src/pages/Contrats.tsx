@@ -220,7 +220,7 @@ function ClientCombobox({
   );
 }
 
-function ContratForm({
+export function ContratForm({
   contrat,
   isEdit,
   clientIdFilter,

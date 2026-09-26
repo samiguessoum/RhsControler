@@ -25,6 +25,7 @@ import {
   Search,
   ShoppingCart,
   FileSignature,
+  Pencil,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -43,7 +44,9 @@ import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { contratsApi, interventionsApi, prestationsApi, bonCommandeApi, avenantApi } from '@/services/api';
+import { contratsApi, interventionsApi, prestationsApi, bonCommandeApi, avenantApi, clientsApi, usersApi } from '@/services/api';
+import { useAuthStore } from '@/store/auth.store';
+import { ContratForm } from './Contrats';
 import { formatDate, getStatutColor, getStatutLabel, cn } from '@/lib/utils';
 import type { Prestation, InterventionStatut } from '@/types';
 
@@ -80,6 +83,8 @@ export function ContratDetailPage() {
     notes: '',
   });
   const [showBcDialog, setShowBcDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const { canDo } = useAuthStore();
   const [bcForm, setBcForm] = useState({ numero: '', quotaPassages: '', notes: '' });
 
   const queryClient = useQueryClient();
@@ -160,6 +165,38 @@ export function ContratDetailPage() {
   const { data: prestations = [] } = useQuery({
     queryKey: ['prestations-active'],
     queryFn: () => prestationsApi.list(true),
+  });
+
+  // Données du formulaire de modification (chargées à l'ouverture)
+  const { data: clientsData } = useQuery({
+    queryKey: ['clients-active'],
+    queryFn: () => clientsApi.list({ actif: true, limit: 1000 }),
+    enabled: showEditDialog,
+  });
+  const { data: usersData } = useQuery({
+    queryKey: ['users'],
+    queryFn: usersApi.list,
+    enabled: showEditDialog,
+  });
+
+  const updateContratMutation = useMutation({
+    mutationFn: (data: Parameters<typeof contratsApi.update>[1]) => contratsApi.update(id!, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contrat', id] });
+      queryClient.invalidateQueries({ queryKey: ['interventions-contrat', id] });
+      queryClient.invalidateQueries({ queryKey: ['contrats'] });
+      queryClient.invalidateQueries({ queryKey: ['interventions'] });
+      toast.success('Contrat mis à jour');
+      setShowEditDialog(false);
+    },
+    onError: (error: any) => {
+      const details = error.response?.data?.details;
+      if (details?.length) {
+        toast.error(`${error.response?.data?.error || 'Données invalides'} • ${details.map((d: any) => `${d.field}: ${d.message}`).join(', ')}`);
+      } else {
+        toast.error(error.response?.data?.error || 'Erreur lors de la mise à jour');
+      }
+    },
   });
 
   const interventions = interventionsData?.interventions || [];
@@ -306,12 +343,20 @@ export function ContratDetailPage() {
             </div>
           </div>
         </div>
+        <div className="flex items-center gap-2">
+        {canDo('editContrat') && (
+          <Button variant="outline" className="h-9 bg-white" onClick={() => setShowEditDialog(true)}>
+            <Pencil className="h-4 w-4 mr-1.5" />
+            Modifier
+          </Button>
+        )}
         <Link to="/planning">
           <Button className="bg-green-600 hover:bg-green-700 text-white font-semibold shadow-sm shadow-green-200 h-9">
             <Plus className="h-4 w-4 mr-1.5" />
             Nouvelle intervention
           </Button>
         </Link>
+        </div>
       </div>
 
       {/* Grille principale */}
@@ -1082,6 +1127,29 @@ export function ContratDetailPage() {
               </Button>
             )}
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog Modifier le contrat */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-2xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>Modifier le contrat</DialogTitle>
+            <DialogDescription>Mettez à jour les informations du contrat</DialogDescription>
+          </DialogHeader>
+          {showEditDialog && (
+            <ContratForm
+              key={contrat.id}
+              contrat={contrat}
+              isEdit={true}
+              clients={clientsData?.clients || []}
+              users={usersData || []}
+              prestations={prestations}
+              isPending={updateContratMutation.isPending}
+              onSubmit={(data) => updateContratMutation.mutate(data)}
+              onCancel={() => setShowEditDialog(false)}
+            />
+          )}
         </DialogContent>
       </Dialog>
 
