@@ -72,6 +72,13 @@ function visiteCouverte(date: string, jours: number | undefined, mois: number | 
   return ops.some((t) => t > v.getTime() - demi && t <= v.getTime() + demi);
 }
 
+// Même règle que le backend : aucune visite de contrôle après la dernière opération (dates yyyy-MM-dd).
+function apresDerniereOperation(date: string, opDates: string[]): boolean {
+  const ops = opDates.filter(Boolean);
+  if (!date || ops.length === 0) return false;
+  return date > ops.reduce((max, d) => (d > max ? d : max));
+}
+
 // Saisie d'une fréquence en jours ou en mois calendaires (les mois évitent la dérive :
 // "tous les 3 mois" tombe toujours le même jour du mois).
 function FrequenceInput({
@@ -681,6 +688,7 @@ export function ContratForm({
               {contratSites.map((cs) => {
                 const site = availableSites.find(s => s.id === cs.siteId);
                 const isExpanded = expandedSites.has(cs.siteId);
+                const nbHorsContrat = (cs.datesPrevuesControles || []).filter((d) => apresDerniereOperation(d, cs.datesPrevuesOperations || [])).length;
                 const sitePrestations = cs.prestations || [];
                 const availablePrestationsForSite = prestations.filter(p => !sitePrestations.includes(p.nom));
                 const missingPriceCount = sitePrestations.filter(nom => !cs.prixPrestations?.[nom]).length;
@@ -946,10 +954,17 @@ export function ContratForm({
 
                             {cs.datesPrevuesControles && cs.datesPrevuesControles.length > 0 && (
                               <div className="space-y-1.5">
+                                {nbHorsContrat > 0 && (
+                                  <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5">
+                                    Attention : {nbHorsContrat} visite(s) de contrôle tombent après la dernière opération et ne seront pas planifiées.
+                                    Ajustez le nombre, la fréquence ou la date de départ si besoin.
+                                  </p>
+                                )}
                                 <div className="flex items-center justify-between">
                                   <span className="text-xs font-medium text-gray-600">
                                     Contrôles ({cs.datesPrevuesControles.length})
                                     <span className="font-normal text-gray-400"> — barrés : remplacés par une opération</span>
+                                    {nbHorsContrat > 0 && <span className="font-normal text-red-500"> · en rouge : après la dernière opération</span>}
                                   </span>
                                   <button
                                     type="button"
@@ -961,13 +976,22 @@ export function ContratForm({
                                 </div>
                                 <div className="grid grid-cols-3 gap-1.5">
                                   {cs.datesPrevuesControles.map((date, i) => {
-                                    const remplacee = visiteCouverte(date, cs.frequenceControleJours, cs.frequenceControleMois, cs.datesPrevuesOperations || []);
+                                    const horsContrat = apresDerniereOperation(date, cs.datesPrevuesOperations || []);
+                                    const remplacee = !horsContrat && visiteCouverte(date, cs.frequenceControleJours, cs.frequenceControleMois, cs.datesPrevuesOperations || []);
                                     return (
-                                      <div key={i} className="flex items-center gap-1" title={remplacee ? 'Remplacée par une opération sur la même période' : undefined}>
+                                      <div
+                                        key={i}
+                                        className="flex items-center gap-1"
+                                        title={horsContrat ? 'Après la dernière opération : ne sera pas planifiée' : remplacee ? 'Remplacée par une opération sur la même période' : undefined}
+                                      >
                                         <span className="text-[10px] text-gray-400 w-4 flex-shrink-0">#{i + 1}</span>
                                         <Input
                                           type="date"
-                                          className={cn('h-7 text-xs px-1.5', remplacee && 'line-through text-gray-400 bg-gray-50')}
+                                          className={cn(
+                                            'h-7 text-xs px-1.5',
+                                            remplacee && 'line-through text-gray-400 bg-gray-50',
+                                            horsContrat && 'line-through text-red-500 bg-red-50 border-red-200'
+                                          )}
                                           value={date}
                                           onChange={(e) => updateSiteDate(cs.siteId, 'ctrl', i, e.target.value)}
                                         />

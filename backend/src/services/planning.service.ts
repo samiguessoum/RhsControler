@@ -27,6 +27,17 @@ function visiteCouverteParOperation(
   return opDates.some((d) => d.getTime() > v - demi && d.getTime() <= v + demi);
 }
 
+/**
+ * Règle métier : aucune visite de contrôle après la dernière opération du contrat (par site).
+ * Appliquée uniquement à la génération du planning ; ensuite, le planning se gère manuellement.
+ * Sans opération, pas de borne.
+ */
+function apresDerniereOperation(visiteDate: Date, opDates: Date[]): boolean {
+  if (opDates.length === 0) return false;
+  const derniere = Math.max(...opDates.map((d) => startOfDay(d).getTime()));
+  return startOfDay(visiteDate).getTime() > derniere;
+}
+
 /** Statut d'une visite de contrôle selon qu'elle est couverte ou non par une opération. */
 function statutVisite(couverte: boolean) {
   return couverte
@@ -896,6 +907,7 @@ export const planningService = {
       ].map((iv) => iv.datePrevue as Date);
       const datesCtrl = s.datesCtrl?.length ? s.datesCtrl : echeances(s.premiereCtrl, s.freqCtrl, s.nbCtrl);
       for (const date of datesCtrl) {
+        if (apresDerniereOperation(date, opDates)) continue;
         const couverte = visiteCouverteParOperation(date, s.freqCtrl?.jours ?? null, s.freqCtrl?.mois ?? null, opDates);
         if (!couverte && consommer(s.siteId, 'CONTROLE', null)) continue;
         const intervention = await prisma.intervention.create({
@@ -1006,6 +1018,7 @@ export const planningService = {
     }
 
     const interventionsCreees: any[] = [];
+    let visitesIgnorees = 0;
 
     for (const s of series) {
       const serie = { contratId: contrat.id, siteId: s.siteId };
@@ -1053,6 +1066,10 @@ export const planningService = {
         const opDates = ops.map((o) => o.datePrevue);
         let currentDate = await depart('CONTROLE', s.freqCtrl, s.premiereCtrl);
         for (let i = 0; i < nbControles; i++) {
+          if (apresDerniereOperation(currentDate, opDates)) {
+            visitesIgnorees += nbControles - i;
+            break;
+          }
           const couverte = visiteCouverteParOperation(currentDate, s.freqCtrl?.jours ?? null, s.freqCtrl?.mois ?? null, opDates);
           const intervention = await prisma.intervention.create({
             data: {
@@ -1077,7 +1094,13 @@ export const planningService = {
       }
     }
 
-    return { interventionsCreees, count: interventionsCreees.length };
+    return {
+      interventionsCreees,
+      count: interventionsCreees.length,
+      warning: visitesIgnorees > 0
+        ? `${visitesIgnorees} visite(s) de contrôle non planifiée(s) : elles tombaient après la dernière opération du contrat`
+        : undefined,
+    };
   },
 
   /**

@@ -87,6 +87,7 @@ export const avenantController = {
       });
 
       let interventionsCreees: any[] = [];
+      let warning: string | undefined;
       try {
         const result = await planningService.genererInterventionsAvenant(
           contratId,
@@ -97,6 +98,7 @@ export const avenantController = {
           { dateDebut, frequenceJours },
         );
         interventionsCreees = result.interventionsCreees;
+        warning = result.warning;
       } catch (genError: any) {
         // Rien n'a été généré (les fréquences sont vérifiées avant toute création) :
         // on retire l'avenant pour ne pas laisser un avenant vide ni décaler la numérotation.
@@ -108,7 +110,7 @@ export const avenantController = {
         after: { ...avenant, interventionsGenerees: interventionsCreees.length },
       });
 
-      res.status(201).json({ avenant, interventionsCreees, count: interventionsCreees.length });
+      res.status(201).json({ avenant, interventionsCreees, count: interventionsCreees.length, warning });
     } catch (error) {
       logger.error({ err: error }, 'Avenant create error');
       return next(new AppError(500, 'Erreur serveur'));

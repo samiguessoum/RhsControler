@@ -119,6 +119,7 @@ export function ContratDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['contrat', id] });
       queryClient.invalidateQueries({ queryKey: ['interventions-contrat', id] });
       toast.success(`Avenant enregistré — ${res.count ?? res.interventionsCreees?.length ?? 0} intervention(s) créée(s)`);
+      if (res.warning) toast.warning(res.warning);
       setShowAvenantDialog(false);
       setAvenantForm({ nom: '', numeroBonCommande: '', dateSignature: '', montantHT: '', nombreOperationsSupplementaires: '', nombreVisitesControleSupplementaires: '', dateDebut: '', frequenceJours: '', notes: '' });
     },
