@@ -124,6 +124,7 @@ export const dashboardController = {
           where: {
             datePrevue: { gte: startMonth, lte: endMonth },
             statut: 'ANNULEE',
+            remplaceeParOperation: false,
           },
         }),
         // Total mois précédent

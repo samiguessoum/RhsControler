@@ -98,6 +98,8 @@ export interface ContratSite {
   prixPrestations?: Record<string, number>;
   frequenceOperationsJours?: number;
   frequenceControleJours?: number;
+  frequenceOperationsMois?: number;
+  frequenceControleMois?: number;
   premiereDateOperation?: string;
   premiereDateControle?: string;
   nombreOperations?: number;
@@ -113,6 +115,8 @@ export interface ContratSiteInput {
   prixPrestations?: Record<string, number>;
   frequenceOperationsJours?: number;
   frequenceControleJours?: number;
+  frequenceOperationsMois?: number;
+  frequenceControleMois?: number;
   premiereDateOperation?: string;
   premiereDateControle?: string;
   nombreOperations?: number;
@@ -233,6 +237,8 @@ export interface Intervention {
   frequenceOperationsJours?: number | null;
   frequenceControleJours?: number | null;
   interventionEmployes?: InterventionEmploye[];
+  avenant?: { id: string; numero: number } | null;
+  bonCommande?: { id: string; numero: string } | null;
   previousIntervention?: PreviousIntervention | null;
   fieldIntervention?: {
     id: string;
@@ -474,14 +480,14 @@ export interface CreateContratInput {
   nom?: string;
   type: ContratType;
   dateDebut: string;
-  dateFin?: string;
+  dateFin?: string | null;
   reconductionAuto?: boolean;
   prestations: string[];
   frequenceOperationsJours?: number;
   frequenceControleJours?: number;
   premiereDateOperation?: string;
   premiereDateControle?: string;
-  responsablePlanningId?: string;
+  responsablePlanningId?: string | null;
   statut?: ContratStatut;
   notes?: string;
   autoCreerProchaine?: boolean;
@@ -489,8 +495,8 @@ export interface CreateContratInput {
   numeroBonCommande?: string;
   nombreOperations?: number;
   // Convention
-  dateDebutConvention?: string;
-  dateFinConvention?: string;
+  dateDebutConvention?: string | null;
+  dateFinConvention?: string | null;
   // Sites
   contratSites?: ContratSiteInput[];
 }

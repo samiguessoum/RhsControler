@@ -42,6 +42,9 @@ export const interventionController = {
         }
       }
 
+      // Visites masquées car remplacées par une opération : jamais affichées
+      where.remplaceeParOperation = false;
+
       if (clientId) where.clientId = clientId;
       if (contratId) where.contratId = contratId;
       if (siteId) where.siteId = siteId;
@@ -103,6 +106,8 @@ export const interventionController = {
                 },
               },
             },
+            avenant: { select: { id: true, numero: true } },
+            bonCommande: { select: { id: true, numero: true } },
             site: {
               select: {
                 id: true,
@@ -428,6 +433,7 @@ export const interventionController = {
           statut: data.statut ?? 'A_PLANIFIER',
           notesTerrain: data.notesTerrain,
           responsable: data.responsable,
+          bonCommandeId: data.bonCommandeId || null,
           createdById: req.user!.id,
           interventionEmployes: data.employes?.length
             ? {
@@ -452,6 +458,11 @@ export const interventionController = {
           },
         },
       });
+
+      // Une opération ajoutée au contrat peut remplacer une visite de contrôle
+      if (intervention.type === 'OPERATION' && intervention.contratId) {
+        await planningService.recalculerVisites(intervention.contratId, intervention.siteId);
+      }
 
       // Audit log
       await createAuditLog(req.user!.id, 'CREATE', 'Intervention', intervention.id, { after: intervention });
@@ -574,6 +585,16 @@ export const interventionController = {
           },
         },
       });
+
+      // Déplacement (glisser-déposer, modification de date) : décaler les suivantes de la série
+      // et remettre les visites de contrôle en cohérence, comme pour un report.
+      if (
+        data.datePrevue &&
+        new Date(data.datePrevue).getTime() !== existing.datePrevue.getTime() &&
+        existing.statut !== 'REALISEE'
+      ) {
+        await planningService.decalerSerie(existing, new Date(data.datePrevue).getTime() - existing.datePrevue.getTime());
+      }
 
       // Audit log
       await createAuditLog(req.user!.id, 'UPDATE', 'Intervention', intervention.id, {
@@ -782,6 +803,11 @@ export const interventionController = {
         raison,
       } as any);
 
+      // Une opération supprimée ne remplace plus la visite de contrôle de sa période
+      if (existing.type === 'OPERATION' && existing.contratId) {
+        await planningService.recalculerVisites(existing.contratId, existing.siteId);
+      }
+
       res.json({ intervention });
     } catch (error: any) {
       logger.error({ err: error }, 'Annuler error');
@@ -812,6 +838,10 @@ export const interventionController = {
 
       // Audit log
       await createAuditLog(req.user!.id, 'DELETE', 'Intervention', id);
+
+      if (existing.type === 'OPERATION' && existing.contratId) {
+        await planningService.recalculerVisites(existing.contratId, existing.siteId);
+      }
 
       res.json({ message: 'Intervention supprimée' });
     } catch (error) {

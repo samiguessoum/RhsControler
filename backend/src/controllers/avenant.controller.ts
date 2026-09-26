@@ -20,6 +20,7 @@ export const avenantController = {
         include: {
           createdBy: { select: { id: true, nom: true, prenom: true } },
           interventions: {
+            where: { remplaceeParOperation: false },
             select: { id: true, type: true, datePrevue: true, statut: true },
             orderBy: { datePrevue: 'asc' },
           },
@@ -46,6 +47,8 @@ export const avenantController = {
         montantHT,
         nombreOperationsSupplementaires,
         nombreVisitesControleSupplementaires,
+        dateDebut,
+        frequenceJours,
         notes,
       } = req.body;
 
@@ -87,17 +90,14 @@ export const avenantController = {
           req.user!.id,
           nbOps,
           nbCtrl,
+          { dateDebut, frequenceJours },
         );
         interventionsCreees = result.interventionsCreees;
       } catch (genError: any) {
-        // L'avenant est créé mais la génération des interventions a échoué : on l'indique à l'utilisateur
-        // plutôt que de tout annuler, pour ne pas perdre la trace de l'avenant signé.
-        await createAuditLog(req.user!.id, 'CREATE', 'Avenant', avenant.id, { after: avenant });
-        return res.status(201).json({
-          avenant,
-          interventionsCreees: [],
-          warning: `Avenant enregistré, mais les interventions n'ont pas pu être générées automatiquement : ${genError.message}`,
-        });
+        // Rien n'a été généré (les fréquences sont vérifiées avant toute création) :
+        // on retire l'avenant pour ne pas laisser un avenant vide ni décaler la numérotation.
+        await prisma.avenant.delete({ where: { id: avenant.id } });
+        return next(new AppError(400, `Impossible de générer les interventions de l'avenant : ${genError.message}`));
       }
 
       await createAuditLog(req.user!.id, 'CREATE', 'Avenant', avenant.id, {

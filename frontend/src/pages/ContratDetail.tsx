@@ -73,6 +73,8 @@ export function ContratDetailPage() {
     montantHT: '',
     nombreOperationsSupplementaires: '',
     nombreVisitesControleSupplementaires: '',
+    dateDebut: '',
+    frequenceJours: '',
     notes: '',
   });
   const [showBcDialog, setShowBcDialog] = useState(false);
@@ -100,18 +102,16 @@ export function ContratDetailPage() {
         nombreVisitesControleSupplementaires: avenantForm.nombreVisitesControleSupplementaires
           ? parseInt(avenantForm.nombreVisitesControleSupplementaires)
           : 0,
+        dateDebut: avenantForm.dateDebut || undefined,
+        frequenceJours: avenantForm.frequenceJours ? parseInt(avenantForm.frequenceJours) : undefined,
         notes: avenantForm.notes || undefined,
       }),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['contrat', id] });
       queryClient.invalidateQueries({ queryKey: ['interventions-contrat', id] });
-      if (res.warning) {
-        toast.warning(res.warning);
-      } else {
-        toast.success(`Avenant enregistré — ${res.count ?? res.interventionsCreees?.length ?? 0} intervention(s) créée(s)`);
-      }
+      toast.success(`Avenant enregistré — ${res.count ?? res.interventionsCreees?.length ?? 0} intervention(s) créée(s)`);
       setShowAvenantDialog(false);
-      setAvenantForm({ dateSignature: '', montantHT: '', nombreOperationsSupplementaires: '', nombreVisitesControleSupplementaires: '', notes: '' });
+      setAvenantForm({ dateSignature: '', montantHT: '', nombreOperationsSupplementaires: '', nombreVisitesControleSupplementaires: '', dateDebut: '', frequenceJours: '', notes: '' });
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Erreur lors de la création de l\'avenant');
@@ -140,7 +140,7 @@ export function ContratDetailPage() {
 
   const { data: interventionsData } = useQuery({
     queryKey: ['interventions-contrat', id],
-    queryFn: () => interventionsApi.list({ contratId: id!, limit: 100 }),
+    queryFn: () => interventionsApi.list({ contratId: id!, limit: 1000 }),
     enabled: !!id,
     refetchOnWindowFocus: true,
     refetchOnMount: 'always', // Recharger à chaque retour sur la page
@@ -163,7 +163,9 @@ export function ContratDetailPage() {
 
   // Stats des interventions
   const interventionStats = useMemo(() => {
-    const total = interventions.length;
+    // Les interventions supprimées ne comptent pas dans l'avancement
+    const actives = interventions.filter((i) => i.statut !== 'ANNULEE');
+    const total = actives.length;
     const realisees = interventions.filter((i) => i.statut === 'REALISEE').length;
     const planifiees = interventions.filter((i) => i.statut === 'PLANIFIEE').length;
     const aPlanifier = interventions.filter((i) => i.statut === 'A_PLANIFIER').length;
@@ -172,8 +174,8 @@ export function ContratDetailPage() {
     const progressPercent = total > 0 ? Math.round((realisees / total) * 100) : 0;
 
     // Stats par type (Opérations vs Contrôles)
-    const operations = interventions.filter((i) => i.type === 'OPERATION');
-    const controles = interventions.filter((i) => i.type === 'CONTROLE');
+    const operations = actives.filter((i) => i.type === 'OPERATION');
+    const controles = actives.filter((i) => i.type === 'CONTROLE');
     const operationsRealisees = operations.filter((i) => i.statut === 'REALISEE').length;
     const controlesRealises = controles.filter((i) => i.statut === 'REALISEE').length;
 
@@ -200,7 +202,7 @@ export function ContratDetailPage() {
     if (interventionFilter === 'done') {
       filtered = filtered.filter((i) => i.statut === 'REALISEE');
     } else if (interventionFilter === 'pending') {
-      filtered = filtered.filter((i) => ['A_PLANIFIER', 'PLANIFIEE'].includes(i.statut));
+      filtered = filtered.filter((i) => ['A_PLANIFIER', 'PLANIFIEE', 'REPORTEE'].includes(i.statut));
     }
 
     // Filtre par type (Opération vs Contrôle)
@@ -622,7 +624,7 @@ export function ContratDetailPage() {
                     </div>
                     <p className="text-xs text-amber-700">
                       +{av.nombreOperationsSupplementaires} opération(s), +{av.nombreVisitesControleSupplementaires} visite(s) de contrôle
-                      {av.montantHT != null && ` — ${av.montantHT} € HT`}
+                      {av.montantHT != null && ` — ${Number(av.montantHT).toLocaleString('fr-FR')} DA HT`}
                     </p>
                     {av.notes && <p className="text-xs text-muted-foreground whitespace-pre-wrap">{av.notes}</p>}
                   </div>
@@ -847,6 +849,16 @@ export function ContratDetailPage() {
                           {i.heurePrevue && (
                             <span className="text-xs text-muted-foreground bg-white px-2 py-0.5 rounded">
                               {i.heurePrevue}
+                            </span>
+                          )}
+                          {i.avenant && (
+                            <span className="text-[10px] font-semibold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+                              Avenant n°{i.avenant.numero}
+                            </span>
+                          )}
+                          {i.bonCommande && (
+                            <span className="text-[10px] font-semibold text-blue-800 bg-blue-100 px-1.5 py-0.5 rounded">
+                              BC-{i.bonCommande.numero}
                             </span>
                           )}
                         </div>
@@ -1103,6 +1115,31 @@ export function ContratDetailPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
+                <Label htmlFor="av-debut">1ère intervention</Label>
+                <Input
+                  id="av-debut"
+                  type="date"
+                  value={avenantForm.dateDebut}
+                  onChange={(e) => setAvenantForm((f) => ({ ...f, dateDebut: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="av-freq">Fréquence (jours)</Label>
+                <Input
+                  id="av-freq"
+                  type="number"
+                  min={1}
+                  value={avenantForm.frequenceJours}
+                  onChange={(e) => setAvenantForm((f) => ({ ...f, frequenceJours: e.target.value }))}
+                  placeholder="Celle du contrat"
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground -mt-1">
+              Facultatif : par défaut, les interventions suivent la dernière du contrat, à la même fréquence.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
                 <Label htmlFor="av-date">Date de signature</Label>
                 <Input
                   id="av-date"
@@ -1117,7 +1154,7 @@ export function ContratDetailPage() {
                   id="av-montant"
                   type="number"
                   min={0}
-                  step="0.01"
+                  step="any"
                   value={avenantForm.montantHT}
                   onChange={(e) => setAvenantForm((f) => ({ ...f, montantHT: e.target.value }))}
                   placeholder="ex: 1500"

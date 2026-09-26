@@ -25,34 +25,102 @@ import {
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { clientsApi, contratsApi, interventionsApi, prestationsApi, usersApi } from '@/services/api';
 import { formatDate, cn } from '@/lib/utils';
+import { addDays, addMonths, format, startOfMonth } from 'date-fns';
 import { useAuthStore } from '@/store/auth.store';
-import type { Contrat, CreateContratInput, Client, User, ContratStatut, ContratType, ContratSiteInput } from '@/types';
+import type { Contrat, CreateContratInput, Client, User, ContratStatut, ContratType, ContratSiteInput, Prestation } from '@/types';
 
 function computeProjectionDates(
   premierDate: string,
   nbOps: number | undefined,
   frequenceJours: number | undefined,
-  dateFin?: string,
+  frequenceMois: number | undefined,
+  dateFin: string | undefined,
+  ponctuel: boolean,
 ): string[] {
-  if (!premierDate || !frequenceJours) return [];
+  if (!premierDate) return [];
+  // Ponctuel : une échéance unique n'a pas besoin de fréquence
+  if (!frequenceJours && !frequenceMois && !(ponctuel && nbOps === 1)) return [];
+  const suivante = (d: Date) => (frequenceMois ? addMonths(d, frequenceMois) : addDays(d, frequenceJours || 30));
   const dates: string[] = [];
-  const start = new Date(premierDate + 'T12:00:00');
+  let d = new Date(premierDate + 'T12:00:00');
   if (nbOps && nbOps > 0) {
-    for (let i = 0; i < nbOps; i++) {
-      const d = new Date(start.getTime() + i * frequenceJours * 86400000);
-      dates.push(d.toISOString().split('T')[0]);
+    for (let i = 0; i < nbOps && i < 500; i++) {
+      dates.push(format(d, 'yyyy-MM-dd'));
+      d = suivante(d);
     }
-  } else if (dateFin) {
+  } else if (dateFin && !ponctuel) {
     const fin = new Date(dateFin + 'T12:00:00');
-    let d = new Date(start);
-    let safety = 0;
-    while (d <= fin && safety < 120) {
-      dates.push(d.toISOString().split('T')[0]);
-      d = new Date(d.getTime() + frequenceJours * 86400000);
-      safety++;
+    for (let i = 0; d <= fin && i < 500; i++) {
+      dates.push(format(d, 'yyyy-MM-dd'));
+      d = suivante(d);
     }
   }
   return dates;
+}
+
+// Même règle que le backend : en mois, l'opération remplace la visite dont la période (mois
+// calendaires jusqu'à la visite suivante) la contient ; en jours, la visite la plus proche.
+function visiteCouverte(date: string, jours: number | undefined, mois: number | undefined, opDates: string[]): boolean {
+  const v = new Date(date + 'T12:00:00');
+  const ops = opDates.map((o) => new Date(o + 'T12:00:00').getTime());
+  if (mois) {
+    const debut = startOfMonth(v).getTime();
+    const fin = startOfMonth(addMonths(v, mois)).getTime();
+    return ops.some((t) => t >= debut && t < fin);
+  }
+  const demi = (addDays(v, jours || 30).getTime() - v.getTime()) / 2;
+  return ops.some((t) => t > v.getTime() - demi && t <= v.getTime() + demi);
+}
+
+// Saisie d'une fréquence en jours ou en mois calendaires (les mois évitent la dérive :
+// "tous les 3 mois" tombe toujours le même jour du mois).
+function FrequenceInput({
+  jours,
+  mois,
+  onChange,
+  placeholder,
+}: {
+  jours?: number;
+  mois?: number;
+  onChange: (v: { jours?: number; mois?: number }) => void;
+  placeholder?: string;
+}) {
+  const [unite, setUnite] = useState<'jours' | 'mois'>(mois ? 'mois' : 'jours');
+  const valeur = unite === 'mois' ? mois : jours;
+  const emit = (v: number | undefined, u: 'jours' | 'mois') =>
+    onChange(u === 'mois' ? { mois: v, jours: undefined } : { jours: v, mois: undefined });
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-gray-400 whitespace-nowrap">Tous les</span>
+        <Input
+          type="number"
+          className="h-8"
+          min={1}
+          placeholder={placeholder}
+          value={valeur || ''}
+          onChange={(e) => emit(e.target.value ? Number(e.target.value) : undefined, unite)}
+        />
+        <select
+          className="h-8 rounded-md border border-input bg-background px-1.5 text-xs"
+          value={unite}
+          onChange={(e) => {
+            const u = e.target.value as 'jours' | 'mois';
+            setUnite(u);
+            emit(valeur, u);
+          }}
+        >
+          <option value="jours">jours</option>
+          <option value="mois">mois</option>
+        </select>
+      </div>
+      {valeur ? (
+        <p className="text-xs text-green-700 font-medium">
+          ≈ {Math.round(unite === 'mois' ? 12 / valeur : 365 / valeur)}x / an
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 // Sélecteur de client avec recherche côté serveur : la liste des clients actifs chargée en
@@ -149,6 +217,836 @@ function ClientCombobox({
         </div>
       )}
     </div>
+  );
+}
+
+function ContratForm({
+  contrat,
+  isEdit,
+  clientIdFilter,
+  clients,
+  users,
+  prestations,
+  isPending,
+  onSubmit,
+  onCancel,
+}: {
+  contrat?: Contrat;
+  isEdit: boolean;
+  clientIdFilter?: string;
+  clients: Client[];
+  users: User[];
+  prestations: Prestation[];
+  isPending: boolean;
+  onSubmit: (data: CreateContratInput) => void;
+  onCancel: () => void;
+}) {
+  const defaultClientId = clientIdFilter || contrat?.clientId || '';
+  const [nom, setNom] = useState((contrat as any)?.nom || '');
+  const [clientId, setClientId] = useState<string | undefined>(defaultClientId || undefined);
+  // Objet client complet (avec sites) pour le client sélectionné — conservé séparément de la
+  // liste `clients` chargée en arrière-plan, car celle-ci ne contient pas forcément le client
+  // choisi via la recherche (voir ClientCombobox).
+  const [selectedClientObj, setSelectedClientObj] = useState<Client | undefined>(
+    () => (contrat?.client as Client | undefined) || clients.find((c) => c.id === defaultClientId)
+  );
+  const [type, setType] = useState<ContratType>(contrat?.type || 'ANNUEL');
+  const [responsablePlanningId, setResponsablePlanningId] = useState<string | undefined>(contrat?.responsablePlanningId || undefined);
+  const [statut, setStatut] = useState<ContratStatut>(contrat?.statut || 'ACTIF');
+  const [dateDebut, setDateDebut] = useState(contrat?.dateDebut?.split('T')[0] || '');
+  const [dateFin, setDateFin] = useState(contrat?.dateFin?.split('T')[0] || '');
+  const [dateDebutConvention, setDateDebutConvention] = useState((contrat as any)?.dateDebutConvention?.split('T')[0] || '');
+  const [dateFinConvention, setDateFinConvention] = useState((contrat as any)?.dateFinConvention?.split('T')[0] || '');
+
+  const handleDateDebutChange = (value: string) => {
+    setDateDebut(value);
+    // Pour un contrat annuel, suggérer automatiquement la date de fin à +1 an
+    if (type === 'ANNUEL' && value) {
+      const fin = new Date(value);
+      fin.setFullYear(fin.getFullYear() + 1);
+      changerDateFin(fin.toISOString().split('T')[0]);
+    }
+  };
+
+  // State pour le select d'ajout de site (permet de réinitialiser après sélection)
+  const [siteSelectKey, setSiteSelectKey] = useState(0);
+
+  // Sites configuration avec prestations
+  const [contratSites, setContratSites] = useState<ContratSiteInput[]>(
+    contrat?.contratSites?.map(cs => ({
+      siteId: cs.siteId,
+      prestations: cs.prestations || [],
+      prixPrestations: (cs.prixPrestations as Record<string, number>) || {},
+      frequenceOperationsJours: cs.frequenceOperationsJours ?? undefined,
+      frequenceControleJours: cs.frequenceControleJours ?? undefined,
+      frequenceOperationsMois: cs.frequenceOperationsMois ?? undefined,
+      frequenceControleMois: cs.frequenceControleMois ?? undefined,
+      premiereDateOperation: cs.premiereDateOperation?.split('T')[0],
+      premiereDateControle: cs.premiereDateControle?.split('T')[0],
+      nombreOperations: cs.nombreOperations ?? undefined,
+      nombreVisitesControle: cs.nombreVisitesControle ?? undefined,
+      notes: cs.notes ?? undefined,
+    })) || []
+  );
+
+  const projectionOps = (cs: ContratSiteInput, fin: string) =>
+    computeProjectionDates(cs.premiereDateOperation || '', cs.nombreOperations, cs.frequenceOperationsJours, cs.frequenceOperationsMois, fin || undefined, type === 'PONCTUEL');
+  const projectionCtrl = (cs: ContratSiteInput, fin: string) =>
+    computeProjectionDates(cs.premiereDateControle || '', cs.nombreVisitesControle, cs.frequenceControleJours, cs.frequenceControleMois, fin || undefined, type === 'PONCTUEL');
+
+  // État pour les sites dépliés/repliés — dépliés par défaut pour ne pas cacher
+  // les prestations/prix (source d'oublis fréquente)
+  const [expandedSites, setExpandedSites] = useState<Set<string>>(
+    new Set((contrat?.contratSites || []).map(cs => cs.siteId))
+  );
+
+  // Get selected client's sites
+  const selectedClient = selectedClientObj;
+  const availableSites = selectedClient?.sites || [];
+
+  // Sites non encore ajoutés au contrat
+  const sitesNotInContract = availableSites.filter(s => !contratSites.find(cs => cs.siteId === s.id));
+
+  // Add a site to the contract
+  const addSite = (siteId: string) => {
+    if (!siteId || contratSites.find(cs => cs.siteId === siteId)) return;
+    setContratSites([...contratSites, { siteId, prestations: [] }]);
+    setExpandedSites(prev => new Set([...prev, siteId]));
+    // Reset le select en changeant sa clé
+    setSiteSelectKey(prev => prev + 1);
+  };
+
+  // Remove a site from the contract
+  const removeSite = (siteId: string) => {
+    setContratSites(contratSites.filter(cs => cs.siteId !== siteId));
+    setExpandedSites(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(siteId);
+      return newSet;
+    });
+  };
+
+  // Update a site's configuration
+  const updateSite = (siteId: string, updates: Partial<ContratSiteInput>) => {
+    setContratSites(contratSites.map(cs => {
+      if (cs.siteId !== siteId) return cs;
+      const updated = { ...cs, ...updates };
+      // Recalculer la projection des dates quand les paramètres changent
+      if (['premiereDateOperation', 'frequenceOperationsJours', 'frequenceOperationsMois', 'nombreOperations'].some((k) => k in updates)) {
+        updated.datesPrevuesOperations = projectionOps(updated, dateFin);
+      }
+      if (['premiereDateControle', 'frequenceControleJours', 'frequenceControleMois', 'nombreVisitesControle'].some((k) => k in updates)) {
+        updated.datesPrevuesControles = projectionCtrl(updated, dateFin);
+      }
+      return updated;
+    }));
+  };
+
+  const updateSiteDate = (siteId: string, type: 'ops' | 'ctrl', index: number, value: string) => {
+    setContratSites(contratSites.map(cs => {
+      if (cs.siteId !== siteId) return cs;
+      if (type === 'ops') {
+        const dates = [...(cs.datesPrevuesOperations || [])];
+        dates[index] = value;
+        return { ...cs, datesPrevuesOperations: dates };
+      } else {
+        const dates = [...(cs.datesPrevuesControles || [])];
+        dates[index] = value;
+        return { ...cs, datesPrevuesControles: dates };
+      }
+    }));
+  };
+
+  const resetSiteDates = (siteId: string, type: 'ops' | 'ctrl') => {
+    const cs = contratSites.find(s => s.siteId === siteId);
+    if (!cs) return;
+    if (type === 'ops') {
+      updateSite(siteId, { datesPrevuesOperations: projectionOps(cs, dateFin) });
+    } else {
+      updateSite(siteId, { datesPrevuesControles: projectionCtrl(cs, dateFin) });
+    }
+  };
+
+  // La date de fin borne la projection des annuels : recalculer les projections déjà affichées
+  const changerDateFin = (value: string) => {
+    setDateFin(value);
+    setContratSites((sites) => sites.map((cs) => ({
+      ...cs,
+      ...(cs.datesPrevuesOperations ? { datesPrevuesOperations: projectionOps(cs, value) } : {}),
+      ...(cs.datesPrevuesControles ? { datesPrevuesControles: projectionCtrl(cs, value) } : {}),
+    })));
+  };
+
+  // Add prestation to a site
+  const addPrestationToSite = (siteId: string, prestationNom: string) => {
+    const site = contratSites.find(cs => cs.siteId === siteId);
+    if (!site) return;
+    const currentPrestations = site.prestations || [];
+    if (!currentPrestations.includes(prestationNom)) {
+      updateSite(siteId, { prestations: [...currentPrestations, prestationNom] });
+    }
+  };
+
+  // Remove prestation from a site
+  const removePrestationFromSite = (siteId: string, prestationNom: string) => {
+    const site = contratSites.find(cs => cs.siteId === siteId);
+    if (!site) return;
+    const currentPrestations = site.prestations || [];
+    updateSite(siteId, { prestations: currentPrestations.filter(p => p !== prestationNom) });
+  };
+
+  // Toggle site expansion
+  const toggleSiteExpansion = (siteId: string) => {
+    setExpandedSites(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(siteId)) {
+        newSet.delete(siteId);
+      } else {
+        newSet.add(siteId);
+      }
+      return newSet;
+    });
+  };
+
+  // Reset sites when client changes
+  useEffect(() => {
+    if (!isEdit) {
+      setContratSites([]);
+      setExpandedSites(new Set());
+    }
+  }, [clientId, isEdit]);
+
+  const isPonctuel = type === 'PONCTUEL';
+  const hasSites = contratSites.length > 0;
+
+  // Compute all prestations across all sites for the contrat level
+  const allSitePrestations = useMemo(() => {
+    const allPrests = new Set<string>();
+    contratSites.forEach(cs => {
+      (cs.prestations || []).forEach(p => allPrests.add(p));
+    });
+    return Array.from(allPrests);
+  }, [contratSites]);
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        const formData = new FormData(e.currentTarget);
+
+        // Validation pour contrat ponctuel
+        if (isPonctuel) {
+          const numeroBonCommande = formData.get('numeroBonCommande') as string;
+          if (!numeroBonCommande) {
+            toast.error('Numéro de bon de commande requis pour un contrat ponctuel');
+            return;
+          }
+        }
+
+        // Validation des sites
+        if (hasSites) {
+          for (const cs of contratSites) {
+            if (!cs.prestations || cs.prestations.length === 0) {
+              const siteName = availableSites.find(s => s.id === cs.siteId)?.nom || 'Site';
+              toast.error(`Sélectionnez au moins une prestation pour ${siteName}`);
+              return;
+            }
+            const prestationSansPrix = cs.prestations.find(nom => !cs.prixPrestations?.[nom]);
+            if (prestationSansPrix) {
+              const siteName = availableSites.find(s => s.id === cs.siteId)?.nom || 'Site';
+              toast.error(`Indiquez le prix de "${prestationSansPrix}" pour ${siteName}`);
+              setExpandedSites(prev => new Set([...prev, cs.siteId]));
+              return;
+            }
+            const siteName = availableSites.find(s => s.id === cs.siteId)?.nom || 'Site';
+            const freqOps = cs.frequenceOperationsJours || cs.frequenceOperationsMois;
+            const freqCtrl = cs.frequenceControleJours || cs.frequenceControleMois;
+            if (isPonctuel) {
+              // Pour les ponctuels : au moins un nombre d'opérations ou de contrôles
+              if (!cs.nombreOperations && !cs.nombreVisitesControle) {
+                toast.error(`Indiquez le nombre d'opérations ou de contrôles pour ${siteName}`);
+                return;
+              }
+              if ((cs.nombreOperations || 0) > 1 && !freqOps) {
+                toast.error(`Indiquez la fréquence des opérations pour ${siteName}`);
+                return;
+              }
+              if ((cs.nombreVisitesControle || 0) > 1 && !freqCtrl) {
+                toast.error(`Indiquez la fréquence des contrôles pour ${siteName}`);
+                return;
+              }
+            } else if (!freqOps && !freqCtrl) {
+              // Pour les annuels : au moins une fréquence
+              toast.error(`Configurez au moins une fréquence pour ${siteName}`);
+              return;
+            }
+            // Sans date de départ, aucune intervention ne serait générée
+            if ((cs.nombreOperations || freqOps) && !cs.premiereDateOperation) {
+              toast.error(`Indiquez la date de la 1ère opération pour ${siteName}`);
+              return;
+            }
+            if ((cs.nombreVisitesControle || freqCtrl) && !cs.premiereDateControle) {
+              toast.error(`Indiquez la date de la 1ère visite de contrôle pour ${siteName}`);
+              return;
+            }
+          }
+        }
+
+        if (!clientId) {
+          toast.error('Client requis');
+          return;
+        }
+
+        if (!hasSites) {
+          toast.error('Ajoutez au moins un site au contrat');
+          return;
+        }
+
+        const cleanedContratSites = contratSites.map((cs) => ({
+          ...cs,
+          frequenceOperationsJours: cs.frequenceOperationsJours ?? undefined,
+          frequenceControleJours: cs.frequenceControleJours ?? undefined,
+          frequenceOperationsMois: cs.frequenceOperationsMois ?? undefined,
+          frequenceControleMois: cs.frequenceControleMois ?? undefined,
+          nombreOperations: cs.nombreOperations ?? undefined,
+          nombreVisitesControle: cs.nombreVisitesControle ?? undefined,
+          notes: cs.notes ?? undefined,
+        }));
+
+        const data: CreateContratInput = {
+          clientId: clientId as string,
+          // En modification, une valeur vidée est envoyée vide/null pour être effacée
+          nom: isEdit ? nom : (nom || undefined),
+          type,
+          dateDebut: dateDebut,
+          dateFin: dateFin || (isEdit ? null : undefined),
+          reconductionAuto: formData.get('reconductionAuto') === 'on',
+          prestations: allSitePrestations, // Toutes les prestations de tous les sites
+          responsablePlanningId: responsablePlanningId || (isEdit ? null : undefined),
+          statut,
+          notes: (formData.get('notes') as string) || (isEdit ? '' : undefined),
+          autoCreerProchaine: true,
+          dateDebutConvention: dateDebutConvention || (isEdit ? null : undefined),
+          dateFinConvention: dateFinConvention || (isEdit ? null : undefined),
+          // Ponctuel fields
+          numeroBonCommande: isPonctuel ? (formData.get('numeroBonCommande') as string) : undefined,
+          // Sites avec leurs configurations
+          contratSites: cleanedContratSites,
+        };
+
+        onSubmit(data);
+      }}
+      className="space-y-5 max-h-[70vh] overflow-y-auto pr-2"
+    >
+      {/* Section 1: Informations de base */}
+      <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
+        <h3 className="font-medium text-sm text-gray-700">Informations générales</h3>
+
+        <div className="space-y-2">
+          <Label>Nom du contrat</Label>
+          <Input
+            placeholder="Ex: Dératisation annuelle 2026 — Site Alger"
+            value={nom}
+            onChange={(e) => setNom(e.target.value)}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Client *</Label>
+            <ClientCombobox
+              selected={selectedClientObj}
+              onSelect={(client) => {
+                setClientId(client.id);
+                setSelectedClientObj(client);
+              }}
+              initialClients={clients}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Type *</Label>
+            <Select value={type} onValueChange={(v) => setType(v as ContratType)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ANNUEL">Annuel</SelectItem>
+                <SelectItem value="PONCTUEL">Ponctuel</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Date début *</Label>
+            <Input
+              type="date"
+              value={dateDebut}
+              onChange={(e) => handleDateDebutChange(e.target.value)}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>
+              {isPonctuel ? 'Date fin (optionnel)' : 'Date fin'}
+              {!isPonctuel && dateFin && (
+                <span className="ml-2 text-xs font-normal text-green-600">← suggérée automatiquement</span>
+              )}
+            </Label>
+            <Input
+              type="date"
+              value={dateFin}
+              onChange={(e) => changerDateFin(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* Dates convention */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Début convention</Label>
+            <Input
+              type="date"
+              value={dateDebutConvention}
+              onChange={(e) => setDateDebutConvention(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Fin convention</Label>
+            <Input
+              type="date"
+              value={dateFinConvention}
+              onChange={(e) => setDateFinConvention(e.target.value)}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Section 2: Champs spécifiques ponctuel */}
+      {isPonctuel && (
+        <div className="space-y-4 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+          <h3 className="font-medium text-sm text-yellow-800">Contrat ponctuel</h3>
+          <div className="space-y-2">
+            <Label>N° Bon de commande *</Label>
+            <Input
+              name="numeroBonCommande"
+              defaultValue={contrat?.numeroBonCommande || ''}
+              placeholder="Ex: BC-2024-001"
+              required={isPonctuel}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Section 3: Configuration des sites */}
+      {clientId && (
+        <div className="space-y-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
+          <div className="flex items-center justify-between">
+            <h3 className="font-medium text-sm text-blue-800 flex items-center gap-2">
+              <MapPin className="h-4 w-4" />
+              Sites du contrat *
+            </h3>
+            {sitesNotInContract.length > 0 && (
+              <Select key={siteSelectKey} onValueChange={addSite}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Ajouter un site" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sitesNotInContract.map((site) => (
+                    <SelectItem key={site.id} value={site.id}>
+                      {site.nom}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          {availableSites.length === 0 ? (
+            <p className="text-sm text-blue-700">
+              Ce client n'a pas de sites configurés. Ajoutez des sites au client d'abord.
+            </p>
+          ) : contratSites.length === 0 ? (
+            <p className="text-sm text-blue-700">
+              Ajoutez au moins un site pour configurer les prestations et fréquences.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {contratSites.map((cs) => {
+                const site = availableSites.find(s => s.id === cs.siteId);
+                const isExpanded = expandedSites.has(cs.siteId);
+                const sitePrestations = cs.prestations || [];
+                const availablePrestationsForSite = prestations.filter(p => !sitePrestations.includes(p.nom));
+                const missingPriceCount = sitePrestations.filter(nom => !cs.prixPrestations?.[nom]).length;
+
+                return (
+                  <div
+                    key={cs.siteId}
+                    className={`bg-white rounded border overflow-hidden ${
+                      sitePrestations.length === 0 || missingPriceCount > 0 ? 'border-amber-300' : ''
+                    }`}
+                  >
+                    {/* En-tête du site */}
+                    <div
+                      className="p-3 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+                      onClick={() => toggleSiteExpansion(cs.siteId)}
+                    >
+                      <div className="flex items-center gap-2">
+                        {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                        <span className="font-medium">{site?.nom || 'Site'}</span>
+                        {sitePrestations.length > 0 ? (
+                          <Badge variant="secondary" className="text-xs">
+                            {sitePrestations.length} prestation(s)
+                          </Badge>
+                        ) : (
+                          <Badge className="text-xs bg-amber-100 text-amber-800 hover:bg-amber-100 border border-amber-300">
+                            Aucune prestation
+                          </Badge>
+                        )}
+                        {missingPriceCount > 0 && (
+                          <Badge className="text-xs bg-amber-100 text-amber-800 hover:bg-amber-100 border border-amber-300">
+                            {missingPriceCount} prix manquant{missingPriceCount > 1 ? 's' : ''}
+                          </Badge>
+                        )}
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeSite(cs.siteId);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
+                    </div>
+
+                    {/* Contenu déplié */}
+                    {isExpanded && (
+                      <div className="p-3 border-t space-y-4">
+                        {/* Prestations du site */}
+                        <div className="space-y-2">
+                          <Label className="text-xs font-medium">Prestations et prix *</Label>
+                          {availablePrestationsForSite.length > 0 && (
+                            <Select onValueChange={(v) => addPrestationToSite(cs.siteId, v)}>
+                              <SelectTrigger className="h-8 w-56 border-dashed border-amber-300 text-amber-800 hover:bg-amber-50">
+                                <SelectValue
+                                  placeholder={
+                                    sitePrestations.length === 0
+                                      ? 'Ajouter une prestation'
+                                      : 'Ajouter une autre prestation'
+                                  }
+                                />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availablePrestationsForSite.map((p) => (
+                                  <SelectItem key={p.id} value={p.nom}>
+                                    {p.nom}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                          {sitePrestations.length === 0 && (
+                            <p className="text-xs text-amber-700">
+                              Au moins une prestation requise pour ce site.
+                            </p>
+                          )}
+                          {sitePrestations.length > 0 && (
+                            <div className="space-y-1.5">
+                              {sitePrestations.map((nom) => {
+                                const priceMissing = !cs.prixPrestations?.[nom];
+                                return (
+                                  <div
+                                    key={nom}
+                                    className={`flex items-center gap-2 p-2 rounded border ${
+                                      priceMissing ? 'bg-amber-50 border-amber-300' : 'bg-white border-gray-100'
+                                    }`}
+                                  >
+                                    {/* Nom */}
+                                    <span className="text-sm font-medium text-gray-700 flex-1 min-w-0 truncate">{nom}</span>
+                                    {/* Prix */}
+                                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                                      <Input
+                                        type="number"
+                                        min={0}
+                                        step="any"
+                                        className={`h-8 w-28 text-sm px-2 font-medium ${
+                                          priceMissing ? 'border-amber-400 focus-visible:ring-amber-400' : ''
+                                        }`}
+                                        placeholder="Prix *"
+                                        value={(cs.prixPrestations?.[nom]) ?? ''}
+                                        onChange={(e) => {
+                                          const prix = e.target.value ? Number(e.target.value) : undefined;
+                                          updateSite(cs.siteId, {
+                                            prixPrestations: {
+                                              ...(cs.prixPrestations || {}),
+                                              ...(prix !== undefined ? { [nom]: prix } : Object.fromEntries(
+                                                Object.entries(cs.prixPrestations || {}).filter(([k]) => k !== nom)
+                                              )),
+                                            },
+                                          });
+                                        }}
+                                      />
+                                      <span className="text-xs text-gray-400">DA</span>
+                                    </div>
+                                    {priceMissing && (
+                                      <span className="text-[11px] font-medium text-amber-700 flex-shrink-0">
+                                        Prix manquant
+                                      </span>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => removePrestationFromSite(cs.siteId, nom)}
+                                      className="hover:bg-gray-100 rounded-full p-0.5 flex-shrink-0"
+                                    >
+                                      <X className="h-3 w-3 text-gray-400" />
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Opérations + Contrôles — affichage selon le type de contrat */}
+                        <div className="grid grid-cols-2 gap-3">
+
+                          {/* ─── Opérations ─── */}
+                          <div className={`space-y-2 p-3 rounded-lg border ${isPonctuel ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'}`}>
+                            <p className={`text-xs font-semibold ${isPonctuel ? 'text-amber-700' : 'text-gray-600'}`}>
+                              Opérations {isPonctuel ? '— quota' : '— fréquence'}
+                            </p>
+
+                            {isPonctuel && (
+                              /* PONCTUEL : nombre total d'opérations à réaliser */
+                              <div className="space-y-1.5">
+                                <span className="text-xs text-gray-500">Nombre d'opérations prévu *</span>
+                                <Input
+                                  type="number"
+                                  className="h-8"
+                                  min={1}
+                                  placeholder="Ex : 4"
+                                  value={cs.nombreOperations || ''}
+                                  onChange={(e) => updateSite(cs.siteId, { nombreOperations: e.target.value ? Number(e.target.value) : undefined })}
+                                />
+                              </div>
+                            )}
+                            <div className="space-y-1.5">
+                              <span className="text-xs text-gray-500">
+                                Fréquence {isPonctuel ? "(si plus d'une opération)" : '*'}
+                              </span>
+                              <FrequenceInput
+                                jours={cs.frequenceOperationsJours}
+                                mois={cs.frequenceOperationsMois}
+                                placeholder={isPonctuel ? 'Ex : 30' : 'Ex : 3'}
+                                onChange={(v) => updateSite(cs.siteId, { frequenceOperationsJours: v.jours, frequenceOperationsMois: v.mois })}
+                              />
+                            </div>
+
+                            {/* Date première opération — commun aux deux types */}
+                            <div className="space-y-1">
+                              <span className="text-xs text-gray-500">Date de la 1ère opération</span>
+                              <Input
+                                type="date"
+                                className="h-8"
+                                value={cs.premiereDateOperation || ''}
+                                onChange={(e) => updateSite(cs.siteId, { premiereDateOperation: e.target.value })}
+                              />
+                            </div>
+                          </div>
+
+                          {/* ─── Contrôles ─── */}
+                          <div className={`space-y-2 p-3 rounded-lg border ${isPonctuel ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'}`}>
+                            <p className={`text-xs font-semibold ${isPonctuel ? 'text-amber-700' : 'text-gray-600'}`}>
+                              Contrôles {isPonctuel ? '— quota' : '— fréquence'}
+                            </p>
+
+                            {isPonctuel && (
+                              /* PONCTUEL : nombre total de contrôles */
+                              <div className="space-y-1.5">
+                                <span className="text-xs text-gray-500">Nombre de contrôles prévu</span>
+                                <Input
+                                  type="number"
+                                  className="h-8"
+                                  min={1}
+                                  placeholder="Ex : 1"
+                                  value={cs.nombreVisitesControle || ''}
+                                  onChange={(e) => updateSite(cs.siteId, { nombreVisitesControle: e.target.value ? Number(e.target.value) : undefined })}
+                                />
+                              </div>
+                            )}
+                            <div className="space-y-1.5">
+                              <span className="text-xs text-gray-500">
+                                Fréquence {isPonctuel ? "(si plus d'un contrôle)" : ''}
+                              </span>
+                              <FrequenceInput
+                                jours={cs.frequenceControleJours}
+                                mois={cs.frequenceControleMois}
+                                placeholder={isPonctuel ? 'Ex : 30' : 'Ex : 1'}
+                                onChange={(v) => updateSite(cs.siteId, { frequenceControleJours: v.jours, frequenceControleMois: v.mois })}
+                              />
+                            </div>
+
+                            {/* Date première visite de contrôle — commun aux deux types */}
+                            <div className="space-y-1">
+                              <span className="text-xs text-gray-500">Date de la 1ère visite</span>
+                              <Input
+                                type="date"
+                                className="h-8"
+                                value={cs.premiereDateControle || ''}
+                                onChange={(e) => updateSite(cs.siteId, { premiereDateControle: e.target.value })}
+                              />
+                            </div>
+                          </div>
+
+                        </div>
+
+                        {/* ─── Projection des dates ─── */}
+                        {(cs.datesPrevuesOperations?.length || cs.datesPrevuesControles?.length) && (
+                          <div className="space-y-3 pt-2 border-t border-gray-100">
+                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Projection des dates</p>
+
+                            {cs.datesPrevuesOperations && cs.datesPrevuesOperations.length > 0 && (
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-medium text-gray-600">
+                                    Opérations ({cs.datesPrevuesOperations.length})
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => resetSiteDates(cs.siteId, 'ops')}
+                                    className="text-xs text-blue-500 hover:text-blue-700"
+                                  >
+                                    ↺ Recalculer
+                                  </button>
+                                </div>
+                                <div className="grid grid-cols-3 gap-1.5">
+                                  {cs.datesPrevuesOperations.map((date, i) => (
+                                    <div key={i} className="flex items-center gap-1">
+                                      <span className="text-[10px] text-gray-400 w-4 flex-shrink-0">#{i + 1}</span>
+                                      <Input
+                                        type="date"
+                                        className="h-7 text-xs px-1.5"
+                                        value={date}
+                                        onChange={(e) => updateSiteDate(cs.siteId, 'ops', i, e.target.value)}
+                                      />
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {cs.datesPrevuesControles && cs.datesPrevuesControles.length > 0 && (
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-medium text-gray-600">
+                                    Contrôles ({cs.datesPrevuesControles.length})
+                                    <span className="font-normal text-gray-400"> — barrés : remplacés par une opération</span>
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => resetSiteDates(cs.siteId, 'ctrl')}
+                                    className="text-xs text-blue-500 hover:text-blue-700"
+                                  >
+                                    ↺ Recalculer
+                                  </button>
+                                </div>
+                                <div className="grid grid-cols-3 gap-1.5">
+                                  {cs.datesPrevuesControles.map((date, i) => {
+                                    const remplacee = visiteCouverte(date, cs.frequenceControleJours, cs.frequenceControleMois, cs.datesPrevuesOperations || []);
+                                    return (
+                                      <div key={i} className="flex items-center gap-1" title={remplacee ? 'Remplacée par une opération sur la même période' : undefined}>
+                                        <span className="text-[10px] text-gray-400 w-4 flex-shrink-0">#{i + 1}</span>
+                                        <Input
+                                          type="date"
+                                          className={cn('h-7 text-xs px-1.5', remplacee && 'line-through text-gray-400 bg-gray-50')}
+                                          value={date}
+                                          onChange={(e) => updateSiteDate(cs.siteId, 'ctrl', i, e.target.value)}
+                                        />
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Section 4: Options avancées */}
+      <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
+        <h3 className="font-medium text-sm text-gray-700">Options</h3>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Responsable planning</Label>
+            <Select value={responsablePlanningId || ''} onValueChange={(v) => setResponsablePlanningId(v || undefined)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sélectionner (optionnel)" />
+              </SelectTrigger>
+              <SelectContent>
+                {users
+                  .filter((u: User) => u.actif || u.id === responsablePlanningId)
+                  .map((u: User) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.prenom} {u.nom}
+                      {!u.actif ? ' (désactivé)' : ''}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Statut</Label>
+            <Select value={statut} onValueChange={(v) => setStatut(v as ContratStatut)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ACTIF">Actif</SelectItem>
+                <SelectItem value="SUSPENDU">Suspendu</SelectItem>
+                <SelectItem value="TERMINE">Terminé</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Notes</Label>
+          <Textarea name="notes" defaultValue={contrat?.notes || ''} rows={2} placeholder="Notes internes..." />
+        </div>
+
+        <div className="flex items-center gap-6 pt-2">
+          {!isPonctuel && (
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" name="reconductionAuto" defaultChecked={contrat?.reconductionAuto} className="rounded" />
+              Reconduction automatique
+            </label>
+          )}
+        </div>
+      </div>
+
+      <DialogFooter className="pt-4 border-t">
+        <Button type="button" variant="outline" onClick={onCancel}>
+          Annuler
+        </Button>
+        <Button type="submit" disabled={isPending}>
+          {isPending ? 'Enregistrement...' : (isEdit ? 'Mettre à jour' : 'Créer le contrat')}
+        </Button>
+      </DialogFooter>
+    </form>
   );
 }
 
@@ -311,6 +1209,7 @@ export function ContratsPage() {
         const prestations = c.prestations.join(' ');
         const bc = c.numeroBonCommande || '';
         return (
+          (c.nom || '').toLowerCase().includes(q) ||
           clientName.toLowerCase().includes(q) ||
           prestations.toLowerCase().includes(q) ||
           bc.toLowerCase().includes(q)
@@ -323,829 +1222,14 @@ export function ContratsPage() {
   const users = usersData || [];
   const prestations = prestationsData || [];
 
-  const submitContrat = (data: CreateContratInput, isEdit: boolean) => {
-    if (isEdit && editingContrat) {
-      updateMutation.mutate({ id: editingContrat.id, data });
-    } else {
-      createMutation.mutate(data);
-    }
+  const formProps = {
+    clientIdFilter,
+    clients,
+    users,
+    prestations,
+    isPending: createMutation.isPending || updateMutation.isPending,
   };
 
-  const ContratForm = ({
-    contrat,
-    isEdit,
-  }: {
-    contrat?: Contrat;
-    isEdit: boolean;
-  }) => {
-    const defaultClientId = clientIdFilter || contrat?.clientId || '';
-    const [nom, setNom] = useState((contrat as any)?.nom || '');
-    const [clientId, setClientId] = useState<string | undefined>(defaultClientId || undefined);
-    // Objet client complet (avec sites) pour le client sélectionné — conservé séparément de la
-    // liste `clients` chargée en arrière-plan, car celle-ci ne contient pas forcément le client
-    // choisi via la recherche (voir ClientCombobox).
-    const [selectedClientObj, setSelectedClientObj] = useState<Client | undefined>(
-      () => (contrat?.client as Client | undefined) || clients.find((c) => c.id === defaultClientId)
-    );
-    const [type, setType] = useState<ContratType>(contrat?.type || 'ANNUEL');
-    const [responsablePlanningId, setResponsablePlanningId] = useState<string | undefined>(contrat?.responsablePlanningId || undefined);
-    const [statut, setStatut] = useState<ContratStatut>(contrat?.statut || 'ACTIF');
-    const [dateDebut, setDateDebut] = useState(contrat?.dateDebut?.split('T')[0] || '');
-    const [dateFin, setDateFin] = useState(contrat?.dateFin?.split('T')[0] || '');
-    const [dateDebutConvention, setDateDebutConvention] = useState((contrat as any)?.dateDebutConvention?.split('T')[0] || '');
-    const [dateFinConvention, setDateFinConvention] = useState((contrat as any)?.dateFinConvention?.split('T')[0] || '');
-
-    const handleDateDebutChange = (value: string) => {
-      setDateDebut(value);
-      // Pour un contrat annuel, suggérer automatiquement la date de fin à +1 an
-      if (type === 'ANNUEL' && value) {
-        const fin = new Date(value);
-        fin.setFullYear(fin.getFullYear() + 1);
-        setDateFin(fin.toISOString().split('T')[0]);
-      }
-    };
-
-    // State pour le select d'ajout de site (permet de réinitialiser après sélection)
-    const [siteSelectKey, setSiteSelectKey] = useState(0);
-
-    // Sites configuration avec prestations
-    const [contratSites, setContratSites] = useState<ContratSiteInput[]>(
-      contrat?.contratSites?.map(cs => ({
-        siteId: cs.siteId,
-        prestations: cs.prestations || [],
-        prixPrestations: (cs.prixPrestations as Record<string, number>) || {},
-        frequenceOperationsJours: cs.frequenceOperationsJours ?? undefined,
-        frequenceControleJours: cs.frequenceControleJours ?? undefined,
-        premiereDateOperation: cs.premiereDateOperation?.split('T')[0],
-        premiereDateControle: cs.premiereDateControle?.split('T')[0],
-        nombreOperations: cs.nombreOperations ?? undefined,
-        nombreVisitesControle: cs.nombreVisitesControle ?? undefined,
-        notes: cs.notes ?? undefined,
-      })) || []
-    );
-
-    // État pour les sites dépliés/repliés — dépliés par défaut pour ne pas cacher
-    // les prestations/prix (source d'oublis fréquente)
-    const [expandedSites, setExpandedSites] = useState<Set<string>>(
-      new Set((contrat?.contratSites || []).map(cs => cs.siteId))
-    );
-
-    // Get selected client's sites
-    const selectedClient = selectedClientObj;
-    const availableSites = selectedClient?.sites || [];
-
-    // Sites non encore ajoutés au contrat
-    const sitesNotInContract = availableSites.filter(s => !contratSites.find(cs => cs.siteId === s.id));
-
-    // Add a site to the contract
-    const addSite = (siteId: string) => {
-      if (!siteId || contratSites.find(cs => cs.siteId === siteId)) return;
-      setContratSites([...contratSites, { siteId, prestations: [] }]);
-      setExpandedSites(prev => new Set([...prev, siteId]));
-      // Reset le select en changeant sa clé
-      setSiteSelectKey(prev => prev + 1);
-    };
-
-    // Remove a site from the contract
-    const removeSite = (siteId: string) => {
-      setContratSites(contratSites.filter(cs => cs.siteId !== siteId));
-      setExpandedSites(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(siteId);
-        return newSet;
-      });
-    };
-
-    // Update a site's configuration
-    const updateSite = (siteId: string, updates: Partial<ContratSiteInput>) => {
-      setContratSites(contratSites.map(cs => {
-        if (cs.siteId !== siteId) return cs;
-        const updated = { ...cs, ...updates };
-        // Auto-recompute ops dates when schedule params change
-        if ('premiereDateOperation' in updates || 'frequenceOperationsJours' in updates || 'nombreOperations' in updates) {
-          updated.datesPrevuesOperations = computeProjectionDates(
-            updated.premiereDateOperation || '',
-            updated.nombreOperations,
-            updated.frequenceOperationsJours,
-            dateFin || undefined,
-          );
-        }
-        // Auto-recompute controls dates when schedule params change
-        if ('premiereDateControle' in updates || 'frequenceControleJours' in updates || 'nombreVisitesControle' in updates) {
-          updated.datesPrevuesControles = computeProjectionDates(
-            updated.premiereDateControle || '',
-            updated.nombreVisitesControle,
-            updated.frequenceControleJours,
-            dateFin || undefined,
-          );
-        }
-        return updated;
-      }));
-    };
-
-    const updateSiteDate = (siteId: string, type: 'ops' | 'ctrl', index: number, value: string) => {
-      setContratSites(contratSites.map(cs => {
-        if (cs.siteId !== siteId) return cs;
-        if (type === 'ops') {
-          const dates = [...(cs.datesPrevuesOperations || [])];
-          dates[index] = value;
-          return { ...cs, datesPrevuesOperations: dates };
-        } else {
-          const dates = [...(cs.datesPrevuesControles || [])];
-          dates[index] = value;
-          return { ...cs, datesPrevuesControles: dates };
-        }
-      }));
-    };
-
-    const resetSiteDates = (siteId: string, type: 'ops' | 'ctrl') => {
-      const cs = contratSites.find(s => s.siteId === siteId);
-      if (!cs) return;
-      if (type === 'ops') {
-        updateSite(siteId, { datesPrevuesOperations: computeProjectionDates(cs.premiereDateOperation || '', cs.nombreOperations, cs.frequenceOperationsJours, dateFin || undefined) });
-      } else {
-        updateSite(siteId, { datesPrevuesControles: computeProjectionDates(cs.premiereDateControle || '', cs.nombreVisitesControle, cs.frequenceControleJours, dateFin || undefined) });
-      }
-    };
-
-    // Add prestation to a site
-    const addPrestationToSite = (siteId: string, prestationNom: string) => {
-      const site = contratSites.find(cs => cs.siteId === siteId);
-      if (!site) return;
-      const currentPrestations = site.prestations || [];
-      if (!currentPrestations.includes(prestationNom)) {
-        updateSite(siteId, { prestations: [...currentPrestations, prestationNom] });
-      }
-    };
-
-    // Remove prestation from a site
-    const removePrestationFromSite = (siteId: string, prestationNom: string) => {
-      const site = contratSites.find(cs => cs.siteId === siteId);
-      if (!site) return;
-      const currentPrestations = site.prestations || [];
-      updateSite(siteId, { prestations: currentPrestations.filter(p => p !== prestationNom) });
-    };
-
-    // Toggle site expansion
-    const toggleSiteExpansion = (siteId: string) => {
-      setExpandedSites(prev => {
-        const newSet = new Set(prev);
-        if (newSet.has(siteId)) {
-          newSet.delete(siteId);
-        } else {
-          newSet.add(siteId);
-        }
-        return newSet;
-      });
-    };
-
-    // Reset sites when client changes
-    useEffect(() => {
-      if (!isEdit) {
-        setContratSites([]);
-        setExpandedSites(new Set());
-      }
-    }, [clientId, isEdit]);
-
-    const isPonctuel = type === 'PONCTUEL';
-    const hasSites = contratSites.length > 0;
-
-    // Compute all prestations across all sites for the contrat level
-    const allSitePrestations = useMemo(() => {
-      const allPrests = new Set<string>();
-      contratSites.forEach(cs => {
-        (cs.prestations || []).forEach(p => allPrests.add(p));
-      });
-      return Array.from(allPrests);
-    }, [contratSites]);
-
-    return (
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          const formData = new FormData(e.currentTarget);
-
-          // Validation pour contrat ponctuel
-          if (isPonctuel) {
-            const numeroBonCommande = formData.get('numeroBonCommande') as string;
-            if (!numeroBonCommande) {
-              toast.error('Numéro de bon de commande requis pour un contrat ponctuel');
-              return;
-            }
-          }
-
-          // Validation des sites
-          if (hasSites) {
-            for (const cs of contratSites) {
-              if (!cs.prestations || cs.prestations.length === 0) {
-                const siteName = availableSites.find(s => s.id === cs.siteId)?.nom || 'Site';
-                toast.error(`Sélectionnez au moins une prestation pour ${siteName}`);
-                return;
-              }
-              const prestationSansPrix = cs.prestations.find(nom => !cs.prixPrestations?.[nom]);
-              if (prestationSansPrix) {
-                const siteName = availableSites.find(s => s.id === cs.siteId)?.nom || 'Site';
-                toast.error(`Indiquez le prix de "${prestationSansPrix}" pour ${siteName}`);
-                setExpandedSites(prev => new Set([...prev, cs.siteId]));
-                return;
-              }
-              if (isPonctuel) {
-                // Pour les ponctuels : au moins un nombre d'opérations ou de contrôles
-                if (!cs.nombreOperations && !cs.nombreVisitesControle) {
-                  const siteName = availableSites.find(s => s.id === cs.siteId)?.nom || 'Site';
-                  toast.error(`Indiquez le nombre d'opérations ou de contrôles pour ${siteName}`);
-                  return;
-                }
-              } else {
-                // Pour les annuels : au moins une fréquence
-                if (!cs.frequenceOperationsJours && !cs.frequenceControleJours) {
-                  const siteName = availableSites.find(s => s.id === cs.siteId)?.nom || 'Site';
-                  toast.error(`Configurez au moins une fréquence (en jours) pour ${siteName}`);
-                  return;
-                }
-              }
-            }
-          }
-
-          if (!clientId) {
-            toast.error('Client requis');
-            return;
-          }
-
-          if (!hasSites) {
-            toast.error('Ajoutez au moins un site au contrat');
-            return;
-          }
-
-          const cleanedContratSites = contratSites.map((cs) => ({
-            ...cs,
-            frequenceOperationsJours: cs.frequenceOperationsJours ?? undefined,
-            frequenceControleJours: cs.frequenceControleJours ?? undefined,
-            nombreOperations: cs.nombreOperations ?? undefined,
-            nombreVisitesControle: cs.nombreVisitesControle ?? undefined,
-            notes: cs.notes ?? undefined,
-          }));
-
-          const data: CreateContratInput = {
-            clientId: clientId as string,
-            nom: nom || undefined,
-            type,
-            dateDebut: dateDebut,
-            dateFin: dateFin || undefined,
-            reconductionAuto: formData.get('reconductionAuto') === 'on',
-            prestations: allSitePrestations, // Toutes les prestations de tous les sites
-            responsablePlanningId,
-            statut,
-            notes: (formData.get('notes') as string) || undefined,
-            autoCreerProchaine: true,
-            dateDebutConvention: dateDebutConvention || undefined,
-            dateFinConvention: dateFinConvention || undefined,
-            // Ponctuel fields
-            numeroBonCommande: isPonctuel ? (formData.get('numeroBonCommande') as string) : undefined,
-            // Sites avec leurs configurations
-            contratSites: cleanedContratSites,
-          };
-
-          if (isEdit) {
-            submitContrat(data, true);
-          } else {
-            setPendingCreate(data);
-            setConfirmCreateOpen(true);
-          }
-        }}
-        className="space-y-5 max-h-[70vh] overflow-y-auto pr-2"
-      >
-        {/* Section 1: Informations de base */}
-        <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
-          <h3 className="font-medium text-sm text-gray-700">Informations générales</h3>
-
-          <div className="space-y-2">
-            <Label>Nom du contrat</Label>
-            <Input
-              placeholder="Ex: Dératisation annuelle 2026 — Site Alger"
-              value={nom}
-              onChange={(e) => setNom(e.target.value)}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Client *</Label>
-              <ClientCombobox
-                selected={selectedClientObj}
-                onSelect={(client) => {
-                  setClientId(client.id);
-                  setSelectedClientObj(client);
-                }}
-                initialClients={clients}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Type *</Label>
-              <Select value={type} onValueChange={(v) => setType(v as ContratType)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ANNUEL">Annuel</SelectItem>
-                  <SelectItem value="PONCTUEL">Ponctuel</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Date début *</Label>
-              <Input
-                type="date"
-                value={dateDebut}
-                onChange={(e) => handleDateDebutChange(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>
-                {isPonctuel ? 'Date fin (optionnel)' : 'Date fin'}
-                {!isPonctuel && dateFin && (
-                  <span className="ml-2 text-xs font-normal text-green-600">← suggérée automatiquement</span>
-                )}
-              </Label>
-              <Input
-                type="date"
-                value={dateFin}
-                onChange={(e) => setDateFin(e.target.value)}
-              />
-            </div>
-          </div>
-
-          {/* Dates convention */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Début convention</Label>
-              <Input
-                type="date"
-                value={dateDebutConvention}
-                onChange={(e) => setDateDebutConvention(e.target.value)}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Fin convention</Label>
-              <Input
-                type="date"
-                value={dateFinConvention}
-                onChange={(e) => setDateFinConvention(e.target.value)}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Section 2: Champs spécifiques ponctuel */}
-        {isPonctuel && (
-          <div className="space-y-4 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-            <h3 className="font-medium text-sm text-yellow-800">Contrat ponctuel</h3>
-            <div className="space-y-2">
-              <Label>N° Bon de commande *</Label>
-              <Input
-                name="numeroBonCommande"
-                defaultValue={contrat?.numeroBonCommande || ''}
-                placeholder="Ex: BC-2024-001"
-                required={isPonctuel}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Section 3: Configuration des sites */}
-        {clientId && (
-          <div className="space-y-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <div className="flex items-center justify-between">
-              <h3 className="font-medium text-sm text-blue-800 flex items-center gap-2">
-                <MapPin className="h-4 w-4" />
-                Sites du contrat *
-              </h3>
-              {sitesNotInContract.length > 0 && (
-                <Select key={siteSelectKey} onValueChange={addSite}>
-                  <SelectTrigger className="w-48">
-                    <SelectValue placeholder="Ajouter un site" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sitesNotInContract.map((site) => (
-                      <SelectItem key={site.id} value={site.id}>
-                        {site.nom}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-
-            {availableSites.length === 0 ? (
-              <p className="text-sm text-blue-700">
-                Ce client n'a pas de sites configurés. Ajoutez des sites au client d'abord.
-              </p>
-            ) : contratSites.length === 0 ? (
-              <p className="text-sm text-blue-700">
-                Ajoutez au moins un site pour configurer les prestations et fréquences.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {contratSites.map((cs) => {
-                  const site = availableSites.find(s => s.id === cs.siteId);
-                  const isExpanded = expandedSites.has(cs.siteId);
-                  const sitePrestations = cs.prestations || [];
-                  const availablePrestationsForSite = prestations.filter(p => !sitePrestations.includes(p.nom));
-                  const missingPriceCount = sitePrestations.filter(nom => !cs.prixPrestations?.[nom]).length;
-
-                  return (
-                    <div
-                      key={cs.siteId}
-                      className={`bg-white rounded border overflow-hidden ${
-                        sitePrestations.length === 0 || missingPriceCount > 0 ? 'border-amber-300' : ''
-                      }`}
-                    >
-                      {/* En-tête du site */}
-                      <div
-                        className="p-3 flex items-center justify-between cursor-pointer hover:bg-gray-50"
-                        onClick={() => toggleSiteExpansion(cs.siteId)}
-                      >
-                        <div className="flex items-center gap-2">
-                          {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                          <span className="font-medium">{site?.nom || 'Site'}</span>
-                          {sitePrestations.length > 0 ? (
-                            <Badge variant="secondary" className="text-xs">
-                              {sitePrestations.length} prestation(s)
-                            </Badge>
-                          ) : (
-                            <Badge className="text-xs bg-amber-100 text-amber-800 hover:bg-amber-100 border border-amber-300">
-                              Aucune prestation
-                            </Badge>
-                          )}
-                          {missingPriceCount > 0 && (
-                            <Badge className="text-xs bg-amber-100 text-amber-800 hover:bg-amber-100 border border-amber-300">
-                              {missingPriceCount} prix manquant{missingPriceCount > 1 ? 's' : ''}
-                            </Badge>
-                          )}
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeSite(cs.siteId);
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4 text-red-500" />
-                        </Button>
-                      </div>
-
-                      {/* Contenu déplié */}
-                      {isExpanded && (
-                        <div className="p-3 border-t space-y-4">
-                          {/* Prestations du site */}
-                          <div className="space-y-2">
-                            <Label className="text-xs font-medium">Prestations et prix *</Label>
-                            {availablePrestationsForSite.length > 0 && (
-                              <Select onValueChange={(v) => addPrestationToSite(cs.siteId, v)}>
-                                <SelectTrigger className="h-8 w-56 border-dashed border-amber-300 text-amber-800 hover:bg-amber-50">
-                                  <SelectValue
-                                    placeholder={
-                                      sitePrestations.length === 0
-                                        ? 'Ajouter une prestation'
-                                        : 'Ajouter une autre prestation'
-                                    }
-                                  />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {availablePrestationsForSite.map((p) => (
-                                    <SelectItem key={p.id} value={p.nom}>
-                                      {p.nom}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            )}
-                            {sitePrestations.length === 0 && (
-                              <p className="text-xs text-amber-700">
-                                Au moins une prestation requise pour ce site.
-                              </p>
-                            )}
-                            {sitePrestations.length > 0 && (
-                              <div className="space-y-1.5">
-                                {sitePrestations.map((nom) => {
-                                  const priceMissing = !cs.prixPrestations?.[nom];
-                                  return (
-                                    <div
-                                      key={nom}
-                                      className={`flex items-center gap-2 p-2 rounded border ${
-                                        priceMissing ? 'bg-amber-50 border-amber-300' : 'bg-white border-gray-100'
-                                      }`}
-                                    >
-                                      {/* Nom */}
-                                      <span className="text-sm font-medium text-gray-700 flex-1 min-w-0 truncate">{nom}</span>
-                                      {/* Prix */}
-                                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                                        <Input
-                                          type="number"
-                                          min={0}
-                                          step="any"
-                                          className={`h-8 w-28 text-sm px-2 font-medium ${
-                                            priceMissing ? 'border-amber-400 focus-visible:ring-amber-400' : ''
-                                          }`}
-                                          placeholder="Prix *"
-                                          value={(cs.prixPrestations?.[nom]) ?? ''}
-                                          onChange={(e) => {
-                                            const prix = e.target.value ? Number(e.target.value) : undefined;
-                                            updateSite(cs.siteId, {
-                                              prixPrestations: {
-                                                ...(cs.prixPrestations || {}),
-                                                ...(prix !== undefined ? { [nom]: prix } : Object.fromEntries(
-                                                  Object.entries(cs.prixPrestations || {}).filter(([k]) => k !== nom)
-                                                )),
-                                              },
-                                            });
-                                          }}
-                                        />
-                                        <span className="text-xs text-gray-400">DA</span>
-                                      </div>
-                                      {priceMissing && (
-                                        <span className="text-[11px] font-medium text-amber-700 flex-shrink-0">
-                                          Prix manquant
-                                        </span>
-                                      )}
-                                      <button
-                                        type="button"
-                                        onClick={() => removePrestationFromSite(cs.siteId, nom)}
-                                        className="hover:bg-gray-100 rounded-full p-0.5 flex-shrink-0"
-                                      >
-                                        <X className="h-3 w-3 text-gray-400" />
-                                      </button>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Opérations + Contrôles — affichage selon le type de contrat */}
-                          <div className="grid grid-cols-2 gap-3">
-
-                            {/* ─── Opérations ─── */}
-                            <div className={`space-y-2 p-3 rounded-lg border ${isPonctuel ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'}`}>
-                              <p className={`text-xs font-semibold ${isPonctuel ? 'text-amber-700' : 'text-gray-600'}`}>
-                                Opérations {isPonctuel ? '— quota' : '— fréquence'}
-                              </p>
-
-                              {isPonctuel ? (
-                                /* PONCTUEL : nombre total d'opérations à réaliser */
-                                <div className="space-y-1.5">
-                                  <span className="text-xs text-gray-500">Nombre d'opérations prévu *</span>
-                                  <Input
-                                    type="number"
-                                    className="h-8"
-                                    min={1}
-                                    placeholder="Ex : 4"
-                                    value={cs.nombreOperations || ''}
-                                    onChange={(e) => updateSite(cs.siteId, { nombreOperations: e.target.value ? Number(e.target.value) : undefined })}
-                                  />
-                                </div>
-                              ) : (
-                                /* ANNUEL : intervalle en jours */
-                                <div className="space-y-1.5">
-                                  <span className="text-xs text-gray-500">Toutes les X jours *</span>
-                                  <div className="flex items-center gap-2">
-                                    <Input
-                                      type="number"
-                                      className="h-8"
-                                      min={1}
-                                      placeholder="Ex : 30"
-                                      value={cs.frequenceOperationsJours || ''}
-                                      onChange={(e) => updateSite(cs.siteId, {
-                                        frequenceOperationsJours: e.target.value ? Number(e.target.value) : undefined,
-                                      })}
-                                    />
-                                    <span className="text-xs text-gray-400 whitespace-nowrap">jours</span>
-                                  </div>
-                                  {cs.frequenceOperationsJours && (
-                                    <p className="text-xs text-green-700 font-medium">
-                                      ≈ {Math.round(365 / cs.frequenceOperationsJours)}x / an
-                                    </p>
-                                  )}
-                                </div>
-                              )}
-
-                              {/* Date première opération — commun aux deux types */}
-                              <div className="space-y-1">
-                                <span className="text-xs text-gray-500">Date de la 1ère opération</span>
-                                <Input
-                                  type="date"
-                                  className="h-8"
-                                  value={cs.premiereDateOperation || ''}
-                                  onChange={(e) => updateSite(cs.siteId, { premiereDateOperation: e.target.value })}
-                                />
-                              </div>
-                            </div>
-
-                            {/* ─── Contrôles ─── */}
-                            <div className={`space-y-2 p-3 rounded-lg border ${isPonctuel ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'}`}>
-                              <p className={`text-xs font-semibold ${isPonctuel ? 'text-amber-700' : 'text-gray-600'}`}>
-                                Contrôles {isPonctuel ? '— quota' : '— fréquence'}
-                              </p>
-
-                              {isPonctuel ? (
-                                /* PONCTUEL : nombre total de contrôles */
-                                <div className="space-y-1.5">
-                                  <span className="text-xs text-gray-500">Nombre de contrôles prévu</span>
-                                  <Input
-                                    type="number"
-                                    className="h-8"
-                                    min={1}
-                                    placeholder="Ex : 1"
-                                    value={cs.nombreVisitesControle || ''}
-                                    onChange={(e) => updateSite(cs.siteId, { nombreVisitesControle: e.target.value ? Number(e.target.value) : undefined })}
-                                  />
-                                </div>
-                              ) : (
-                                /* ANNUEL : intervalle en jours */
-                                <div className="space-y-1.5">
-                                  <span className="text-xs text-gray-500">Toutes les X jours</span>
-                                  <div className="flex items-center gap-2">
-                                    <Input
-                                      type="number"
-                                      className="h-8"
-                                      min={1}
-                                      placeholder="Ex : 90"
-                                      value={cs.frequenceControleJours || ''}
-                                      onChange={(e) => updateSite(cs.siteId, {
-                                        frequenceControleJours: e.target.value ? Number(e.target.value) : undefined,
-                                      })}
-                                    />
-                                    <span className="text-xs text-gray-400 whitespace-nowrap">jours</span>
-                                  </div>
-                                  {cs.frequenceControleJours && (
-                                    <p className="text-xs text-green-700 font-medium">
-                                      ≈ {Math.round(365 / cs.frequenceControleJours)}x / an
-                                    </p>
-                                  )}
-                                </div>
-                              )}
-
-                              {/* Date première visite de contrôle — commun aux deux types */}
-                              <div className="space-y-1">
-                                <span className="text-xs text-gray-500">Date de la 1ère visite</span>
-                                <Input
-                                  type="date"
-                                  className="h-8"
-                                  value={cs.premiereDateControle || ''}
-                                  onChange={(e) => updateSite(cs.siteId, { premiereDateControle: e.target.value })}
-                                />
-                              </div>
-                            </div>
-
-                          </div>
-
-                          {/* ─── Projection des dates ─── */}
-                          {(cs.datesPrevuesOperations?.length || cs.datesPrevuesControles?.length) && (
-                            <div className="space-y-3 pt-2 border-t border-gray-100">
-                              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Projection des dates</p>
-
-                              {cs.datesPrevuesOperations && cs.datesPrevuesOperations.length > 0 && (
-                                <div className="space-y-1.5">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-xs font-medium text-gray-600">
-                                      Opérations ({cs.datesPrevuesOperations.length})
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => resetSiteDates(cs.siteId, 'ops')}
-                                      className="text-xs text-blue-500 hover:text-blue-700"
-                                    >
-                                      ↺ Recalculer
-                                    </button>
-                                  </div>
-                                  <div className="grid grid-cols-3 gap-1.5">
-                                    {cs.datesPrevuesOperations.map((date, i) => (
-                                      <div key={i} className="flex items-center gap-1">
-                                        <span className="text-[10px] text-gray-400 w-4 flex-shrink-0">#{i + 1}</span>
-                                        <Input
-                                          type="date"
-                                          className="h-7 text-xs px-1.5"
-                                          value={date}
-                                          onChange={(e) => updateSiteDate(cs.siteId, 'ops', i, e.target.value)}
-                                        />
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
-                              {cs.datesPrevuesControles && cs.datesPrevuesControles.length > 0 && (
-                                <div className="space-y-1.5">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-xs font-medium text-gray-600">
-                                      Contrôles ({cs.datesPrevuesControles.length})
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => resetSiteDates(cs.siteId, 'ctrl')}
-                                      className="text-xs text-blue-500 hover:text-blue-700"
-                                    >
-                                      ↺ Recalculer
-                                    </button>
-                                  </div>
-                                  <div className="grid grid-cols-3 gap-1.5">
-                                    {cs.datesPrevuesControles.map((date, i) => (
-                                      <div key={i} className="flex items-center gap-1">
-                                        <span className="text-[10px] text-gray-400 w-4 flex-shrink-0">#{i + 1}</span>
-                                        <Input
-                                          type="date"
-                                          className="h-7 text-xs px-1.5"
-                                          value={date}
-                                          onChange={(e) => updateSiteDate(cs.siteId, 'ctrl', i, e.target.value)}
-                                        />
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Section 4: Options avancées */}
-        <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
-          <h3 className="font-medium text-sm text-gray-700">Options</h3>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Responsable planning</Label>
-              <Select value={responsablePlanningId || ''} onValueChange={(v) => setResponsablePlanningId(v || undefined)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sélectionner (optionnel)" />
-                </SelectTrigger>
-                <SelectContent>
-                  {users
-                    .filter((u: User) => u.actif || u.id === responsablePlanningId)
-                    .map((u: User) => (
-                      <SelectItem key={u.id} value={u.id}>
-                        {u.prenom} {u.nom}
-                        {!u.actif ? ' (désactivé)' : ''}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Statut</Label>
-              <Select value={statut} onValueChange={(v) => setStatut(v as ContratStatut)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ACTIF">Actif</SelectItem>
-                  <SelectItem value="SUSPENDU">Suspendu</SelectItem>
-                  <SelectItem value="TERMINE">Terminé</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label>Notes</Label>
-            <Textarea name="notes" defaultValue={contrat?.notes || ''} rows={2} placeholder="Notes internes..." />
-          </div>
-
-          <div className="flex items-center gap-6 pt-2">
-            {!isPonctuel && (
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" name="reconductionAuto" defaultChecked={contrat?.reconductionAuto} className="rounded" />
-                Reconduction automatique
-              </label>
-            )}
-          </div>
-        </div>
-
-        <DialogFooter className="pt-4 border-t">
-          <Button type="button" variant="outline" onClick={() => (isEdit ? setEditingContrat(null) : setIsCreateOpen(false))}>
-            Annuler
-          </Button>
-          <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
-            {createMutation.isPending || updateMutation.isPending ? 'Enregistrement...' : (isEdit ? 'Mettre à jour' : 'Créer le contrat')}
-          </Button>
-        </DialogFooter>
-      </form>
-    );
-  };
 
   // KPI counts
   const kpiActifs   = contrats.filter(c => c.statut === 'ACTIF').length;
@@ -1243,7 +1327,7 @@ export function ContratsPage() {
           <div className="relative">
             <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-gray-400" />
             <Input value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-              placeholder="Entreprise, prestation, BC..."
+              placeholder="Nom, entreprise, prestation, BC..."
               className="pl-8 h-8 w-52 text-sm border-gray-200" />
             {searchTerm && (
               <button onClick={() => setSearchTerm('')} className="absolute right-2 top-2">
@@ -1605,7 +1689,15 @@ export function ContratsPage() {
               Le planning sera généré automatiquement à la création.
             </DialogDescription>
           </DialogHeader>
-          <ContratForm isEdit={false} />
+          <ContratForm
+            isEdit={false}
+            {...formProps}
+            onSubmit={(data) => {
+              setPendingCreate(data);
+              setConfirmCreateOpen(true);
+            }}
+            onCancel={() => setIsCreateOpen(false)}
+          />
         </DialogContent>
       </Dialog>
 
@@ -1617,7 +1709,16 @@ export function ContratsPage() {
               Mettez à jour les informations du contrat
             </DialogDescription>
           </DialogHeader>
-          {editingContrat && <ContratForm contrat={editingContrat} isEdit={true} />}
+          {editingContrat && (
+            <ContratForm
+              key={editingContrat.id}
+              contrat={editingContrat}
+              isEdit={true}
+              {...formProps}
+              onSubmit={(data) => updateMutation.mutate({ id: editingContrat.id, data })}
+              onCancel={() => setEditingContrat(null)}
+            />
+          )}
         </DialogContent>
       </Dialog>
 

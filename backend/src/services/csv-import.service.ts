@@ -840,21 +840,22 @@ export const csvService = {
 
     // Génération du planning hors transaction (lourd)
     if (genererPlanning) {
+      // Un contrat multi-sites occupe plusieurs lignes : ne générer son planning qu'une fois,
+      // et sans dupliquer les interventions existantes en cas de ré-import.
+      const contratIds = new Set<string>();
       for (const row of preview.preview!) {
         if (!row._valid || !row._existingContratId && row._action !== 'CREATE') continue;
         if (!row.dateReprisePlanification) continue; // sécurité : ne génère que si date_reprise fournie
-        // Find contrat by refExterne or last created
-        let contrat: any = null;
-        if (row.refExterne) {
-          contrat = await prisma.contrat.findUnique({ where: { refExterne: row.refExterne } });
-        }
-        if (contrat) {
-          try {
-            await planningService.genererPlanningContrat(contrat.id, userId);
-            planningGenere++;
-          } catch (_e) {
-            // Non-blocking
-          }
+        if (!row.refExterne) continue;
+        const contrat = await prisma.contrat.findUnique({ where: { refExterne: row.refExterne } });
+        if (contrat) contratIds.add(contrat.id);
+      }
+      for (const contratId of contratIds) {
+        try {
+          await planningService.regenererPlanningContrat(contratId, userId);
+          planningGenere++;
+        } catch (_e) {
+          // Non-blocking
         }
       }
     }

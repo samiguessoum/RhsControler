@@ -1827,6 +1827,8 @@ export const avenantApi = {
       montantHT?: number;
       nombreOperationsSupplementaires?: number;
       nombreVisitesControleSupplementaires?: number;
+      dateDebut?: string;
+      frequenceJours?: number;
       notes?: string;
     }
   ) => {

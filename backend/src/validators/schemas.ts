@@ -123,13 +123,18 @@ const contratSiteSchema = z.object({
   siteId: z.string().uuid('ID site invalide'),
   prestations: z.array(z.string()).min(1, 'Au moins une prestation requise').optional(),
   prixPrestations: z.record(z.string(), z.number().min(0)).optional(),
-  frequenceOperationsJours: z.number().int().positive().optional(),
-  frequenceControleJours: z.number().int().positive().optional(),
-  premiereDateOperation: z.string().or(z.date()).transform((val) => new Date(val)).optional(),
-  premiereDateControle: z.string().or(z.date()).transform((val) => new Date(val)).optional(),
-  nombreOperations: z.number().int().positive().optional(),
-  nombreVisitesControle: z.number().int().positive().optional(),
-  notes: z.string().optional(),
+  frequenceOperationsJours: z.number().int().positive().optional().nullable(),
+  frequenceControleJours: z.number().int().positive().optional().nullable(),
+  frequenceOperationsMois: z.number().int().positive().optional().nullable(),
+  frequenceControleMois: z.number().int().positive().optional().nullable(),
+  premiereDateOperation: z.string().or(z.date()).transform((val) => new Date(val)).optional().nullable(),
+  premiereDateControle: z.string().or(z.date()).transform((val) => new Date(val)).optional().nullable(),
+  nombreOperations: z.number().int().positive().optional().nullable(),
+  nombreVisitesControle: z.number().int().positive().optional().nullable(),
+  notes: z.string().optional().nullable(),
+  // Dates projetées (éventuellement retouchées) dans le formulaire : prioritaires sur la fréquence
+  datesPrevuesOperations: z.array(z.string()).optional(),
+  datesPrevuesControles: z.array(z.string()).optional(),
 });
 
 export const createContratSchema = z.object({
@@ -151,6 +156,8 @@ export const createContratSchema = z.object({
   // Champs ponctuel
   numeroBonCommande: z.string().optional(),
   nombreOperations: z.number().int().positive().optional(),
+  dateDebutConvention: z.string().or(z.date()).transform((val) => new Date(val)).optional(),
+  dateFinConvention: z.string().or(z.date()).transform((val) => new Date(val)).optional(),
   // Sites du contrat
   contratSites: z.array(contratSiteSchema).optional(),
 }).refine((data) => {
@@ -193,6 +200,9 @@ export const createAvenantSchema = z.object({
   montantHT: z.number().nonnegative().optional(),
   nombreOperationsSupplementaires: z.number().int().nonnegative().optional().default(0),
   nombreVisitesControleSupplementaires: z.number().int().nonnegative().optional().default(0),
+  // Facultatifs : départ et fréquence des interventions de l'avenant (sinon suite du contrat)
+  dateDebut: z.string().or(z.date()).transform((val) => new Date(val)).optional(),
+  frequenceJours: z.number().int().positive().optional(),
   notes: z.string().optional(),
 }).refine(
   (data) => data.nombreOperationsSupplementaires > 0 || data.nombreVisitesControleSupplementaires > 0,
@@ -213,10 +223,12 @@ export const updateContratSchema = z.object({
   premiereDateControle: z.string().or(z.date()).transform((val) => new Date(val)).optional().nullable(),
   responsablePlanningId: z.string().uuid().optional().nullable(),
   statut: z.enum(['ACTIF', 'SUSPENDU', 'TERMINE']).optional(),
-  notes: z.string().optional(),
+  notes: z.string().optional().nullable(),
   autoCreerProchaine: z.boolean().optional(),
   numeroBonCommande: z.string().optional().nullable(),
   nombreOperations: z.number().int().positive().optional().nullable(),
+  dateDebutConvention: z.string().or(z.date()).transform((val) => new Date(val)).optional().nullable(),
+  dateFinConvention: z.string().or(z.date()).transform((val) => new Date(val)).optional().nullable(),
   contratSites: z.array(contratSiteSchema).optional(),
 });
 
@@ -239,6 +251,7 @@ export const createInterventionSchema = z.object({
   notesTerrain: z.string().optional(),
   responsable: z.string().optional(),
   employes: z.array(interventionEmployeSchema).optional(),
+  bonCommandeId: z.string().nullable().optional(),
 });
 
 export const updateInterventionSchema = createInterventionSchema.partial();

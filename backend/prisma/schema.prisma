@@ -669,6 +669,9 @@ model Intervention {
   avenant               Avenant?     @relation(fields: [avenantId], references: [id], onDelete: SetNull)
   montantApplique       Decimal?     @db.Decimal(15, 2)
   estPassageContractuel Boolean      @default(true)
+  // Visite de contrôle dont l'échéance est couverte par une opération : masquée (statut ANNULEE)
+  // mais conservée pour pouvoir réapparaître si l'opération est déplacée ou supprimée.
+  remplaceeParOperation Boolean      @default(false)
   exporteGCal  Boolean            @default(false)
   createdById  String
   createdBy    User               @relation("CreatedBy", fields: [createdById], references: [id])
