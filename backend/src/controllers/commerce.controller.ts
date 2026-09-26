@@ -1786,6 +1786,7 @@ export const commerceController = {
           commande: { select: { refBonCommandeClient: true } },
           contrat: {
             select: {
+              nom: true,
               refExterne: true,
               dateDebutConvention: true,
               numeroBonCommande: true,
@@ -1810,8 +1811,12 @@ export const commerceController = {
       const contrat = (facture as any).contrat;
       if (!mentionSpeciale && contrat) {
         const parts: string[] = [];
+        if (contrat.nom?.trim()) parts.push(`Contrat « ${contrat.nom.trim()} »`);
         if (contrat.refExterne) parts.push(`Selon le contrat N° ${contrat.refExterne}`);
-        const bc = contrat.bonsCommandes?.[0] ?? (contrat.numeroBonCommande ? { numero: contrat.numeroBonCommande, date: null } : null);
+        // Le n° saisi sur le contrat fait foi ; les BC importés servent de repli (avec leur date)
+        const bc = contrat.numeroBonCommande
+          ? { numero: contrat.numeroBonCommande, date: contrat.bonsCommandes?.find((b: any) => b.numero === contrat.numeroBonCommande)?.date ?? null }
+          : contrat.bonsCommandes?.[0] ?? null;
         if (bc?.numero) {
           const bcDate = bc.date ? ` du ${new Intl.DateTimeFormat('fr-FR').format(new Date(bc.date))}` : '';
           parts.push(`Selon le Bon de commande "${bc.numero}"${bcDate}`);

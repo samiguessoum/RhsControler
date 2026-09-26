@@ -3099,6 +3099,7 @@ export function CommercePage() {
       contratType?: 'PONCTUEL' | 'ANNUEL';
       contratNumeroBonCommande?: string;
       contratDateDebut?: string;
+      contratDateDebutConvention?: string | null;
       contratNom?: string | null;
       avenant?: { numero: number; nom?: string | null; numeroBonCommande?: string | null };
     } | null;
@@ -3114,7 +3115,10 @@ export function CommercePage() {
       if (state.contratType === 'PONCTUEL' && state.contratNumeroBonCommande) {
         mentions.push(`Selon le bon de commande "${state.contratNumeroBonCommande}"${dateDebutStr ? ` du ${dateDebutStr}` : ''}`);
       } else if (state.contratType === 'ANNUEL') {
-        if (dateDebutStr) mentions.push(`Selon la convention du ${dateDebutStr}`);
+        // Date de signature de la convention (et non le début de la période de prestations)
+        if (state.contratDateDebutConvention) {
+          mentions.push(`Convention signée le ${new Date(state.contratDateDebutConvention).toLocaleDateString('fr-FR')}`);
+        }
         if (state.contratNumeroBonCommande) mentions.push(`Selon le bon de commande "${state.contratNumeroBonCommande}"`);
       }
       if (state.avenant) {

@@ -23,7 +23,6 @@ import {
   Wrench,
   ClipboardCheck,
   Search,
-  ShoppingCart,
   FileSignature,
   Pencil,
 } from 'lucide-react';
@@ -44,7 +43,7 @@ import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { contratsApi, interventionsApi, prestationsApi, bonCommandeApi, avenantApi, clientsApi, usersApi } from '@/services/api';
+import { contratsApi, interventionsApi, prestationsApi, avenantApi, clientsApi, usersApi } from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
 import { ContratForm } from './Contrats';
 import { formatDate, getStatutColor, getStatutLabel, cn } from '@/lib/utils';
@@ -82,10 +81,8 @@ export function ContratDetailPage() {
     frequenceJours: '',
     notes: '',
   });
-  const [showBcDialog, setShowBcDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const { canDo } = useAuthStore();
-  const [bcForm, setBcForm] = useState({ numero: '', quotaPassages: '', notes: '' });
 
   const queryClient = useQueryClient();
 
@@ -125,26 +122,6 @@ export function ContratDetailPage() {
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Erreur lors de la création de l\'avenant');
-    },
-  });
-
-  const createBcMutation = useMutation({
-    mutationFn: () =>
-      bonCommandeApi.create({
-        numero: bcForm.numero.trim(),
-        clientId: contrat!.clientId,
-        contratId: id!,
-        quotaPassages: bcForm.quotaPassages ? parseInt(bcForm.quotaPassages) : null,
-        notes: bcForm.notes || undefined,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contrat', id] });
-      toast.success('Bon de commande ajouté au contrat');
-      setShowBcDialog(false);
-      setBcForm({ numero: '', quotaPassages: '', notes: '' });
-    },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Erreur lors de la création du bon de commande');
     },
   });
 
@@ -645,8 +622,8 @@ export function ContratDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Carte Avenants (ponctuel) / Bons de commande (annuel) */}
-          {isPonctuel ? (
+          {/* Carte Avenants (ponctuel). En annuel, le n° de bon de commande est un champ du contrat. */}
+          {isPonctuel && (
             <Card>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
@@ -684,40 +661,6 @@ export function ContratDetailPage() {
                     </p>
                     {av.notes && <p className="text-xs text-muted-foreground whitespace-pre-wrap">{av.notes}</p>}
                   </div>
-                ))}
-              </CardContent>
-            </Card>
-          ) : (
-            <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <ShoppingCart className="h-5 w-5 text-primary" />
-                    Bons de commande
-                  </CardTitle>
-                  <Button size="sm" variant="outline" onClick={() => setShowBcDialog(true)}>
-                    <Plus className="h-3.5 w-3.5 mr-1" />
-                    Ajouter
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {(!contrat.bonsCommandes || contrat.bonsCommandes.length === 0) && (
-                  <p className="text-sm text-muted-foreground">Aucun bon de commande lié à ce contrat.</p>
-                )}
-                {contrat.bonsCommandes?.map((bc) => (
-                  <Link
-                    key={bc.id}
-                    to={`/bons-commandes?id=${bc.id}`}
-                    className="block p-3 rounded-lg bg-blue-50 border border-blue-100 text-sm hover:bg-blue-100 transition-colors"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-blue-900">BC-{bc.numero}</span>
-                      <span className="text-xs text-blue-700">
-                        {bc.quotaPassages != null ? `${bc.passagesConsommes}/${bc.quotaPassages} passages` : 'Quota à renseigner'}
-                      </span>
-                    </div>
-                  </Link>
                 ))}
               </CardContent>
             </Card>
@@ -1285,66 +1228,6 @@ export function ContratDetailPage() {
               }
             >
               {createAvenantMutation.isPending ? 'Création...' : "Créer l'avenant"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog Bon de commande */}
-      <Dialog open={showBcDialog} onOpenChange={setShowBcDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <ShoppingCart className="h-5 w-5 text-primary" />
-              Nouveau bon de commande
-            </DialogTitle>
-            <DialogDescription>
-              Ajoute un bon de commande pour des prestations en complément de ce contrat annuel.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="bc-numero">Numéro *</Label>
-              <Input
-                id="bc-numero"
-                value={bcForm.numero}
-                onChange={(e) => setBcForm((f) => ({ ...f, numero: e.target.value }))}
-                placeholder="ex: BC-2026-042"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="bc-quota">Quota de passages</Label>
-              <Input
-                id="bc-quota"
-                type="number"
-                min={0}
-                value={bcForm.quotaPassages}
-                onChange={(e) => setBcForm((f) => ({ ...f, quotaPassages: e.target.value }))}
-                placeholder="ex: 5"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="bc-notes">Notes</Label>
-              <Textarea
-                id="bc-notes"
-                rows={3}
-                value={bcForm.notes}
-                onChange={(e) => setBcForm((f) => ({ ...f, notes: e.target.value }))}
-                placeholder="Notes internes..."
-              />
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowBcDialog(false)}>
-              Annuler
-            </Button>
-            <Button
-              onClick={() => createBcMutation.mutate()}
-              disabled={createBcMutation.isPending || !bcForm.numero.trim()}
-            >
-              {createBcMutation.isPending ? 'Création...' : 'Créer le bon de commande'}
             </Button>
           </DialogFooter>
         </DialogContent>

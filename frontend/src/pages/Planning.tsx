@@ -4663,6 +4663,7 @@ export function PlanningPage() {
                 contratType: intervention.contrat?.type,
                 contratNumeroBonCommande: intervention.contrat?.numeroBonCommande,
                 contratDateDebut: intervention.contrat?.dateDebut,
+                contratDateDebutConvention: intervention.contrat?.dateDebutConvention,
                 contratNom: intervention.contrat?.nom,
                 avenant: intervention.avenant
                   ? { numero: intervention.avenant.numero, nom: intervention.avenant.nom, numeroBonCommande: intervention.avenant.numeroBonCommande }
