@@ -1662,7 +1662,7 @@ export function ContratsPage() {
                     asChild
                   >
                     <Link
-                      to={`/commerce?tab=factures&contratId=${selectedContrat.id}&clientId=${selectedContrat.clientId}&siteId=${selectedContrat.contratSites?.[0]?.siteId || ''}&mentionSpeciale=${encodeURIComponent([selectedContrat.refExterne ? `Selon le contrat N° ${(selectedContrat as any).refExterne}` : '', selectedContrat.numeroBonCommande ? `Selon le Bon de commande "${selectedContrat.numeroBonCommande}"` : '', (selectedContrat as any).dateDebutConvention ? `Convention signée le ${new Date((selectedContrat as any).dateDebutConvention).toLocaleDateString('fr-FR')}` : ''].filter(Boolean).join(' — '))}`}
+                      to={`/commerce?tab=factures&contratId=${selectedContrat.id}&clientId=${selectedContrat.clientId}&siteId=${selectedContrat.contratSites?.[0]?.siteId || ''}&mentionSpeciale=${encodeURIComponent([selectedContrat.nom?.trim() ? `Contrat « ${selectedContrat.nom.trim()} »` : '', selectedContrat.refExterne ? `Selon le contrat N° ${(selectedContrat as any).refExterne}` : '', selectedContrat.numeroBonCommande ? `Selon le Bon de commande "${selectedContrat.numeroBonCommande}"` : '', (selectedContrat as any).dateDebutConvention ? `Convention signée le ${new Date((selectedContrat as any).dateDebutConvention).toLocaleDateString('fr-FR')}` : ''].filter(Boolean).join(' — '))}`}
                       onClick={() => setSelectedContrat(null)}
                     >
                       <Receipt className="h-3.5 w-3.5 mr-1.5" />

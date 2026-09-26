@@ -189,6 +189,8 @@ export interface Avenant {
   id: string;
   contratId: string;
   numero: number;
+  nom?: string | null;
+  numeroBonCommande?: string | null;
   dateSignature?: string | null;
   montantHT?: number | null;
   nombreOperationsSupplementaires: number;
@@ -237,7 +239,7 @@ export interface Intervention {
   frequenceOperationsJours?: number | null;
   frequenceControleJours?: number | null;
   interventionEmployes?: InterventionEmploye[];
-  avenant?: { id: string; numero: number } | null;
+  avenant?: { id: string; numero: number; nom?: string | null; numeroBonCommande?: string | null } | null;
   bonCommande?: { id: string; numero: string } | null;
   previousIntervention?: PreviousIntervention | null;
   fieldIntervention?: {

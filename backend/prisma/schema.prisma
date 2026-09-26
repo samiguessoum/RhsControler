@@ -2483,6 +2483,8 @@ model Avenant {
   contratId                            String
   contrat                              Contrat   @relation(fields: [contratId], references: [id], onDelete: Cascade)
   numero                               Int // Numéro séquentiel de l'avenant au sein du contrat (1, 2, 3...)
+  nom                                  String? // Libellé libre, repris sur la facture
+  numeroBonCommande                    String? // N° du bon de commande de l'avenant, repris sur la facture
   dateSignature                        DateTime?
   montantHT                            Decimal?  @db.Decimal(15, 2)
   nombreOperationsSupplementaires      Int       @default(0)

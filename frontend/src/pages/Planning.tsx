@@ -4613,17 +4613,38 @@ export function PlanningPage() {
               data: { employes: employesData },
             });
           }}
-          onGenerateFacture={() => {
+          onGenerateFacture={async () => {
             const intervention = selectedInterventionDetail || selectedIntervention;
             if (!intervention) return;
             const site = intervention.site || intervention.client?.sites?.[0];
 
-            // Chercher le prix de la prestation dans le ContratSite correspondant
-            let prixPrestation: number | undefined;
-            if (intervention.contrat?.contratSites && intervention.siteId && intervention.prestation) {
-              const cs = intervention.contrat.contratSites.find((s: any) => s.siteId === intervention.siteId);
-              if (cs?.prixPrestations && typeof cs.prixPrestations === 'object') {
-                prixPrestation = (cs.prixPrestations as Record<string, number>)[intervention.prestation];
+            // Prix des prestations définis sur le ContratSite correspondant
+            const cs = intervention.contrat?.contratSites?.find((s: any) => s.siteId === intervention.siteId);
+            const prixParPrestation: Record<string, number> =
+              cs?.prixPrestations && typeof cs.prixPrestations === 'object'
+                ? (cs.prixPrestations as Record<string, number>)
+                : {};
+
+            // Un contrat à plusieurs prestations génère une opération par prestation à la même date :
+            // la facture reprend toutes les opérations du même contrat, site, jour (et avenant).
+            const prestations: string[] = intervention.prestation ? [intervention.prestation] : [];
+            if (intervention.type === 'OPERATION' && intervention.contratId && intervention.siteId) {
+              try {
+                const jour = format(new Date(intervention.datePrevue), 'yyyy-MM-dd');
+                const { interventions: memeJour } = await interventionsApi.list({
+                  contratId: intervention.contratId,
+                  siteId: intervention.siteId,
+                  type: 'OPERATION',
+                  dateDebut: jour,
+                  dateFin: jour,
+                  limit: 100,
+                });
+                for (const i of memeJour) {
+                  if (i.statut === 'ANNULEE' || (i.avenant?.id ?? null) !== (intervention.avenant?.id ?? null)) continue;
+                  if (i.prestation && !prestations.includes(i.prestation)) prestations.push(i.prestation);
+                }
+              } catch {
+                // En cas d'échec, on facture au moins la prestation de l'intervention sélectionnée
               }
             }
 
@@ -4634,14 +4655,17 @@ export function PlanningPage() {
                 clientNom: intervention.client?.nomEntreprise,
                 siteId: site?.id,
                 siteNom: site?.nom,
-                prestation: intervention.prestation,
-                prixPrestation,
+                prestations: prestations.map((nom) => ({ nom, prix: prixParPrestation[nom] })),
                 interventionId: intervention.id,
                 interventionRef: intervention.type,
                 dateIntervention: intervention.dateRealisee || intervention.datePrevue,
                 contratType: intervention.contrat?.type,
                 contratNumeroBonCommande: intervention.contrat?.numeroBonCommande,
                 contratDateDebut: intervention.contrat?.dateDebut,
+                contratNom: intervention.contrat?.nom,
+                avenant: intervention.avenant
+                  ? { numero: intervention.avenant.numero, nom: intervention.avenant.nom, numeroBonCommande: intervention.avenant.numeroBonCommande }
+                  : undefined,
               },
             });
             setSelectedIntervention(null);

@@ -1823,6 +1823,8 @@ export const avenantApi = {
   create: async (
     contratId: string,
     payload: {
+      nom?: string;
+      numeroBonCommande?: string;
       dateSignature?: string;
       montantHT?: number;
       nombreOperationsSupplementaires?: number;

@@ -196,6 +196,8 @@ export const createContratSchema = z.object({
 });
 
 export const createAvenantSchema = z.object({
+  nom: z.string().trim().optional(),
+  numeroBonCommande: z.string().trim().optional(),
   dateSignature: z.string().or(z.date()).transform((val) => new Date(val)).optional(),
   montantHT: z.number().nonnegative().optional(),
   nombreOperationsSupplementaires: z.number().int().nonnegative().optional().default(0),

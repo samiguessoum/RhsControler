@@ -3093,37 +3093,50 @@ export function CommercePage() {
       generateFacture?: boolean;
       clientId?: string;
       siteId?: string;
-      prestation?: string;
-      prixPrestation?: number;
+      prestations?: { nom: string; prix?: number }[];
       interventionId?: string;
       dateIntervention?: string;
       contratType?: 'PONCTUEL' | 'ANNUEL';
       contratNumeroBonCommande?: string;
       contratDateDebut?: string;
+      contratNom?: string | null;
+      avenant?: { numero: number; nom?: string | null; numeroBonCommande?: string | null };
     } | null;
 
     if (state?.generateFacture && state.clientId) {
       setActiveTab('factures');
 
       const dateDebutStr = state.contratDateDebut ? new Date(state.contratDateDebut).toLocaleDateString('fr-FR') : '';
-      let mentionSpeciale = '';
-      if (state.contratType === 'PONCTUEL' && state.contratNumeroBonCommande) {
-        mentionSpeciale = `Selon le bon de commande "${state.contratNumeroBonCommande}"${dateDebutStr ? ` du ${dateDebutStr}` : ''}`;
-      } else if (state.contratType === 'ANNUEL' && dateDebutStr) {
-        mentionSpeciale = `Selon la convention du ${dateDebutStr}`;
+      const mentions: string[] = [];
+      if (state.contratNom?.trim()) {
+        mentions.push(`Contrat « ${state.contratNom.trim()} »`);
       }
+      if (state.contratType === 'PONCTUEL' && state.contratNumeroBonCommande) {
+        mentions.push(`Selon le bon de commande "${state.contratNumeroBonCommande}"${dateDebutStr ? ` du ${dateDebutStr}` : ''}`);
+      } else if (state.contratType === 'ANNUEL' && dateDebutStr) {
+        mentions.push(`Selon la convention du ${dateDebutStr}`);
+      }
+      if (state.avenant) {
+        const av = state.avenant;
+        mentions.push(
+          `Avenant n°${av.numero}${av.nom?.trim() ? ` « ${av.nom.trim()} »` : ''}` +
+          (av.numeroBonCommande?.trim() ? ` selon le bon de commande "${av.numeroBonCommande.trim()}"` : '')
+        );
+      }
+      const mentionSpeciale = mentions.join(' — ');
+      const prestations = state.prestations?.length ? state.prestations : [{ nom: 'Prestation de service' }];
 
       setFactureForm({
         clientId: state.clientId,
         siteId: state.siteId || undefined,
         typeDocument: 'SERVICE',
-        lignes: [{
+        lignes: prestations.map((p) => ({
           ...EMPTY_LINE,
-          libelle: state.prestation || 'Prestation de service',
+          libelle: p.nom.trim(),
           description: '',
           quantite: 1,
-          prixUnitaireHT: state.prixPrestation ?? 0,
-        }],
+          prixUnitaireHT: p.prix ?? 0,
+        })),
         type: 'FACTURE',
         notes: '',
         mentionSpeciale,

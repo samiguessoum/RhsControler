@@ -106,7 +106,7 @@ export const interventionController = {
                 },
               },
             },
-            avenant: { select: { id: true, numero: true } },
+            avenant: { select: { id: true, numero: true, nom: true, numeroBonCommande: true } },
             bonCommande: { select: { id: true, numero: true } },
             site: {
               select: {
@@ -252,6 +252,7 @@ export const interventionController = {
               contratSites: true,
             },
           },
+          avenant: { select: { id: true, numero: true, nom: true, numeroBonCommande: true } },
           createdBy: {
             select: { id: true, nom: true, prenom: true, email: true },
           },

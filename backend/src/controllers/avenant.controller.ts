@@ -43,6 +43,8 @@ export const avenantController = {
     try {
       const { contratId } = req.params;
       const {
+        nom,
+        numeroBonCommande,
         dateSignature,
         montantHT,
         nombreOperationsSupplementaires,
@@ -73,6 +75,8 @@ export const avenantController = {
         data: {
           contratId,
           numero,
+          nom: nom || null,
+          numeroBonCommande: numeroBonCommande || null,
           dateSignature: dateSignature ? new Date(dateSignature) : null,
           montantHT: montantHT ?? null,
           nombreOperationsSupplementaires: nbOps,

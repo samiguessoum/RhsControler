@@ -1603,7 +1603,8 @@ export async function generateFacturePDF(facture: FactureDocument): Promise<Buff
           .fontSize(10)
           .fillColor('#111827')
           .text(facture.mentionSpeciale, 28, mentionY, { width: 420 });
-        mentionY += 14;
+        // La mention peut tenir sur plusieurs lignes (contrat, bon de commande, avenant)
+        mentionY += doc.heightOfString(facture.mentionSpeciale, { width: 420 }) + 2;
       }
 
       // Date de l'opération : utilise la date réelle de l'opération (renseignée depuis le Planning)

@@ -69,6 +69,8 @@ export function ContratDetailPage() {
   const [typeFilter, setTypeFilter] = useState<'all' | 'operations' | 'controles'>('all');
   const [showAvenantDialog, setShowAvenantDialog] = useState(false);
   const [avenantForm, setAvenantForm] = useState({
+    nom: '',
+    numeroBonCommande: '',
     dateSignature: '',
     montantHT: '',
     nombreOperationsSupplementaires: '',
@@ -94,6 +96,8 @@ export function ContratDetailPage() {
   const createAvenantMutation = useMutation({
     mutationFn: () =>
       avenantApi.create(id!, {
+        nom: avenantForm.nom.trim() || undefined,
+        numeroBonCommande: avenantForm.numeroBonCommande.trim() || undefined,
         dateSignature: avenantForm.dateSignature || undefined,
         montantHT: avenantForm.montantHT ? parseFloat(avenantForm.montantHT) : undefined,
         nombreOperationsSupplementaires: avenantForm.nombreOperationsSupplementaires
@@ -111,7 +115,7 @@ export function ContratDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['interventions-contrat', id] });
       toast.success(`Avenant enregistré — ${res.count ?? res.interventionsCreees?.length ?? 0} intervention(s) créée(s)`);
       setShowAvenantDialog(false);
-      setAvenantForm({ dateSignature: '', montantHT: '', nombreOperationsSupplementaires: '', nombreVisitesControleSupplementaires: '', dateDebut: '', frequenceJours: '', notes: '' });
+      setAvenantForm({ nom: '', numeroBonCommande: '', dateSignature: '', montantHT: '', nombreOperationsSupplementaires: '', nombreVisitesControleSupplementaires: '', dateDebut: '', frequenceJours: '', notes: '' });
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Erreur lors de la création de l\'avenant');
@@ -617,11 +621,17 @@ export function ContratDetailPage() {
                 {contrat.avenants?.map((av) => (
                   <div key={av.id} className="p-3 rounded-lg bg-amber-50 border border-amber-100 text-sm space-y-1">
                     <div className="flex items-center justify-between">
-                      <span className="font-semibold text-amber-900">Avenant n°{av.numero}</span>
+                      <span className="font-semibold text-amber-900">
+                        Avenant n°{av.numero}
+                        {av.nom && <span className="font-normal"> — {av.nom}</span>}
+                      </span>
                       {av.dateSignature && (
                         <span className="text-xs text-amber-700">{formatDate(av.dateSignature)}</span>
                       )}
                     </div>
+                    {av.numeroBonCommande && (
+                      <p className="text-xs text-amber-700">BC : {av.numeroBonCommande}</p>
+                    )}
                     <p className="text-xs text-amber-700">
                       +{av.nombreOperationsSupplementaires} opération(s), +{av.nombreVisitesControleSupplementaires} visite(s) de contrôle
                       {av.montantHT != null && ` — ${Number(av.montantHT).toLocaleString('fr-FR')} DA HT`}
@@ -1089,6 +1099,27 @@ export function ContratDetailPage() {
           </DialogHeader>
 
           <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="av-nom">Nom</Label>
+                <Input
+                  id="av-nom"
+                  value={avenantForm.nom}
+                  onChange={(e) => setAvenantForm((f) => ({ ...f, nom: e.target.value }))}
+                  placeholder="ex: Extension entrepôt B"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="av-bc">N° bon de commande</Label>
+                <Input
+                  id="av-bc"
+                  value={avenantForm.numeroBonCommande}
+                  onChange={(e) => setAvenantForm((f) => ({ ...f, numeroBonCommande: e.target.value }))}
+                  placeholder="ex: BC-2026-042"
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground -mt-1">Le nom et le bon de commande apparaissent sur les factures de l'avenant.</p>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="av-nbops">Opérations supplémentaires</Label>
