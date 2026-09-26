@@ -494,7 +494,7 @@ export interface CreateContratInput {
   notes?: string;
   autoCreerProchaine?: boolean;
   // Ponctuel fields
-  numeroBonCommande?: string;
+  numeroBonCommande?: string | null; // obligatoire en ponctuel, facultatif en annuel (null = effacer)
   nombreOperations?: number;
   // Convention
   dateDebutConvention?: string | null;

@@ -529,7 +529,7 @@ export function ContratForm({
           dateDebutConvention: dateDebutConvention || (isEdit ? null : undefined),
           dateFinConvention: dateFinConvention || (isEdit ? null : undefined),
           // Ponctuel fields
-          numeroBonCommande: isPonctuel ? (formData.get('numeroBonCommande') as string) : undefined,
+          numeroBonCommande: ((formData.get('numeroBonCommande') as string) || '').trim() || (isEdit ? null : undefined),
           // Sites avec leurs configurations
           contratSites: cleanedContratSites,
         };
@@ -623,21 +623,24 @@ export function ContratForm({
         </div>
       </div>
 
-      {/* Section 2: Champs spécifiques ponctuel */}
-      {isPonctuel && (
-        <div className="space-y-4 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-          <h3 className="font-medium text-sm text-yellow-800">Contrat ponctuel</h3>
-          <div className="space-y-2">
-            <Label>N° Bon de commande *</Label>
-            <Input
-              name="numeroBonCommande"
-              defaultValue={contrat?.numeroBonCommande || ''}
-              placeholder="Ex: BC-2024-001"
-              required={isPonctuel}
-            />
-          </div>
+      {/* Section 2: Bon de commande (obligatoire en ponctuel, facultatif en annuel) */}
+      <div className={cn('space-y-4 p-4 rounded-lg border', isPonctuel ? 'bg-yellow-50 border-yellow-200' : 'bg-gray-50 border-gray-200')}>
+        <h3 className={cn('font-medium text-sm', isPonctuel ? 'text-yellow-800' : 'text-gray-700')}>
+          {isPonctuel ? 'Contrat ponctuel' : 'Bon de commande'}
+        </h3>
+        <div className="space-y-2">
+          <Label>N° Bon de commande{isPonctuel ? ' *' : ' (facultatif)'}</Label>
+          <Input
+            name="numeroBonCommande"
+            defaultValue={contrat?.numeroBonCommande || ''}
+            placeholder="Ex: BC-2024-001"
+            required={isPonctuel}
+          />
+          {!isPonctuel && (
+            <p className="text-xs text-muted-foreground">Repris sur les factures du contrat.</p>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Section 3: Configuration des sites */}
       {clientId && (

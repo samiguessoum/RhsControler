@@ -3113,8 +3113,9 @@ export function CommercePage() {
       }
       if (state.contratType === 'PONCTUEL' && state.contratNumeroBonCommande) {
         mentions.push(`Selon le bon de commande "${state.contratNumeroBonCommande}"${dateDebutStr ? ` du ${dateDebutStr}` : ''}`);
-      } else if (state.contratType === 'ANNUEL' && dateDebutStr) {
-        mentions.push(`Selon la convention du ${dateDebutStr}`);
+      } else if (state.contratType === 'ANNUEL') {
+        if (dateDebutStr) mentions.push(`Selon la convention du ${dateDebutStr}`);
+        if (state.contratNumeroBonCommande) mentions.push(`Selon le bon de commande "${state.contratNumeroBonCommande}"`);
       }
       if (state.avenant) {
         const av = state.avenant;

@@ -334,7 +334,7 @@ export function ContratDetailPage() {
                 {formatDate(contrat.dateDebut)}
                 {contrat.dateFin && <><span className="text-gray-300 mx-1">→</span>{formatDate(contrat.dateFin)}</>}
               </span>
-              {isPonctuel && contrat.numeroBonCommande && (
+              {contrat.numeroBonCommande && (
                 <span className="flex items-center gap-1">
                   <FileText className="h-3.5 w-3.5" />
                   BC: {contrat.numeroBonCommande}
