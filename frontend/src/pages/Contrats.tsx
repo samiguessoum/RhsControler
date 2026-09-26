@@ -536,7 +536,7 @@ function ContratForm({
 
         onSubmit(data);
       }}
-      className="space-y-5 max-h-[70vh] overflow-y-auto pr-2"
+      className="space-y-5"
     >
       {/* Section 1: Informations de base */}
       <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
@@ -1033,17 +1033,18 @@ function ContratForm({
           <Textarea name="notes" defaultValue={contrat?.notes || ''} rows={2} placeholder="Notes internes..." />
         </div>
 
-        <div className="flex items-center gap-6 pt-2">
-          {!isPonctuel && (
+        {!isPonctuel && (
+          <div className="flex items-center gap-6 pt-2">
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" name="reconductionAuto" defaultChecked={contrat?.reconductionAuto} className="rounded" />
               Reconduction automatique
             </label>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
-      <DialogFooter className="pt-4 border-t">
+      {/* Boutons toujours visibles en bas de la fenêtre (une seule zone de défilement : la fenêtre) */}
+      <DialogFooter className="sticky bottom-0 -mx-6 -mb-6 px-6 pt-4 pb-6 border-t bg-background">
         <Button type="button" variant="outline" onClick={onCancel}>
           Annuler
         </Button>
