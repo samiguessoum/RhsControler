@@ -998,7 +998,12 @@ function ContratForm({
               </SelectTrigger>
               <SelectContent>
                 {users
-                  .filter((u: User) => u.actif || u.id === responsablePlanningId)
+                  // Uniquement les comptes bureau actifs (les rôles terrain / lecture ne gèrent pas de contrats)
+                  .filter(
+                    (u: User) =>
+                      (u.actif && !['EQUIPE', 'SUPER_CHEF_EQUIPE', 'LECTURE'].includes(u.role)) ||
+                      u.id === responsablePlanningId
+                  )
                   .map((u: User) => (
                     <SelectItem key={u.id} value={u.id}>
                       {u.prenom} {u.nom}
