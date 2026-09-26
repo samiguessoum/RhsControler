@@ -1132,8 +1132,8 @@ export function ContratDetailPage() {
 
       {/* Dialog Modifier le contrat */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh]">
-          <DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-4">
             <DialogTitle>Modifier le contrat</DialogTitle>
             <DialogDescription>Mettez à jour les informations du contrat</DialogDescription>
           </DialogHeader>

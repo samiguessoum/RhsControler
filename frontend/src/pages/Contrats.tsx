@@ -536,8 +536,10 @@ export function ContratForm({
 
         onSubmit(data);
       }}
-      className="space-y-5"
+      className="flex flex-col flex-1 min-h-0"
     >
+      {/* Champs : seule zone qui défile ; les boutons restent fixes en dessous */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-4 space-y-5">
       {/* Section 1: Informations de base */}
       <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
         <h3 className="font-medium text-sm text-gray-700">Informations générales</h3>
@@ -1045,9 +1047,9 @@ export function ContratForm({
           </div>
         )}
       </div>
+      </div>
 
-      {/* Boutons toujours visibles en bas de la fenêtre (une seule zone de défilement : la fenêtre) */}
-      <DialogFooter className="sticky bottom-0 -mx-6 -mb-6 px-6 pt-4 pb-6 border-t bg-background">
+      <DialogFooter className="px-6 py-4 border-t bg-background">
         <Button type="button" variant="outline" onClick={onCancel}>
           Annuler
         </Button>
@@ -1691,8 +1693,8 @@ export function ContratsPage() {
       </Dialog>
 
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh]">
-          <DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-4">
             <DialogTitle>Nouveau contrat</DialogTitle>
             <DialogDescription>
               Le planning sera généré automatiquement à la création.
@@ -1711,8 +1713,8 @@ export function ContratsPage() {
       </Dialog>
 
       <Dialog open={!!editingContrat} onOpenChange={() => setEditingContrat(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh]">
-          <DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
+          <DialogHeader className="px-6 pt-6 pb-4">
             <DialogTitle>Modifier le contrat</DialogTitle>
             <DialogDescription>
               Mettez à jour les informations du contrat
