@@ -241,8 +241,8 @@ export function ContratDetailPage() {
 
   // Stats des interventions
   const interventionStats = useMemo(() => {
-    // Les interventions supprimées ne comptent pas dans l'avancement
-    const actives = interventions.filter((i) => i.statut !== 'ANNULEE');
+    // Les interventions supprimées et les VCs remplacées par une opération ne comptent pas
+    const actives = interventions.filter((i) => i.statut !== 'ANNULEE' && !i.remplaceeParOperation);
     const total = actives.length;
     const realisees = interventions.filter((i) => i.statut === 'REALISEE').length;
     const planifiees = interventions.filter((i) => i.statut === 'PLANIFIEE').length;

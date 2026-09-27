@@ -230,6 +230,7 @@ export interface Intervention {
   remainingControles?: number | null;
   frequenceOperationsJours?: number | null;
   interventionEmployes?: InterventionEmploye[];
+  remplaceeParOperation?: boolean;
   avenant?: { id: string; numero: number; nom?: string | null; numeroBonCommande?: string | null } | null;
   bonCommande?: { id: string; numero: string } | null;
   previousIntervention?: PreviousIntervention | null;
@@ -346,6 +347,7 @@ export interface CreateContratResponse extends Contrat {
   planning?: {
     interventionsCreees: number;
   };
+  planningErreur?: string | null;
 }
 
 // ============ FORM INPUTS ============

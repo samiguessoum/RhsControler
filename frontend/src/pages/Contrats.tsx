@@ -560,6 +560,7 @@ export function ContratForm({
   // Le type change la règle de projection (quota ponctuel / date de fin annuel)
   const changerType = (value: ContratType) => {
     setType(value);
+    if (value === 'PONCTUEL') setReconductionAuto(false);
     setContratSites((sites) => sites.map((cs) => ({
       ...cs,
       ...(cs.datesPrevuesOperations ? { datesPrevuesOperations: projectionOps(cs, dateFin, value) } : {}),
@@ -1232,6 +1233,9 @@ export function ContratsPage() {
       queryClient.invalidateQueries({ queryKey: ['interventions-semaine'] });
       const planningMsg = data.planning ? ` (${data.planning.interventionsCreees} interventions créées)` : '';
       toast.success(`Contrat créé${planningMsg}`);
+      if (data.planningErreur) {
+        toast.warning(`Planning non généré : ${data.planningErreur}. À ajuster manuellement.`);
+      }
       setIsCreateOpen(false);
     },
     onError: (error: any) => {

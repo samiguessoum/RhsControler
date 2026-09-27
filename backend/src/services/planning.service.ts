@@ -722,7 +722,7 @@ export const planningService = {
     const dateReprise: Date | null = (contrat as any).datePriseEnComptePlanification
       ? new Date((contrat as any).datePriseEnComptePlanification)
       : null;
-    const dateFinAnnuel = contrat.dateFin || addDays(new Date(), 365);
+    const dateFinAnnuel = contrat.dateFin || addDays(new Date(contrat.dateDebut), 365);
     // Garde-fou : rien avant la signature de la convention ni après sa fin (si renseignées)
     const debutConvention = contrat.dateDebutConvention ? startOfDay(contrat.dateDebutConvention) : null;
     const finConvention = contrat.dateFinConvention ? endOfDay(contrat.dateFinConvention) : null;
@@ -954,13 +954,24 @@ export const planningService = {
         }
       }
 
-      // Dates des contrôles de l'avenant (explicites ou ancrées entre les ops de l'avenant)
+      // Dates des contrôles de l'avenant (explicites ou ancrées entre toutes les ops : existantes + nouvelles)
+      let toutesOpsAvenant = datesOps;
+      if (!params.datesControles?.length && nbCtrlEntreOps > 0) {
+        const opsExistantes = await prisma.intervention.findMany({
+          where: { contratId: contrat.id, siteId: s.siteId, type: 'OPERATION', statut: { not: 'ANNULEE' } },
+          select: { datePrevue: true },
+        });
+        toutesOpsAvenant = [
+          ...datesOps,
+          ...opsExistantes.map((o) => o.datePrevue),
+        ].sort((a, b) => a.getTime() - b.getTime());
+      }
       const datesCtrl: Date[] = params.datesControles?.length
         ? [...params.datesControles].sort((a, b) => a.getTime() - b.getTime())
-        : datesControlesEntreOps(datesOps, nbCtrlEntreOps);
+        : datesControlesEntreOps(toutesOpsAvenant, nbCtrlEntreOps);
 
       for (const currentDate of datesCtrl) {
-        if (apresDerniereOperation(currentDate, datesOps)) continue;
+        if (apresDerniereOperation(currentDate, toutesOpsAvenant)) continue;
         const intervention = await prisma.intervention.create({
           data: {
             ...serie,

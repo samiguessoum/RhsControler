@@ -78,8 +78,10 @@ function empreintePlanning(contrat: Record<string, any>, sites: SiteInput[]) {
     dateFin: jour(contrat.dateFin),
     prestations: [...(contrat.prestations || [])].sort(),
     fOpJ: contrat.frequenceOperationsJours ?? null,
+    fOpM: contrat.frequenceOperationsMois ?? null,
     dOp: jour(contrat.premiereDateOperation),
     nOp: contrat.nombreOperations ?? null,
+    nCtEO: contrat.nombreVisitesControleEntreOps ?? null,
     sites: sites.map(champsSite).sort((a, b) => a.siteId.localeCompare(b.siteId)),
   });
 }
@@ -266,20 +268,20 @@ export const contratController = {
 
       // Générer automatiquement le planning si le contrat est ACTIF
       let planningResult = null;
+      let planningErreur: string | null = null;
       if (contrat.statut === 'ACTIF') {
         try {
           planningResult = await planningService.genererPlanningContrat(contrat.id, req.user!.id, siteOverrides(data.contratSites));
-        } catch (planningError) {
+        } catch (planningError: any) {
           logger.error({ err: planningError }, 'Auto-planning generation error');
-          // On ne bloque pas la création du contrat si le planning échoue
+          planningErreur = planningError?.message ?? 'Erreur inconnue';
         }
       }
 
       res.status(201).json({
         contrat,
-        planning: planningResult
-          ? { interventionsCreees: planningResult.count }
-          : null,
+        planning: planningResult ? { interventionsCreees: planningResult.count } : null,
+        planningErreur,
       });
     } catch (error) {
       logger.error({ err: error }, 'Create contrat error');
@@ -373,11 +375,13 @@ export const contratController = {
         existing.statut !== 'ACTIF' ||
         !!siteOverrides(data.contratSites);
 
+      let planningErreurUpdate: string | null = null;
       if (contrat.statut === 'ACTIF' && planningModifie) {
         try {
           await planningService.regenererPlanningContrat(id, req.user!.id, siteOverrides(data.contratSites));
-        } catch (planningError) {
+        } catch (planningError: any) {
           logger.error({ err: planningError }, 'Auto-planning update error');
+          planningErreurUpdate = planningError?.message ?? 'Erreur inconnue';
         }
       }
 
@@ -387,7 +391,7 @@ export const contratController = {
         after: contrat,
       });
 
-      res.json({ contrat });
+      res.json({ contrat, planningErreur: planningErreurUpdate });
     } catch (error) {
       logger.error({ err: error }, 'Update contrat error');
       return next(new AppError(500, 'Erreur serveur'));
