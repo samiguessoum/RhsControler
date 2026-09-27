@@ -1215,10 +1215,9 @@ export function ContratDetailPage() {
                     <span className="text-xs text-gray-500">Fréquence (si plus d'une)</span>
                     <FrequenceInput
                       jours={b.jours}
-                      mois={b.mois}
                       placeholder="Ex : 30"
                       onChange={(v) => majSerieAvenant(
-                        b.serie === 'ops' ? { freqOpsJours: v.jours, freqOpsMois: v.mois } : { freqCtrlJours: v.jours, freqCtrlMois: v.mois },
+                        b.serie === 'ops' ? { freqOpsJours: v.jours, freqOpsMois: undefined } : { freqCtrlJours: v.jours, freqCtrlMois: undefined },
                         b.serie,
                       )}
                     />

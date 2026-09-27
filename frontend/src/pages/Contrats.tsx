@@ -270,53 +270,27 @@ export function ProjectionDates({
   );
 }
 
-// Saisie d'une fréquence en jours ou en mois calendaires (les mois évitent la dérive :
-// "tous les 3 mois" tombe toujours le même jour du mois).
 export function FrequenceInput({
   jours,
-  mois,
   onChange,
   placeholder,
 }: {
   jours?: number;
-  mois?: number;
   onChange: (v: { jours?: number; mois?: number }) => void;
   placeholder?: string;
 }) {
-  const [unite, setUnite] = useState<'jours' | 'mois'>(mois ? 'mois' : 'jours');
-  const valeur = unite === 'mois' ? mois : jours;
-  const emit = (v: number | undefined, u: 'jours' | 'mois') =>
-    onChange(u === 'mois' ? { mois: v, jours: undefined } : { jours: v, mois: undefined });
   return (
-    <div className="space-y-1">
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-400 whitespace-nowrap">Tous les</span>
-        <Input
-          type="number"
-          className="h-8"
-          min={1}
-          placeholder={placeholder}
-          value={valeur || ''}
-          onChange={(e) => emit(e.target.value ? Number(e.target.value) : undefined, unite)}
-        />
-        <select
-          className="h-8 rounded-md border border-input bg-background px-1.5 text-xs"
-          value={unite}
-          onChange={(e) => {
-            const u = e.target.value as 'jours' | 'mois';
-            setUnite(u);
-            emit(valeur, u);
-          }}
-        >
-          <option value="jours">jours</option>
-          <option value="mois">mois</option>
-        </select>
-      </div>
-      {valeur ? (
-        <p className="text-xs text-green-700 font-medium">
-          ≈ {Math.round(unite === 'mois' ? 12 / valeur : 365 / valeur)}x / an
-        </p>
-      ) : null}
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-gray-400 whitespace-nowrap">Tous les</span>
+      <Input
+        type="number"
+        className="h-8"
+        min={1}
+        placeholder={placeholder}
+        value={jours || ''}
+        onChange={(e) => onChange({ jours: e.target.value ? Number(e.target.value) : undefined, mois: undefined })}
+      />
+      <span className="text-xs text-gray-500 whitespace-nowrap">jours</span>
     </div>
   );
 }
@@ -1105,9 +1079,8 @@ export function ContratForm({
                               </span>
                               <FrequenceInput
                                 jours={cs.frequenceOperationsJours}
-                                mois={cs.frequenceOperationsMois}
                                 placeholder={isPonctuel ? 'Ex : 30' : 'Ex : 3'}
-                                onChange={(v) => updateSite(cs.siteId, { frequenceOperationsJours: v.jours, frequenceOperationsMois: v.mois })}
+                                onChange={(v) => updateSite(cs.siteId, { frequenceOperationsJours: v.jours, frequenceOperationsMois: undefined })}
                               />
                             </div>
 
@@ -1149,9 +1122,8 @@ export function ContratForm({
                               </span>
                               <FrequenceInput
                                 jours={cs.frequenceControleJours}
-                                mois={cs.frequenceControleMois}
                                 placeholder={isPonctuel ? 'Ex : 30' : 'Ex : 1'}
-                                onChange={(v) => updateSite(cs.siteId, { frequenceControleJours: v.jours, frequenceControleMois: v.mois })}
+                                onChange={(v) => updateSite(cs.siteId, { frequenceControleJours: v.jours, frequenceControleMois: undefined })}
                               />
                             </div>
 
