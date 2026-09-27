@@ -940,28 +940,9 @@ export function ContratForm({
 
                         {/* ── Prestations ── */}
                         <div className="p-3 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Prestations</span>
-                            {availablePrestationsForSite.length > 0 && (
-                              <Select key={sitePrestations.join(',')} onValueChange={(v) => addPrestationToSite(cs.siteId, v)}>
-                                <SelectTrigger className="h-7 w-auto gap-1 border-dashed text-xs text-blue-600 border-blue-300 hover:bg-blue-50 hover:border-blue-400 px-2">
-                                  <Plus className="h-3 w-3" />
-                                  <SelectValue placeholder="Ajouter" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {availablePrestationsForSite.map((p) => (
-                                    <SelectItem key={p.id} value={p.nom}>{p.nom}</SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            )}
-                          </div>
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Prestations</span>
 
-                          {sitePrestations.length === 0 ? (
-                            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
-                              Au moins une prestation requise pour ce site.
-                            </p>
-                          ) : (
+                          {sitePrestations.length > 0 && (
                             <div className="space-y-1">
                               {sitePrestations.map((nom) => {
                                 const priceMissing = !cs.prixPrestations?.[nom];
@@ -999,6 +980,26 @@ export function ContratForm({
                                 );
                               })}
                             </div>
+                          )}
+
+                          {/* Bouton ajout — pleine largeur, bien visible */}
+                          {availablePrestationsForSite.length > 0 && (
+                            <Select key={sitePrestations.join(',')} onValueChange={(v) => addPrestationToSite(cs.siteId, v)}>
+                              <SelectTrigger className={cn(
+                                'w-full h-9 border-dashed font-medium text-sm gap-2 justify-center',
+                                sitePrestations.length === 0
+                                  ? 'border-amber-400 text-amber-700 bg-amber-50 hover:bg-amber-100'
+                                  : 'border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-700 hover:bg-gray-50'
+                              )}>
+                                <Plus className="h-4 w-4 shrink-0" />
+                                <SelectValue placeholder={sitePrestations.length === 0 ? 'Ajouter une prestation' : 'Ajouter une prestation'} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availablePrestationsForSite.map((p) => (
+                                  <SelectItem key={p.id} value={p.nom}>{p.nom}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           )}
                         </div>
 
