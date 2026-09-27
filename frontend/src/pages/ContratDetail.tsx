@@ -74,7 +74,6 @@ type AvenantForm = {
   notes: string;
   nbOps?: number;
   freqOpsJours?: number;
-  freqOpsMois?: number;
   premiereOp: string;
   nbCtrlEntreOps?: number;
   datesOps: string[];
@@ -86,13 +85,13 @@ const AVENANT_VIDE: AvenantForm = {
   premiereOp: '', datesOps: [], datesCtrl: [],
 };
 
-const projectionAvenant = (f: AvenantForm) => ({
-  datesOps: computeProjectionDates(f.premiereOp, f.nbOps, f.freqOpsJours, f.freqOpsMois, undefined, true),
-  datesCtrl: computeProjectionControles(
-    computeProjectionDates(f.premiereOp, f.nbOps, f.freqOpsJours, f.freqOpsMois, undefined, true),
-    f.nbCtrlEntreOps || 0,
-  ),
-});
+const projectionAvenant = (f: AvenantForm) => {
+  const datesOps = computeProjectionDates(f.premiereOp, f.nbOps, f.freqOpsJours, undefined, undefined, true);
+  return {
+    datesOps,
+    datesCtrl: computeProjectionControles(datesOps, f.nbCtrlEntreOps || 0),
+  };
+};
 
 export function ContratDetailPage() {
   const { id } = useParams();
@@ -209,18 +208,20 @@ export function ContratDetailPage() {
   // la dernière intervention de chaque type
   const ouvrirAvenant = () => {
     const src: any = contrat?.contratSites?.[0] ?? contrat;
-    const freqOps = { jours: src?.frequenceOperationsMois ? undefined : (src?.frequenceOperationsJours ?? undefined), mois: src?.frequenceOperationsMois ?? undefined };
-    const suivanteOp = () => {
-      const dates = interventions.filter((i) => i.type === 'OPERATION' && i.statut !== 'ANNULEE').map((i) => i.datePrevue.slice(0, 10)).sort();
-      if (!dates.length) return format(new Date(), 'yyyy-MM-dd');
-      const d = new Date(dates[dates.length - 1] + 'T12:00:00');
-      return format(freqOps.mois ? addMonths(d, freqOps.mois) : addDays(d, freqOps.jours || 30), 'yyyy-MM-dd');
-    };
-    const nbCtrlEntreOps = src?.nombreVisitesControleEntreOps ?? undefined;
+    const freqJours: number | undefined = src?.frequenceOperationsMois ? undefined : (src?.frequenceOperationsJours ?? undefined);
+    const derniereOp = interventions
+      .filter((i) => i.type === 'OPERATION' && i.statut !== 'ANNULEE')
+      .map((i) => i.datePrevue.slice(0, 10))
+      .sort()
+      .at(-1);
+    const premiereOp = derniereOp
+      ? format(addDays(new Date(derniereOp + 'T12:00:00'), freqJours || 30), 'yyyy-MM-dd')
+      : format(new Date(), 'yyyy-MM-dd');
     setAvenantForm({
       ...AVENANT_VIDE,
-      freqOpsJours: freqOps.jours, freqOpsMois: freqOps.mois, premiereOp: suivanteOp(),
-      nbCtrlEntreOps,
+      freqOpsJours: freqJours,
+      premiereOp,
+      nbCtrlEntreOps: src?.nombreVisitesControleEntreOps ?? undefined,
     });
     setShowAvenantDialog(true);
   };
@@ -1135,134 +1136,153 @@ export function ContratDetailPage() {
               Nouvel avenant
             </DialogTitle>
             <DialogDescription>
-              Étend ce contrat ponctuel avec des interventions supplémentaires, rattachées au contrat d'origine.
+              {isPonctuel
+                ? 'Ajoute des interventions supplémentaires à ce contrat ponctuel.'
+                : 'Ajoute des interventions supplémentaires à ce contrat annuel.'}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="av-nom">Nom</Label>
-                <Input
-                  id="av-nom"
-                  value={avenantForm.nom}
-                  onChange={(e) => setAvenantForm((f) => ({ ...f, nom: e.target.value }))}
-                  placeholder="ex: Extension entrepôt B"
-                />
+          <div className="space-y-4">
+
+            {/* Infos administratives */}
+            <div className="rounded-lg border divide-y divide-gray-100 overflow-hidden">
+              <div className="grid grid-cols-2 gap-px">
+                <div className="p-3 space-y-1 bg-white">
+                  <Label className="text-xs text-gray-500">Nom de l'avenant</Label>
+                  <Input
+                    value={avenantForm.nom}
+                    onChange={(e) => setAvenantForm((f) => ({ ...f, nom: e.target.value }))}
+                    className="h-8 text-sm"
+                    placeholder="ex: Extension entrepôt B"
+                  />
+                </div>
+                <div className="p-3 space-y-1 bg-white">
+                  <Label className="text-xs text-gray-500">N° bon de commande</Label>
+                  <Input
+                    value={avenantForm.numeroBonCommande}
+                    onChange={(e) => setAvenantForm((f) => ({ ...f, numeroBonCommande: e.target.value }))}
+                    className="h-8 text-sm"
+                    placeholder="ex: BC-2026-042"
+                  />
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="av-bc">N° bon de commande</Label>
-                <Input
-                  id="av-bc"
-                  value={avenantForm.numeroBonCommande}
-                  onChange={(e) => setAvenantForm((f) => ({ ...f, numeroBonCommande: e.target.value }))}
-                  placeholder="ex: BC-2026-042"
-                />
+              <div className="grid grid-cols-2 gap-px">
+                <div className="p-3 space-y-1 bg-white">
+                  <Label className="text-xs text-gray-500">Date de signature</Label>
+                  <Input
+                    type="date"
+                    className="h-8 text-sm w-36"
+                    value={avenantForm.dateSignature}
+                    onChange={(e) => setAvenantForm((f) => ({ ...f, dateSignature: e.target.value }))}
+                  />
+                </div>
+                <div className="p-3 space-y-1 bg-white">
+                  <Label className="text-xs text-gray-500">Montant HT</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="any"
+                    className="h-8 text-sm"
+                    value={avenantForm.montantHT}
+                    onChange={(e) => setAvenantForm((f) => ({ ...f, montantHT: e.target.value }))}
+                    placeholder="ex: 1500"
+                  />
+                </div>
               </div>
             </div>
-            <p className="text-xs text-muted-foreground -mt-1">Le nom et le bon de commande apparaissent sur les factures de l'avenant.</p>
-            <div className="grid grid-cols-2 gap-3">
-              {/* Colonne Opérations */}
-              <div className="space-y-2 p-3 rounded-lg border bg-amber-50 border-amber-200">
-                  <p className="text-xs font-semibold text-amber-700">Opérations supplémentaires</p>
-                  <div className="space-y-1.5">
-                    <span className="text-xs text-gray-500">Nombre</span>
+
+            {/* Planning — même logique que le formulaire contrat */}
+            <div className="rounded-lg border divide-y divide-gray-100 overflow-hidden">
+              <div className="px-3 pt-3 pb-1">
+                <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Planning</span>
+              </div>
+
+              <div className="p-3 space-y-3">
+                {isPonctuel && (
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-gray-600 w-40 shrink-0">Nb opérations <span className="text-red-500">*</span></span>
                     <Input
                       type="number"
-                      className="h-8"
-                      min={0}
-                      placeholder="0"
+                      className="h-8 w-24"
+                      min={1}
+                      placeholder="Ex : 4"
                       value={avenantForm.nbOps ?? ''}
                       onChange={(e) => majSerieAvenant({ nbOps: e.target.value ? Number(e.target.value) : undefined })}
                     />
                   </div>
-                  <div className="space-y-1.5">
-                    <span className="text-xs text-gray-500">Fréquence (si plus d'une)</span>
-                    <FrequenceInput
-                      jours={avenantForm.freqOpsJours}
-                      placeholder="Ex : 30"
-                      onChange={(v) => majSerieAvenant({ freqOpsJours: v.jours, freqOpsMois: undefined })}
-                    />
-                    {(avenantForm.nbOps || 0) > 1 && !avenantForm.freqOpsJours && !avenantForm.freqOpsMois && (
-                      <p className="text-xs text-red-600">Indiquez la fréquence pour projeter les dates.</p>
-                    )}
-                  </div>
-                  <div className="space-y-1">
-                    <span className="text-xs text-gray-500">Date de la 1ère opération</span>
-                    <Input
-                      type="date"
-                      className="h-8"
-                      value={avenantForm.premiereOp}
-                      onChange={(e) => majSerieAvenant({ premiereOp: e.target.value })}
-                    />
-                  </div>
-              </div>
-              {/* Colonne Contrôles */}
-              <div className="space-y-2 p-3 rounded-lg border bg-gray-50 border-gray-200">
-                  <p className="text-xs font-semibold text-gray-600">Visites de contrôle</p>
-                  <div className="space-y-1.5">
-                    <span className="text-xs text-gray-500">Visites entre chaque opération</span>
-                    <Input
-                      type="number"
-                      className="h-8"
-                      min={0}
-                      placeholder="0"
-                      value={avenantForm.nbCtrlEntreOps ?? ''}
-                      onChange={(e) => majSerieAvenant({ nbCtrlEntreOps: e.target.value ? Number(e.target.value) : undefined })}
-                    />
-                  </div>
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground -mt-1">
-              Préremplies à la suite de la dernière intervention du contrat, à sa fréquence. Les dates s'appliquent à chaque site du contrat.
-            </p>
-            <ProjectionDates
-              ops={avenantForm.datesOps}
-              ctrl={avenantForm.datesCtrl}
-              opsExistantes={opsExistantes}
-              debutConvention={avenantDebutConvention}
-              finConvention={avenantFinConvention}
-              debutPeriode={(contrat?.dateDebut || '').slice(0, 10)}
-              finPeriode={(contrat?.dateFin || '').slice(0, 10)}
-              onChangeDate={(serie, i, v) => setAvenantForm((f) => ({ ...f, [cleDates(serie)]: f[cleDates(serie)].map((d, j) => (j === i ? v : d)) }))}
-              onRemoveDate={(serie, i) => setAvenantForm((f) => {
-                const dates = f[cleDates(serie)].filter((_, j) => j !== i);
-                return { ...f, [cleDates(serie)]: dates, ...(serie === 'ops' ? { nbOps: dates.length } : {}) };
-              })}
-              onReset={(serie) => setAvenantForm((f) => ({ ...f, [cleDates(serie)]: projectionAvenant(f)[cleDates(serie)] }))}
-              onRemoveHorsContrat={() => setAvenantForm((f) => {
-                const datesCtrl = f.datesCtrl.filter((d) => !apresDerniereOperation(d, [...opsExistantes, ...f.datesOps]));
-                return { ...f, datesCtrl };
-              })}
-            />
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="av-date">Date de signature</Label>
-                <Input
-                  id="av-date"
-                  type="date"
-                  value={avenantForm.dateSignature}
-                  onChange={(e) => setAvenantForm((f) => ({ ...f, dateSignature: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="av-montant">Montant HT</Label>
-                <Input
-                  id="av-montant"
-                  type="number"
-                  min={0}
-                  step="any"
-                  value={avenantForm.montantHT}
-                  onChange={(e) => setAvenantForm((f) => ({ ...f, montantHT: e.target.value }))}
-                  placeholder="ex: 1500"
-                />
+                )}
+
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-600 w-40 shrink-0">
+                    Fréquence
+                    {!isPonctuel && <span className="text-red-500"> *</span>}
+                    {isPonctuel && <span className="text-gray-400 text-xs"> (si &gt; 1)</span>}
+                  </span>
+                  <FrequenceInput
+                    jours={avenantForm.freqOpsJours}
+                    placeholder="Ex : 90"
+                    onChange={(v) => majSerieAvenant({ freqOpsJours: v.jours })}
+                  />
+                </div>
+
+                {isPonctuel && (avenantForm.nbOps || 0) > 1 && !avenantForm.freqOpsJours && (
+                  <p className="text-xs text-red-600 pl-[10.5rem]">Indiquez la fréquence pour projeter les dates.</p>
+                )}
+
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-600 w-40 shrink-0">1ère opération</span>
+                  <Input
+                    type="date"
+                    className="h-8 w-36"
+                    value={avenantForm.premiereOp}
+                    onChange={(e) => majSerieAvenant({ premiereOp: e.target.value })}
+                  />
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-600 w-40 shrink-0">VC entre chaque op</span>
+                  <Input
+                    type="number"
+                    className="h-8 w-24"
+                    min={0}
+                    placeholder="0"
+                    value={avenantForm.nbCtrlEntreOps ?? ''}
+                    onChange={(e) => majSerieAvenant({ nbCtrlEntreOps: e.target.value ? Number(e.target.value) : undefined })}
+                  />
+                </div>
               </div>
             </div>
+
+            {/* Projection éditable */}
+            {(avenantForm.datesOps.length > 0 || avenantForm.datesCtrl.length > 0) && (
+              <div className="rounded-lg border p-3">
+                <ProjectionDates
+                  ops={avenantForm.datesOps}
+                  ctrl={avenantForm.datesCtrl}
+                  opsExistantes={opsExistantes}
+                  debutConvention={avenantDebutConvention}
+                  finConvention={avenantFinConvention}
+                  debutPeriode={(contrat?.dateDebut || '').slice(0, 10)}
+                  finPeriode={(contrat?.dateFin || '').slice(0, 10)}
+                  onChangeDate={(serie, i, v) => setAvenantForm((f) => ({ ...f, [cleDates(serie)]: f[cleDates(serie)].map((d, j) => (j === i ? v : d)) }))}
+                  onRemoveDate={(serie, i) => setAvenantForm((f) => {
+                    const dates = f[cleDates(serie)].filter((_, j) => j !== i);
+                    return { ...f, [cleDates(serie)]: dates, ...(serie === 'ops' ? { nbOps: dates.length } : {}) };
+                  })}
+                  onReset={(serie) => setAvenantForm((f) => ({ ...f, [cleDates(serie)]: projectionAvenant(f)[cleDates(serie)] }))}
+                  onRemoveHorsContrat={() => setAvenantForm((f) => {
+                    const datesCtrl = f.datesCtrl.filter((d) => !apresDerniereOperation(d, [...opsExistantes, ...f.datesOps]));
+                    return { ...f, datesCtrl };
+                  })}
+                />
+              </div>
+            )}
+
+            {/* Notes */}
             <div className="space-y-1.5">
-              <Label htmlFor="av-notes">Notes</Label>
+              <Label className="text-xs text-gray-500">Notes</Label>
               <Textarea
-                id="av-notes"
-                rows={3}
+                rows={2}
                 value={avenantForm.notes}
                 onChange={(e) => setAvenantForm((f) => ({ ...f, notes: e.target.value }))}
                 placeholder="Contexte de l'avenant..."

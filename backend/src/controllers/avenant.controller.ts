@@ -49,8 +49,6 @@ export const avenantController = {
         montantHT,
         nombreOperationsSupplementaires,
         nombreVisitesControleEntreOps,
-        dateDebut,
-        frequenceJours,
         datesOperations,
         datesControles,
         notes,
@@ -122,8 +120,6 @@ export const avenantController = {
           nbOps,
           nbCtrlEntreOps,
           {
-            dateDebut,
-            frequenceJours,
             datesOperations: datesOperations?.map((d: string) => new Date(d)),
             datesControles: datesControles?.map((d: string) => new Date(d)),
           },

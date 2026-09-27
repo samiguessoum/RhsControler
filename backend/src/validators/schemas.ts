@@ -169,8 +169,6 @@ export const createAvenantSchema = z.object({
   montantHT: z.number().nonnegative().optional(),
   nombreOperationsSupplementaires: z.number().int().nonnegative().optional().default(0),
   nombreVisitesControleEntreOps: z.number().int().nonnegative().optional().default(0),
-  dateDebut: z.string().or(z.date()).transform((val) => new Date(val)).optional(),
-  frequenceJours: z.number().int().positive().optional(),
   datesOperations: z.array(z.string()).optional(),
   datesControles: z.array(z.string()).optional(),
   notes: z.string().optional(),

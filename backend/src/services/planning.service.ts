@@ -865,8 +865,6 @@ export const planningService = {
     nbOperations: number,
     nbCtrlEntreOps: number,
     params: {
-      dateDebut?: Date;
-      frequenceJours?: number;
       datesOperations?: Date[];
       datesControles?: Date[];
     } = {},
@@ -881,7 +879,6 @@ export const planningService = {
     }
 
     const freqOpsSource = (src: any) => {
-      if (params.frequenceJours) return { mois: null as null, jours: params.frequenceJours };
       const mois: number | null = src?.frequenceOperationsMois ?? null;
       const jours: number | null = mois ? null : (src?.frequenceOperationsJours ?? null);
       return mois || jours ? { mois, jours } : null;
@@ -906,7 +903,7 @@ export const planningService = {
         }];
 
     for (const s of series) {
-      if (nbOperations > 1 && !s.freqOps && !params.datesOperations) {
+      if (nbOperations > 0 && !s.freqOps && !params.datesOperations) {
         throw new Error(`aucune fréquence d'opérations définie (${s.nom}) : indiquez une fréquence dans l'avenant`);
       }
     }
@@ -927,7 +924,7 @@ export const planningService = {
         });
         let d = derniere
           ? getProchaineDateIntervention(derniere.datePrevue, s.freqOps?.jours ?? null, s.freqOps?.mois ?? null)
-          : params.dateDebut ? new Date(params.dateDebut) : (s.premiereOp ? new Date(s.premiereOp) : startOfDay(new Date()));
+          : (s.premiereOp ? new Date(s.premiereOp) : startOfDay(new Date()));
         datesOps = [];
         for (let i = 0; i < nbOperations; i++) {
           datesOps.push(d);
