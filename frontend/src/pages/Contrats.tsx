@@ -503,7 +503,8 @@ export function ContratForm({
         }
         updated.datesPrevuesOperations = projectionOps(updated, dateFin);
       }
-      if ('nombreVisitesControleEntreOps' in updates || 'datesPrevuesOperations' in updates) {
+      const opsChanged = ['premiereDateOperation', 'frequenceOperationsJours', 'frequenceOperationsMois', 'nombreOperations', 'datesPrevuesOperations'].some((k) => k in updates);
+      if ('nombreVisitesControleEntreOps' in updates || opsChanged) {
         updated.datesPrevuesControles = projectionCtrl(updated);
       }
       return updated;
