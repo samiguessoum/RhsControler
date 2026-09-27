@@ -484,6 +484,11 @@ export const interventionController = {
         return res.status(404).json({ error: 'Intervention non trouvée' });
       }
 
+      // Une intervention réalisée ne peut pas voir sa datePrevue modifiée
+      if (existing.statut === 'REALISEE' && data.datePrevue && new Date(data.datePrevue).getTime() !== existing.datePrevue.getTime()) {
+        return res.status(400).json({ error: 'Impossible de modifier la date prévue d\'une intervention déjà réalisée' });
+      }
+
       const estOperation = existing.type !== 'CONTROLE';
       const corrigeStatut = data.statut && data.statut !== 'REALISEE' && existing.statut === 'REALISEE';
       const bcChange = data.bonCommandeId !== undefined && data.bonCommandeId !== (existing as any).bonCommandeId;

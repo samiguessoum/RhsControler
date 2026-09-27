@@ -3497,17 +3497,18 @@ export function PlanningPage() {
         dateDebut: format(dateRangeStart, 'yyyy-MM-dd'),
         dateFin: format(dateRangeEnd, 'yyyy-MM-dd'),
         clientId: filters.clientId || undefined,
+        siteId: filters.siteId || undefined,
         // EN_RETARD est un filtre virtuel géré côté client
         statut: filters.statut !== 'ALL' && filters.statut !== 'EN_RETARD' ? filters.statut : undefined,
         type: filters.type !== 'ALL' ? filters.type : undefined,
         prestation: filters.prestation || undefined,
-        limit: 500,
+        limit: 1000,
       }),
   });
 
   const { data: clientsData } = useQuery({
     queryKey: ['clients-active'],
-    queryFn: () => clientsApi.list({ actif: true, limit: 200 }),
+    queryFn: () => clientsApi.list({ actif: true, limit: 500 }),
   });
 
   const { data: prestations = [] } = useQuery({
@@ -3573,9 +3574,7 @@ export function PlanningPage() {
       result = result.filter((i) => i.statut !== 'ANNULEE');
     }
 
-    if (filters.siteId) {
-      result = result.filter((i) => i.siteId === filters.siteId);
-    }
+    // siteId filtré côté serveur — pas de filtre client redondant
 
     if (filters.responsable) {
       result = result.filter((i) =>
@@ -4047,6 +4046,17 @@ export function PlanningPage() {
               <option key={name} value={name} />
             ))}
           </datalist>
+        )}
+
+        {/* Avertissement si le nombre d'interventions dépasse la limite chargée */}
+        {interventionsData?.pagination && interventionsData.pagination.total > interventionsData.pagination.limit && (
+          <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
+            <span>
+              Affichage limité à {interventionsData.pagination.limit} interventions sur {interventionsData.pagination.total} pour cette période.
+              Réduisez la période ou filtrez par client pour tout voir.
+            </span>
+          </div>
         )}
 
         {/* ── Header (desktop only) ── */}

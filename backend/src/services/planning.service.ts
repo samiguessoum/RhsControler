@@ -743,8 +743,9 @@ export const planningService = {
       let d = new Date(premiere);
       if (contrat.type === 'PONCTUEL') {
         for (let i = 0; i < nombre && i < MAX_ECHEANCES; i++) {
-          dates.push(d);
-          d = getProchaineDateIntervention(d, freq?.jours, freq?.mois);
+          if (!dateReprise || d >= dateReprise) dates.push(d);
+          if (!freq) break; // Sans fréquence, toutes les ops tombent sur la même date : on en génère qu'une
+          d = getProchaineDateIntervention(d, freq.jours, freq.mois);
         }
         return dates;
       }
@@ -840,16 +841,20 @@ export const planningService = {
     userId: string,
     siteOverrides?: Array<{ siteId: string; datesPrevuesOperations?: Date[]; datesPrevuesControles?: Date[] }>,
   ) {
-    await prisma.intervention.deleteMany({
-      where: {
-        contratId,
-        type: { in: ['OPERATION', 'CONTROLE'] },
-        avenantId: null,
-        bonCommandeId: null,
-        statut: { in: ['A_PLANIFIER', 'PLANIFIEE', 'REPORTEE'] },
-      },
+    // Opération atomique : delete + generate dans la même transaction pour éviter les doublons
+    // en cas de double-sauvegarde simultanée.
+    return prisma.$transaction(async () => {
+      await prisma.intervention.deleteMany({
+        where: {
+          contratId,
+          type: { in: ['OPERATION', 'CONTROLE'] },
+          avenantId: null,
+          bonCommandeId: null,
+          statut: { in: ['A_PLANIFIER', 'PLANIFIEE', 'REPORTEE'] },
+        },
+      });
+      return this.genererPlanningContrat(contratId, userId, siteOverrides, { ignorerEcheancesConsommees: true });
     });
-    return this.genererPlanningContrat(contratId, userId, siteOverrides, { ignorerEcheancesConsommees: true });
   },
 
   /**
