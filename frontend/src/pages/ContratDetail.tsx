@@ -712,13 +712,18 @@ export function ContratDetailPage() {
                 </Badge>
               </div>
               {!isPonctuel && (
-                <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50">
+                <div className={`flex items-center justify-between p-3 rounded-lg ${contrat.reconductionAuto ? 'bg-green-50 border border-green-100' : 'bg-gray-50'}`}>
                   <div className="flex items-center gap-2">
-                    <RefreshCw className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">Reconduction auto</span>
+                    <RefreshCw className={`h-4 w-4 ${contrat.reconductionAuto ? 'text-green-600' : 'text-muted-foreground'}`} />
+                    <div>
+                      <span className={`text-sm font-medium ${contrat.reconductionAuto ? 'text-green-800' : 'text-gray-600'}`}>Reconduction automatique</span>
+                      {contrat.reconductionAuto && (
+                        <p className="text-xs text-green-600 mt-0.5">Renouvellement annuel jusqu'à fin de convention</p>
+                      )}
+                    </div>
                   </div>
-                  <Badge variant={contrat.reconductionAuto ? 'default' : 'secondary'}>
-                    {contrat.reconductionAuto ? 'Oui' : 'Non'}
+                  <Badge variant={contrat.reconductionAuto ? 'default' : 'secondary'} className={contrat.reconductionAuto ? 'bg-green-500 hover:bg-green-500' : ''}>
+                    {contrat.reconductionAuto ? 'Activée' : 'Désactivée'}
                   </Badge>
                 </div>
               )}

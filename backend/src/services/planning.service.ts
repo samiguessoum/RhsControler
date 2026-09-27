@@ -2,6 +2,7 @@ import { prisma } from '../config/database.js';
 import { InterventionStatut, ContratStatut, InterventionType } from '@prisma/client';
 import { getProchaineDateIntervention, maxDate, isOverdue, isWithinDays, getCurrentWeekBounds } from '../utils/date.utils.js';
 import { startOfDay, endOfDay, startOfMonth, addDays, addMonths, differenceInDays } from 'date-fns';
+import logger from '../lib/logger.js';
 
 /**
  * Règle métier : aucune visite de contrôle après la dernière opération du contrat (par site).
@@ -1005,6 +1006,7 @@ export const planningService = {
       where: {
         reconductionAuto: true,
         statut: 'ACTIF',
+        type: 'ANNUEL',
         dateFin: { not: null, lte: today },
       },
       include: {
@@ -1019,26 +1021,43 @@ export const planningService = {
 
         const contratSiteIds = contrat.contratSites.map((cs) => cs.siteId);
 
+        const duration = differenceInDays(contrat.dateFin, contrat.dateDebut);
+
+        // Données corrompues : durée nulle ou négative
+        if (duration <= 0) {
+          erreurs.push({ contratId: contrat.id, error: 'Durée du contrat invalide (≤ 0 jours)' });
+          continue;
+        }
+
+        const newDateDebut = addDays(contrat.dateFin, 1);
+        let newDateFin = addDays(newDateDebut, duration);
+
+        // Convention arrivée à son terme : pas de nouvelle période
+        if (contrat.dateFinConvention && newDateDebut > endOfDay(contrat.dateFinConvention)) continue;
+
+        // Si le nouveau contrat déborderait après la fin de convention, on l'écrête
+        if (contrat.dateFinConvention && newDateFin > contrat.dateFinConvention) {
+          newDateFin = contrat.dateFinConvention;
+        }
+
+        // Après écrêtage, le contrat serait d'une durée nulle (convention = jour de début)
+        if (newDateFin <= newDateDebut) continue;
+
         // Vérifier si un successeur existe déjà (idempotence)
+        // On filtre par type pour éviter qu'un contrat ponctuel indépendant bloque la reconduction
         const successorExists = await prisma.contrat.findFirst({
           where: {
             clientId: contrat.clientId,
-            dateDebut: { gt: contrat.dateFin },
+            type: contrat.type,
+            dateDebut: { gte: newDateDebut },
             statut: { in: ['ACTIF', 'SUSPENDU'] },
-            contratSites: contratSiteIds.length > 0
-              ? { some: { siteId: { in: contratSiteIds } } }
-              : undefined,
+            ...(contratSiteIds.length > 0
+              ? { contratSites: { some: { siteId: { in: contratSiteIds } } } }
+              : {}),
           },
         });
 
         if (successorExists) continue;
-
-        const duration = differenceInDays(contrat.dateFin, contrat.dateDebut);
-        const newDateDebut = addDays(contrat.dateFin, 1);
-        const newDateFin = addDays(newDateDebut, duration);
-
-        // Convention arrivée à son terme : pas de nouvelle période
-        if (contrat.dateFinConvention && newDateDebut > endOfDay(contrat.dateFinConvention)) continue;
 
         let newContratId: string = '';
 
@@ -1077,15 +1096,22 @@ export const planningService = {
               dateDebutConvention: contrat.dateDebutConvention,
               dateFinConvention: contrat.dateFinConvention,
               datePriseEnComptePlanification: newDateDebut,
+              premiereDateOperation: (() => {
+                if (!contrat.premiereDateOperation) return null;
+                const advanced = addDays(contrat.premiereDateOperation, duration + 1);
+                return contrat.dateFinConvention && advanced > contrat.dateFinConvention ? null : advanced;
+              })(),
             },
           });
           newContratId = newContrat.id;
 
           // Copier les ContratSites avec dates d'ancre avancées de la durée du contrat
           for (const cs of contrat.contratSites) {
-            const advancePremiereDateOp = cs.premiereDateOperation
-              ? addDays(cs.premiereDateOperation, duration + 1)
-              : null;
+            const advancePremiereDateOp = (() => {
+              if (!cs.premiereDateOperation) return null;
+              const advanced = addDays(cs.premiereDateOperation, duration + 1);
+              return contrat.dateFinConvention && advanced > contrat.dateFinConvention ? null : advanced;
+            })();
             await tx.contratSite.create({
               data: {
                 contratId: newContrat.id,
@@ -1113,8 +1139,9 @@ export const planningService = {
         } else {
           try {
             await this.genererPlanningContrat(newContratId, userId);
-          } catch (_e) {
-            // Non-bloquant : la génération peut échouer si la DB n'est pas encore prête
+          } catch (genErr: any) {
+            logger.warn({ contratId: newContratId, err: genErr?.message }, 'Reconduction : planning non généré, à ajuster manuellement');
+            planningAajusterIds.push(newContratId);
           }
         }
       } catch (err: any) {

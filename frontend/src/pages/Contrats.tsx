@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Plus, MoreVertical, FileText, CalendarClock, MapPin, Trash2, X, ChevronDown, ChevronUp, Search, Clock, CheckCircle2, Calendar, Pencil, Check, Receipt } from 'lucide-react';
+import { Plus, MoreVertical, FileText, CalendarClock, MapPin, Trash2, X, ChevronDown, ChevronUp, Search, Clock, CheckCircle2, Calendar, Pencil, Check, Receipt, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -434,6 +434,7 @@ export function ContratForm({
   };
 
   // State pour le select d'ajout de site (permet de réinitialiser après sélection)
+  const [reconductionAuto, setReconductionAuto] = useState<boolean>(contrat ? (contrat.reconductionAuto ?? true) : true);
   const [siteSelectKey, setSiteSelectKey] = useState(0);
 
   // Sites configuration avec prestations
@@ -721,7 +722,7 @@ export function ContratForm({
           type,
           dateDebut: dateDebut,
           dateFin: dateFin || (isEdit ? null : undefined),
-          reconductionAuto: formData.get('reconductionAuto') === 'on',
+          reconductionAuto,
           prestations: allSitePrestations, // Toutes les prestations de tous les sites
           responsablePlanningId: responsablePlanningId || (isEdit ? null : undefined),
           statut,
@@ -1134,12 +1135,32 @@ export function ContratForm({
         </div>
 
         {!isPonctuel && (
-          <div className="flex items-center gap-6 pt-2">
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="reconductionAuto" defaultChecked={contrat?.reconductionAuto} className="rounded" />
-              Reconduction automatique
-            </label>
-          </div>
+          <button
+            type="button"
+            onClick={() => setReconductionAuto((v) => !v)}
+            className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-lg border transition-colors text-left ${
+              reconductionAuto
+                ? 'border-green-200 bg-green-50'
+                : 'border-gray-200 bg-gray-50'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <RefreshCw className={`h-4 w-4 shrink-0 ${reconductionAuto ? 'text-green-600' : 'text-gray-400'}`} />
+              <div>
+                <p className={`text-sm font-medium ${reconductionAuto ? 'text-green-800' : 'text-gray-600'}`}>
+                  Reconduction automatique
+                </p>
+                <p className={`text-xs mt-0.5 ${reconductionAuto ? 'text-green-600' : 'text-gray-400'}`}>
+                  {reconductionAuto
+                    ? 'Le contrat sera reconduit chaque année jusqu\'à la fin de la convention'
+                    : 'Le renouvellement devra être effectué manuellement'}
+                </p>
+              </div>
+            </div>
+            <div className={`relative shrink-0 w-10 h-5 rounded-full transition-colors ${reconductionAuto ? 'bg-green-500' : 'bg-gray-300'}`}>
+              <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${reconductionAuto ? 'translate-x-5' : 'translate-x-0'}`} />
+            </div>
+          </button>
         )}
       </div>
       </div>
