@@ -985,9 +985,7 @@ export const planningService = {
     if (!contrat) {
       throw new Error('Contrat non trouvé');
     }
-    if (contrat.type !== 'PONCTUEL') {
-      throw new Error('Les avenants ne concernent que les contrats ponctuels');
-    }
+
 
     // Fréquence saisie dans l'avenant prioritaire, sinon celle du site, sinon celle du contrat
     const frequence = (src: any, kind: 'Operations' | 'Controle') => {

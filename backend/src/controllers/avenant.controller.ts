@@ -62,9 +62,7 @@ export const avenantController = {
       if (!contrat) {
         return next(new AppError(404, 'Contrat non trouvé'));
       }
-      if (contrat.type !== 'PONCTUEL') {
-        return next(new AppError(400, 'Les avenants ne concernent que les contrats ponctuels'));
-      }
+
 
       // Garde-fou convention, comme à la création du contrat (les visites après la dernière
       // opération ne sont pas planifiées : elles ne comptent pas)

@@ -683,9 +683,8 @@ export function ContratDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Carte Avenants (ponctuel). En annuel, le n° de bon de commande est un champ du contrat. */}
-          {isPonctuel && (
-            <Card>
+          {/* Carte Avenants */}
+          <Card>
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="flex items-center gap-2 text-lg">
@@ -725,7 +724,6 @@ export function ContratDetailPage() {
                 ))}
               </CardContent>
             </Card>
-          )}
 
           {/* Carte Options */}
           <Card>
