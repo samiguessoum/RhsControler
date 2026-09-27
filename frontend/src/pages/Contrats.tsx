@@ -936,84 +936,64 @@ export function ContratForm({
 
                     {/* Contenu déplié */}
                     {isExpanded && (
-                      <div className="p-3 border-t space-y-4">
-                        {/* Prestations du site */}
-                        <div className="space-y-2">
-                          <Label className="text-xs font-medium">Prestations et prix *</Label>
-                          {availablePrestationsForSite.length > 0 && (
-                            <Select onValueChange={(v) => addPrestationToSite(cs.siteId, v)}>
-                              <SelectTrigger className="h-8 w-56 border-dashed border-amber-300 text-amber-800 hover:bg-amber-50">
-                                <SelectValue
-                                  placeholder={
-                                    sitePrestations.length === 0
-                                      ? 'Ajouter une prestation'
-                                      : 'Ajouter une autre prestation'
-                                  }
-                                />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {availablePrestationsForSite.map((p) => (
-                                  <SelectItem key={p.id} value={p.nom}>
-                                    {p.nom}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          )}
-                          {sitePrestations.length === 0 && (
-                            <p className="text-xs text-amber-700">
+                      <div className="border-t divide-y divide-gray-100">
+
+                        {/* ── Prestations ── */}
+                        <div className="p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Prestations</span>
+                            {availablePrestationsForSite.length > 0 && (
+                              <Select onValueChange={(v) => addPrestationToSite(cs.siteId, v)}>
+                                <SelectTrigger className="h-7 w-auto gap-1 border-dashed text-xs text-blue-600 border-blue-300 hover:bg-blue-50 hover:border-blue-400 px-2">
+                                  <Plus className="h-3 w-3" />
+                                  <SelectValue placeholder="Ajouter" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {availablePrestationsForSite.map((p) => (
+                                    <SelectItem key={p.id} value={p.nom}>{p.nom}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            )}
+                          </div>
+
+                          {sitePrestations.length === 0 ? (
+                            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
                               Au moins une prestation requise pour ce site.
                             </p>
-                          )}
-                          {sitePrestations.length > 0 && (
-                            <div className="space-y-1.5">
+                          ) : (
+                            <div className="space-y-1">
                               {sitePrestations.map((nom) => {
                                 const priceMissing = !cs.prixPrestations?.[nom];
                                 return (
-                                  <div
-                                    key={nom}
-                                    className={`flex items-center gap-2 p-2 rounded border ${
-                                      priceMissing ? 'bg-amber-50 border-amber-300' : 'bg-white border-gray-100'
-                                    }`}
-                                  >
-                                    {/* Nom */}
-                                    <span className="text-sm font-medium text-gray-700 flex-1 min-w-0 truncate">{nom}</span>
-                                    {/* Prix */}
-                                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                                      <Input
-                                        type="number"
-                                        min={0}
-                                        step="any"
-                                        className={`h-8 w-28 text-sm px-2 font-medium ${
-                                          priceMissing ? 'border-amber-400 focus-visible:ring-amber-400' : ''
-                                        }`}
-                                        placeholder="Prix *"
-                                        value={(cs.prixPrestations?.[nom]) ?? ''}
-                                        onChange={(e) => {
-                                          const prix = e.target.value ? Number(e.target.value) : undefined;
-                                          updateSite(cs.siteId, {
-                                            prixPrestations: {
-                                              ...(cs.prixPrestations || {}),
-                                              ...(prix !== undefined ? { [nom]: prix } : Object.fromEntries(
-                                                Object.entries(cs.prixPrestations || {}).filter(([k]) => k !== nom)
-                                              )),
-                                            },
-                                          });
-                                        }}
-                                      />
-                                      <span className="text-xs text-gray-400">DA</span>
-                                    </div>
-                                    {priceMissing && (
-                                      <span className="text-[11px] font-medium text-amber-700 flex-shrink-0">
-                                        Prix manquant
-                                      </span>
-                                    )}
+                                  <div key={nom} className="flex items-center gap-2">
+                                    <span className="text-sm text-gray-700 flex-1 min-w-0 truncate">{nom}</span>
+                                    <Input
+                                      type="number"
+                                      min={0}
+                                      step="any"
+                                      className={cn('h-7 w-24 text-sm text-right px-2', priceMissing && 'border-amber-400 focus-visible:ring-amber-400')}
+                                      placeholder="Prix"
+                                      value={cs.prixPrestations?.[nom] ?? ''}
+                                      onChange={(e) => {
+                                        const prix = e.target.value ? Number(e.target.value) : undefined;
+                                        updateSite(cs.siteId, {
+                                          prixPrestations: {
+                                            ...(cs.prixPrestations || {}),
+                                            ...(prix !== undefined ? { [nom]: prix } : Object.fromEntries(
+                                              Object.entries(cs.prixPrestations || {}).filter(([k]) => k !== nom)
+                                            )),
+                                          },
+                                        });
+                                      }}
+                                    />
+                                    <span className="text-xs text-gray-400 w-5 shrink-0">DA</span>
                                     <button
                                       type="button"
                                       onClick={() => removePrestationFromSite(cs.siteId, nom)}
-                                      className="hover:bg-gray-100 rounded-full p-0.5 flex-shrink-0"
+                                      className="text-gray-300 hover:text-red-500 shrink-0"
                                     >
-                                      <X className="h-3 w-3 text-gray-400" />
+                                      <X className="h-3.5 w-3.5" />
                                     </button>
                                   </div>
                                 );
@@ -1022,85 +1002,77 @@ export function ContratForm({
                           )}
                         </div>
 
-                        {/* Opérations + Contrôles — affichage selon le type de contrat */}
-                        <div className="grid grid-cols-2 gap-3">
+                        {/* ── Planning ── */}
+                        <div className="p-3 space-y-3">
+                          <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Planning</span>
 
-                          {/* ─── Opérations ─── */}
-                          <div className={`space-y-2 p-3 rounded-lg border ${isPonctuel ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'}`}>
-                            <p className={`text-xs font-semibold ${isPonctuel ? 'text-amber-700' : 'text-gray-600'}`}>
-                              Opérations {isPonctuel ? '— quota' : '— fréquence'}
-                            </p>
-
-                            {isPonctuel && (
-                              /* PONCTUEL : nombre total d'opérations à réaliser */
-                              <div className="space-y-1.5">
-                                <span className="text-xs text-gray-500">Nombre d'opérations prévu *</span>
-                                <Input
-                                  type="number"
-                                  className="h-8"
-                                  min={1}
-                                  placeholder="Ex : 4"
-                                  value={cs.nombreOperations || ''}
-                                  onChange={(e) => updateSite(cs.siteId, { nombreOperations: e.target.value ? Number(e.target.value) : undefined })}
-                                />
-                              </div>
-                            )}
-                            <div className="space-y-1.5">
-                              <span className="text-xs text-gray-500">
-                                Fréquence {isPonctuel ? "(si plus d'une opération)" : '*'}
-                              </span>
-                              <FrequenceInput
-                                jours={cs.frequenceOperationsJours}
-                                placeholder={isPonctuel ? 'Ex : 30' : 'Ex : 3'}
-                                onChange={(v) => updateSite(cs.siteId, { frequenceOperationsJours: v.jours, frequenceOperationsMois: undefined })}
-                              />
-                            </div>
-
-                            {/* Date première opération — commun aux deux types */}
-                            <div className="space-y-1">
-                              <span className="text-xs text-gray-500">Date de la 1ère opération</span>
-                              <Input
-                                type="date"
-                                className="h-8"
-                                value={cs.premiereDateOperation || ''}
-                                onChange={(e) => updateSite(cs.siteId, { premiereDateOperation: e.target.value })}
-                              />
-                            </div>
-                          </div>
-
-                          {/* ─── Contrôles ─── */}
-                          <div className={`space-y-2 p-3 rounded-lg border ${isPonctuel ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'}`}>
-                            <p className={`text-xs font-semibold ${isPonctuel ? 'text-amber-700' : 'text-gray-600'}`}>
-                              Contrôles
-                            </p>
-                            <div className="space-y-1.5">
-                              <span className="text-xs text-gray-500">Visites entre chaque opération</span>
+                          {isPonctuel && (
+                            <div className="flex items-center gap-3">
+                              <span className="text-sm text-gray-600 w-40 shrink-0">Nb opérations <span className="text-red-500">*</span></span>
                               <Input
                                 type="number"
-                                className="h-8"
-                                min={0}
-                                placeholder="Ex : 2"
-                                value={cs.nombreVisitesControleEntreOps ?? ''}
-                                onChange={(e) => updateSite(cs.siteId, { nombreVisitesControleEntreOps: e.target.value ? Number(e.target.value) : undefined })}
+                                className="h-8 w-24"
+                                min={1}
+                                placeholder="Ex : 4"
+                                value={cs.nombreOperations || ''}
+                                onChange={(e) => updateSite(cs.siteId, { nombreOperations: e.target.value ? Number(e.target.value) : undefined })}
                               />
                             </div>
+                          )}
+
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm text-gray-600 w-40 shrink-0">
+                              Fréquence
+                              {!isPonctuel && <span className="text-red-500"> *</span>}
+                              {isPonctuel && <span className="text-gray-400 text-xs"> (si &gt; 1)</span>}
+                            </span>
+                            <FrequenceInput
+                              jours={cs.frequenceOperationsJours}
+                              placeholder={isPonctuel ? 'Ex : 30' : 'Ex : 90'}
+                              onChange={(v) => updateSite(cs.siteId, { frequenceOperationsJours: v.jours, frequenceOperationsMois: undefined })}
+                            />
                           </div>
 
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm text-gray-600 w-40 shrink-0">1ère opération</span>
+                            <Input
+                              type="date"
+                              className="h-8"
+                              value={cs.premiereDateOperation || ''}
+                              onChange={(e) => updateSite(cs.siteId, { premiereDateOperation: e.target.value })}
+                            />
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm text-gray-600 w-40 shrink-0">VC entre chaque op</span>
+                            <Input
+                              type="number"
+                              className="h-8 w-24"
+                              min={0}
+                              placeholder="0"
+                              value={cs.nombreVisitesControleEntreOps ?? ''}
+                              onChange={(e) => updateSite(cs.siteId, { nombreVisitesControleEntreOps: e.target.value ? Number(e.target.value) : undefined })}
+                            />
+                          </div>
                         </div>
 
-                        {/* ─── Projection des dates ─── */}
-                        <ProjectionDates
-                          ops={cs.datesPrevuesOperations || []}
-                          ctrl={cs.datesPrevuesControles || []}
-                          debutConvention={debutConvention}
-                          finConvention={finConvention}
-                          debutPeriode={dateDebut}
-                          finPeriode={dateFin}
-                          onChangeDate={(t, i, v) => updateSiteDate(cs.siteId, t, i, v)}
-                          onRemoveDate={(t, i) => removeSiteDate(cs.siteId, t, i)}
-                          onReset={(t) => resetSiteDates(cs.siteId, t)}
-                          onRemoveHorsContrat={() => removeControlesApresDerniereOp(cs.siteId)}
-                        />
+                        {/* ── Projection des dates ── */}
+                        {(cs.datesPrevuesOperations?.length || cs.datesPrevuesControles?.length) ? (
+                          <div className="p-3">
+                            <ProjectionDates
+                              ops={cs.datesPrevuesOperations || []}
+                              ctrl={cs.datesPrevuesControles || []}
+                              debutConvention={debutConvention}
+                              finConvention={finConvention}
+                              debutPeriode={dateDebut}
+                              finPeriode={dateFin}
+                              onChangeDate={(t, i, v) => updateSiteDate(cs.siteId, t, i, v)}
+                              onRemoveDate={(t, i) => removeSiteDate(cs.siteId, t, i)}
+                              onReset={(t) => resetSiteDates(cs.siteId, t)}
+                              onRemoveHorsContrat={() => removeControlesApresDerniereOp(cs.siteId)}
+                            />
+                          </div>
+                        ) : null}
 
                       </div>
                     )}
