@@ -806,7 +806,7 @@ export function ContratForm({
           {/* Ligne 2 — Contrat annuel */}
           <div className="grid grid-cols-2 gap-px">
             <div className="space-y-1 p-3 bg-white">
-              <Label className="text-xs text-gray-500">Date début contrat annuel <span className="text-red-500">*</span></Label>
+              <Label className="text-xs text-gray-500">Date début contrat annuel {isPonctuel ? <span className="text-gray-400">(optionnel)</span> : <span className="text-red-500">*</span>}</Label>
               <Input
                 type="date"
                 className="h-8 text-sm"
