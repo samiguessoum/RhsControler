@@ -277,7 +277,7 @@ export function FrequenceInput({
       <span className="text-xs text-gray-400 whitespace-nowrap">Tous les</span>
       <Input
         type="number"
-        className="h-8"
+        className="h-8 w-20"
         min={1}
         placeholder={placeholder}
         value={jours || ''}
