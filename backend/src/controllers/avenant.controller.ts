@@ -48,13 +48,11 @@ export const avenantController = {
         dateSignature,
         montantHT,
         nombreOperationsSupplementaires,
-        nombreVisitesControleSupplementaires,
+        nombreVisitesControleEntreOps,
         dateDebut,
         frequenceJours,
         datesOperations,
         datesControles,
-        frequenceControleJours,
-        frequenceControleMois,
         notes,
       } = req.body;
 
@@ -97,9 +95,8 @@ export const avenantController = {
       });
       const numero = (dernierAvenant?.numero ?? 0) + 1;
 
-      // Avec des dates explicites, leur nombre fait foi
       const nbOps = datesOperations ? datesOperations.length : (nombreOperationsSupplementaires ?? 0);
-      const nbCtrl = datesControles ? datesControles.length : (nombreVisitesControleSupplementaires ?? 0);
+      const nbCtrlEntreOps = nombreVisitesControleEntreOps ?? 0;
 
       const avenant = await prisma.avenant.create({
         data: {
@@ -110,33 +107,28 @@ export const avenantController = {
           dateSignature: dateSignature ? new Date(dateSignature) : null,
           montantHT: montantHT ?? null,
           nombreOperationsSupplementaires: nbOps,
-          nombreVisitesControleSupplementaires: nbCtrl,
+          nombreVisitesControleSupplementaires: datesControles ? datesControles.length : nbCtrlEntreOps,
           notes: notes || null,
           createdById: req.user!.id,
         },
       });
 
       let interventionsCreees: any[] = [];
-      let warning: string | undefined;
       try {
         const result = await planningService.genererInterventionsAvenant(
           contratId,
           avenant.id,
           req.user!.id,
           nbOps,
-          nbCtrl,
+          nbCtrlEntreOps,
           {
             dateDebut,
             frequenceJours,
             datesOperations: datesOperations?.map((d: string) => new Date(d)),
             datesControles: datesControles?.map((d: string) => new Date(d)),
-            frequenceControle: frequenceControleJours || frequenceControleMois
-              ? { jours: frequenceControleMois ? null : (frequenceControleJours ?? null), mois: frequenceControleMois ?? null }
-              : undefined,
           },
         );
         interventionsCreees = result.interventionsCreees;
-        warning = result.warning;
       } catch (genError: any) {
         // Rien n'a été généré (les fréquences sont vérifiées avant toute création) :
         // on retire l'avenant pour ne pas laisser un avenant vide ni décaler la numérotation.
@@ -148,7 +140,7 @@ export const avenantController = {
         after: { ...avenant, interventionsGenerees: interventionsCreees.length },
       });
 
-      res.status(201).json({ avenant, interventionsCreees, count: interventionsCreees.length, warning });
+      res.status(201).json({ avenant, interventionsCreees, count: interventionsCreees.length });
     } catch (error) {
       logger.error({ err: error }, 'Avenant create error');
       return next(new AppError(500, 'Erreur serveur'));

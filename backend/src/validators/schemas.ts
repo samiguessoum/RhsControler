@@ -124,13 +124,10 @@ const contratSiteSchema = z.object({
   prestations: z.array(z.string()).min(1, 'Au moins une prestation requise').optional(),
   prixPrestations: z.record(z.string(), z.number().min(0)).optional(),
   frequenceOperationsJours: z.number().int().positive().optional().nullable(),
-  frequenceControleJours: z.number().int().positive().optional().nullable(),
   frequenceOperationsMois: z.number().int().positive().optional().nullable(),
-  frequenceControleMois: z.number().int().positive().optional().nullable(),
   premiereDateOperation: z.string().or(z.date()).transform((val) => new Date(val)).optional().nullable(),
-  premiereDateControle: z.string().or(z.date()).transform((val) => new Date(val)).optional().nullable(),
   nombreOperations: z.number().int().positive().optional().nullable(),
-  nombreVisitesControle: z.number().int().positive().optional().nullable(),
+  nombreVisitesControleEntreOps: z.number().int().nonnegative().optional().nullable(),
   notes: z.string().optional().nullable(),
   // Dates projetées (éventuellement retouchées) dans le formulaire : prioritaires sur la fréquence
   datesPrevuesOperations: z.array(z.string()).optional(),
@@ -146,9 +143,7 @@ export const createContratSchema = z.object({
   reconductionAuto: z.boolean().optional().default(false),
   prestations: z.array(z.string()).min(1, 'Au moins une prestation requise'),
   frequenceOperationsJours: z.number().int().positive().optional(),
-  frequenceControleJours: z.number().int().positive().optional(),
   premiereDateOperation: z.string().or(z.date()).transform((val) => new Date(val)).optional(),
-  premiereDateControle: z.string().or(z.date()).transform((val) => new Date(val)).optional(),
   responsablePlanningId: z.string().uuid().optional(),
   statut: z.enum(['ACTIF', 'SUSPENDU', 'TERMINE']).optional().default('ACTIF'),
   notes: z.string().optional(),
@@ -161,38 +156,10 @@ export const createContratSchema = z.object({
   // Sites du contrat
   contratSites: z.array(contratSiteSchema).optional(),
 }).refine((data) => {
-  // Si contrat ponctuel, il faut un numéro de bon de commande
-  if (data.type === 'PONCTUEL' && !data.numeroBonCommande) {
-    return false;
-  }
+  if (data.type === 'PONCTUEL' && !data.numeroBonCommande) return false;
   return true;
 }, {
   message: 'Un contrat ponctuel nécessite un numéro de bon de commande',
-}).refine((data) => {
-  // Si le contrat est ACTIF, vérifier les fréquences (au niveau contrat ou sites)
-  if (data.statut === 'ACTIF') {
-    const hasContratSites = data.contratSites && data.contratSites.length > 0;
-    if (hasContratSites) {
-      return true;
-    }
-    const hasFrequenceOp = !!data.frequenceOperationsJours;
-    const hasFrequenceCtrl = !!data.frequenceControleJours;
-
-    if (!hasFrequenceOp && !hasFrequenceCtrl) {
-      return false;
-    }
-
-    if (hasFrequenceOp && !data.premiereDateOperation) {
-      return false;
-    }
-
-    if (hasFrequenceCtrl && !data.premiereDateControle) {
-      return false;
-    }
-  }
-  return true;
-}, {
-  message: 'Un contrat actif nécessite au moins une fréquence (en jours) avec sa date de première intervention',
 });
 
 export const createAvenantSchema = z.object({
@@ -201,21 +168,15 @@ export const createAvenantSchema = z.object({
   dateSignature: z.string().or(z.date()).transform((val) => new Date(val)).optional(),
   montantHT: z.number().nonnegative().optional(),
   nombreOperationsSupplementaires: z.number().int().nonnegative().optional().default(0),
-  nombreVisitesControleSupplementaires: z.number().int().nonnegative().optional().default(0),
-  // Facultatifs : départ et fréquence des interventions de l'avenant (sinon suite du contrat)
+  nombreVisitesControleEntreOps: z.number().int().nonnegative().optional().default(0),
   dateDebut: z.string().or(z.date()).transform((val) => new Date(val)).optional(),
   frequenceJours: z.number().int().positive().optional(),
-  // Dates explicites issues de la projection (prioritaires) et fréquence des visites, qui sert
-  // à savoir si une opération remplace une visite
   datesOperations: z.array(z.string()).optional(),
   datesControles: z.array(z.string()).optional(),
-  frequenceControleJours: z.number().int().positive().optional(),
-  frequenceControleMois: z.number().int().positive().optional(),
   notes: z.string().optional(),
 }).refine(
-  (data) => data.nombreOperationsSupplementaires > 0 || data.nombreVisitesControleSupplementaires > 0
-    || !!data.datesOperations?.length || !!data.datesControles?.length,
-  { message: 'Un avenant doit ajouter au moins une opération ou une visite de contrôle' }
+  (data) => data.nombreOperationsSupplementaires > 0 || !!data.datesOperations?.length || !!data.datesControles?.length,
+  { message: 'Un avenant doit ajouter au moins une opération ou des visites de contrôle' }
 );
 
 export const updateContratSchema = z.object({
@@ -227,9 +188,7 @@ export const updateContratSchema = z.object({
   reconductionAuto: z.boolean().optional(),
   prestations: z.array(z.string()).min(1, 'Au moins une prestation requise').optional(),
   frequenceOperationsJours: z.number().int().positive().optional().nullable(),
-  frequenceControleJours: z.number().int().positive().optional().nullable(),
   premiereDateOperation: z.string().or(z.date()).transform((val) => new Date(val)).optional().nullable(),
-  premiereDateControle: z.string().or(z.date()).transform((val) => new Date(val)).optional().nullable(),
   responsablePlanningId: z.string().uuid().optional().nullable(),
   statut: z.enum(['ACTIF', 'SUSPENDU', 'TERMINE']).optional(),
   notes: z.string().optional().nullable(),

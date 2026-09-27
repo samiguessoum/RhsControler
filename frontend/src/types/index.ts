@@ -97,13 +97,10 @@ export interface ContratSite {
   prestations: string[];
   prixPrestations?: Record<string, number>;
   frequenceOperationsJours?: number;
-  frequenceControleJours?: number;
   frequenceOperationsMois?: number;
-  frequenceControleMois?: number;
   premiereDateOperation?: string;
-  premiereDateControle?: string;
   nombreOperations?: number;
-  nombreVisitesControle?: number;
+  nombreVisitesControleEntreOps?: number;
   notes?: string;
   createdAt: string;
   updatedAt: string;
@@ -114,13 +111,10 @@ export interface ContratSiteInput {
   prestations?: string[];
   prixPrestations?: Record<string, number>;
   frequenceOperationsJours?: number;
-  frequenceControleJours?: number;
   frequenceOperationsMois?: number;
-  frequenceControleMois?: number;
   premiereDateOperation?: string;
-  premiereDateControle?: string;
   nombreOperations?: number;
-  nombreVisitesControle?: number;
+  nombreVisitesControleEntreOps?: number;
   notes?: string;
   datesPrevuesOperations?: string[];
   datesPrevuesControles?: string[];
@@ -137,9 +131,7 @@ export interface Contrat {
   reconductionAuto: boolean;
   prestations: string[];
   frequenceOperationsJours?: number;
-  frequenceControleJours?: number;
   premiereDateOperation?: string;
-  premiereDateControle?: string;
   responsablePlanningId?: string;
   responsablePlanning?: User;
   statut: ContratStatut;
@@ -237,7 +229,6 @@ export interface Intervention {
   remainingOperations?: number | null;
   remainingControles?: number | null;
   frequenceOperationsJours?: number | null;
-  frequenceControleJours?: number | null;
   interventionEmployes?: InterventionEmploye[];
   avenant?: { id: string; numero: number; nom?: string | null; numeroBonCommande?: string | null } | null;
   bonCommande?: { id: string; numero: string } | null;
@@ -486,9 +477,7 @@ export interface CreateContratInput {
   reconductionAuto?: boolean;
   prestations: string[];
   frequenceOperationsJours?: number;
-  frequenceControleJours?: number;
   premiereDateOperation?: string;
-  premiereDateControle?: string;
   responsablePlanningId?: string | null;
   statut?: ContratStatut;
   notes?: string;

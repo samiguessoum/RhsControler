@@ -45,7 +45,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { contratsApi, interventionsApi, prestationsApi, avenantApi, clientsApi, usersApi } from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
-import { ContratForm, ProjectionDates, FrequenceInput, computeProjectionDates, apresDerniereOperation, horsBornes } from './Contrats';
+import { ContratForm, ProjectionDates, FrequenceInput, computeProjectionDates, computeProjectionControles, apresDerniereOperation, horsBornes } from './Contrats';
 import { addDays, addMonths, format } from 'date-fns';
 import { formatDate, getStatutColor, getStatutLabel, cn } from '@/lib/utils';
 import type { Prestation, InterventionStatut } from '@/types';
@@ -76,22 +76,22 @@ type AvenantForm = {
   freqOpsJours?: number;
   freqOpsMois?: number;
   premiereOp: string;
-  nbCtrl?: number;
-  freqCtrlJours?: number;
-  freqCtrlMois?: number;
-  premiereCtrl: string;
+  nbCtrlEntreOps?: number;
   datesOps: string[];
   datesCtrl: string[];
 };
 
 const AVENANT_VIDE: AvenantForm = {
   nom: '', numeroBonCommande: '', dateSignature: '', montantHT: '', notes: '',
-  premiereOp: '', premiereCtrl: '', datesOps: [], datesCtrl: [],
+  premiereOp: '', datesOps: [], datesCtrl: [],
 };
 
 const projectionAvenant = (f: AvenantForm) => ({
   datesOps: computeProjectionDates(f.premiereOp, f.nbOps, f.freqOpsJours, f.freqOpsMois, undefined, true),
-  datesCtrl: computeProjectionDates(f.premiereCtrl, f.nbCtrl, f.freqCtrlJours, f.freqCtrlMois, undefined, true),
+  datesCtrl: computeProjectionControles(
+    computeProjectionDates(f.premiereOp, f.nbOps, f.freqOpsJours, f.freqOpsMois, undefined, true),
+    f.nbCtrlEntreOps || 0,
+  ),
 });
 
 export function ContratDetailPage() {
@@ -125,11 +125,9 @@ export function ContratDetailPage() {
         montantHT: avenantForm.montantHT ? parseFloat(avenantForm.montantHT) : undefined,
         // Les dates de la projection font foi (leur nombre compris)
         nombreOperationsSupplementaires: avenantForm.datesOps.length,
-        nombreVisitesControleSupplementaires: avenantForm.datesCtrl.length,
+        nombreVisitesControleEntreOps: avenantForm.nbCtrlEntreOps,
         datesOperations: avenantForm.datesOps.length ? avenantForm.datesOps : undefined,
         datesControles: avenantForm.datesCtrl.length ? avenantForm.datesCtrl : undefined,
-        frequenceControleJours: avenantForm.freqCtrlJours,
-        frequenceControleMois: avenantForm.freqCtrlMois,
         notes: avenantForm.notes || undefined,
       }),
     onSuccess: (res) => {
@@ -212,30 +210,29 @@ export function ContratDetailPage() {
   const ouvrirAvenant = () => {
     const src: any = contrat?.contratSites?.[0] ?? contrat;
     const freqOps = { jours: src?.frequenceOperationsMois ? undefined : (src?.frequenceOperationsJours ?? undefined), mois: src?.frequenceOperationsMois ?? undefined };
-    const freqCtrl = { jours: src?.frequenceControleMois ? undefined : (src?.frequenceControleJours ?? undefined), mois: src?.frequenceControleMois ?? undefined };
-    const suivante = (type: string, freq: { jours?: number; mois?: number }) => {
-      const dates = interventions.filter((i) => i.type === type && i.statut !== 'ANNULEE').map((i) => i.datePrevue.slice(0, 10)).sort();
+    const suivanteOp = () => {
+      const dates = interventions.filter((i) => i.type === 'OPERATION' && i.statut !== 'ANNULEE').map((i) => i.datePrevue.slice(0, 10)).sort();
       if (!dates.length) return format(new Date(), 'yyyy-MM-dd');
       const d = new Date(dates[dates.length - 1] + 'T12:00:00');
-      return format(freq.mois ? addMonths(d, freq.mois) : addDays(d, freq.jours || 30), 'yyyy-MM-dd');
+      return format(freqOps.mois ? addMonths(d, freqOps.mois) : addDays(d, freqOps.jours || 30), 'yyyy-MM-dd');
     };
+    const nbCtrlEntreOps = src?.nombreVisitesControleEntreOps ?? undefined;
     setAvenantForm({
       ...AVENANT_VIDE,
-      freqOpsJours: freqOps.jours, freqOpsMois: freqOps.mois, premiereOp: suivante('OPERATION', freqOps),
-      freqCtrlJours: freqCtrl.jours, freqCtrlMois: freqCtrl.mois, premiereCtrl: suivante('CONTROLE', freqCtrl),
+      freqOpsJours: freqOps.jours, freqOpsMois: freqOps.mois, premiereOp: suivanteOp(),
+      nbCtrlEntreOps,
     });
     setShowAvenantDialog(true);
   };
 
-  // Un paramètre de série modifié recalcule la projection de cette série
-  const majSerieAvenant = (updates: Partial<AvenantForm>, serie: 'ops' | 'ctrl') =>
+  // Recalcule ops + ctrl à chaque changement de paramètre (ctrl ancré sur ops)
+  const majSerieAvenant = (updates: Partial<AvenantForm>) =>
     setAvenantForm((f) => {
       const n = { ...f, ...updates };
       const p = projectionAvenant(n);
-      return serie === 'ops' ? { ...n, datesOps: p.datesOps } : { ...n, datesCtrl: p.datesCtrl };
+      return { ...n, datesOps: p.datesOps, datesCtrl: p.datesCtrl };
     });
-  const cleDates = (serie: 'ops' | 'ctrl') => (serie === 'ops' ? 'datesOps' : 'datesCtrl');
-  const cleNombre = (serie: 'ops' | 'ctrl') => (serie === 'ops' ? 'nbOps' : 'nbCtrl');
+  const cleDates = (serie: 'ops' | 'ctrl') => (serie === 'ops' ? 'datesOps' : 'datesCtrl' as const);
   const avenantDatesInterdites = [
     ...avenantForm.datesOps,
     ...avenantForm.datesCtrl.filter((d) => !apresDerniereOperation(d, [...opsExistantes, ...avenantForm.datesOps])),
@@ -429,25 +426,13 @@ export function ContratDetailPage() {
                 </div>
               </div>
 
-              {/* Fréquences globales */}
-              {(contrat.frequenceOperationsJours || contrat.frequenceControleJours) && (
-                <div className="grid grid-cols-2 gap-4">
-                  {contrat.frequenceOperationsJours && (
-                    <div className="p-3 rounded-lg bg-blue-50 border border-blue-100">
-                      <p className="text-xs font-medium text-blue-600 mb-1">Fréquence opérations</p>
-                      <p className="text-sm font-semibold text-blue-900">
-                        Tous les {contrat.frequenceOperationsJours} jours
-                      </p>
-                    </div>
-                  )}
-                  {contrat.frequenceControleJours && (
-                    <div className="p-3 rounded-lg bg-purple-50 border border-purple-100">
-                      <p className="text-xs font-medium text-purple-600 mb-1">Fréquence contrôles</p>
-                      <p className="text-sm font-semibold text-purple-900">
-                        Tous les {contrat.frequenceControleJours} jours
-                      </p>
-                    </div>
-                  )}
+              {/* Fréquence opérations globale */}
+              {contrat.frequenceOperationsJours && (
+                <div className="p-3 rounded-lg bg-blue-50 border border-blue-100">
+                  <p className="text-xs font-medium text-blue-600 mb-1">Fréquence opérations</p>
+                  <p className="text-sm font-semibold text-blue-900">
+                    Tous les {contrat.frequenceOperationsJours} jours
+                  </p>
                 </div>
               )}
 
@@ -541,16 +526,11 @@ export function ContratDetailPage() {
                         </div>
                       )}
 
-                      {/* Fréquences du site */}
+                      {/* Paramètres du site */}
                       <div className="flex flex-wrap gap-2 mb-3">
                         {cs.frequenceOperationsJours && (
                           <Badge variant="secondary" className="text-xs">
                             Op: tous les {cs.frequenceOperationsJours}j
-                          </Badge>
-                        )}
-                        {cs.frequenceControleJours && (
-                          <Badge variant="outline" className="text-xs">
-                            Ctrl: tous les {cs.frequenceControleJours}j
                           </Badge>
                         )}
                         {isPonctuel && cs.nombreOperations && (
@@ -558,28 +538,18 @@ export function ContratDetailPage() {
                             {cs.nombreOperations} op.
                           </Badge>
                         )}
-                        {isPonctuel && cs.nombreVisitesControle && (
+                        {cs.nombreVisitesControleEntreOps != null && cs.nombreVisitesControleEntreOps > 0 && (
                           <Badge variant="outline" className="text-xs bg-purple-50">
-                            {cs.nombreVisitesControle} ctrl.
+                            {cs.nombreVisitesControleEntreOps} ctrl/intervalle
                           </Badge>
                         )}
                       </div>
 
-                      {/* Dates 1ère intervention */}
-                      {(cs.premiereDateOperation || cs.premiereDateControle) && (
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                          {cs.premiereDateOperation && (
-                            <div className="p-2 rounded bg-blue-50">
-                              <span className="text-blue-600">1ère op:</span>{' '}
-                              <span className="font-medium">{formatDate(cs.premiereDateOperation)}</span>
-                            </div>
-                          )}
-                          {cs.premiereDateControle && (
-                            <div className="p-2 rounded bg-purple-50">
-                              <span className="text-purple-600">1er ctrl:</span>{' '}
-                              <span className="font-medium">{formatDate(cs.premiereDateControle)}</span>
-                            </div>
-                          )}
+                      {/* Date 1ère opération */}
+                      {cs.premiereDateOperation && (
+                        <div className="text-xs p-2 rounded bg-blue-50">
+                          <span className="text-blue-600">1ère op:</span>{' '}
+                          <span className="font-medium">{formatDate(cs.premiereDateOperation)}</span>
                         </div>
                       )}
 
@@ -1192,12 +1162,9 @@ export function ContratDetailPage() {
             </div>
             <p className="text-xs text-muted-foreground -mt-1">Le nom et le bon de commande apparaissent sur les factures de l'avenant.</p>
             <div className="grid grid-cols-2 gap-3">
-              {([
-                { serie: 'ops', titre: 'Opérations supplémentaires', nombre: avenantForm.nbOps, jours: avenantForm.freqOpsJours, mois: avenantForm.freqOpsMois, premiere: avenantForm.premiereOp, libelleDate: 'Date de la 1ère opération' },
-                { serie: 'ctrl', titre: 'Visites de contrôle sup.', nombre: avenantForm.nbCtrl, jours: avenantForm.freqCtrlJours, mois: avenantForm.freqCtrlMois, premiere: avenantForm.premiereCtrl, libelleDate: 'Date de la 1ère visite' },
-              ] as const).map((b) => (
-                <div key={b.serie} className="space-y-2 p-3 rounded-lg border bg-amber-50 border-amber-200">
-                  <p className="text-xs font-semibold text-amber-700">{b.titre}</p>
+              {/* Colonne Opérations */}
+              <div className="space-y-2 p-3 rounded-lg border bg-amber-50 border-amber-200">
+                  <p className="text-xs font-semibold text-amber-700">Opérations supplémentaires</p>
                   <div className="space-y-1.5">
                     <span className="text-xs text-gray-500">Nombre</span>
                     <Input
@@ -1205,35 +1172,46 @@ export function ContratDetailPage() {
                       className="h-8"
                       min={0}
                       placeholder="0"
-                      value={b.nombre ?? ''}
-                      onChange={(e) => majSerieAvenant({ [cleNombre(b.serie)]: e.target.value ? Number(e.target.value) : undefined }, b.serie)}
+                      value={avenantForm.nbOps ?? ''}
+                      onChange={(e) => majSerieAvenant({ nbOps: e.target.value ? Number(e.target.value) : undefined })}
                     />
                   </div>
                   <div className="space-y-1.5">
                     <span className="text-xs text-gray-500">Fréquence (si plus d'une)</span>
                     <FrequenceInput
-                      jours={b.jours}
+                      jours={avenantForm.freqOpsJours}
                       placeholder="Ex : 30"
-                      onChange={(v) => majSerieAvenant(
-                        b.serie === 'ops' ? { freqOpsJours: v.jours, freqOpsMois: undefined } : { freqCtrlJours: v.jours, freqCtrlMois: undefined },
-                        b.serie,
-                      )}
+                      onChange={(v) => majSerieAvenant({ freqOpsJours: v.jours, freqOpsMois: undefined })}
                     />
-                    {(b.nombre || 0) > 1 && !b.jours && !b.mois && (
+                    {(avenantForm.nbOps || 0) > 1 && !avenantForm.freqOpsJours && !avenantForm.freqOpsMois && (
                       <p className="text-xs text-red-600">Indiquez la fréquence pour projeter les dates.</p>
                     )}
                   </div>
                   <div className="space-y-1">
-                    <span className="text-xs text-gray-500">{b.libelleDate}</span>
+                    <span className="text-xs text-gray-500">Date de la 1ère opération</span>
                     <Input
                       type="date"
                       className="h-8"
-                      value={b.premiere}
-                      onChange={(e) => majSerieAvenant(b.serie === 'ops' ? { premiereOp: e.target.value } : { premiereCtrl: e.target.value }, b.serie)}
+                      value={avenantForm.premiereOp}
+                      onChange={(e) => majSerieAvenant({ premiereOp: e.target.value })}
                     />
                   </div>
-                </div>
-              ))}
+              </div>
+              {/* Colonne Contrôles */}
+              <div className="space-y-2 p-3 rounded-lg border bg-gray-50 border-gray-200">
+                  <p className="text-xs font-semibold text-gray-600">Visites de contrôle</p>
+                  <div className="space-y-1.5">
+                    <span className="text-xs text-gray-500">Visites entre chaque opération</span>
+                    <Input
+                      type="number"
+                      className="h-8"
+                      min={0}
+                      placeholder="0"
+                      value={avenantForm.nbCtrlEntreOps ?? ''}
+                      onChange={(e) => majSerieAvenant({ nbCtrlEntreOps: e.target.value ? Number(e.target.value) : undefined })}
+                    />
+                  </div>
+              </div>
             </div>
             <p className="text-xs text-muted-foreground -mt-1">
               Préremplies à la suite de la dernière intervention du contrat, à sa fréquence. Les dates s'appliquent à chaque site du contrat.
@@ -1241,8 +1219,6 @@ export function ContratDetailPage() {
             <ProjectionDates
               ops={avenantForm.datesOps}
               ctrl={avenantForm.datesCtrl}
-              freqCtrlJours={avenantForm.freqCtrlJours}
-              freqCtrlMois={avenantForm.freqCtrlMois}
               opsExistantes={opsExistantes}
               debutConvention={avenantDebutConvention}
               finConvention={avenantFinConvention}
@@ -1251,12 +1227,12 @@ export function ContratDetailPage() {
               onChangeDate={(serie, i, v) => setAvenantForm((f) => ({ ...f, [cleDates(serie)]: f[cleDates(serie)].map((d, j) => (j === i ? v : d)) }))}
               onRemoveDate={(serie, i) => setAvenantForm((f) => {
                 const dates = f[cleDates(serie)].filter((_, j) => j !== i);
-                return { ...f, [cleDates(serie)]: dates, [cleNombre(serie)]: dates.length };
+                return { ...f, [cleDates(serie)]: dates, ...(serie === 'ops' ? { nbOps: dates.length } : {}) };
               })}
               onReset={(serie) => setAvenantForm((f) => ({ ...f, [cleDates(serie)]: projectionAvenant(f)[cleDates(serie)] }))}
               onRemoveHorsContrat={() => setAvenantForm((f) => {
                 const datesCtrl = f.datesCtrl.filter((d) => !apresDerniereOperation(d, [...opsExistantes, ...f.datesOps]));
-                return { ...f, datesCtrl, nbCtrl: datesCtrl.length };
+                return { ...f, datesCtrl };
               })}
             />
             <div className="grid grid-cols-2 gap-3">

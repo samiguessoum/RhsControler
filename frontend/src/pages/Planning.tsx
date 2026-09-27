@@ -1707,27 +1707,6 @@ function InterventionDetailDialog({
                       )}
                   </>
                 )}
-                {intervention.type === 'CONTROLE' && (
-                  <>
-                    {intervention.contrat?.frequenceControleJours && (
-                      <p>
-                        <span className="text-muted-foreground">Fréquence du contrat:</span>{' '}
-                        <span className="font-medium">
-                          Tous les {intervention.contrat.frequenceControleJours} jours
-                        </span>
-                      </p>
-                    )}
-                    {(intervention as any).frequenceControleJours &&
-                      (intervention as any).frequenceControleJours !== intervention.contrat?.frequenceControleJours && (
-                        <p>
-                          <span className="text-muted-foreground">Fréquence du site:</span>{' '}
-                          <span className="font-medium">
-                            Tous les {(intervention as any).frequenceControleJours} jours
-                          </span>
-                        </p>
-                      )}
-                  </>
-                )}
                 {intervention.type === 'OPERATION' && intervention.remainingOperations != null && (
                   <p>
                     <span className="text-muted-foreground">Opérations restantes à réaliser :</span>{' '}

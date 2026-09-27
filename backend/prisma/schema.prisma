@@ -586,6 +586,7 @@ model Contrat {
   numeroBonCommande                  String?
   nombreOperations                   Int?
   nombreVisitesControle              Int?
+  nombreVisitesControleEntreOps      Int?
   // Nouveaux champs v2
   nom                                String?       // Libellé libre (ex: "Contrat annuel dératisation 2026")
   refExterne                         String?       @unique
@@ -627,9 +628,10 @@ model ContratSite {
   frequenceControleJours   Int?
   premiereDateOperation    DateTime?
   premiereDateControle     DateTime?
-  nombreOperations         Int?
-  nombreVisitesControle    Int?
-  notes                    String?
+  nombreOperations                Int?
+  nombreVisitesControle           Int?
+  nombreVisitesControleEntreOps   Int?
+  notes                           String?
   // Nouveaux champs v2
   montantHT                Decimal?  @db.Decimal(15, 2)
   frequenceRegles          String?

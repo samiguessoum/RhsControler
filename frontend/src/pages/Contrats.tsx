@@ -25,7 +25,7 @@ import {
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { clientsApi, contratsApi, interventionsApi, prestationsApi, usersApi } from '@/services/api';
 import { formatDate, cn } from '@/lib/utils';
-import { addDays, addMonths, format, startOfMonth } from 'date-fns';
+import { addDays, addMonths, format } from 'date-fns';
 import { useAuthStore } from '@/store/auth.store';
 import type { Contrat, CreateContratInput, Client, User, ContratStatut, ContratType, ContratSiteInput, Prestation } from '@/types';
 
@@ -58,18 +58,19 @@ export function computeProjectionDates(
   return dates;
 }
 
-// Même règle que le backend : en mois, l'opération remplace la visite dont la période (mois
-// calendaires jusqu'à la visite suivante) la contient ; en jours, la visite la plus proche.
-function visiteCouverte(date: string, jours: number | undefined, mois: number | undefined, opDates: string[]): boolean {
-  const v = new Date(date + 'T12:00:00');
-  const ops = opDates.map((o) => new Date(o + 'T12:00:00').getTime());
-  if (mois) {
-    const debut = startOfMonth(v).getTime();
-    const fin = startOfMonth(addMonths(v, mois)).getTime();
-    return ops.some((t) => t >= debut && t < fin);
+/** Même algo que le backend : répartit nbEntreOps contrôles entre chaque paire d'opérations. */
+export function computeProjectionControles(datesOps: string[], nbEntreOps: number): string[] {
+  if (nbEntreOps <= 0 || datesOps.length < 2) return [];
+  const result: string[] = [];
+  for (let i = 0; i < datesOps.length - 1; i++) {
+    const debut = new Date(datesOps[i] + 'T12:00:00').getTime();
+    const fin = new Date(datesOps[i + 1] + 'T12:00:00').getTime();
+    const espacement = (fin - debut) / (nbEntreOps + 1);
+    for (let j = 1; j <= nbEntreOps; j++) {
+      result.push(format(new Date(Math.round(debut + j * espacement)), 'yyyy-MM-dd'));
+    }
   }
-  const demi = (addDays(v, jours || 30).getTime() - v.getTime()) / 2;
-  return ops.some((t) => t > v.getTime() - demi && t <= v.getTime() + demi);
+  return result;
 }
 
 // Même règle que le backend : aucune visite de contrôle après la dernière opération (dates yyyy-MM-dd).
@@ -116,8 +117,6 @@ type SerieDates = 'ops' | 'ctrl';
 export function ProjectionDates({
   ops,
   ctrl,
-  freqCtrlJours,
-  freqCtrlMois,
   opsExistantes = [],
   debutConvention,
   finConvention,
@@ -130,8 +129,6 @@ export function ProjectionDates({
 }: {
   ops: string[];
   ctrl: string[];
-  freqCtrlJours?: number;
-  freqCtrlMois?: number;
   opsExistantes?: string[];
   debutConvention: string;
   finConvention: string;
@@ -221,7 +218,6 @@ export function ProjectionDates({
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-gray-600">
               Contrôles ({ctrl.length})
-              <span className="font-normal text-gray-400"> — barrés : remplacés par une opération</span>
               {nbHorsContrat > 0 && <span className="font-normal text-red-500"> · en rouge : après la dernière opération</span>}
             </span>
             <button type="button" onClick={() => onReset('ctrl')} className="text-xs text-blue-500 hover:text-blue-700">
@@ -231,16 +227,14 @@ export function ProjectionDates({
           <div className="grid grid-cols-3 gap-1.5">
             {ctrl.map((date, i) => {
               const horsContrat = apresDerniereOperation(date, toutesOps);
-              const remplacee = !horsContrat && visiteCouverte(date, freqCtrlJours, freqCtrlMois, toutesOps);
               const interdite = !horsContrat && horsBornes(date, debutConvention, finConvention);
-              const autrePeriode = !horsContrat && !remplacee && !interdite && horsBornes(date, debutPeriode, finPeriode);
+              const autrePeriode = !horsContrat && !interdite && horsBornes(date, debutPeriode, finPeriode);
               return (
                 <div
                   key={i}
                   className="flex items-center gap-1 group"
                   title={
                     horsContrat ? 'Après la dernière opération : ne sera pas planifiée'
-                      : remplacee ? 'Remplacée par une opération sur la même période'
                       : interdite ? 'Hors convention : à modifier ou supprimer'
                       : autrePeriode ? 'Hors de la période de prestations'
                       : undefined
@@ -251,7 +245,6 @@ export function ProjectionDates({
                     type="date"
                     className={cn(
                       'h-7 text-xs px-1.5',
-                      remplacee && 'line-through text-gray-400 bg-gray-50',
                       horsContrat && 'line-through text-red-500 bg-red-50 border-red-200',
                       interdite && 'text-red-600 bg-red-50 border-red-500 ring-1 ring-red-500',
                       autrePeriode && 'text-orange-700 bg-orange-50 border-orange-300'
@@ -450,21 +443,18 @@ export function ContratForm({
       prestations: cs.prestations || [],
       prixPrestations: (cs.prixPrestations as Record<string, number>) || {},
       frequenceOperationsJours: cs.frequenceOperationsJours ?? undefined,
-      frequenceControleJours: cs.frequenceControleJours ?? undefined,
       frequenceOperationsMois: cs.frequenceOperationsMois ?? undefined,
-      frequenceControleMois: cs.frequenceControleMois ?? undefined,
       premiereDateOperation: cs.premiereDateOperation?.split('T')[0],
-      premiereDateControle: cs.premiereDateControle?.split('T')[0],
       nombreOperations: cs.nombreOperations ?? undefined,
-      nombreVisitesControle: cs.nombreVisitesControle ?? undefined,
+      nombreVisitesControleEntreOps: cs.nombreVisitesControleEntreOps ?? undefined,
       notes: cs.notes ?? undefined,
     })) || []
   );
 
   const projectionOps = (cs: ContratSiteInput, fin: string, t: ContratType = type) =>
     computeProjectionDates(cs.premiereDateOperation || '', cs.nombreOperations, cs.frequenceOperationsJours, cs.frequenceOperationsMois, fin || undefined, t === 'PONCTUEL');
-  const projectionCtrl = (cs: ContratSiteInput, fin: string, t: ContratType = type) =>
-    computeProjectionDates(cs.premiereDateControle || '', cs.nombreVisitesControle, cs.frequenceControleJours, cs.frequenceControleMois, fin || undefined, t === 'PONCTUEL');
+  const projectionCtrl = (cs: ContratSiteInput) =>
+    computeProjectionControles(cs.datesPrevuesOperations || [], cs.nombreVisitesControleEntreOps || 0);
 
   // État pour les sites dépliés/repliés — dépliés par défaut pour ne pas cacher
   // les prestations/prix (source d'oublis fréquente)
@@ -513,11 +503,8 @@ export function ContratForm({
         }
         updated.datesPrevuesOperations = projectionOps(updated, dateFin);
       }
-      if (['premiereDateControle', 'frequenceControleJours', 'frequenceControleMois', 'nombreVisitesControle'].some((k) => k in updates)) {
-        if (!('premiereDateControle' in updates) && !updated.premiereDateControle && (updated.nombreVisitesControle || updated.frequenceControleJours || updated.frequenceControleMois)) {
-          updated.premiereDateControle = departParDefaut;
-        }
-        updated.datesPrevuesControles = projectionCtrl(updated, dateFin);
+      if ('nombreVisitesControleEntreOps' in updates || 'datesPrevuesOperations' in updates) {
+        updated.datesPrevuesControles = projectionCtrl(updated);
       }
       return updated;
     }));
@@ -543,8 +530,8 @@ export function ContratForm({
       if (cs.siteId !== siteId) return cs;
       const cle = serie === 'ops' ? 'datesPrevuesOperations' : 'datesPrevuesControles';
       const dates = (cs[cle] || []).filter((_, i) => i !== index);
-      // Ponctuel : le nombre prévu suit les dates retenues (quota du contrat)
-      const nombre = type !== 'PONCTUEL' ? {} : serie === 'ops' ? { nombreOperations: dates.length } : { nombreVisitesControle: dates.length };
+      // Ponctuel : le nombre d'opérations prévu suit les dates retenues (quota du contrat)
+      const nombre = (type !== 'PONCTUEL' || serie !== 'ops') ? {} : { nombreOperations: dates.length };
       return { ...cs, [cle]: dates, ...nombre };
     }));
   };
@@ -563,7 +550,7 @@ export function ContratForm({
     if (type === 'ops') {
       updateSite(siteId, { datesPrevuesOperations: projectionOps(cs, dateFin) });
     } else {
-      updateSite(siteId, { datesPrevuesControles: projectionCtrl(cs, dateFin) });
+      updateSite(siteId, { datesPrevuesControles: projectionCtrl(cs) });
     }
   };
 
@@ -574,7 +561,7 @@ export function ContratForm({
     setContratSites((sites) => sites.map((cs) => ({
       ...cs,
       ...(cs.datesPrevuesOperations ? { datesPrevuesOperations: projectionOps(cs, dateFin, value) } : {}),
-      ...(cs.datesPrevuesControles ? { datesPrevuesControles: projectionCtrl(cs, dateFin, value) } : {}),
+      ...(cs.datesPrevuesControles ? { datesPrevuesControles: projectionCtrl(cs) } : {}),
     })));
   };
 
@@ -583,7 +570,6 @@ export function ContratForm({
     setContratSites((sites) => sites.map((cs) => ({
       ...cs,
       ...(cs.datesPrevuesOperations ? { datesPrevuesOperations: projectionOps(cs, value) } : {}),
-      ...(cs.datesPrevuesControles ? { datesPrevuesControles: projectionCtrl(cs, value) } : {}),
     })));
   };
 
@@ -673,33 +659,21 @@ export function ContratForm({
             }
             const siteName = availableSites.find(s => s.id === cs.siteId)?.nom || 'Site';
             const freqOps = cs.frequenceOperationsJours || cs.frequenceOperationsMois;
-            const freqCtrl = cs.frequenceControleJours || cs.frequenceControleMois;
             if (isPonctuel) {
-              // Pour les ponctuels : au moins un nombre d'opérations ou de contrôles
-              if (!cs.nombreOperations && !cs.nombreVisitesControle) {
-                toast.error(`Indiquez le nombre d'opérations ou de contrôles pour ${siteName}`);
+              if (!cs.nombreOperations) {
+                toast.error(`Indiquez le nombre d'opérations pour ${siteName}`);
                 return;
               }
-              if ((cs.nombreOperations || 0) > 1 && !freqOps) {
+              if (cs.nombreOperations > 1 && !freqOps) {
                 toast.error(`Indiquez la fréquence des opérations pour ${siteName}`);
                 return;
               }
-              if ((cs.nombreVisitesControle || 0) > 1 && !freqCtrl) {
-                toast.error(`Indiquez la fréquence des contrôles pour ${siteName}`);
-                return;
-              }
-            } else if (!freqOps && !freqCtrl) {
-              // Pour les annuels : au moins une fréquence
-              toast.error(`Configurez au moins une fréquence pour ${siteName}`);
+            } else if (!freqOps) {
+              toast.error(`Configurez la fréquence des opérations pour ${siteName}`);
               return;
             }
-            // Sans date de départ, aucune intervention ne serait générée
             if ((cs.nombreOperations || freqOps) && !cs.premiereDateOperation) {
               toast.error(`Indiquez la date de la 1ère opération pour ${siteName}`);
-              return;
-            }
-            if ((cs.nombreVisitesControle || freqCtrl) && !cs.premiereDateControle) {
-              toast.error(`Indiquez la date de la 1ère visite de contrôle pour ${siteName}`);
               return;
             }
           }
@@ -733,11 +707,9 @@ export function ContratForm({
         const cleanedContratSites = contratSites.map((cs) => ({
           ...cs,
           frequenceOperationsJours: cs.frequenceOperationsJours ?? undefined,
-          frequenceControleJours: cs.frequenceControleJours ?? undefined,
           frequenceOperationsMois: cs.frequenceOperationsMois ?? undefined,
-          frequenceControleMois: cs.frequenceControleMois ?? undefined,
           nombreOperations: cs.nombreOperations ?? undefined,
-          nombreVisitesControle: cs.nombreVisitesControle ?? undefined,
+          nombreVisitesControleEntreOps: cs.nombreVisitesControleEntreOps ?? undefined,
           notes: cs.notes ?? undefined,
         }));
 
@@ -1099,42 +1071,17 @@ export function ContratForm({
                           {/* ─── Contrôles ─── */}
                           <div className={`space-y-2 p-3 rounded-lg border ${isPonctuel ? 'bg-amber-50 border-amber-200' : 'bg-gray-50 border-gray-200'}`}>
                             <p className={`text-xs font-semibold ${isPonctuel ? 'text-amber-700' : 'text-gray-600'}`}>
-                              Contrôles {isPonctuel ? '— quota' : '— fréquence'}
+                              Contrôles
                             </p>
-
-                            {isPonctuel && (
-                              /* PONCTUEL : nombre total de contrôles */
-                              <div className="space-y-1.5">
-                                <span className="text-xs text-gray-500">Nombre de contrôles prévu</span>
-                                <Input
-                                  type="number"
-                                  className="h-8"
-                                  min={1}
-                                  placeholder="Ex : 1"
-                                  value={cs.nombreVisitesControle || ''}
-                                  onChange={(e) => updateSite(cs.siteId, { nombreVisitesControle: e.target.value ? Number(e.target.value) : undefined })}
-                                />
-                              </div>
-                            )}
                             <div className="space-y-1.5">
-                              <span className="text-xs text-gray-500">
-                                Fréquence {isPonctuel ? "(si plus d'un contrôle)" : ''}
-                              </span>
-                              <FrequenceInput
-                                jours={cs.frequenceControleJours}
-                                placeholder={isPonctuel ? 'Ex : 30' : 'Ex : 1'}
-                                onChange={(v) => updateSite(cs.siteId, { frequenceControleJours: v.jours, frequenceControleMois: undefined })}
-                              />
-                            </div>
-
-                            {/* Date première visite de contrôle — commun aux deux types */}
-                            <div className="space-y-1">
-                              <span className="text-xs text-gray-500">Date de la 1ère visite</span>
+                              <span className="text-xs text-gray-500">Visites entre chaque opération</span>
                               <Input
-                                type="date"
+                                type="number"
                                 className="h-8"
-                                value={cs.premiereDateControle || ''}
-                                onChange={(e) => updateSite(cs.siteId, { premiereDateControle: e.target.value })}
+                                min={0}
+                                placeholder="Ex : 2"
+                                value={cs.nombreVisitesControleEntreOps ?? ''}
+                                onChange={(e) => updateSite(cs.siteId, { nombreVisitesControleEntreOps: e.target.value ? Number(e.target.value) : undefined })}
                               />
                             </div>
                           </div>
@@ -1145,8 +1092,6 @@ export function ContratForm({
                         <ProjectionDates
                           ops={cs.datesPrevuesOperations || []}
                           ctrl={cs.datesPrevuesControles || []}
-                          freqCtrlJours={cs.frequenceControleJours}
-                          freqCtrlMois={cs.frequenceControleMois}
                           debutConvention={debutConvention}
                           finConvention={finConvention}
                           debutPeriode={dateDebut}

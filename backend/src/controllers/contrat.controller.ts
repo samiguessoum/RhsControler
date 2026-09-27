@@ -16,13 +16,10 @@ function contratSiteData(cs: SiteInput) {
     prestations: cs.prestations || [],
     prixPrestations: cs.prixPrestations ?? {},
     frequenceOperationsJours: cs.frequenceOperationsJours ?? null,
-    frequenceControleJours: cs.frequenceControleJours ?? null,
     frequenceOperationsMois: cs.frequenceOperationsMois ?? null,
-    frequenceControleMois: cs.frequenceControleMois ?? null,
     premiereDateOperation: cs.premiereDateOperation ?? null,
-    premiereDateControle: cs.premiereDateControle ?? null,
     nombreOperations: cs.nombreOperations ?? null,
-    nombreVisitesControle: cs.nombreVisitesControle ?? null,
+    nombreVisitesControleEntreOps: cs.nombreVisitesControleEntreOps ?? null,
     notes: cs.notes ?? null,
   };
 }
@@ -72,21 +69,16 @@ function empreintePlanning(contrat: Record<string, any>, sites: SiteInput[]) {
     prestations: [...(cs.prestations || [])].sort(),
     fOpJ: cs.frequenceOperationsJours ?? null,
     fOpM: cs.frequenceOperationsMois ?? null,
-    fCtJ: cs.frequenceControleJours ?? null,
-    fCtM: cs.frequenceControleMois ?? null,
     dOp: jour(cs.premiereDateOperation),
-    dCt: jour(cs.premiereDateControle),
     nOp: cs.nombreOperations ?? null,
-    nCt: cs.nombreVisitesControle ?? null,
+    nCtEO: cs.nombreVisitesControleEntreOps ?? null,
   });
   return JSON.stringify({
     type: contrat.type,
     dateFin: jour(contrat.dateFin),
     prestations: [...(contrat.prestations || [])].sort(),
     fOpJ: contrat.frequenceOperationsJours ?? null,
-    fCtJ: contrat.frequenceControleJours ?? null,
     dOp: jour(contrat.premiereDateOperation),
-    dCt: jour(contrat.premiereDateControle),
     nOp: contrat.nombreOperations ?? null,
     sites: sites.map(champsSite).sort((a, b) => a.siteId.localeCompare(b.siteId)),
   });
@@ -247,9 +239,7 @@ export const contratController = {
           reconductionAuto: data.reconductionAuto ?? false,
           prestations: data.prestations,
           frequenceOperationsJours: data.frequenceOperationsJours,
-          frequenceControleJours: data.frequenceControleJours,
           premiereDateOperation: data.premiereDateOperation,
-          premiereDateControle: data.premiereDateControle,
           responsablePlanningId: data.responsablePlanningId,
           statut: data.statut ?? 'ACTIF',
           notes: data.notes,
@@ -316,25 +306,10 @@ export const contratController = {
         const hasContratSites = data.contratSites && data.contratSites.length > 0;
         if (!hasContratSites) {
           const hasFrequenceOp = data.frequenceOperationsJours ?? existing.frequenceOperationsJours;
-          const hasFrequenceCtrl = data.frequenceControleJours ?? existing.frequenceControleJours;
           const hasDateOp = data.premiereDateOperation ?? existing.premiereDateOperation;
-          const hasDateCtrl = data.premiereDateControle ?? existing.premiereDateControle;
-
-          if (!hasFrequenceOp && !hasFrequenceCtrl) {
-            return res.status(400).json({
-              error: 'Un contrat actif nécessite au moins une fréquence (opérations ou contrôle)',
-            });
-          }
-
           if (hasFrequenceOp && !hasDateOp) {
             return res.status(400).json({
               error: 'Date de première opération requise pour la fréquence d\'opérations',
-            });
-          }
-
-          if (hasFrequenceCtrl && !hasDateCtrl) {
-            return res.status(400).json({
-              error: 'Date de premier contrôle requise pour la fréquence de contrôle',
             });
           }
         }
@@ -363,9 +338,7 @@ export const contratController = {
           reconductionAuto: data.reconductionAuto ?? existing.reconductionAuto,
           prestations: data.prestations ?? existing.prestations,
           frequenceOperationsJours: data.frequenceOperationsJours !== undefined ? data.frequenceOperationsJours : existing.frequenceOperationsJours,
-          frequenceControleJours: data.frequenceControleJours !== undefined ? data.frequenceControleJours : existing.frequenceControleJours,
           premiereDateOperation: data.premiereDateOperation !== undefined ? data.premiereDateOperation : existing.premiereDateOperation,
-          premiereDateControle: data.premiereDateControle !== undefined ? data.premiereDateControle : existing.premiereDateControle,
           responsablePlanningId: data.responsablePlanningId !== undefined ? data.responsablePlanningId : existing.responsablePlanningId,
           statut: data.statut ?? existing.statut,
           notes: data.notes !== undefined ? (data.notes || null) : existing.notes,

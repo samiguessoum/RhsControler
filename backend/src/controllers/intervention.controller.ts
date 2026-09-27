@@ -460,11 +460,6 @@ export const interventionController = {
         },
       });
 
-      // Une opération ajoutée au contrat peut remplacer une visite de contrôle
-      if (intervention.type === 'OPERATION' && intervention.contratId) {
-        await planningService.recalculerVisites(intervention.contratId, intervention.siteId);
-      }
-
       // Audit log
       await createAuditLog(req.user!.id, 'CREATE', 'Intervention', intervention.id, { after: intervention });
 
@@ -804,11 +799,6 @@ export const interventionController = {
         raison,
       } as any);
 
-      // Une opération supprimée ne remplace plus la visite de contrôle de sa période
-      if (existing.type === 'OPERATION' && existing.contratId) {
-        await planningService.recalculerVisites(existing.contratId, existing.siteId);
-      }
-
       res.json({ intervention });
     } catch (error: any) {
       logger.error({ err: error }, 'Annuler error');
@@ -839,10 +829,6 @@ export const interventionController = {
 
       // Audit log
       await createAuditLog(req.user!.id, 'DELETE', 'Intervention', id);
-
-      if (existing.type === 'OPERATION' && existing.contratId) {
-        await planningService.recalculerVisites(existing.contratId, existing.siteId);
-      }
 
       res.json({ message: 'Intervention supprimée' });
     } catch (error) {

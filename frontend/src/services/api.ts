@@ -1828,13 +1828,11 @@ export const avenantApi = {
       dateSignature?: string;
       montantHT?: number;
       nombreOperationsSupplementaires?: number;
-      nombreVisitesControleSupplementaires?: number;
+      nombreVisitesControleEntreOps?: number;
       dateDebut?: string;
       frequenceJours?: number;
       datesOperations?: string[];
       datesControles?: string[];
-      frequenceControleJours?: number;
-      frequenceControleMois?: number;
       notes?: string;
     }
   ) => {

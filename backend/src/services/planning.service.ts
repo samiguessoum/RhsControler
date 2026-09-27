@@ -4,30 +4,6 @@ import { getProchaineDateIntervention, maxDate, isOverdue, isWithinDays, getCurr
 import { startOfDay, endOfDay, startOfMonth, addDays, addMonths, differenceInDays } from 'date-fns';
 
 /**
- * Une visite de contrôle est couverte par une opération si celle-ci tombe dans la période de la
- * visite ; l'opération remplace alors la visite.
- *  - Fréquence en mois : la période couvre les mois calendaires de la visite jusqu'à la suivante
- *    (visites mensuelles le 15, opération le 1er septembre → la visite de septembre saute).
- *  - Fréquence en jours : l'opération remplace la visite la plus proche (demi-fréquence de part
- *    et d'autre ; à égale distance, la visite la plus tôt).
- */
-function visiteCouverteParOperation(
-  visiteDate: Date,
-  freqJours: number | null,
-  freqMois: number | null,
-  opDates: Date[],
-): boolean {
-  if (freqMois) {
-    const debut = startOfMonth(visiteDate).getTime();
-    const fin = startOfMonth(addMonths(visiteDate, freqMois)).getTime();
-    return opDates.some((d) => d.getTime() >= debut && d.getTime() < fin);
-  }
-  const v = visiteDate.getTime();
-  const demi = (addDays(visiteDate, freqJours || 30).getTime() - v) / 2;
-  return opDates.some((d) => d.getTime() > v - demi && d.getTime() <= v + demi);
-}
-
-/**
  * Règle métier : aucune visite de contrôle après la dernière opération du contrat (par site).
  * Appliquée uniquement à la génération du planning ; ensuite, le planning se gère manuellement.
  * Sans opération, pas de borne.
@@ -38,21 +14,27 @@ function apresDerniereOperation(visiteDate: Date, opDates: Date[]): boolean {
   return startOfDay(visiteDate).getTime() > derniere;
 }
 
-/** Statut d'une visite de contrôle selon qu'elle est couverte ou non par une opération. */
-function statutVisite(couverte: boolean) {
-  return couverte
-    ? { statut: 'ANNULEE' as const, remplaceeParOperation: true }
-    : { statut: 'A_PLANIFIER' as const, remplaceeParOperation: false };
+/**
+ * Génère les dates de contrôles ancrées aux opérations : entre chaque paire consécutive
+ * d'opérations, répartit `nbEntreOps` visites à espacement égal.
+ */
+function datesControlesEntreOps(datesOps: Date[], nbEntreOps: number): Date[] {
+  if (nbEntreOps <= 0 || datesOps.length < 2) return [];
+  const dates: Date[] = [];
+  for (let i = 0; i < datesOps.length - 1; i++) {
+    const debut = datesOps[i].getTime();
+    const fin = datesOps[i + 1].getTime();
+    const espacement = (fin - debut) / (nbEntreOps + 1);
+    for (let j = 1; j <= nbEntreOps; j++) {
+      dates.push(new Date(Math.round(debut + j * espacement)));
+    }
+  }
+  return dates;
 }
 
-/**
- * Interventions encore "en attente" d'une série : non réalisées, non supprimées par un
- * utilisateur. Inclut les visites masquées car remplacées par une opération, afin qu'elles
- * suivent les décalages de leur série.
- */
+/** Interventions encore "en attente" d'une série : non réalisées et non annulées. */
 const EN_ATTENTE = {
-  statut: { not: 'REALISEE' as const },
-  OR: [{ statut: { not: 'ANNULEE' as const } }, { remplaceeParOperation: true }],
+  statut: { notIn: ['REALISEE', 'ANNULEE'] as ['REALISEE', 'ANNULEE'] },
 };
 
 /**
@@ -537,32 +519,6 @@ export const planningService = {
               return count >= maxCount;
             };
 
-            // Une opération remplace la visite de contrôle qui tomberait sur la même période :
-            // les échéances couvertes sont enregistrées masquées et on passe à la suivante.
-            if (intervention.type === 'CONTROLE') {
-              const ops = await prisma.intervention.findMany({
-                where: { contratId: serie.contratId, siteId: serie.siteId, type: 'OPERATION', statut: { not: 'ANNULEE' } },
-                select: { datePrevue: true },
-              });
-              const opDates = ops.map((o) => o.datePrevue);
-              for (let i = 0; i < 24 && visiteCouverteParOperation(suggestedDate, joursPerso, moisPerso, opDates); i++) {
-                if (await quotaAtteint()) break;
-                const dejaLa = await prisma.intervention.findFirst({ where: { ...serie, datePrevue: suggestedDate } });
-                if (!dejaLa) {
-                  await prisma.intervention.create({
-                    data: {
-                      ...serie,
-                      clientId: intervention.clientId,
-                      datePrevue: suggestedDate,
-                      createdById: userId,
-                      ...statutVisite(true),
-                    },
-                  });
-                }
-                suggestedDate = getProchaineDateIntervention(suggestedDate, joursPerso, moisPerso);
-              }
-            }
-
             if (await quotaAtteint()) {
               return { intervention: updated, nextCreated: false, nextIntervention: null, suggestedDate, modePlanning };
             }
@@ -591,10 +547,6 @@ export const planningService = {
             }
           }
 
-          // Une nouvelle (ou décalée) opération peut désormais couvrir une visite en attente.
-          if (intervention.type === 'OPERATION' && nextIntervention) {
-            await this.recalculerVisites(intervention.contratId!, intervention.siteId);
-          }
         }
       } else if (intervention.contratId) {
         // ── Étape 2b : Pour les ponctuels (sans fréquence), identifier la prochaine
@@ -650,8 +602,6 @@ export const planningService = {
         data: { datePrevue: new Date(f.datePrevue.getTime() + deltaMs) },
       });
     }
-
-    await this.recalculerVisites(ref.contratId, ref.siteId);
   },
 
   /**
@@ -689,54 +639,6 @@ export const planningService = {
     await this.decalerSerie(intervention, nouvelleDatePrevue.getTime() - intervention.datePrevue.getTime());
 
     return updated;
-  },
-
-  /**
-   * Remet les visites de contrôle en attente d'un contrat (et d'un site) en cohérence avec ses
-   * opérations : une visite dont l'échéance est couverte par une opération est masquée
-   * (statut ANNULEE + remplaceeParOperation), une visite masquée qui n'est plus couverte
-   * réapparaît. Les visites réalisées ou supprimées par un utilisateur ne sont jamais touchées,
-   * et les visites gardent leurs dates : leur fréquence propre est conservée.
-   */
-  async recalculerVisites(contratId: string, siteId: string | null): Promise<{ masquees: number; restaurees: number }> {
-    const contrat = await prisma.contrat.findUnique({
-      where: { id: contratId },
-      include: { contratSites: true },
-    });
-    if (!contrat) return { masquees: 0, restaurees: 0 };
-
-    const cs = siteId ? contrat.contratSites.find((c) => c.siteId === siteId) : null;
-    let freqCtrlMois: number | null = (cs as any)?.frequenceControleMois ?? null;
-    let freqCtrlJours: number | null = freqCtrlMois ? null : (cs?.frequenceControleJours ?? null);
-    if (!freqCtrlMois && !freqCtrlJours) {
-      freqCtrlMois = (contrat as any).frequenceControleMois ?? null;
-      freqCtrlJours = freqCtrlMois ? null : (contrat.frequenceControleJours ?? null);
-    }
-    if (!freqCtrlJours && !freqCtrlMois) return { masquees: 0, restaurees: 0 };
-
-    const operations = await prisma.intervention.findMany({
-      where: { contratId, siteId: siteId ?? null, type: 'OPERATION', statut: { not: 'ANNULEE' } },
-      select: { datePrevue: true },
-    });
-    const opDates = operations.map((o) => o.datePrevue);
-
-    const visites = await prisma.intervention.findMany({
-      where: { contratId, siteId: siteId ?? null, type: 'CONTROLE', ...EN_ATTENTE },
-    });
-
-    let masquees = 0;
-    let restaurees = 0;
-    for (const v of visites) {
-      const couverte = visiteCouverteParOperation(v.datePrevue, freqCtrlJours, freqCtrlMois, opDates);
-      if (couverte && !v.remplaceeParOperation) {
-        await prisma.intervention.update({ where: { id: v.id }, data: statutVisite(true) });
-        masquees++;
-      } else if (!couverte && v.remplaceeParOperation) {
-        await prisma.intervention.update({ where: { id: v.id }, data: statutVisite(false) });
-        restaurees++;
-      }
-    }
-    return { masquees, restaurees };
   },
 
   /**
@@ -781,12 +683,12 @@ export const planningService = {
     const interventionsCreees: any[] = [];
     const MAX_ECHEANCES = 500;
 
-    // Interventions conservées (réalisées, avenants, BC…) : leurs opérations couvrent aussi des visites
-    const conservees = await prisma.intervention.findMany({
-      where: { contratId, type: { in: ['OPERATION', 'CONTROLE'] }, OR: [{ statut: { not: 'ANNULEE' } }, { remplaceeParOperation: true }] },
-      select: { siteId: true, type: true, prestation: true, datePrevue: true, statut: true, avenantId: true, bonCommandeId: true, remplaceeParOperation: true },
+    // Opérations déjà réalisées ou issues d'avenants/BC : prises en compte pour la règle
+    // "aucun contrôle après la dernière opération" mais ne bloquent pas la régénération.
+    const opsConservees = await prisma.intervention.findMany({
+      where: { contratId, type: 'OPERATION', statut: { not: 'ANNULEE' } },
+      select: { siteId: true, datePrevue: true },
     });
-    const opsConservees = conservees.filter((i) => i.type === 'OPERATION' && i.statut !== 'ANNULEE');
 
     // Échéances déjà consommées par série : réalisées ou supprimées volontairement par un utilisateur
     const consommees = new Map<string, number>();
@@ -798,7 +700,7 @@ export const planningService = {
           type: { in: ['OPERATION', 'CONTROLE'] },
           avenantId: null,
           bonCommandeId: null,
-          OR: [{ statut: 'REALISEE' }, { statut: 'ANNULEE', remplaceeParOperation: false }],
+          OR: [{ statut: 'REALISEE' }, { statut: 'ANNULEE' }],
         },
         select: { siteId: true, type: true, prestation: true },
       });
@@ -827,19 +729,18 @@ export const planningService = {
       (!debutConvention || d >= debutConvention) && (!finConvention || d <= finConvention);
 
     type Freq = { jours: number | null; mois: number | null } | null;
-    const frequence = (src: any, kind: 'Operations' | 'Controle'): Freq => {
-      const mois: number | null = src?.[`frequence${kind}Mois`] ?? null;
-      const jours: number | null = mois ? null : (src?.[`frequence${kind}Jours`] ?? null);
+    const frequenceOps = (src: any): Freq => {
+      const mois: number | null = src?.frequenceOperationsMois ?? null;
+      const jours: number | null = mois ? null : (src?.frequenceOperationsJours ?? null);
       return mois || jours ? { jours, mois } : null;
     };
 
-    // Calcule les échéances théoriques d'une série
+    // Calcule les échéances théoriques d'une série d'opérations
     const echeances = (premiere: Date | null, freq: Freq, nombre: number): Date[] => {
       if (!premiere) return [];
       const dates: Date[] = [];
       let d = new Date(premiere);
       if (contrat.type === 'PONCTUEL') {
-        // Sans fréquence, getProchaineDateIntervention retombe sur 30 jours (utile surtout pour 1 échéance)
         for (let i = 0; i < nombre && i < MAX_ECHEANCES; i++) {
           dates.push(d);
           d = getProchaineDateIntervention(d, freq?.jours, freq?.mois);
@@ -864,12 +765,10 @@ export const planningService = {
             siteId: cs.siteId as string | null,
             prestations: cs.prestations?.length ? cs.prestations : contrat.prestations,
             montantApplique: (cs as any).montantHT ?? (contrat as any).montantHT ?? null,
-            freqOps: frequence(cs, 'Operations'),
-            freqCtrl: frequence(cs, 'Controle'),
+            freqOps: frequenceOps(cs) ?? frequenceOps(contrat),
+            nbCtrlEntreOps: (cs as any).nombreVisitesControleEntreOps ?? (contrat as any).nombreVisitesControleEntreOps ?? 0,
             premiereOp: cs.premiereDateOperation,
-            premiereCtrl: cs.premiereDateControle,
             nbOps: cs.nombreOperations || 0,
-            nbCtrl: cs.nombreVisitesControle || 0,
             datesOps: override?.datesPrevuesOperations,
             datesCtrl: override?.datesPrevuesControles,
           };
@@ -878,14 +777,10 @@ export const planningService = {
           siteId: null as string | null,
           prestations: contrat.prestations,
           montantApplique: (contrat as any).montantHT ?? null,
-          freqOps: frequence(contrat, 'Operations'),
-          freqCtrl: frequence(contrat, 'Controle'),
+          freqOps: frequenceOps(contrat),
+          nbCtrlEntreOps: (contrat as any).nombreVisitesControleEntreOps ?? 0,
           premiereOp: contrat.premiereDateOperation,
-          premiereCtrl: contrat.premiereDateControle,
           nbOps: contrat.nombreOperations || 0,
-          nbCtrl: contrat.type === 'PONCTUEL'
-            ? (contrat.nombreVisitesControle ?? contrat.nombreOperations ?? 0)
-            : (contrat.nombreVisitesControle || 0),
           datesOps: undefined as Date[] | undefined,
           datesCtrl: undefined as Date[] | undefined,
         }];
@@ -905,20 +800,24 @@ export const planningService = {
         }
       }
 
-      // ── Visites de contrôle (une opération sur la même période remplace la visite)
-      const opDates = [
-        ...interventionsCreees.filter((iv) => iv.type === 'OPERATION' && iv.siteId === s.siteId),
-        ...opsConservees.filter((iv) => iv.siteId === s.siteId),
-      ].map((iv) => iv.datePrevue as Date);
-      const datesCtrl = (s.datesCtrl?.length ? s.datesCtrl : echeances(s.premiereCtrl, s.freqCtrl, s.nbCtrl)).filter(dansConvention);
+      // ── Visites de contrôle ancrées aux opérations
+      // Toutes les opérations du site (nouvelles + conservées) servent d'ancres.
+      const toutesOpsDatesSite = [
+        ...datesOps,
+        ...opsConservees.filter((iv) => iv.siteId === s.siteId).map((iv) => iv.datePrevue),
+      ].sort((a, b) => a.getTime() - b.getTime());
+
+      const datesCtrl = s.datesCtrl?.length
+        ? s.datesCtrl.filter(dansConvention)
+        : datesControlesEntreOps(toutesOpsDatesSite, s.nbCtrlEntreOps).filter(dansConvention);
+
       for (const date of datesCtrl) {
-        if (apresDerniereOperation(date, opDates)) continue;
-        const couverte = visiteCouverteParOperation(date, s.freqCtrl?.jours ?? null, s.freqCtrl?.mois ?? null, opDates);
-        if (!couverte && consommer(s.siteId, 'CONTROLE', null)) continue;
+        if (apresDerniereOperation(date, toutesOpsDatesSite)) continue;
+        if (consommer(s.siteId, 'CONTROLE', null)) continue;
         const intervention = await prisma.intervention.create({
-          data: { ...base, type: 'CONTROLE', datePrevue: date, ...statutVisite(couverte) },
+          data: { ...base, type: 'CONTROLE', datePrevue: date, statut: 'A_PLANIFIER' },
         });
-        if (!couverte) interventionsCreees.push(intervention);
+        interventionsCreees.push(intervention);
       }
     }
 
@@ -946,35 +845,30 @@ export const planningService = {
         type: { in: ['OPERATION', 'CONTROLE'] },
         avenantId: null,
         bonCommandeId: null,
-        OR: [
-          { statut: { in: ['A_PLANIFIER', 'PLANIFIEE', 'REPORTEE'] } },
-          { remplaceeParOperation: true },
-        ],
+        statut: { in: ['A_PLANIFIER', 'PLANIFIEE', 'REPORTEE'] },
       },
     });
     return this.genererPlanningContrat(contratId, userId, siteOverrides, { ignorerEcheancesConsommees: true });
   },
 
   /**
-   * Génère les interventions supplémentaires d'un avenant (contrat ponctuel uniquement).
-   * Pour chaque site du contrat (ou au niveau contrat s'il n'a pas de sites), poursuit la série
-   * à partir de la dernière intervention existante du type, avec la fréquence du site (à défaut
-   * celle du contrat). Les visites de contrôle couvertes par une opération sont masquées, comme
-   * à la génération initiale. Vérifie les fréquences avant de créer quoi que ce soit.
+   * Génère les interventions supplémentaires d'un avenant.
+   * Pour chaque site du contrat (ou au niveau contrat s'il n'a pas de sites) :
+   *  - dates explicites issues de la projection de l'avenant si fournies,
+   *  - sinon N opérations à la fréquence du site depuis la dernière intervention existante,
+   *    et contrôles ancrés entre chaque paire d'opérations (même algo que genererPlanningContrat).
    */
   async genererInterventionsAvenant(
     contratId: string,
     avenantId: string,
     userId: string,
     nbOperations: number,
-    nbControles: number,
+    nbCtrlEntreOps: number,
     params: {
       dateDebut?: Date;
       frequenceJours?: number;
-      // Dates explicites (projection saisie dans l'avenant), appliquées à chaque site
       datesOperations?: Date[];
       datesControles?: Date[];
-      frequenceControle?: { jours: number | null; mois: number | null };
     } = {},
   ) {
     const contrat = await prisma.contrat.findUnique({
@@ -986,12 +880,10 @@ export const planningService = {
       throw new Error('Contrat non trouvé');
     }
 
-
-    // Fréquence saisie dans l'avenant prioritaire, sinon celle du site, sinon celle du contrat
-    const frequence = (src: any, kind: 'Operations' | 'Controle') => {
-      if (params.frequenceJours) return { mois: null, jours: params.frequenceJours };
-      const mois: number | null = src?.[`frequence${kind}Mois`] ?? null;
-      const jours: number | null = mois ? null : (src?.[`frequence${kind}Jours`] ?? null);
+    const freqOpsSource = (src: any) => {
+      if (params.frequenceJours) return { mois: null as null, jours: params.frequenceJours };
+      const mois: number | null = src?.frequenceOperationsMois ?? null;
+      const jours: number | null = mois ? null : (src?.frequenceOperationsJours ?? null);
       return mois || jours ? { mois, jours } : null;
     };
 
@@ -1001,129 +893,95 @@ export const planningService = {
           nom: cs.site?.nom ?? 'site',
           prestations: cs.prestations?.length ? cs.prestations : contrat.prestations,
           montantApplique: (cs as any).montantHT ?? (contrat as any).montantHT ?? null,
-          freqOps: frequence(cs, 'Operations') ?? frequence(contrat, 'Operations'),
-          freqCtrl: frequence(cs, 'Controle') ?? frequence(contrat, 'Controle'),
+          freqOps: freqOpsSource(cs) ?? freqOpsSource(contrat),
           premiereOp: cs.premiereDateOperation ?? contrat.premiereDateOperation,
-          premiereCtrl: cs.premiereDateControle ?? contrat.premiereDateControle,
         }))
       : [{
           siteId: null as string | null,
           nom: 'contrat',
           prestations: contrat.prestations,
           montantApplique: (contrat as any).montantHT ?? null,
-          freqOps: frequence(contrat, 'Operations'),
-          freqCtrl: frequence(contrat, 'Controle'),
+          freqOps: freqOpsSource(contrat),
           premiereOp: contrat.premiereDateOperation,
-          premiereCtrl: contrat.premiereDateControle,
         }];
 
-    // Fréquence des visites saisie dans l'avenant : sert à savoir si une opération les remplace
-    if (params.frequenceControle) {
-      for (const s of series) s.freqCtrl = params.frequenceControle;
-    }
-
     for (const s of series) {
-      // Une seule échéance ne nécessite pas de fréquence ; les dates explicites non plus
       if (nbOperations > 1 && !s.freqOps && !params.datesOperations) {
         throw new Error(`aucune fréquence d'opérations définie (${s.nom}) : indiquez une fréquence dans l'avenant`);
-      }
-      if (nbControles > 1 && !s.freqCtrl && !params.datesControles) {
-        throw new Error(`aucune fréquence de visites de contrôle définie (${s.nom}) : indiquez une fréquence dans l'avenant`);
       }
     }
 
     const interventionsCreees: any[] = [];
-    let visitesIgnorees = 0;
 
     for (const s of series) {
       const serie = { contratId: contrat.id, siteId: s.siteId };
 
-      // Point de départ : échéance suivant la dernière intervention de la série (les visites
-      // masquées car remplacées par une opération comptent comme des échéances).
-      const depart = async (type: InterventionType, freq: { mois: number | null; jours: number | null } | null, premiere: Date | null) => {
-        if (params.dateDebut) return new Date(params.dateDebut);
+      // Dates des opérations de l'avenant
+      let datesOps: Date[];
+      if (params.datesOperations?.length) {
+        datesOps = [...params.datesOperations].sort((a, b) => a.getTime() - b.getTime());
+      } else if (nbOperations > 0) {
         const derniere = await prisma.intervention.findFirst({
-          where: { ...serie, type, OR: [{ statut: { not: 'ANNULEE' } }, { remplaceeParOperation: true }] },
+          where: { ...serie, type: 'OPERATION', statut: { not: 'ANNULEE' } },
           orderBy: { datePrevue: 'desc' },
         });
-        if (derniere) return getProchaineDateIntervention(derniere.datePrevue, freq?.jours, freq?.mois);
-        return premiere ? new Date(premiere) : startOfDay(new Date());
-      };
-
-      // Échéances d'une série : dates explicites, sinon N dates à la fréquence depuis le départ
-      const echeances = async (type: InterventionType, nombre: number, explicites: Date[] | undefined, freq: { mois: number | null; jours: number | null } | null, premiere: Date | null) => {
-        if (explicites) return [...explicites].sort((a, b) => a.getTime() - b.getTime());
-        const dates: Date[] = [];
-        let d = await depart(type, freq, premiere);
-        for (let i = 0; i < nombre; i++) {
-          dates.push(d);
-          d = getProchaineDateIntervention(d, freq?.jours, freq?.mois);
+        let d = derniere
+          ? getProchaineDateIntervention(derniere.datePrevue, s.freqOps?.jours ?? null, s.freqOps?.mois ?? null)
+          : params.dateDebut ? new Date(params.dateDebut) : (s.premiereOp ? new Date(s.premiereOp) : startOfDay(new Date()));
+        datesOps = [];
+        for (let i = 0; i < nbOperations; i++) {
+          datesOps.push(d);
+          d = getProchaineDateIntervention(d, s.freqOps?.jours ?? null, s.freqOps?.mois ?? null);
         }
-        return dates;
-      };
-
-      if (nbOperations > 0) {
-        for (const currentDate of await echeances('OPERATION', nbOperations, params.datesOperations, s.freqOps, s.premiereOp)) {
-          for (const prestation of s.prestations) {
-            const intervention = await prisma.intervention.create({
-              data: {
-                ...serie,
-                clientId: contrat.clientId,
-                avenantId,
-                type: 'OPERATION',
-                prestation,
-                datePrevue: currentDate,
-                statut: 'A_PLANIFIER',
-                createdById: userId,
-                montantApplique: s.montantApplique,
-              },
-            });
-            interventionsCreees.push(intervention);
-          }
-        }
+      } else {
+        datesOps = [];
       }
 
-      if (nbControles > 0) {
-        const ops = await prisma.intervention.findMany({
-          where: { ...serie, type: 'OPERATION', statut: { not: 'ANNULEE' } },
-          select: { datePrevue: true },
-        });
-        const opDates = ops.map((o) => o.datePrevue);
-        const datesCtrl = await echeances('CONTROLE', nbControles, params.datesControles, s.freqCtrl, s.premiereCtrl);
-        for (const [i, currentDate] of datesCtrl.entries()) {
-          if (apresDerniereOperation(currentDate, opDates)) {
-            visitesIgnorees += datesCtrl.length - i;
-            break;
-          }
-          const couverte = visiteCouverteParOperation(currentDate, s.freqCtrl?.jours ?? null, s.freqCtrl?.mois ?? null, opDates);
+      for (const currentDate of datesOps) {
+        for (const prestation of s.prestations) {
           const intervention = await prisma.intervention.create({
             data: {
               ...serie,
               clientId: contrat.clientId,
               avenantId,
-              type: 'CONTROLE',
+              type: 'OPERATION',
+              prestation,
               datePrevue: currentDate,
+              statut: 'A_PLANIFIER',
               createdById: userId,
               montantApplique: s.montantApplique,
-              ...statutVisite(couverte),
             },
           });
-          if (!couverte) interventionsCreees.push(intervention);
+          interventionsCreees.push(intervention);
         }
       }
 
-      // Les nouvelles opérations peuvent couvrir des visites déjà planifiées
-      if (nbOperations > 0) {
-        await this.recalculerVisites(contrat.id, s.siteId);
+      // Dates des contrôles de l'avenant (explicites ou ancrées entre les ops de l'avenant)
+      const datesCtrl: Date[] = params.datesControles?.length
+        ? [...params.datesControles].sort((a, b) => a.getTime() - b.getTime())
+        : datesControlesEntreOps(datesOps, nbCtrlEntreOps);
+
+      for (const currentDate of datesCtrl) {
+        if (apresDerniereOperation(currentDate, datesOps)) continue;
+        const intervention = await prisma.intervention.create({
+          data: {
+            ...serie,
+            clientId: contrat.clientId,
+            avenantId,
+            type: 'CONTROLE',
+            datePrevue: currentDate,
+            statut: 'A_PLANIFIER',
+            createdById: userId,
+            montantApplique: s.montantApplique,
+          },
+        });
+        interventionsCreees.push(intervention);
       }
     }
 
     return {
       interventionsCreees,
       count: interventionsCreees.length,
-      warning: visitesIgnorees > 0
-        ? `${visitesIgnorees} visite(s) de contrôle non planifiée(s) : elles tombaient après la dernière opération du contrat`
-        : undefined,
     };
   },
 
@@ -1206,18 +1064,15 @@ export const planningService = {
               reconductionAuto: contrat.reconductionAuto,
               prestations: contrat.prestations,
               frequenceOperationsJours: contrat.frequenceOperationsJours,
-              frequenceControleJours: contrat.frequenceControleJours,
               frequenceOperationsMois: (contrat as any).frequenceOperationsMois ?? null,
-              frequenceControleMois: (contrat as any).frequenceControleMois ?? null,
+              nombreVisitesControleEntreOps: (contrat as any).nombreVisitesControleEntreOps ?? null,
               frequenceRegles: (contrat as any).frequenceRegles ?? null,
-              frequenceReglesControle: (contrat as any).frequenceReglesControle ?? null,
               planningAajuster: (contrat as any).planningAajuster ?? false,
               montantHT: (contrat as any).montantHT ?? null,
               dureeType: (contrat as any).dureeType ?? null,
               notes: contrat.notes,
               autoCreerProchaine: contrat.autoCreerProchaine,
               nombreOperations: contrat.nombreOperations,
-              nombreVisitesControle: contrat.nombreVisitesControle,
               nombrePassagesAnnuels: (contrat as any).nombrePassagesAnnuels ?? null,
               statut: 'ACTIF',
               refExterne: null, // Nouvelle période — la référence sera attribuée manuellement
@@ -1234,10 +1089,6 @@ export const planningService = {
             const advancePremiereDateOp = cs.premiereDateOperation
               ? addDays(cs.premiereDateOperation, duration + 1)
               : null;
-            const advancePremiereDateCtrl = cs.premiereDateControle
-              ? addDays(cs.premiereDateControle, duration + 1)
-              : null;
-
             await tx.contratSite.create({
               data: {
                 contratId: newContrat.id,
@@ -1245,16 +1096,12 @@ export const planningService = {
                 prestations: cs.prestations,
                 prixPrestations: cs.prixPrestations as any,
                 frequenceOperationsJours: cs.frequenceOperationsJours,
-                frequenceControleJours: cs.frequenceControleJours,
                 frequenceOperationsMois: (cs as any).frequenceOperationsMois ?? null,
-                frequenceControleMois: (cs as any).frequenceControleMois ?? null,
+                nombreVisitesControleEntreOps: (cs as any).nombreVisitesControleEntreOps ?? null,
                 frequenceRegles: (cs as any).frequenceRegles ?? null,
-                frequenceReglesControle: (cs as any).frequenceReglesControle ?? null,
                 montantHT: (cs as any).montantHT ?? null,
                 premiereDateOperation: advancePremiereDateOp,
-                premiereDateControle: advancePremiereDateCtrl,
                 nombreOperations: cs.nombreOperations,
-                nombreVisitesControle: cs.nombreVisitesControle,
                 nombrePassagesAnnuels: (cs as any).nombrePassagesAnnuels ?? null,
               },
             });
