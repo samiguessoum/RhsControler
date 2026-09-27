@@ -1004,7 +1004,7 @@ export function ContratForm({
                         </div>
 
                         {/* ── Planning ── */}
-                        <div className="p-3 space-y-3">
+                        <div className="p-3 space-y-4">
                           <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Planning</span>
 
                           {isPonctuel && (
@@ -1045,7 +1045,7 @@ export function ContratForm({
                           </div>
 
                           <div className="flex items-center gap-3">
-                            <span className="text-sm text-gray-600 w-40 shrink-0">VC entre chaque op</span>
+                            <span className="text-sm text-gray-600 w-40 shrink-0">VC entre chaque OP</span>
                             <Input
                               type="number"
                               className="h-8 w-24"
