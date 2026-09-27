@@ -785,7 +785,7 @@ export function ContratForm({
           {/* Ligne 1 — Convention */}
           <div className="grid grid-cols-2 gap-px">
             <div className="space-y-1 p-3 bg-white">
-              <Label className="text-xs text-gray-500">Date début convention</Label>
+              <Label className="text-xs text-gray-500">Date début convention{isPonctuel && <span className="text-gray-400"> (optionnel)</span>}</Label>
               <Input
                 type="date"
                 className="h-8 text-sm"
