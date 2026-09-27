@@ -857,7 +857,7 @@ export function ContratDetailPage() {
                           'text-[10px] font-medium',
                           isOperation ? 'text-blue-600' : 'text-purple-600'
                         )}>
-                          {isOperation ? 'OP' : 'CTRL'}
+                          {isOperation ? 'OP' : 'VC'}
                         </span>
                       </div>
                       {/* Date */}

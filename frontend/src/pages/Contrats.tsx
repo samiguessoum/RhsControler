@@ -1693,7 +1693,7 @@ export function ContratsPage() {
                               <div key={iv.id} className={`flex items-center gap-3 px-3 py-2 text-xs ${rowColor}`}>
                                 {/* Type badge */}
                                 <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold ${iv.type === 'OPERATION' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
-                                  {iv.type === 'OPERATION' ? 'OP' : 'CTRL'}
+                                  {iv.type === 'OPERATION' ? 'OP' : 'VC'}
                                 </span>
 
                                 {/* Date — editable */}
