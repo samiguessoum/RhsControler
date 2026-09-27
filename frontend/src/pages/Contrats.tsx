@@ -29,7 +29,7 @@ import { addDays, addMonths, format, startOfMonth } from 'date-fns';
 import { useAuthStore } from '@/store/auth.store';
 import type { Contrat, CreateContratInput, Client, User, ContratStatut, ContratType, ContratSiteInput, Prestation } from '@/types';
 
-function computeProjectionDates(
+export function computeProjectionDates(
   premierDate: string,
   nbOps: number | undefined,
   frequenceJours: number | undefined,
@@ -73,7 +73,7 @@ function visiteCouverte(date: string, jours: number | undefined, mois: number | 
 }
 
 // Même règle que le backend : aucune visite de contrôle après la dernière opération (dates yyyy-MM-dd).
-function apresDerniereOperation(date: string, opDates: string[]): boolean {
+export function apresDerniereOperation(date: string, opDates: string[]): boolean {
   const ops = opDates.filter(Boolean);
   if (!date || ops.length === 0) return false;
   return date > ops.reduce((max, d) => (d > max ? d : max));
@@ -81,7 +81,7 @@ function apresDerniereOperation(date: string, opDates: string[]): boolean {
 
 // Date hors de [debut, fin] (yyyy-MM-dd, bornes facultatives). Sert au garde-fou convention
 // (bloquant, même règle que le backend) et à l'avertissement hors période de prestations.
-function horsBornes(date: string, debut: string, fin: string): boolean {
+export function horsBornes(date: string, debut: string, fin: string): boolean {
   return !!date && ((!!debut && date < debut) || (!!fin && date > fin));
 }
 
@@ -108,9 +108,171 @@ function SupprimerDate({ visible, onClick }: { visible: boolean; onClick: () => 
   );
 }
 
+type SerieDates = 'ops' | 'ctrl';
+
+// Projection éditable des dates d'opérations et de visites de contrôle (formulaire contrat et
+// avenant). `opsExistantes` : opérations déjà au planning (avenant), prises en compte pour les
+// visites remplacées ou tombant après la dernière opération.
+export function ProjectionDates({
+  ops,
+  ctrl,
+  freqCtrlJours,
+  freqCtrlMois,
+  opsExistantes = [],
+  debutConvention,
+  finConvention,
+  debutPeriode,
+  finPeriode,
+  onChangeDate,
+  onRemoveDate,
+  onReset,
+  onRemoveHorsContrat,
+}: {
+  ops: string[];
+  ctrl: string[];
+  freqCtrlJours?: number;
+  freqCtrlMois?: number;
+  opsExistantes?: string[];
+  debutConvention: string;
+  finConvention: string;
+  debutPeriode: string;
+  finPeriode: string;
+  onChangeDate: (serie: SerieDates, index: number, value: string) => void;
+  onRemoveDate: (serie: SerieDates, index: number) => void;
+  onReset: (serie: SerieDates) => void;
+  onRemoveHorsContrat: () => void;
+}) {
+  if (ops.length === 0 && ctrl.length === 0) return null;
+  const toutesOps = [...opsExistantes, ...ops];
+  const nbHorsContrat = ctrl.filter((d) => apresDerniereOperation(d, toutesOps)).length;
+  const nbInterdites = [...ops, ...ctrl.filter((d) => !apresDerniereOperation(d, toutesOps))]
+    .filter((d) => horsBornes(d, debutConvention, finConvention)).length;
+  const nbAutrePeriode = ops
+    .filter((d) => !horsBornes(d, debutConvention, finConvention) && horsBornes(d, debutPeriode, finPeriode)).length;
+  return (
+    <div className="space-y-3 pt-2 border-t border-gray-100">
+      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Projection des dates</p>
+      {nbInterdites > 0 && (
+        <p className="text-xs text-red-700 bg-red-50 border border-red-300 rounded px-2 py-1.5 font-medium">
+          {nbInterdites} date(s) encadrée(s) en rouge hors convention
+          {debutConvention && <> (avant le {formatDate(debutConvention)}</>}
+          {finConvention && <>{debutConvention ? ' ou ' : ' ('}après le {formatDate(finConvention)}</>}
+          {(debutConvention || finConvention) && ')'} : modifiez-les ou supprimez-les pour enregistrer.
+        </p>
+      )}
+      {nbAutrePeriode > 0 && (
+        <p className="text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded px-2 py-1.5">
+          {nbAutrePeriode} opération(s) en orange hors de la période de prestations : elles compteront sur une autre année.
+        </p>
+      )}
+
+      {ops.length > 0 && (
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-gray-600">Opérations ({ops.length})</span>
+            <button type="button" onClick={() => onReset('ops')} className="text-xs text-blue-500 hover:text-blue-700">
+              ↺ Recalculer
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {ops.map((date, i) => {
+              const interdite = horsBornes(date, debutConvention, finConvention);
+              const autrePeriode = !interdite && horsBornes(date, debutPeriode, finPeriode);
+              return (
+                <div
+                  key={i}
+                  className="flex items-center gap-1 group"
+                  title={interdite ? 'Hors convention : à modifier ou supprimer' : autrePeriode ? 'Hors de la période de prestations' : undefined}
+                >
+                  <span className="text-[10px] text-gray-400 w-4 flex-shrink-0">#{i + 1}</span>
+                  <Input
+                    type="date"
+                    className={cn(
+                      'h-7 text-xs px-1.5',
+                      interdite && 'text-red-600 bg-red-50 border-red-500 ring-1 ring-red-500',
+                      autrePeriode && 'text-orange-700 bg-orange-50 border-orange-300'
+                    )}
+                    value={date}
+                    onChange={(e) => onChangeDate('ops', i, e.target.value)}
+                  />
+                  <SupprimerDate visible={ops.length > 1} onClick={() => onRemoveDate('ops', i)} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {ctrl.length > 0 && (
+        <div className="space-y-1.5">
+          {nbHorsContrat > 0 && (
+            <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5">
+              Attention : {nbHorsContrat} visite(s) de contrôle tombent après la dernière opération et ne seront pas planifiées.
+              Ajustez le nombre, la fréquence ou la date de départ si besoin.
+              <button
+                type="button"
+                onClick={onRemoveHorsContrat}
+                className="ml-1 font-medium underline hover:text-red-900"
+              >
+                Retirer les dates en rouge
+              </button>
+            </p>
+          )}
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-gray-600">
+              Contrôles ({ctrl.length})
+              <span className="font-normal text-gray-400"> — barrés : remplacés par une opération</span>
+              {nbHorsContrat > 0 && <span className="font-normal text-red-500"> · en rouge : après la dernière opération</span>}
+            </span>
+            <button type="button" onClick={() => onReset('ctrl')} className="text-xs text-blue-500 hover:text-blue-700">
+              ↺ Recalculer
+            </button>
+          </div>
+          <div className="grid grid-cols-3 gap-1.5">
+            {ctrl.map((date, i) => {
+              const horsContrat = apresDerniereOperation(date, toutesOps);
+              const remplacee = !horsContrat && visiteCouverte(date, freqCtrlJours, freqCtrlMois, toutesOps);
+              const interdite = !horsContrat && horsBornes(date, debutConvention, finConvention);
+              const autrePeriode = !horsContrat && !remplacee && !interdite && horsBornes(date, debutPeriode, finPeriode);
+              return (
+                <div
+                  key={i}
+                  className="flex items-center gap-1 group"
+                  title={
+                    horsContrat ? 'Après la dernière opération : ne sera pas planifiée'
+                      : remplacee ? 'Remplacée par une opération sur la même période'
+                      : interdite ? 'Hors convention : à modifier ou supprimer'
+                      : autrePeriode ? 'Hors de la période de prestations'
+                      : undefined
+                  }
+                >
+                  <span className="text-[10px] text-gray-400 w-4 flex-shrink-0">#{i + 1}</span>
+                  <Input
+                    type="date"
+                    className={cn(
+                      'h-7 text-xs px-1.5',
+                      remplacee && 'line-through text-gray-400 bg-gray-50',
+                      horsContrat && 'line-through text-red-500 bg-red-50 border-red-200',
+                      interdite && 'text-red-600 bg-red-50 border-red-500 ring-1 ring-red-500',
+                      autrePeriode && 'text-orange-700 bg-orange-50 border-orange-300'
+                    )}
+                    value={date}
+                    onChange={(e) => onChangeDate('ctrl', i, e.target.value)}
+                  />
+                  <SupprimerDate visible={ctrl.length > 1} onClick={() => onRemoveDate('ctrl', i)} />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Saisie d'une fréquence en jours ou en mois calendaires (les mois évitent la dérive :
 // "tous les 3 mois" tombe toujours le même jour du mois).
-function FrequenceInput({
+export function FrequenceInput({
   jours,
   mois,
   onChange,
@@ -325,10 +487,10 @@ export function ContratForm({
     })) || []
   );
 
-  const projectionOps = (cs: ContratSiteInput, fin: string) =>
-    computeProjectionDates(cs.premiereDateOperation || '', cs.nombreOperations, cs.frequenceOperationsJours, cs.frequenceOperationsMois, fin || undefined, type === 'PONCTUEL');
-  const projectionCtrl = (cs: ContratSiteInput, fin: string) =>
-    computeProjectionDates(cs.premiereDateControle || '', cs.nombreVisitesControle, cs.frequenceControleJours, cs.frequenceControleMois, fin || undefined, type === 'PONCTUEL');
+  const projectionOps = (cs: ContratSiteInput, fin: string, t: ContratType = type) =>
+    computeProjectionDates(cs.premiereDateOperation || '', cs.nombreOperations, cs.frequenceOperationsJours, cs.frequenceOperationsMois, fin || undefined, t === 'PONCTUEL');
+  const projectionCtrl = (cs: ContratSiteInput, fin: string, t: ContratType = type) =>
+    computeProjectionDates(cs.premiereDateControle || '', cs.nombreVisitesControle, cs.frequenceControleJours, cs.frequenceControleMois, fin || undefined, t === 'PONCTUEL');
 
   // État pour les sites dépliés/repliés — dépliés par défaut pour ne pas cacher
   // les prestations/prix (source d'oublis fréquente)
@@ -367,11 +529,20 @@ export function ContratForm({
     setContratSites(contratSites.map(cs => {
       if (cs.siteId !== siteId) return cs;
       const updated = { ...cs, ...updates };
+      // Sans 1ère date saisie, la série démarre au début de la période (ou à la signature de la
+      // convention si elle est postérieure) : la projection s'affiche dès le nombre / la fréquence
+      const departParDefaut = [dateDebut, dateDebutConvention].filter(Boolean).sort().pop() || '';
       // Recalculer la projection des dates quand les paramètres changent
       if (['premiereDateOperation', 'frequenceOperationsJours', 'frequenceOperationsMois', 'nombreOperations'].some((k) => k in updates)) {
+        if (!('premiereDateOperation' in updates) && !updated.premiereDateOperation && (updated.nombreOperations || updated.frequenceOperationsJours || updated.frequenceOperationsMois)) {
+          updated.premiereDateOperation = departParDefaut;
+        }
         updated.datesPrevuesOperations = projectionOps(updated, dateFin);
       }
       if (['premiereDateControle', 'frequenceControleJours', 'frequenceControleMois', 'nombreVisitesControle'].some((k) => k in updates)) {
+        if (!('premiereDateControle' in updates) && !updated.premiereDateControle && (updated.nombreVisitesControle || updated.frequenceControleJours || updated.frequenceControleMois)) {
+          updated.premiereDateControle = departParDefaut;
+        }
         updated.datesPrevuesControles = projectionCtrl(updated, dateFin);
       }
       return updated;
@@ -393,11 +564,14 @@ export function ContratForm({
     }));
   };
 
-  const removeSiteDate = (siteId: string, type: 'ops' | 'ctrl', index: number) => {
+  const removeSiteDate = (siteId: string, serie: 'ops' | 'ctrl', index: number) => {
     setContratSites(contratSites.map(cs => {
       if (cs.siteId !== siteId) return cs;
-      const cle = type === 'ops' ? 'datesPrevuesOperations' : 'datesPrevuesControles';
-      return { ...cs, [cle]: (cs[cle] || []).filter((_, i) => i !== index) };
+      const cle = serie === 'ops' ? 'datesPrevuesOperations' : 'datesPrevuesControles';
+      const dates = (cs[cle] || []).filter((_, i) => i !== index);
+      // Ponctuel : le nombre prévu suit les dates retenues (quota du contrat)
+      const nombre = type !== 'PONCTUEL' ? {} : serie === 'ops' ? { nombreOperations: dates.length } : { nombreVisitesControle: dates.length };
+      return { ...cs, [cle]: dates, ...nombre };
     }));
   };
 
@@ -420,6 +594,16 @@ export function ContratForm({
   };
 
   // La date de fin borne la projection des annuels : recalculer les projections déjà affichées
+  // Le type change la règle de projection (quota ponctuel / date de fin annuel)
+  const changerType = (value: ContratType) => {
+    setType(value);
+    setContratSites((sites) => sites.map((cs) => ({
+      ...cs,
+      ...(cs.datesPrevuesOperations ? { datesPrevuesOperations: projectionOps(cs, dateFin, value) } : {}),
+      ...(cs.datesPrevuesControles ? { datesPrevuesControles: projectionCtrl(cs, dateFin, value) } : {}),
+    })));
+  };
+
   const changerDateFin = (value: string) => {
     setDateFin(value);
     setContratSites((sites) => sites.map((cs) => ({
@@ -637,7 +821,7 @@ export function ContratForm({
           </div>
           <div className="space-y-2">
             <Label>Type *</Label>
-            <Select value={type} onValueChange={(v) => setType(v as ContratType)}>
+            <Select value={type} onValueChange={(v) => changerType(v as ContratType)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -757,7 +941,6 @@ export function ContratForm({
               {contratSites.map((cs) => {
                 const site = availableSites.find(s => s.id === cs.siteId);
                 const isExpanded = expandedSites.has(cs.siteId);
-                const nbHorsContrat = (cs.datesPrevuesControles || []).filter((d) => apresDerniereOperation(d, cs.datesPrevuesOperations || [])).length;
                 const sitePrestations = cs.prestations || [];
                 const availablePrestationsForSite = prestations.filter(p => !sitePrestations.includes(p.nom));
                 const missingPriceCount = sitePrestations.filter(nom => !cs.prixPrestations?.[nom]).length;
@@ -987,150 +1170,20 @@ export function ContratForm({
                         </div>
 
                         {/* ─── Projection des dates ─── */}
-                        {(cs.datesPrevuesOperations?.length || cs.datesPrevuesControles?.length) && (
-                          <div className="space-y-3 pt-2 border-t border-gray-100">
-                            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Projection des dates</p>
-                            {(() => {
-                              const nbInterdites = datesAPlanifier(cs).filter((d) => horsBornes(d, debutConvention, finConvention)).length;
-                              const nbAutrePeriode = (cs.datesPrevuesOperations || [])
-                                .filter((d) => !horsBornes(d, debutConvention, finConvention) && horsBornes(d, dateDebut, dateFin)).length;
-                              return (
-                                <>
-                                  {nbInterdites > 0 && (
-                                    <p className="text-xs text-red-700 bg-red-50 border border-red-300 rounded px-2 py-1.5 font-medium">
-                                      {nbInterdites} date(s) encadrée(s) en rouge hors convention
-                                      {debutConvention && <> (avant le {formatDate(debutConvention)}</>}
-                                      {finConvention && <>{debutConvention ? ' ou ' : ' ('}après le {formatDate(finConvention)}</>}
-                                      {(debutConvention || finConvention) && ')'} : modifiez-les ou supprimez-les pour enregistrer.
-                                    </p>
-                                  )}
-                                  {nbAutrePeriode > 0 && (
-                                    <p className="text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded px-2 py-1.5">
-                                      {nbAutrePeriode} opération(s) en orange hors de la période de prestations : elles compteront sur une autre année.
-                                    </p>
-                                  )}
-                                </>
-                              );
-                            })()}
-
-                            {cs.datesPrevuesOperations && cs.datesPrevuesOperations.length > 0 && (
-                              <div className="space-y-1.5">
-                                <div className="flex items-center justify-between">
-                                  <span className="text-xs font-medium text-gray-600">
-                                    Opérations ({cs.datesPrevuesOperations.length})
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => resetSiteDates(cs.siteId, 'ops')}
-                                    className="text-xs text-blue-500 hover:text-blue-700"
-                                  >
-                                    ↺ Recalculer
-                                  </button>
-                                </div>
-                                <div className="grid grid-cols-3 gap-1.5">
-                                  {cs.datesPrevuesOperations.map((date, i) => {
-                                    const interdite = horsBornes(date, debutConvention, finConvention);
-                                    const autrePeriode = !interdite && horsBornes(date, dateDebut, dateFin);
-                                    return (
-                                      <div
-                                        key={i}
-                                        className="flex items-center gap-1 group"
-                                        title={interdite ? 'Hors convention : à modifier ou supprimer' : autrePeriode ? 'Hors de la période de prestations' : undefined}
-                                      >
-                                        <span className="text-[10px] text-gray-400 w-4 flex-shrink-0">#{i + 1}</span>
-                                        <Input
-                                          type="date"
-                                          className={cn(
-                                            'h-7 text-xs px-1.5',
-                                            interdite && 'text-red-600 bg-red-50 border-red-500 ring-1 ring-red-500',
-                                            autrePeriode && 'text-orange-700 bg-orange-50 border-orange-300'
-                                          )}
-                                          value={date}
-                                          onChange={(e) => updateSiteDate(cs.siteId, 'ops', i, e.target.value)}
-                                        />
-                                        <SupprimerDate
-                                          visible={cs.datesPrevuesOperations!.length > 1}
-                                          onClick={() => removeSiteDate(cs.siteId, 'ops', i)}
-                                        />
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-
-                            {cs.datesPrevuesControles && cs.datesPrevuesControles.length > 0 && (
-                              <div className="space-y-1.5">
-                                {nbHorsContrat > 0 && (
-                                  <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5">
-                                    Attention : {nbHorsContrat} visite(s) de contrôle tombent après la dernière opération et ne seront pas planifiées.
-                                    Ajustez le nombre, la fréquence ou la date de départ si besoin.
-                                    <button
-                                      type="button"
-                                      onClick={() => removeControlesApresDerniereOp(cs.siteId)}
-                                      className="ml-1 font-medium underline hover:text-red-900"
-                                    >
-                                      Retirer les dates en rouge
-                                    </button>
-                                  </p>
-                                )}
-                                <div className="flex items-center justify-between">
-                                  <span className="text-xs font-medium text-gray-600">
-                                    Contrôles ({cs.datesPrevuesControles.length})
-                                    <span className="font-normal text-gray-400"> — barrés : remplacés par une opération</span>
-                                    {nbHorsContrat > 0 && <span className="font-normal text-red-500"> · en rouge : après la dernière opération</span>}
-                                  </span>
-                                  <button
-                                    type="button"
-                                    onClick={() => resetSiteDates(cs.siteId, 'ctrl')}
-                                    className="text-xs text-blue-500 hover:text-blue-700"
-                                  >
-                                    ↺ Recalculer
-                                  </button>
-                                </div>
-                                <div className="grid grid-cols-3 gap-1.5">
-                                  {cs.datesPrevuesControles.map((date, i) => {
-                                    const horsContrat = apresDerniereOperation(date, cs.datesPrevuesOperations || []);
-                                    const remplacee = !horsContrat && visiteCouverte(date, cs.frequenceControleJours, cs.frequenceControleMois, cs.datesPrevuesOperations || []);
-                                    const interdite = !horsContrat && horsBornes(date, debutConvention, finConvention);
-                                    const autrePeriode = !horsContrat && !remplacee && !interdite && horsBornes(date, dateDebut, dateFin);
-                                    return (
-                                      <div
-                                        key={i}
-                                        className="flex items-center gap-1 group"
-                                        title={
-                                          horsContrat ? 'Après la dernière opération : ne sera pas planifiée'
-                                            : remplacee ? 'Remplacée par une opération sur la même période'
-                                            : interdite ? 'Hors convention : à modifier ou supprimer'
-                                            : autrePeriode ? 'Hors de la période de prestations'
-                                            : undefined
-                                        }
-                                      >
-                                        <span className="text-[10px] text-gray-400 w-4 flex-shrink-0">#{i + 1}</span>
-                                        <Input
-                                          type="date"
-                                          className={cn(
-                                            'h-7 text-xs px-1.5',
-                                            remplacee && 'line-through text-gray-400 bg-gray-50',
-                                            horsContrat && 'line-through text-red-500 bg-red-50 border-red-200',
-                                            interdite && 'text-red-600 bg-red-50 border-red-500 ring-1 ring-red-500',
-                                            autrePeriode && 'text-orange-700 bg-orange-50 border-orange-300'
-                                          )}
-                                          value={date}
-                                          onChange={(e) => updateSiteDate(cs.siteId, 'ctrl', i, e.target.value)}
-                                        />
-                                        <SupprimerDate
-                                          visible={cs.datesPrevuesControles!.length > 1}
-                                          onClick={() => removeSiteDate(cs.siteId, 'ctrl', i)}
-                                        />
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
+                        <ProjectionDates
+                          ops={cs.datesPrevuesOperations || []}
+                          ctrl={cs.datesPrevuesControles || []}
+                          freqCtrlJours={cs.frequenceControleJours}
+                          freqCtrlMois={cs.frequenceControleMois}
+                          debutConvention={debutConvention}
+                          finConvention={finConvention}
+                          debutPeriode={dateDebut}
+                          finPeriode={dateFin}
+                          onChangeDate={(t, i, v) => updateSiteDate(cs.siteId, t, i, v)}
+                          onRemoveDate={(t, i) => removeSiteDate(cs.siteId, t, i)}
+                          onReset={(t) => resetSiteDates(cs.siteId, t)}
+                          onRemoveHorsContrat={() => removeControlesApresDerniereOp(cs.siteId)}
+                        />
 
                       </div>
                     )}

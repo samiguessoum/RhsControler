@@ -45,7 +45,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { contratsApi, interventionsApi, prestationsApi, avenantApi, clientsApi, usersApi } from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
-import { ContratForm } from './Contrats';
+import { ContratForm, ProjectionDates, FrequenceInput, computeProjectionDates, apresDerniereOperation, horsBornes } from './Contrats';
+import { addDays, addMonths, format } from 'date-fns';
 import { formatDate, getStatutColor, getStatutLabel, cn } from '@/lib/utils';
 import type { Prestation, InterventionStatut } from '@/types';
 
@@ -63,6 +64,36 @@ const INTERVENTION_STATUT_CONFIG: Record<InterventionStatut, { color: string; bg
   ANNULEE: { color: 'text-red-700', bgColor: 'bg-red-50 border-red-200' },
 };
 
+// Formulaire d'avenant : même logique que le contrat (nombre, fréquence, 1ère date → projection
+// éditable des dates)
+type AvenantForm = {
+  nom: string;
+  numeroBonCommande: string;
+  dateSignature: string;
+  montantHT: string;
+  notes: string;
+  nbOps?: number;
+  freqOpsJours?: number;
+  freqOpsMois?: number;
+  premiereOp: string;
+  nbCtrl?: number;
+  freqCtrlJours?: number;
+  freqCtrlMois?: number;
+  premiereCtrl: string;
+  datesOps: string[];
+  datesCtrl: string[];
+};
+
+const AVENANT_VIDE: AvenantForm = {
+  nom: '', numeroBonCommande: '', dateSignature: '', montantHT: '', notes: '',
+  premiereOp: '', premiereCtrl: '', datesOps: [], datesCtrl: [],
+};
+
+const projectionAvenant = (f: AvenantForm) => ({
+  datesOps: computeProjectionDates(f.premiereOp, f.nbOps, f.freqOpsJours, f.freqOpsMois, undefined, true),
+  datesCtrl: computeProjectionDates(f.premiereCtrl, f.nbCtrl, f.freqCtrlJours, f.freqCtrlMois, undefined, true),
+});
+
 export function ContratDetailPage() {
   const { id } = useParams();
   const [selectedPrestationName, setSelectedPrestationName] = useState<string | null>(null);
@@ -70,17 +101,7 @@ export function ContratDetailPage() {
   const [interventionFilter, setInterventionFilter] = useState<'all' | 'pending' | 'done'>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'operations' | 'controles'>('all');
   const [showAvenantDialog, setShowAvenantDialog] = useState(false);
-  const [avenantForm, setAvenantForm] = useState({
-    nom: '',
-    numeroBonCommande: '',
-    dateSignature: '',
-    montantHT: '',
-    nombreOperationsSupplementaires: '',
-    nombreVisitesControleSupplementaires: '',
-    dateDebut: '',
-    frequenceJours: '',
-    notes: '',
-  });
+  const [avenantForm, setAvenantForm] = useState<AvenantForm>(AVENANT_VIDE);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const { canDo } = useAuthStore();
 
@@ -102,14 +123,13 @@ export function ContratDetailPage() {
         numeroBonCommande: avenantForm.numeroBonCommande.trim() || undefined,
         dateSignature: avenantForm.dateSignature || undefined,
         montantHT: avenantForm.montantHT ? parseFloat(avenantForm.montantHT) : undefined,
-        nombreOperationsSupplementaires: avenantForm.nombreOperationsSupplementaires
-          ? parseInt(avenantForm.nombreOperationsSupplementaires)
-          : 0,
-        nombreVisitesControleSupplementaires: avenantForm.nombreVisitesControleSupplementaires
-          ? parseInt(avenantForm.nombreVisitesControleSupplementaires)
-          : 0,
-        dateDebut: avenantForm.dateDebut || undefined,
-        frequenceJours: avenantForm.frequenceJours ? parseInt(avenantForm.frequenceJours) : undefined,
+        // Les dates de la projection font foi (leur nombre compris)
+        nombreOperationsSupplementaires: avenantForm.datesOps.length,
+        nombreVisitesControleSupplementaires: avenantForm.datesCtrl.length,
+        datesOperations: avenantForm.datesOps.length ? avenantForm.datesOps : undefined,
+        datesControles: avenantForm.datesCtrl.length ? avenantForm.datesCtrl : undefined,
+        frequenceControleJours: avenantForm.freqCtrlJours,
+        frequenceControleMois: avenantForm.freqCtrlMois,
         notes: avenantForm.notes || undefined,
       }),
     onSuccess: (res) => {
@@ -118,7 +138,7 @@ export function ContratDetailPage() {
       toast.success(`Avenant enregistré — ${res.count ?? res.interventionsCreees?.length ?? 0} intervention(s) créée(s)`);
       if (res.warning) toast.warning(res.warning);
       setShowAvenantDialog(false);
-      setAvenantForm({ nom: '', numeroBonCommande: '', dateSignature: '', montantHT: '', nombreOperationsSupplementaires: '', nombreVisitesControleSupplementaires: '', dateDebut: '', frequenceJours: '', notes: '' });
+      setAvenantForm(AVENANT_VIDE);
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Erreur lors de la création de l\'avenant');
@@ -179,6 +199,47 @@ export function ContratDetailPage() {
 
   const interventions = interventionsData?.interventions || [];
   const isPonctuel = contrat?.type === 'PONCTUEL';
+
+  // Opérations déjà au planning : visites remplacées / après la dernière opération dans la projection
+  const opsExistantes = interventions
+    .filter((i) => i.type === 'OPERATION' && i.statut !== 'ANNULEE')
+    .map((i) => i.datePrevue.slice(0, 10));
+  const avenantDebutConvention = (contrat?.dateDebutConvention || contrat?.dateDebut || '').slice(0, 10);
+  const avenantFinConvention = (contrat?.dateFinConvention || '').slice(0, 10);
+
+  // Ouvre l'avenant prérempli : fréquences du contrat (1er site), départ à l'échéance suivant
+  // la dernière intervention de chaque type
+  const ouvrirAvenant = () => {
+    const src: any = contrat?.contratSites?.[0] ?? contrat;
+    const freqOps = { jours: src?.frequenceOperationsMois ? undefined : (src?.frequenceOperationsJours ?? undefined), mois: src?.frequenceOperationsMois ?? undefined };
+    const freqCtrl = { jours: src?.frequenceControleMois ? undefined : (src?.frequenceControleJours ?? undefined), mois: src?.frequenceControleMois ?? undefined };
+    const suivante = (type: string, freq: { jours?: number; mois?: number }) => {
+      const dates = interventions.filter((i) => i.type === type && i.statut !== 'ANNULEE').map((i) => i.datePrevue.slice(0, 10)).sort();
+      if (!dates.length) return format(new Date(), 'yyyy-MM-dd');
+      const d = new Date(dates[dates.length - 1] + 'T12:00:00');
+      return format(freq.mois ? addMonths(d, freq.mois) : addDays(d, freq.jours || 30), 'yyyy-MM-dd');
+    };
+    setAvenantForm({
+      ...AVENANT_VIDE,
+      freqOpsJours: freqOps.jours, freqOpsMois: freqOps.mois, premiereOp: suivante('OPERATION', freqOps),
+      freqCtrlJours: freqCtrl.jours, freqCtrlMois: freqCtrl.mois, premiereCtrl: suivante('CONTROLE', freqCtrl),
+    });
+    setShowAvenantDialog(true);
+  };
+
+  // Un paramètre de série modifié recalcule la projection de cette série
+  const majSerieAvenant = (updates: Partial<AvenantForm>, serie: 'ops' | 'ctrl') =>
+    setAvenantForm((f) => {
+      const n = { ...f, ...updates };
+      const p = projectionAvenant(n);
+      return serie === 'ops' ? { ...n, datesOps: p.datesOps } : { ...n, datesCtrl: p.datesCtrl };
+    });
+  const cleDates = (serie: 'ops' | 'ctrl') => (serie === 'ops' ? 'datesOps' : 'datesCtrl');
+  const cleNombre = (serie: 'ops' | 'ctrl') => (serie === 'ops' ? 'nbOps' : 'nbCtrl');
+  const avenantDatesInterdites = [
+    ...avenantForm.datesOps,
+    ...avenantForm.datesCtrl.filter((d) => !apresDerniereOperation(d, [...opsExistantes, ...avenantForm.datesOps])),
+  ].filter((d) => horsBornes(d, avenantDebutConvention, avenantFinConvention));
 
   // Stats des interventions
   const interventionStats = useMemo(() => {
@@ -631,7 +692,7 @@ export function ContratDetailPage() {
                     <FileSignature className="h-5 w-5 text-primary" />
                     Avenants
                   </CardTitle>
-                  <Button size="sm" variant="outline" onClick={() => setShowAvenantDialog(true)}>
+                  <Button size="sm" variant="outline" onClick={ouvrirAvenant}>
                     <Plus className="h-3.5 w-3.5 mr-1" />
                     Ajouter
                   </Button>
@@ -1099,7 +1160,7 @@ export function ContratDetailPage() {
 
       {/* Dialog Avenant */}
       <Dialog open={showAvenantDialog} onOpenChange={setShowAvenantDialog}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileSignature className="h-5 w-5 text-primary" />
@@ -1133,54 +1194,74 @@ export function ContratDetailPage() {
             </div>
             <p className="text-xs text-muted-foreground -mt-1">Le nom et le bon de commande apparaissent sur les factures de l'avenant.</p>
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="av-nbops">Opérations supplémentaires</Label>
-                <Input
-                  id="av-nbops"
-                  type="number"
-                  min={0}
-                  value={avenantForm.nombreOperationsSupplementaires}
-                  onChange={(e) => setAvenantForm((f) => ({ ...f, nombreOperationsSupplementaires: e.target.value }))}
-                  placeholder="0"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="av-nbctrl">Visites de contrôle sup.</Label>
-                <Input
-                  id="av-nbctrl"
-                  type="number"
-                  min={0}
-                  value={avenantForm.nombreVisitesControleSupplementaires}
-                  onChange={(e) => setAvenantForm((f) => ({ ...f, nombreVisitesControleSupplementaires: e.target.value }))}
-                  placeholder="0"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="av-debut">1ère intervention</Label>
-                <Input
-                  id="av-debut"
-                  type="date"
-                  value={avenantForm.dateDebut}
-                  onChange={(e) => setAvenantForm((f) => ({ ...f, dateDebut: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="av-freq">Fréquence (jours)</Label>
-                <Input
-                  id="av-freq"
-                  type="number"
-                  min={1}
-                  value={avenantForm.frequenceJours}
-                  onChange={(e) => setAvenantForm((f) => ({ ...f, frequenceJours: e.target.value }))}
-                  placeholder="Celle du contrat"
-                />
-              </div>
+              {([
+                { serie: 'ops', titre: 'Opérations supplémentaires', nombre: avenantForm.nbOps, jours: avenantForm.freqOpsJours, mois: avenantForm.freqOpsMois, premiere: avenantForm.premiereOp, libelleDate: 'Date de la 1ère opération' },
+                { serie: 'ctrl', titre: 'Visites de contrôle sup.', nombre: avenantForm.nbCtrl, jours: avenantForm.freqCtrlJours, mois: avenantForm.freqCtrlMois, premiere: avenantForm.premiereCtrl, libelleDate: 'Date de la 1ère visite' },
+              ] as const).map((b) => (
+                <div key={b.serie} className="space-y-2 p-3 rounded-lg border bg-amber-50 border-amber-200">
+                  <p className="text-xs font-semibold text-amber-700">{b.titre}</p>
+                  <div className="space-y-1.5">
+                    <span className="text-xs text-gray-500">Nombre</span>
+                    <Input
+                      type="number"
+                      className="h-8"
+                      min={0}
+                      placeholder="0"
+                      value={b.nombre ?? ''}
+                      onChange={(e) => majSerieAvenant({ [cleNombre(b.serie)]: e.target.value ? Number(e.target.value) : undefined }, b.serie)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <span className="text-xs text-gray-500">Fréquence (si plus d'une)</span>
+                    <FrequenceInput
+                      jours={b.jours}
+                      mois={b.mois}
+                      placeholder="Ex : 30"
+                      onChange={(v) => majSerieAvenant(
+                        b.serie === 'ops' ? { freqOpsJours: v.jours, freqOpsMois: v.mois } : { freqCtrlJours: v.jours, freqCtrlMois: v.mois },
+                        b.serie,
+                      )}
+                    />
+                    {(b.nombre || 0) > 1 && !b.jours && !b.mois && (
+                      <p className="text-xs text-red-600">Indiquez la fréquence pour projeter les dates.</p>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-xs text-gray-500">{b.libelleDate}</span>
+                    <Input
+                      type="date"
+                      className="h-8"
+                      value={b.premiere}
+                      onChange={(e) => majSerieAvenant(b.serie === 'ops' ? { premiereOp: e.target.value } : { premiereCtrl: e.target.value }, b.serie)}
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
             <p className="text-xs text-muted-foreground -mt-1">
-              Facultatif : par défaut, les interventions suivent la dernière du contrat, à la même fréquence.
+              Préremplies à la suite de la dernière intervention du contrat, à sa fréquence. Les dates s'appliquent à chaque site du contrat.
             </p>
+            <ProjectionDates
+              ops={avenantForm.datesOps}
+              ctrl={avenantForm.datesCtrl}
+              freqCtrlJours={avenantForm.freqCtrlJours}
+              freqCtrlMois={avenantForm.freqCtrlMois}
+              opsExistantes={opsExistantes}
+              debutConvention={avenantDebutConvention}
+              finConvention={avenantFinConvention}
+              debutPeriode={(contrat?.dateDebut || '').slice(0, 10)}
+              finPeriode={(contrat?.dateFin || '').slice(0, 10)}
+              onChangeDate={(serie, i, v) => setAvenantForm((f) => ({ ...f, [cleDates(serie)]: f[cleDates(serie)].map((d, j) => (j === i ? v : d)) }))}
+              onRemoveDate={(serie, i) => setAvenantForm((f) => {
+                const dates = f[cleDates(serie)].filter((_, j) => j !== i);
+                return { ...f, [cleDates(serie)]: dates, [cleNombre(serie)]: dates.length };
+              })}
+              onReset={(serie) => setAvenantForm((f) => ({ ...f, [cleDates(serie)]: projectionAvenant(f)[cleDates(serie)] }))}
+              onRemoveHorsContrat={() => setAvenantForm((f) => {
+                const datesCtrl = f.datesCtrl.filter((d) => !apresDerniereOperation(d, [...opsExistantes, ...f.datesOps]));
+                return { ...f, datesCtrl, nbCtrl: datesCtrl.length };
+              })}
+            />
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="av-date">Date de signature</Label>
@@ -1224,7 +1305,8 @@ export function ContratDetailPage() {
               onClick={() => createAvenantMutation.mutate()}
               disabled={
                 createAvenantMutation.isPending ||
-                (!avenantForm.nombreOperationsSupplementaires && !avenantForm.nombreVisitesControleSupplementaires)
+                (!avenantForm.datesOps.length && !avenantForm.datesCtrl.length) ||
+                avenantDatesInterdites.length > 0
               }
             >
               {createAvenantMutation.isPending ? 'Création...' : "Créer l'avenant"}

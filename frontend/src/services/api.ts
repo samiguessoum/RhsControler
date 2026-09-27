@@ -1831,6 +1831,10 @@ export const avenantApi = {
       nombreVisitesControleSupplementaires?: number;
       dateDebut?: string;
       frequenceJours?: number;
+      datesOperations?: string[];
+      datesControles?: string[];
+      frequenceControleJours?: number;
+      frequenceControleMois?: number;
       notes?: string;
     }
   ) => {

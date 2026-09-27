@@ -968,7 +968,14 @@ export const planningService = {
     userId: string,
     nbOperations: number,
     nbControles: number,
-    params: { dateDebut?: Date; frequenceJours?: number } = {},
+    params: {
+      dateDebut?: Date;
+      frequenceJours?: number;
+      // Dates explicites (projection saisie dans l'avenant), appliquées à chaque site
+      datesOperations?: Date[];
+      datesControles?: Date[];
+      frequenceControle?: { jours: number | null; mois: number | null };
+    } = {},
   ) {
     const contrat = await prisma.contrat.findUnique({
       where: { id: contratId },
@@ -1012,12 +1019,17 @@ export const planningService = {
           premiereCtrl: contrat.premiereDateControle,
         }];
 
+    // Fréquence des visites saisie dans l'avenant : sert à savoir si une opération les remplace
+    if (params.frequenceControle) {
+      for (const s of series) s.freqCtrl = params.frequenceControle;
+    }
+
     for (const s of series) {
-      // Une seule échéance ne nécessite pas de fréquence
-      if (nbOperations > 1 && !s.freqOps) {
+      // Une seule échéance ne nécessite pas de fréquence ; les dates explicites non plus
+      if (nbOperations > 1 && !s.freqOps && !params.datesOperations) {
         throw new Error(`aucune fréquence d'opérations définie (${s.nom}) : indiquez une fréquence dans l'avenant`);
       }
-      if (nbControles > 1 && !s.freqCtrl) {
+      if (nbControles > 1 && !s.freqCtrl && !params.datesControles) {
         throw new Error(`aucune fréquence de visites de contrôle définie (${s.nom}) : indiquez une fréquence dans l'avenant`);
       }
     }
@@ -1040,9 +1052,20 @@ export const planningService = {
         return premiere ? new Date(premiere) : startOfDay(new Date());
       };
 
+      // Échéances d'une série : dates explicites, sinon N dates à la fréquence depuis le départ
+      const echeances = async (type: InterventionType, nombre: number, explicites: Date[] | undefined, freq: { mois: number | null; jours: number | null } | null, premiere: Date | null) => {
+        if (explicites) return [...explicites].sort((a, b) => a.getTime() - b.getTime());
+        const dates: Date[] = [];
+        let d = await depart(type, freq, premiere);
+        for (let i = 0; i < nombre; i++) {
+          dates.push(d);
+          d = getProchaineDateIntervention(d, freq?.jours, freq?.mois);
+        }
+        return dates;
+      };
+
       if (nbOperations > 0) {
-        let currentDate = await depart('OPERATION', s.freqOps, s.premiereOp);
-        for (let i = 0; i < nbOperations; i++) {
+        for (const currentDate of await echeances('OPERATION', nbOperations, params.datesOperations, s.freqOps, s.premiereOp)) {
           for (const prestation of s.prestations) {
             const intervention = await prisma.intervention.create({
               data: {
@@ -1059,7 +1082,6 @@ export const planningService = {
             });
             interventionsCreees.push(intervention);
           }
-          currentDate = getProchaineDateIntervention(currentDate, s.freqOps?.jours, s.freqOps?.mois);
         }
       }
 
@@ -1069,10 +1091,10 @@ export const planningService = {
           select: { datePrevue: true },
         });
         const opDates = ops.map((o) => o.datePrevue);
-        let currentDate = await depart('CONTROLE', s.freqCtrl, s.premiereCtrl);
-        for (let i = 0; i < nbControles; i++) {
+        const datesCtrl = await echeances('CONTROLE', nbControles, params.datesControles, s.freqCtrl, s.premiereCtrl);
+        for (const [i, currentDate] of datesCtrl.entries()) {
           if (apresDerniereOperation(currentDate, opDates)) {
-            visitesIgnorees += nbControles - i;
+            visitesIgnorees += datesCtrl.length - i;
             break;
           }
           const couverte = visiteCouverteParOperation(currentDate, s.freqCtrl?.jours ?? null, s.freqCtrl?.mois ?? null, opDates);
@@ -1089,7 +1111,6 @@ export const planningService = {
             },
           });
           if (!couverte) interventionsCreees.push(intervention);
-          currentDate = getProchaineDateIntervention(currentDate, s.freqCtrl?.jours, s.freqCtrl?.mois);
         }
       }
 

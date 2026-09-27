@@ -51,6 +51,10 @@ export const avenantController = {
         nombreVisitesControleSupplementaires,
         dateDebut,
         frequenceJours,
+        datesOperations,
+        datesControles,
+        frequenceControleJours,
+        frequenceControleMois,
         notes,
       } = req.body;
 
@@ -62,14 +66,42 @@ export const avenantController = {
         return next(new AppError(400, 'Les avenants ne concernent que les contrats ponctuels'));
       }
 
+      // Garde-fou convention, comme à la création du contrat (les visites après la dernière
+      // opération ne sont pas planifiées : elles ne comptent pas)
+      const jour = (d: any) => (d ? new Date(d).toISOString().slice(0, 10) : null);
+      const debutConvention = jour(contrat.dateDebutConvention) ?? jour(contrat.dateDebut);
+      const finConvention = jour(contrat.dateFinConvention);
+      const opsPrevues: string[] = (datesOperations || []).map(jour).filter(Boolean);
+      if ((datesControles || []).length) {
+        const opsExistantes = await prisma.intervention.findMany({
+          where: { contratId, type: 'OPERATION', statut: { not: 'ANNULEE' } },
+          select: { datePrevue: true },
+        });
+        opsPrevues.push(...opsExistantes.map((o) => jour(o.datePrevue)!));
+      }
+      const derniereOp = opsPrevues.reduce((max: string | null, d) => (!max || d > max ? d : max), null);
+      const aVerifier = [
+        ...(datesOperations || []).map(jour),
+        ...(datesControles || []).map(jour).filter((d: string | null) => !derniereOp || d! <= derniereOp),
+      ].filter(Boolean) as string[];
+      for (const j of aVerifier) {
+        if (debutConvention && j < debutConvention) {
+          return next(new AppError(400, `Intervention prévue le ${j} avant le début de la convention (${debutConvention})`));
+        }
+        if (finConvention && j > finConvention) {
+          return next(new AppError(400, `Intervention prévue le ${j} après la fin de la convention (${finConvention})`));
+        }
+      }
+
       const dernierAvenant = await prisma.avenant.findFirst({
         where: { contratId },
         orderBy: { numero: 'desc' },
       });
       const numero = (dernierAvenant?.numero ?? 0) + 1;
 
-      const nbOps = nombreOperationsSupplementaires ?? 0;
-      const nbCtrl = nombreVisitesControleSupplementaires ?? 0;
+      // Avec des dates explicites, leur nombre fait foi
+      const nbOps = datesOperations ? datesOperations.length : (nombreOperationsSupplementaires ?? 0);
+      const nbCtrl = datesControles ? datesControles.length : (nombreVisitesControleSupplementaires ?? 0);
 
       const avenant = await prisma.avenant.create({
         data: {
@@ -95,7 +127,15 @@ export const avenantController = {
           req.user!.id,
           nbOps,
           nbCtrl,
-          { dateDebut, frequenceJours },
+          {
+            dateDebut,
+            frequenceJours,
+            datesOperations: datesOperations?.map((d: string) => new Date(d)),
+            datesControles: datesControles?.map((d: string) => new Date(d)),
+            frequenceControle: frequenceControleJours || frequenceControleMois
+              ? { jours: frequenceControleMois ? null : (frequenceControleJours ?? null), mois: frequenceControleMois ?? null }
+              : undefined,
+          },
         );
         interventionsCreees = result.interventionsCreees;
         warning = result.warning;

@@ -205,9 +205,16 @@ export const createAvenantSchema = z.object({
   // Facultatifs : départ et fréquence des interventions de l'avenant (sinon suite du contrat)
   dateDebut: z.string().or(z.date()).transform((val) => new Date(val)).optional(),
   frequenceJours: z.number().int().positive().optional(),
+  // Dates explicites issues de la projection (prioritaires) et fréquence des visites, qui sert
+  // à savoir si une opération remplace une visite
+  datesOperations: z.array(z.string()).optional(),
+  datesControles: z.array(z.string()).optional(),
+  frequenceControleJours: z.number().int().positive().optional(),
+  frequenceControleMois: z.number().int().positive().optional(),
   notes: z.string().optional(),
 }).refine(
-  (data) => data.nombreOperationsSupplementaires > 0 || data.nombreVisitesControleSupplementaires > 0,
+  (data) => data.nombreOperationsSupplementaires > 0 || data.nombreVisitesControleSupplementaires > 0
+    || !!data.datesOperations?.length || !!data.datesControles?.length,
   { message: 'Un avenant doit ajouter au moins une opération ou une visite de contrôle' }
 );
 
