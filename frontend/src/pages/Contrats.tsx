@@ -1038,7 +1038,7 @@ export function ContratForm({
                             <span className="text-sm text-gray-600 w-40 shrink-0">1ère opération</span>
                             <Input
                               type="date"
-                              className="h-8"
+                              className="h-8 w-36"
                               value={cs.premiereDateOperation || ''}
                               onChange={(e) => updateSite(cs.siteId, { premiereDateOperation: e.target.value })}
                             />
