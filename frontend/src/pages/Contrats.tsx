@@ -943,7 +943,7 @@ export function ContratForm({
                           <div className="flex items-center justify-between">
                             <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Prestations</span>
                             {availablePrestationsForSite.length > 0 && (
-                              <Select onValueChange={(v) => addPrestationToSite(cs.siteId, v)}>
+                              <Select key={sitePrestations.join(',')} onValueChange={(v) => addPrestationToSite(cs.siteId, v)}>
                                 <SelectTrigger className="h-7 w-auto gap-1 border-dashed text-xs text-blue-600 border-blue-300 hover:bg-blue-50 hover:border-blue-400 px-2">
                                   <Plus className="h-3 w-3" />
                                   <SelectValue placeholder="Ajouter" />
