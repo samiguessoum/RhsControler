@@ -780,55 +780,59 @@ export function ContratForm({
           </div>
         </div>
 
-        <p className="text-xs text-gray-500 -mb-2">
-          Période de prestations : l'année en cours, sur laquelle on compte les opérations.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>Période du *</Label>
-            <Input
-              type="date"
-              value={dateDebut}
-              onChange={(e) => handleDateDebutChange(e.target.value)}
-              required
-            />
+        {/* Dates : période de prestations + cadre convention */}
+        <div className="space-y-3 p-3 rounded-lg bg-white border border-gray-200">
+          {/* Ligne 1 — Période de prestations */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-gray-500 w-24 shrink-0">Période *</span>
+            <div className="flex items-center gap-2 flex-1">
+              <Input
+                type="date"
+                className="h-8 text-sm flex-1"
+                value={dateDebut}
+                onChange={(e) => handleDateDebutChange(e.target.value)}
+                required
+              />
+              <span className="text-gray-400 text-sm shrink-0">→</span>
+              <div className="relative flex-1">
+                <Input
+                  type="date"
+                  className="h-8 text-sm w-full"
+                  value={dateFin}
+                  onChange={(e) => changerDateFin(e.target.value)}
+                  placeholder={isPonctuel ? 'optionnel' : ''}
+                />
+              </div>
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label>
-              {isPonctuel ? 'Au (optionnel)' : 'Au'}
-              {!isPonctuel && dateFin && (
-                <span className="ml-2 text-xs font-normal text-green-600">← suggérée automatiquement</span>
-              )}
-            </Label>
-            <Input
-              type="date"
-              value={dateFin}
-              onChange={(e) => changerDateFin(e.target.value)}
-            />
-          </div>
-        </div>
+          <p className="text-xs text-gray-400 pl-[6.5rem]">
+            {isPonctuel ? 'Pour les ponctuels, la fin est optionnelle.' : 'Fin suggérée automatiquement selon la fréquence.'}
+          </p>
 
-        {/* Dates convention : cadre juridique, fixe d'une période à l'autre */}
-        <p className="text-xs text-gray-500 -mb-2">
-          Convention : aucune intervention ne peut être prévue avant sa signature ni après sa fin.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label>Convention signée le</Label>
-            <Input
-              type="date"
-              value={dateDebutConvention}
-              onChange={(e) => setDateDebutConvention(e.target.value)}
-            />
+          <div className="border-t border-gray-100" />
+
+          {/* Ligne 2 — Convention */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-gray-500 w-24 shrink-0">Convention</span>
+            <div className="flex items-center gap-2 flex-1">
+              <Input
+                type="date"
+                className="h-8 text-sm flex-1"
+                value={dateDebutConvention}
+                onChange={(e) => setDateDebutConvention(e.target.value)}
+              />
+              <span className="text-gray-400 text-sm shrink-0">→</span>
+              <Input
+                type="date"
+                className="h-8 text-sm flex-1"
+                value={dateFinConvention}
+                onChange={(e) => setDateFinConvention(e.target.value)}
+              />
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label>Fin de convention (optionnel)</Label>
-            <Input
-              type="date"
-              value={dateFinConvention}
-              onChange={(e) => setDateFinConvention(e.target.value)}
-            />
-          </div>
+          <p className="text-xs text-gray-400 pl-[6.5rem]">
+            Optionnelle — aucune intervention ne peut tomber hors de ces bornes.
+          </p>
         </div>
       </div>
 
