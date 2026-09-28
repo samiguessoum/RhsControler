@@ -212,7 +212,12 @@ export const attestationService = {
     const bodyText = renderBodyTemplate(bodyTemplate, vars);
 
     return {
-      fileName: `attestation-${kind}-${safeFileName(clientNom)}-${format(dateReference, 'yyyy-MM-dd')}.pdf`,
+      fileName: [
+        kind === 'garantie' ? 'Attestation_Garantie' : kind === 'controle' ? 'Attestation_Controle' : 'Attestation_Passage',
+        safeFileName(clientNom),
+        intervention.site ? safeFileName(intervention.site.nom) : null,
+        format(dateReference, 'dd-MM-yyyy'),
+      ].filter(Boolean).join('_') + '.pdf',
       values: {
         ville,
         dateReferenceFr: vars.date_reference_fr,
