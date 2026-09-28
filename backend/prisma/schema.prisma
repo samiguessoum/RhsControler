@@ -2488,6 +2488,7 @@ model Avenant {
   nom                                  String? // Libellé libre, repris sur la facture
   numeroBonCommande                    String? // N° du bon de commande de l'avenant, repris sur la facture
   dateSignature                        DateTime?
+  dateExpiration                       DateTime?
   montantHT                            Decimal?  @db.Decimal(15, 2)
   nombreOperationsSupplementaires      Int       @default(0)
   nombreVisitesControleSupplementaires Int       @default(0)

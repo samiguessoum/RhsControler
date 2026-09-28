@@ -184,6 +184,7 @@ export interface Avenant {
   nom?: string | null;
   numeroBonCommande?: string | null;
   dateSignature?: string | null;
+  dateExpiration?: string | null;
   montantHT?: number | null;
   nombreOperationsSupplementaires: number;
   nombreVisitesControleSupplementaires: number;

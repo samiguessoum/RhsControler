@@ -1827,6 +1827,7 @@ export const avenantApi = {
       nom?: string;
       numeroBonCommande?: string;
       dateSignature?: string;
+      dateExpiration?: string;
       montantHT?: number;
       nombreOperationsSupplementaires?: number;
       nombreVisitesControleEntreOps?: number;

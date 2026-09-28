@@ -70,6 +70,7 @@ type AvenantForm = {
   nom: string;
   numeroBonCommande: string;
   dateSignature: string;
+  dateExpiration: string;
   montantHT: string;
   notes: string;
   nbOps?: number;
@@ -81,7 +82,7 @@ type AvenantForm = {
 };
 
 const AVENANT_VIDE: AvenantForm = {
-  nom: '', numeroBonCommande: '', dateSignature: '', montantHT: '', notes: '',
+  nom: '', numeroBonCommande: '', dateSignature: '', dateExpiration: '', montantHT: '', notes: '',
   premiereOp: '', datesOps: [], datesCtrl: [],
 };
 
@@ -121,6 +122,7 @@ export function ContratDetailPage() {
         nom: avenantForm.nom.trim() || undefined,
         numeroBonCommande: avenantForm.numeroBonCommande.trim() || undefined,
         dateSignature: avenantForm.dateSignature || undefined,
+        dateExpiration: avenantForm.dateExpiration || undefined,
         montantHT: avenantForm.montantHT ? parseFloat(avenantForm.montantHT) : undefined,
         // Les dates de la projection font foi (leur nombre compris)
         nombreOperationsSupplementaires: avenantForm.datesOps.length,
@@ -679,9 +681,10 @@ export function ContratDetailPage() {
                         Avenant n°{av.numero}
                         {av.nom && <span className="font-normal"> — {av.nom}</span>}
                       </span>
-                      {av.dateSignature && (
-                        <span className="text-xs text-amber-700">{formatDate(av.dateSignature)}</span>
-                      )}
+                      <div className="flex items-center gap-2 text-xs text-amber-700">
+                        {av.dateSignature && <span>Signé le {formatDate(av.dateSignature)}</span>}
+                        {av.dateExpiration && <span>· Expire le {formatDate(av.dateExpiration)}</span>}
+                      </div>
                     </div>
                     {av.numeroBonCommande && (
                       <p className="text-xs text-amber-700">BC : {av.numeroBonCommande}</p>
@@ -1182,17 +1185,26 @@ export function ContratDetailPage() {
                   />
                 </div>
                 <div className="p-3 space-y-1 bg-white">
-                  <Label className="text-xs text-gray-500">Montant HT</Label>
+                  <Label className="text-xs text-gray-500">Date d'expiration</Label>
                   <Input
-                    type="number"
-                    min={0}
-                    step="any"
-                    className="h-8 text-sm"
-                    value={avenantForm.montantHT}
-                    onChange={(e) => setAvenantForm((f) => ({ ...f, montantHT: e.target.value }))}
-                    placeholder="ex: 1500"
+                    type="date"
+                    className="h-8 text-sm w-36"
+                    value={avenantForm.dateExpiration}
+                    onChange={(e) => setAvenantForm((f) => ({ ...f, dateExpiration: e.target.value }))}
                   />
                 </div>
+              </div>
+              <div className="p-3 space-y-1 bg-white">
+                <Label className="text-xs text-gray-500">Montant HT</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="any"
+                  className="h-8 text-sm"
+                  value={avenantForm.montantHT}
+                  onChange={(e) => setAvenantForm((f) => ({ ...f, montantHT: e.target.value }))}
+                  placeholder="ex: 1500"
+                />
               </div>
             </div>
 
