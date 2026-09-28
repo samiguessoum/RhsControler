@@ -1139,6 +1139,11 @@ export const planningService = {
                 const advanced = addDays(contrat.premiereDateOperation, duration + 1);
                 return contrat.dateFinConvention && advanced > contrat.dateFinConvention ? null : advanced;
               })(),
+              premiereDateControle: (() => {
+                if (!(contrat as any).premiereDateControle) return null;
+                const advanced = addDays((contrat as any).premiereDateControle, duration + 1);
+                return contrat.dateFinConvention && advanced > contrat.dateFinConvention ? null : advanced;
+              })(),
             },
           });
           newContratId = newContrat.id;
@@ -1165,7 +1170,13 @@ export const planningService = {
                 frequenceRegles: (cs as any).frequenceRegles ?? null,
                 frequenceReglesControle: (cs as any).frequenceReglesControle ?? null,
                 montantHT: (cs as any).montantHT ?? null,
+                notes: (cs as any).notes ?? null,
                 premiereDateOperation: advancePremiereDateOp,
+                premiereDateControle: (() => {
+                  if (!(cs as any).premiereDateControle) return null;
+                  const advanced = addDays((cs as any).premiereDateControle, duration + 1);
+                  return contrat.dateFinConvention && advanced > contrat.dateFinConvention ? null : advanced;
+                })(),
                 nombreOperations: cs.nombreOperations,
                 nombrePassagesAnnuels: (cs as any).nombrePassagesAnnuels ?? null,
               },
