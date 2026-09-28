@@ -25,6 +25,9 @@ import {
   Search,
   FileSignature,
   Pencil,
+  Banknote,
+  X,
+  Star,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -100,6 +103,8 @@ export function ContratDetailPage() {
   const [selectedIntervention, setSelectedIntervention] = useState<any | null>(null);
   const [interventionFilter, setInterventionFilter] = useState<'all' | 'pending' | 'done'>('all');
   const [typeFilter, setTypeFilter] = useState<'all' | 'operations' | 'controles'>('all');
+  const [siteFilter, setSiteFilter] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
   const [showAvenantDialog, setShowAvenantDialog] = useState(false);
   const [avenantForm, setAvenantForm] = useState<AvenantForm>(AVENANT_VIDE);
   const [showEditDialog, setShowEditDialog] = useState(false);
@@ -275,26 +280,50 @@ export function ContratDetailPage() {
     };
   }, [interventions]);
 
+  // Prochaine intervention à venir (première non réalisée / non annulée)
+  const prochaineIntervention = useMemo(() =>
+    interventions
+      .filter((i) => !['REALISEE', 'ANNULEE'].includes(i.statut))
+      .sort((a, b) => a.datePrevue.localeCompare(b.datePrevue))[0],
+    [interventions]
+  );
+
+  // Sites disponibles pour le filtre
+  const sitesDisponibles = useMemo(() =>
+    (contrat?.contratSites || []).map((cs) => ({ id: cs.siteId, nom: cs.site?.nom || cs.siteId })),
+    [contrat?.contratSites]
+  );
+
   // Filtrer les interventions
   const filteredInterventions = useMemo(() => {
     let filtered = interventions;
 
-    // Filtre par statut
     if (interventionFilter === 'done') {
       filtered = filtered.filter((i) => i.statut === 'REALISEE');
     } else if (interventionFilter === 'pending') {
       filtered = filtered.filter((i) => ['A_PLANIFIER', 'PLANIFIEE', 'REPORTEE'].includes(i.statut));
     }
 
-    // Filtre par type (Opération vs Contrôle)
     if (typeFilter === 'operations') {
       filtered = filtered.filter((i) => i.type === 'OPERATION');
     } else if (typeFilter === 'controles') {
       filtered = filtered.filter((i) => i.type === 'CONTROLE');
     }
 
+    if (siteFilter) {
+      filtered = filtered.filter((i) => i.site?.id === siteFilter);
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter((i) =>
+        i.prestation?.toLowerCase().includes(q) ||
+        i.site?.nom?.toLowerCase().includes(q)
+      );
+    }
+
     return filtered;
-  }, [interventions, interventionFilter, typeFilter]);
+  }, [interventions, interventionFilter, typeFilter, siteFilter, searchQuery]);
 
   const prestationDetail = useMemo(
     () => prestations.find((p) => p.nom === selectedPrestationName) as Prestation | undefined,
@@ -466,6 +495,19 @@ export function ContratDetailPage() {
                 </div>
               )}
 
+              {/* Montant HT global */}
+              {canDo('viewFacturation') && contrat.montantHT != null && (
+                <div className="p-3 rounded-lg bg-green-50 border border-green-100 flex items-center gap-3">
+                  <Banknote className="h-5 w-5 text-green-600 shrink-0" />
+                  <div>
+                    <p className="text-xs font-medium text-green-600">Montant HT</p>
+                    <p className="text-sm font-bold text-green-900">
+                      {Number(contrat.montantHT).toLocaleString('fr-FR')} DA HT
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Notes */}
               {contrat.notes && (
                 <div className="p-3 rounded-lg bg-amber-50 border border-amber-100">
@@ -568,25 +610,28 @@ export function ContratDetailPage() {
                         </div>
                       )}
 
-                      {/* Prestations du site */}
+                      {/* Prestations du site + prix */}
                       {cs.prestations?.length ? (
-                        <div className="mt-3 pt-3 border-t">
-                          <div className="flex flex-wrap gap-1">
-                            {cs.prestations.map((p) => (
-                              <button
-                                key={p}
-                                type="button"
-                                onClick={() => setSelectedPrestationName(p)}
-                              >
-                                <Badge
-                                  variant="outline"
-                                  className="text-xs cursor-pointer hover:bg-primary/10"
-                                >
-                                  {p}
-                                </Badge>
-                              </button>
-                            ))}
-                          </div>
+                        <div className="mt-3 pt-3 border-t space-y-1.5">
+                          {cs.prestations.map((p) => {
+                            const prix = cs.prixPrestations?.[p];
+                            return (
+                              <div key={p} className="flex items-center justify-between gap-2">
+                                <button type="button" onClick={() => setSelectedPrestationName(p)}>
+                                  <Badge variant="outline" className="text-xs cursor-pointer hover:bg-primary/10">
+                                    <Eye className="h-3 w-3 mr-1" />
+                                    {p}
+                                  </Badge>
+                                </button>
+                                {canDo('viewFacturation') && prix != null && (
+                                  <span className="text-xs font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded border border-green-100 flex items-center gap-1">
+                                    <Banknote className="h-3 w-3" />
+                                    {Number(prix).toLocaleString('fr-FR')} DA
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       ) : null}
                     </div>
@@ -827,6 +872,59 @@ export function ContratDetailPage() {
                 </button>
               </div>
             </div>
+            {/* Filtre par site */}
+            {sitesDisponibles.length > 1 && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-muted-foreground">Site :</span>
+                <div className="flex gap-1 flex-wrap">
+                  <button
+                    onClick={() => setSiteFilter(null)}
+                    className={cn(
+                      'px-3 py-1 text-xs rounded-full border transition-colors',
+                      siteFilter === null
+                        ? 'bg-primary text-white border-primary'
+                        : 'bg-white hover:bg-gray-50'
+                    )}
+                  >
+                    Tous
+                  </button>
+                  {sitesDisponibles.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => setSiteFilter(siteFilter === s.id ? null : s.id)}
+                      className={cn(
+                        'px-3 py-1 text-xs rounded-full border transition-colors flex items-center gap-1',
+                        siteFilter === s.id
+                          ? 'bg-orange-500 text-white border-orange-500'
+                          : 'bg-white hover:bg-orange-50 text-orange-700 border-orange-200'
+                      )}
+                    >
+                      <MapPin className="h-3 w-3" />
+                      {s.nom}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Barre de recherche */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Rechercher une prestation, un site..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-8 pr-8 py-1.5 text-xs border rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -849,6 +947,7 @@ export function ContratDetailPage() {
                 const statutStyle = INTERVENTION_STATUT_CONFIG[i.statut as InterventionStatut];
                 const isOperation = i.type === 'OPERATION';
                 const TypeIcon = isOperation ? Wrench : ClipboardCheck;
+                const isProchaine = prochaineIntervention?.id === i.id;
                 return (
                   <button
                     key={i.id}
@@ -908,6 +1007,12 @@ export function ContratDetailPage() {
                           {i.bonCommande && (
                             <span className="text-[10px] font-semibold text-blue-800 bg-blue-100 px-1.5 py-0.5 rounded">
                               BC-{i.bonCommande.numero}
+                            </span>
+                          )}
+                          {isProchaine && (
+                            <span className="text-[10px] font-semibold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                              <Star className="h-2.5 w-2.5" />
+                              Prochaine
                             </span>
                           )}
                         </div>
