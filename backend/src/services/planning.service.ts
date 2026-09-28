@@ -594,11 +594,15 @@ export const planningService = {
   ) {
     if (!ref.contratId || deltaMs === 0) return;
 
+    // Types à décaler : toujours le même type, plus les CONTROLEs si on décale une OPERATION
+    const typesAChercher: InterventionType[] =
+      ref.type === 'OPERATION' ? ['OPERATION', 'CONTROLE'] : [ref.type];
+
     const futures = await prisma.intervention.findMany({
       where: {
         contratId: ref.contratId,
         siteId: ref.siteId ?? null,
-        type: ref.type,
+        type: { in: typesAChercher },
         datePrevue: { gt: ref.datePrevue },
         id: { not: ref.id },
         ...EN_ATTENTE,
