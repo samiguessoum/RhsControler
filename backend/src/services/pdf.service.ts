@@ -1736,26 +1736,6 @@ export async function generateAttestationPassagePDF(attestation: AttestationPass
         y += 44;
       }
 
-      // Bloc infos entreprise (adresse + RC/NIF/AI/NIS)
-      const companyAdresseLine = [COMPANY_INFO.address, COMPANY_INFO.city].filter(Boolean).join(', ');
-      const fiscalParts: string[] = [];
-      if (COMPANY_INFO.rc) fiscalParts.push(`RC : ${COMPANY_INFO.rc}`);
-      if (COMPANY_INFO.nif) fiscalParts.push(`NIF : ${COMPANY_INFO.nif}`);
-      if (COMPANY_INFO.ai) fiscalParts.push(`AI : ${COMPANY_INFO.ai}`);
-      if (COMPANY_INFO.nis) fiscalParts.push(`NIS : ${COMPANY_INFO.nis}`);
-      if (companyAdresseLine || fiscalParts.length > 0) {
-        doc.font('Helvetica').fontSize(8).fillColor('#374151');
-        if (companyAdresseLine) {
-          doc.text(companyAdresseLine, margin, y, { width: contentWidth, align: 'center' });
-          y += 13;
-        }
-        if (fiscalParts.length > 0) {
-          doc.text(fiscalParts.join('  |  '), margin, y, { width: contentWidth, align: 'center' });
-          y += 13;
-        }
-        y += 4;
-      }
-
       doc.font('Helvetica')
         .fontSize(12)
         .fillColor('#111827')
@@ -1839,6 +1819,24 @@ export async function generateAttestationPassagePDF(attestation: AttestationPass
           .fillColor('#111827')
           .text(attestation.prestataireNom, margin, signatureY, { width: signWidth, align: 'left' })
           .text(attestation.clientDisplayName, margin + signWidth + gap, signatureY, { width: signWidth, align: 'right' });
+      }
+
+      // Pied de page — infos fiscales entreprise
+      const footerY = doc.page.height - margin - 30;
+      const companyAdresseLine = [COMPANY_INFO.address, COMPANY_INFO.city].filter(Boolean).join(', ');
+      const fiscalParts: string[] = [];
+      if (COMPANY_INFO.rc) fiscalParts.push(`RC : ${COMPANY_INFO.rc}`);
+      if (COMPANY_INFO.nif) fiscalParts.push(`NIF : ${COMPANY_INFO.nif}`);
+      if (COMPANY_INFO.ai) fiscalParts.push(`AI : ${COMPANY_INFO.ai}`);
+      if (COMPANY_INFO.nis) fiscalParts.push(`NIS : ${COMPANY_INFO.nis}`);
+      doc.moveTo(margin, footerY - 6).lineTo(margin + contentWidth, footerY - 6)
+        .lineWidth(0.5).strokeColor('#d1d5db').stroke();
+      doc.font('Helvetica').fontSize(7.5).fillColor('#374151');
+      if (companyAdresseLine) {
+        doc.text(companyAdresseLine, margin, footerY, { width: contentWidth, align: 'center' });
+      }
+      if (fiscalParts.length > 0) {
+        doc.text(fiscalParts.join('  |  '), margin, footerY + 12, { width: contentWidth, align: 'center' });
       }
 
       doc.end();
