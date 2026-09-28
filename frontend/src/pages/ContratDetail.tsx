@@ -107,13 +107,14 @@ export function ContratDetailPage() {
 
   const queryClient = useQueryClient();
 
-  const { data: contrat, isLoading } = useQuery({
+  const { data: contrat, isLoading, isError } = useQuery({
     queryKey: ['contrat', id],
     queryFn: () => contratsApi.get(id!),
     enabled: !!id,
     refetchOnWindowFocus: true,
-    refetchOnMount: 'always', // Recharger à chaque montage du composant
+    refetchOnMount: 'always',
     staleTime: 0,
+    retry: 1,
   });
 
   const createAvenantMutation = useMutation({
@@ -321,6 +322,17 @@ export function ContratDetailPage() {
     const months = Math.floor(diffDays / 30);
     return { days: diffDays, label: `${months} mois`, isUrgent: false };
   }, [contrat?.dateFin]);
+
+  if (isError) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-sm text-red-500 font-medium">Impossible de charger le contrat.</p>
+          <button className="mt-3 text-sm text-green-600 underline" onClick={() => window.location.reload()}>Réessayer</button>
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading || !contrat) {
     return (
