@@ -3497,8 +3497,8 @@ export function PlanningPage() {
     ],
     queryFn: () =>
       interventionsApi.list({
-        // EN_RETARD : pas de borne de date (toutes les interventions passées non réalisées)
-        dateDebut: filters.statut === 'EN_RETARD' ? undefined : format(dateRangeStart, 'yyyy-MM-dd'),
+        // EN_RETARD : borne basse à 2 ans pour éviter de charger tout l'historique
+        dateDebut: filters.statut === 'EN_RETARD' ? format(subYears(new Date(), 2), 'yyyy-MM-dd') : format(dateRangeStart, 'yyyy-MM-dd'),
         dateFin: filters.statut === 'EN_RETARD' ? format(new Date(), 'yyyy-MM-dd') : format(dateRangeEnd, 'yyyy-MM-dd'),
         clientId: filters.clientId || undefined,
         siteId: filters.siteId || undefined,

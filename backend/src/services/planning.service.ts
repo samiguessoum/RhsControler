@@ -606,7 +606,7 @@ export const planningService = {
       select: { id: true, datePrevue: true },
     });
     if (futures.length > 0) {
-      await Promise.all(
+      await prisma.$transaction(
         futures.map((f) =>
           prisma.intervention.update({
             where: { id: f.id },

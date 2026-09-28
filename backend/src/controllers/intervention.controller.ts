@@ -291,11 +291,11 @@ export const interventionController = {
         return res.status(404).json({ error: 'Intervention non trouvée' });
       }
 
-      // EQUIPE : peut uniquement consulter les interventions auxquelles elle est affectée
-      if (req.user?.role === 'EQUIPE' && req.user.employeId) {
-        const assigned = intervention.interventionEmployes.some(
-          (ie) => ie.employeId === req.user!.employeId,
-        );
+      // EQUIPE : peut uniquement consulter les interventions auxquelles elle est affectée.
+      // Si elle n'a pas de fiche employé liée, elle ne peut rien voir.
+      if (req.user?.role === 'EQUIPE') {
+        const assigned = req.user.employeId &&
+          intervention.interventionEmployes.some((ie) => ie.employeId === req.user!.employeId);
         if (!assigned) {
           return res.status(403).json({ error: 'Accès refusé' });
         }
