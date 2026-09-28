@@ -847,6 +847,12 @@ export const interventionController = {
         });
       }
 
+      if (existing.statut === 'ANNULEE') {
+        return res.status(400).json({
+          error: 'Impossible de supprimer une intervention annulée — utilisez l\'historique pour consulter le motif',
+        });
+      }
+
       await prisma.intervention.delete({ where: { id } });
 
       // Audit log

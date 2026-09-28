@@ -88,29 +88,32 @@ export const avenantController = {
         }
       }
 
-      const dernierAvenant = await prisma.avenant.findFirst({
-        where: { contratId },
-        orderBy: { numero: 'desc' },
-      });
-      const numero = (dernierAvenant?.numero ?? 0) + 1;
-
       const nbOps = datesOperations ? datesOperations.length : (nombreOperationsSupplementaires ?? 0);
       const nbCtrlEntreOps = nombreVisitesControleEntreOps ?? 0;
 
-      const avenant = await prisma.avenant.create({
-        data: {
-          contratId,
-          numero,
-          nom: nom || null,
-          numeroBonCommande: numeroBonCommande || null,
-          dateSignature: dateSignature ? new Date(dateSignature) : null,
-          dateExpiration: dateExpiration ? new Date(dateExpiration) : null,
-          montantHT: montantHT ?? null,
-          nombreOperationsSupplementaires: nbOps,
-          nombreVisitesControleSupplementaires: datesControles ? datesControles.length : nbCtrlEntreOps,
-          notes: notes || null,
-          createdById: req.user!.id,
-        },
+      // findFirst + create dans une transaction pour éviter les doublons de numérotation
+      const avenant = await prisma.$transaction(async (tx) => {
+        const dernierAvenant = await tx.avenant.findFirst({
+          where: { contratId },
+          orderBy: { numero: 'desc' },
+        });
+        const numero = (dernierAvenant?.numero ?? 0) + 1;
+
+        return tx.avenant.create({
+          data: {
+            contratId,
+            numero,
+            nom: nom || null,
+            numeroBonCommande: numeroBonCommande || null,
+            dateSignature: dateSignature ? new Date(dateSignature) : null,
+            dateExpiration: dateExpiration ? new Date(dateExpiration) : null,
+            montantHT: montantHT ?? null,
+            nombreOperationsSupplementaires: nbOps,
+            nombreVisitesControleSupplementaires: datesControles ? datesControles.length : nbCtrlEntreOps,
+            notes: notes || null,
+            createdById: req.user!.id,
+          },
+        });
       });
 
       let interventionsCreees: any[] = [];

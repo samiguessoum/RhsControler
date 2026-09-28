@@ -691,7 +691,7 @@ export function ContratDetailPage() {
                     )}
                     <p className="text-xs text-amber-700">
                       +{av.nombreOperationsSupplementaires} opération(s), +{av.nombreVisitesControleSupplementaires} visite(s) de contrôle
-                      {av.montantHT != null && ` — ${Number(av.montantHT).toLocaleString('fr-FR')} DA HT`}
+                      {canDo('viewFacturation') && av.montantHT != null && ` — ${Number(av.montantHT).toLocaleString('fr-FR')} DA HT`}
                     </p>
                     {av.notes && <p className="text-xs text-muted-foreground whitespace-pre-wrap">{av.notes}</p>}
                   </div>

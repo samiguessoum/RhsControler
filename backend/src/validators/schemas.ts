@@ -224,7 +224,7 @@ export const createInterventionSchema = z.object({
   datePrevue: z.string().or(z.date()).transform((val) => new Date(val)),
   heurePrevue: z.string().regex(/^\d{2}:\d{2}$/, 'Format heure invalide (HH:MM)').optional(),
   duree: z.number().int().positive().optional(),
-  statut: z.enum(['A_PLANIFIER', 'PLANIFIEE', 'REALISEE', 'REPORTEE', 'ANNULEE']).optional().default('A_PLANIFIER'),
+  statut: z.enum(['A_PLANIFIER', 'PLANIFIEE', 'REPORTEE']).optional().default('A_PLANIFIER'),
   notesTerrain: z.string().optional(),
   responsable: z.string().optional(),
   employes: z.array(interventionEmployeSchema).optional(),
