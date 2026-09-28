@@ -174,6 +174,19 @@ export const contratController = {
               site: true,
             },
           },
+          interventions: {
+            where: { remplaceeParOperation: false },
+            orderBy: { datePrevue: 'asc' },
+            select: {
+              id: true,
+              type: true,
+              datePrevue: true,
+              statut: true,
+              prestation: true,
+              dateRealisee: true,
+              site: { select: { id: true, nom: true } },
+            },
+          },
           bonsCommandes: {
             orderBy: { createdAt: 'desc' },
           },
