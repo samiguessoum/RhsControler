@@ -177,13 +177,7 @@ export const contratController = {
           interventions: {
             where: { remplaceeParOperation: false },
             orderBy: { datePrevue: 'asc' },
-            select: {
-              id: true,
-              type: true,
-              datePrevue: true,
-              statut: true,
-              prestation: true,
-              dateRealisee: true,
+            include: {
               site: { select: { id: true, nom: true } },
             },
           },
