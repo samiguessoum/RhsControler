@@ -852,10 +852,11 @@ export const planningService = {
     userId: string,
     siteOverrides?: Array<{ siteId: string; datesPrevuesOperations?: Date[]; datesPrevuesControles?: Date[] }>,
   ) {
-    // Opération atomique : delete + generate dans la même transaction pour éviter les doublons
-    // en cas de double-sauvegarde simultanée.
-    return prisma.$transaction(async () => {
-      await prisma.intervention.deleteMany({
+    // Supprime les interventions générées encore en attente, puis régénère.
+    // La suppression est dans sa propre transaction. Si la génération échoue ensuite,
+    // le contrat est marqué planningAajuster pour traitement manuel.
+    await prisma.$transaction(async (tx) => {
+      await tx.intervention.deleteMany({
         where: {
           contratId,
           type: { in: ['OPERATION', 'CONTROLE'] },
@@ -864,8 +865,15 @@ export const planningService = {
           statut: { in: ['A_PLANIFIER', 'PLANIFIEE', 'REPORTEE'] },
         },
       });
-      return this.genererPlanningContrat(contratId, userId, siteOverrides, { ignorerEcheancesConsommees: true });
     });
+    try {
+      return await this.genererPlanningContrat(contratId, userId, siteOverrides, { ignorerEcheancesConsommees: true });
+    } catch (genErr: any) {
+      // Suppression réussie mais génération échouée : marquer le contrat pour ajustement manuel
+      await prisma.contrat.update({ where: { id: contratId }, data: { planningAajuster: true } }).catch(() => {});
+      logger.error({ contratId, err: genErr }, 'Régénération planning : échec après suppression — contrat marqué planningAajuster');
+      throw genErr;
+    }
   },
 
   /**
@@ -1108,6 +1116,7 @@ export const planningService = {
               frequenceControleJours: (contrat as any).frequenceControleJours ?? null,
               frequenceControleMois: (contrat as any).frequenceControleMois ?? null,
               frequenceRegles: (contrat as any).frequenceRegles ?? null,
+              frequenceReglesControle: (contrat as any).frequenceReglesControle ?? null,
               planningAajuster: (contrat as any).planningAajuster ?? false,
               montantHT: (contrat as any).montantHT ?? null,
               dureeType: (contrat as any).dureeType ?? null,

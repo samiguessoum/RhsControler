@@ -23,6 +23,7 @@ function contratSiteData(cs: SiteInput) {
     nombreVisitesControle: cs.nombreVisitesControle ?? null,
     frequenceControleJours: cs.frequenceControleJours ?? null,
     frequenceControleMois: cs.frequenceControleMois ?? null,
+    premiereDateControle: cs.premiereDateControle ?? null,
     frequenceRegles: cs.frequenceRegles ?? null,
     frequenceReglesControle: cs.frequenceReglesControle ?? null,
     nombrePassagesAnnuels: cs.nombrePassagesAnnuels ?? null,
@@ -261,6 +262,10 @@ export const contratController = {
           nombreOperations: data.nombreOperations ?? null,
           dateDebutConvention: data.dateDebutConvention ?? null,
           dateFinConvention: data.dateFinConvention ?? null,
+          premiereDateControle: data.premiereDateControle ?? null,
+          attestationMessageTemplate: data.attestationMessageTemplate ?? null,
+          attestationGarantieMessageTemplate: data.attestationGarantieMessageTemplate ?? null,
+          attestationControleMessageTemplate: data.attestationControleMessageTemplate ?? null,
         },
         include: {
           client: {
@@ -269,10 +274,12 @@ export const contratController = {
         },
       });
 
-      // Créer les ContratSites si fournis
-      for (const cs of data.contratSites || []) {
-        await prisma.contratSite.create({ data: { contratId: contrat.id, ...contratSiteData(cs) } });
-      }
+      // Créer les ContratSites dans la même transaction que le contrat
+      await prisma.$transaction(async (tx) => {
+        for (const cs of data.contratSites || []) {
+          await tx.contratSite.create({ data: { contratId: contrat.id, ...contratSiteData(cs) } });
+        }
+      });
 
       // Audit log
       await createAuditLog(req.user!.id, 'CREATE', 'Contrat', contrat.id, { after: contrat });
@@ -365,6 +372,10 @@ export const contratController = {
           nombreOperations: data.nombreOperations !== undefined ? data.nombreOperations : existing.nombreOperations,
           dateDebutConvention: data.dateDebutConvention !== undefined ? data.dateDebutConvention : existing.dateDebutConvention,
           dateFinConvention: data.dateFinConvention !== undefined ? data.dateFinConvention : existing.dateFinConvention,
+          premiereDateControle: data.premiereDateControle !== undefined ? data.premiereDateControle : (existing as any).premiereDateControle,
+          attestationMessageTemplate: data.attestationMessageTemplate !== undefined ? data.attestationMessageTemplate : (existing as any).attestationMessageTemplate,
+          attestationGarantieMessageTemplate: data.attestationGarantieMessageTemplate !== undefined ? data.attestationGarantieMessageTemplate : (existing as any).attestationGarantieMessageTemplate,
+          attestationControleMessageTemplate: data.attestationControleMessageTemplate !== undefined ? data.attestationControleMessageTemplate : (existing as any).attestationControleMessageTemplate,
         },
         include: {
           client: {
@@ -373,12 +384,14 @@ export const contratController = {
         },
       });
 
-      // Mettre à jour les ContratSites si fournis
+      // Mettre à jour les ContratSites dans une transaction (delete + recreate atomique)
       if (data.contratSites !== undefined) {
-        await prisma.contratSite.deleteMany({ where: { contratId: id } });
-        for (const cs of data.contratSites || []) {
-          await prisma.contratSite.create({ data: { contratId: id, ...contratSiteData(cs) } });
-        }
+        await prisma.$transaction(async (tx) => {
+          await tx.contratSite.deleteMany({ where: { contratId: id } });
+          for (const cs of data.contratSites || []) {
+            await tx.contratSite.create({ data: { contratId: id, ...contratSiteData(cs) } });
+          }
+        });
       }
 
       // Régénérer le planning uniquement si ses paramètres ont changé (ou si le contrat est

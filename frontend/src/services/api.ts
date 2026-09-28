@@ -1831,8 +1831,6 @@ export const avenantApi = {
       montantHT?: number;
       nombreOperationsSupplementaires?: number;
       nombreVisitesControleEntreOps?: number;
-      dateDebut?: string;
-      frequenceJours?: number;
       datesOperations?: string[];
       datesControles?: string[];
       notes?: string;
@@ -1840,6 +1838,9 @@ export const avenantApi = {
   ) => {
     const { data } = await api.post(`/contrats/${contratId}/avenants`, payload);
     return data as { avenant: any; interventionsCreees: any[]; count?: number; warning?: string };
+  },
+  delete: async (contratId: string, avenantId: string) => {
+    await api.delete(`/contrats/${contratId}/avenants/${avenantId}`);
   },
 };
 
