@@ -177,6 +177,7 @@ export const contratController = {
           interventions: {
             where: { remplaceeParOperation: false },
             orderBy: { datePrevue: 'asc' },
+            take: 200,
             include: {
               site: { select: { id: true, nom: true } },
             },
@@ -353,7 +354,7 @@ export const contratController = {
           responsablePlanningId: data.responsablePlanningId !== undefined ? data.responsablePlanningId : existing.responsablePlanningId,
           statut: data.statut ?? existing.statut,
           notes: data.notes !== undefined ? (data.notes || null) : existing.notes,
-          autoCreerProchaine: true,
+          autoCreerProchaine: data.autoCreerProchaine !== undefined ? data.autoCreerProchaine : existing.autoCreerProchaine,
           numeroBonCommande: data.numeroBonCommande !== undefined ? data.numeroBonCommande : existing.numeroBonCommande,
           nombreOperations: data.nombreOperations !== undefined ? data.nombreOperations : existing.nombreOperations,
           dateDebutConvention: data.dateDebutConvention !== undefined ? data.dateDebutConvention : existing.dateDebutConvention,

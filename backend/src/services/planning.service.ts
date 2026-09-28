@@ -111,7 +111,7 @@ export const planningService = {
         interventions: {
           where: {
             datePrevue: { gte: today },
-            statut: { in: ['A_PLANIFIER', 'PLANIFIEE'] },
+            statut: { in: ['A_PLANIFIER', 'PLANIFIEE', 'REPORTEE'] },
           },
           take: 1,
         },
@@ -808,15 +808,13 @@ export const planningService = {
 
       // ── Opérations
       const datesOps = (s.datesOps?.length ? s.datesOps : echeances(s.premiereOp, s.freqOps, s.nbOps)).filter(dansConvention);
-      for (const date of datesOps) {
-        for (const prestation of s.prestations) {
-          if (consommer(s.siteId, 'OPERATION', prestation)) continue;
-          const intervention = await prisma.intervention.create({
-            data: { ...base, type: 'OPERATION', prestation, datePrevue: date, statut: 'A_PLANIFIER' },
-          });
-          interventionsCreees.push(intervention);
-        }
-      }
+      const opsData = datesOps.flatMap((date) =>
+        s.prestations
+          .filter((prestation) => !consommer(s.siteId, 'OPERATION', prestation))
+          .map((prestation) => ({ ...base, type: 'OPERATION' as const, prestation, datePrevue: date, statut: 'A_PLANIFIER' as const }))
+      );
+      const opsCreees = await prisma.intervention.createManyAndReturn({ data: opsData });
+      interventionsCreees.push(...opsCreees);
 
       // ── Visites de contrôle ancrées aux opérations
       // Toutes les opérations du site (nouvelles + conservées) servent d'ancres.
@@ -829,14 +827,11 @@ export const planningService = {
         ? s.datesCtrl.filter(dansConvention)
         : datesControlesEntreOps(toutesOpsDatesSite, s.nbCtrlEntreOps).filter(dansConvention);
 
-      for (const date of datesCtrl) {
-        if (apresDerniereOperation(date, toutesOpsDatesSite)) continue;
-        if (consommer(s.siteId, 'CONTROLE', null)) continue;
-        const intervention = await prisma.intervention.create({
-          data: { ...base, type: 'CONTROLE', datePrevue: date, statut: 'A_PLANIFIER' },
-        });
-        interventionsCreees.push(intervention);
-      }
+      const ctrlData = datesCtrl
+        .filter((date) => !apresDerniereOperation(date, toutesOpsDatesSite) && !consommer(s.siteId, 'CONTROLE', null))
+        .map((date) => ({ ...base, type: 'CONTROLE' as const, datePrevue: date, statut: 'A_PLANIFIER' as const }));
+      const ctrlCreees = await prisma.intervention.createManyAndReturn({ data: ctrlData });
+      interventionsCreees.push(...ctrlCreees);
     }
 
     return {
@@ -956,24 +951,21 @@ export const planningService = {
         datesOps = [];
       }
 
-      for (const currentDate of datesOps) {
-        for (const prestation of s.prestations) {
-          const intervention = await prisma.intervention.create({
-            data: {
-              ...serie,
-              clientId: contrat.clientId,
-              avenantId,
-              type: 'OPERATION',
-              prestation,
-              datePrevue: currentDate,
-              statut: 'A_PLANIFIER',
-              createdById: userId,
-              montantApplique: s.montantApplique,
-            },
-          });
-          interventionsCreees.push(intervention);
-        }
-      }
+      const opsAvenantData = datesOps.flatMap((currentDate) =>
+        s.prestations.map((prestation) => ({
+          ...serie,
+          clientId: contrat.clientId,
+          avenantId,
+          type: 'OPERATION' as const,
+          prestation,
+          datePrevue: currentDate,
+          statut: 'A_PLANIFIER' as const,
+          createdById: userId,
+          montantApplique: s.montantApplique,
+        }))
+      );
+      const opsAvenantCreees = await prisma.intervention.createManyAndReturn({ data: opsAvenantData });
+      interventionsCreees.push(...opsAvenantCreees);
 
       // Dates des contrôles de l'avenant (explicites ou ancrées entre toutes les ops : existantes + nouvelles)
       let toutesOpsAvenant = datesOps;
@@ -991,22 +983,20 @@ export const planningService = {
         ? [...params.datesControles].sort((a, b) => a.getTime() - b.getTime())
         : datesControlesEntreOps(toutesOpsAvenant, nbCtrlEntreOps);
 
-      for (const currentDate of datesCtrl) {
-        if (apresDerniereOperation(currentDate, toutesOpsAvenant)) continue;
-        const intervention = await prisma.intervention.create({
-          data: {
-            ...serie,
-            clientId: contrat.clientId,
-            avenantId,
-            type: 'CONTROLE',
-            datePrevue: currentDate,
-            statut: 'A_PLANIFIER',
-            createdById: userId,
-            montantApplique: s.montantApplique,
-          },
-        });
-        interventionsCreees.push(intervention);
-      }
+      const ctrlAvenantData = datesCtrl
+        .filter((d) => !apresDerniereOperation(d, toutesOpsAvenant))
+        .map((currentDate) => ({
+          ...serie,
+          clientId: contrat.clientId,
+          avenantId,
+          type: 'CONTROLE' as const,
+          datePrevue: currentDate,
+          statut: 'A_PLANIFIER' as const,
+          createdById: userId,
+          montantApplique: s.montantApplique,
+        }));
+      const ctrlAvenantCreees = await prisma.intervention.createManyAndReturn({ data: ctrlAvenantData });
+      interventionsCreees.push(...ctrlAvenantCreees);
     }
 
     return {

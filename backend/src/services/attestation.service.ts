@@ -10,6 +10,7 @@ type BuildAttestationOptions = {
 
 type AttestationData = {
   fileName: string;
+  contratId: string | null;
   values: {
     ville: string;
     dateReferenceFr: string;
@@ -145,6 +146,10 @@ export const attestationService = {
       throw new Error('Intervention non trouvée');
     }
 
+    if (intervention.statut !== 'REALISEE') {
+      throw new Error("Impossible de générer une attestation pour une intervention non réalisée");
+    }
+
     if (kind === 'controle' && intervention.type !== 'CONTROLE') {
       throw new Error("L'attestation de visite de contrôle est disponible uniquement pour les interventions de type CONTROLE");
     }
@@ -218,6 +223,7 @@ export const attestationService = {
         intervention.site ? safeFileName(intervention.site.nom) : null,
         format(dateReference, 'dd-MM-yyyy'),
       ].filter(Boolean).join('_') + '.pdf',
+      contratId: intervention.contrat?.id ?? null,
       values: {
         ville,
         dateReferenceFr: vars.date_reference_fr,
@@ -263,15 +269,8 @@ export const attestationService = {
     }
 
     const data = await this.buildAttestationData(interventionId, options);
-    const intervention = await prisma.intervention.findUnique({
-      where: { id: interventionId },
-      select: { contratId: true },
-    });
 
-    if (!intervention) {
-      throw new Error('Intervention non trouvée');
-    }
-    if (!intervention.contratId) {
+    if (!data.contratId) {
       throw new Error("Cette intervention n'est pas liée à un contrat");
     }
 
@@ -284,7 +283,7 @@ export const attestationService = {
     const template = convertBodyTextToTemplate(trimmedBody, vars);
 
     await prisma.contrat.update({
-      where: { id: intervention.contratId },
+      where: { id: data.contratId },
       data: kind === 'controle'
         ? { attestationControleMessageTemplate: template }
         : {

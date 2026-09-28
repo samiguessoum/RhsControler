@@ -49,7 +49,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { contratsApi, interventionsApi, prestationsApi, avenantApi, clientsApi, usersApi } from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
 import { ContratForm, ProjectionDates, FrequenceInput, computeProjectionDates, computeProjectionControles, apresDerniereOperation, horsBornes } from './Contrats';
-import { addDays, addMonths, format } from 'date-fns';
+import { addDays, format } from 'date-fns';
 import { formatDate, getStatutColor, getStatutLabel, cn } from '@/lib/utils';
 import type { Prestation, InterventionStatut } from '@/types';
 
@@ -1311,18 +1311,20 @@ export function ContratDetailPage() {
                   />
                 </div>
               </div>
-              <div className="p-3 space-y-1 bg-white">
-                <Label className="text-xs text-gray-500">Montant HT</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step="any"
-                  className="h-8 text-sm"
-                  value={avenantForm.montantHT}
-                  onChange={(e) => setAvenantForm((f) => ({ ...f, montantHT: e.target.value }))}
-                  placeholder="ex: 1500"
-                />
-              </div>
+              {canDo('viewFacturation') && (
+                <div className="p-3 space-y-1 bg-white">
+                  <Label className="text-xs text-gray-500">Montant HT</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="any"
+                    className="h-8 text-sm"
+                    value={avenantForm.montantHT}
+                    onChange={(e) => setAvenantForm((f) => ({ ...f, montantHT: e.target.value }))}
+                    placeholder="ex: 1500"
+                  />
+                </div>
+              )}
             </div>
 
             {/* Planning — même logique que le formulaire contrat */}
