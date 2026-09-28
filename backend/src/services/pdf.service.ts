@@ -1754,6 +1754,16 @@ export async function generateAttestationPassagePDF(attestation: AttestationPass
         });
       y += 44;
 
+      // Site concerne — affiché en première ligne, avant le corps du texte
+      if (attestation.siteNom) {
+        const siteLabel = attestation.siteAdresse
+          ? ('Site traité : ' + attestation.siteNom + ' — ' + attestation.siteAdresse)
+          : ('Site traité : ' + attestation.siteNom);
+        doc.font('Helvetica-Bold').fontSize(11).fillColor('#111827')
+          .text(siteLabel, margin, y, { width: contentWidth, align: 'left' });
+        y = doc.y + 14;
+      }
+
       doc.fontSize(13).fillColor('#111827');
 
       const body = attestation.bodyText?.trim() || '';
@@ -1770,16 +1780,6 @@ export async function generateAttestationPassagePDF(attestation: AttestationPass
         }
       }
       y += 12;
-
-      // Site concerne
-      if (attestation.siteNom) {
-        const siteLabel = attestation.siteAdresse
-          ? ('Site traité : ' + attestation.siteNom + ' — ' + attestation.siteAdresse)
-          : ('Site traité : ' + attestation.siteNom);
-        doc.font('Helvetica-Bold').fontSize(11).fillColor('#111827')
-          .text(siteLabel, margin, y, { width: contentWidth, align: 'left' });
-        y = doc.y + 14;
-      }
 
       if (attestation.showGuaranteeSection) {
         const dureeLabel = attestation.garantieDureeLabel || (attestation.garantieJoursLabel + ' jours');
