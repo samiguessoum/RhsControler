@@ -19,6 +19,7 @@ export const interventionController = {
         clientId,
         contratId,
         siteId,
+        employeId,
         type,
         statut,
         prestation,
@@ -48,6 +49,10 @@ export const interventionController = {
       if (clientId) where.clientId = clientId;
       if (contratId) where.contratId = contratId;
       if (siteId) where.siteId = siteId;
+      // Filtre employé côté serveur (priorité sur le filtre EQUIPE déjà appliqué)
+      if (employeId && req.user?.role !== 'EQUIPE') {
+        where.interventionEmployes = { some: { employeId } };
+      }
       if (type) where.type = type;
       if (statut) where.statut = statut;
       if (prestation) where.prestation = { contains: prestation as string, mode: 'insensitive' };
@@ -143,7 +148,7 @@ export const interventionController = {
             interventionEmployes: {
               include: {
                 employe: {
-                  include: { postes: true },
+                  include: { postes: { select: { id: true, nom: true } } },
                 },
                 poste: true,
               },
@@ -177,7 +182,10 @@ export const interventionController = {
   async aPlanifier(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { days = '7' } = req.query;
-      const interventions = await planningService.getAPlanifier(parseInt(days as string));
+      const employeId = req.user?.role === 'EQUIPE'
+        ? (req.user.employeId ?? '__none__')
+        : undefined;
+      const interventions = await planningService.getAPlanifier(parseInt(days as string), employeId);
       res.json({ interventions });
     } catch (error) {
       logger.error({ err: error }, 'A planifier error');
@@ -190,7 +198,10 @@ export const interventionController = {
    */
   async enRetard(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const interventions = await planningService.getEnRetard();
+      const employeId = req.user?.role === 'EQUIPE'
+        ? (req.user.employeId ?? '__none__')
+        : undefined;
+      const interventions = await planningService.getEnRetard(employeId);
       res.json({ interventions });
     } catch (error) {
       logger.error({ err: error }, 'En retard error');
@@ -203,7 +214,10 @@ export const interventionController = {
    */
   async semaine(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const interventions = await planningService.getSemaineCourante();
+      const employeId = req.user?.role === 'EQUIPE'
+        ? (req.user.employeId ?? '__none__')
+        : undefined;
+      const interventions = await planningService.getSemaineCourante(employeId);
       res.json({ interventions });
     } catch (error) {
       logger.error({ err: error }, 'Semaine error');
@@ -254,10 +268,10 @@ export const interventionController = {
           },
           avenant: { select: { id: true, numero: true, nom: true, numeroBonCommande: true } },
           createdBy: {
-            select: { id: true, nom: true, prenom: true, email: true },
+            select: { id: true, nom: true, prenom: true },
           },
           updatedBy: {
-            select: { id: true, nom: true, prenom: true, email: true },
+            select: { id: true, nom: true, prenom: true },
           },
           interventionEmployes: {
             include: {
@@ -275,6 +289,16 @@ export const interventionController = {
 
       if (!intervention) {
         return res.status(404).json({ error: 'Intervention non trouvée' });
+      }
+
+      // EQUIPE : peut uniquement consulter les interventions auxquelles elle est affectée
+      if (req.user?.role === 'EQUIPE' && req.user.employeId) {
+        const assigned = intervention.interventionEmployes.some(
+          (ie) => ie.employeId === req.user!.employeId,
+        );
+        if (!assigned) {
+          return res.status(403).json({ error: 'Accès refusé' });
+        }
       }
 
       let remainingOperations: number | null = null;
@@ -493,12 +517,19 @@ export const interventionController = {
       const corrigeStatut = data.statut && data.statut !== 'REALISEE' && existing.statut === 'REALISEE';
       const bcChange = data.bonCommandeId !== undefined && data.bonCommandeId !== (existing as any).bonCommandeId;
 
-      // Gérer BC reverse/déplacement dans une transaction pour éviter des incohérences
-      await prisma.$transaction(async (tx) => {
+      // Validation : si contratId change, il doit appartenir au même client
+      if (data.contratId !== undefined && data.contratId !== existing.contratId && data.contratId !== null) {
+        const targetContrat = await prisma.contrat.findUnique({ where: { id: data.contratId }, select: { clientId: true } });
+        if (!targetContrat || targetContrat.clientId !== (data.clientId ?? existing.clientId)) {
+          return res.status(400).json({ error: 'Le contrat n\'appartient pas à ce client' });
+        }
+      }
+
+      // Tout dans une seule transaction : BC + employes + intervention.update sont atomiques
+      const intervention = await prisma.$transaction(async (tx) => {
         // BC cohérence pour les opérations uniquement (pas les contrôles)
         if (estOperation && existing.statut === 'REALISEE') {
           if (corrigeStatut) {
-            // Intervention dé-réalisée : rendre le passage à l'ancien BC
             if ((existing as any).bonCommandeId) {
               await tx.bonCommande.update({
                 where: { id: (existing as any).bonCommandeId },
@@ -506,7 +537,6 @@ export const interventionController = {
               });
             }
           } else if (bcChange && (existing as any).bonCommandeId) {
-            // Déplacement vers un autre BC : décrémente l'ancien, incrémente le nouveau
             await tx.bonCommande.update({
               where: { id: (existing as any).bonCommandeId },
               data: { passagesConsommes: { decrement: 1 } },
@@ -522,9 +552,7 @@ export const interventionController = {
 
         // Si employes fourni, mettre à jour la liste
         if (data.employes !== undefined) {
-          await tx.interventionEmploye.deleteMany({
-            where: { interventionId: id },
-          });
+          await tx.interventionEmploye.deleteMany({ where: { interventionId: id } });
           if (data.employes?.length) {
             await tx.interventionEmploye.createMany({
               data: data.employes.map((emp: { employeId: string; posteId: string }) => ({
@@ -535,56 +563,45 @@ export const interventionController = {
             });
           }
         }
-      });
 
-      // Déterminer le statut final
-      let finalStatut = data.statut ?? existing.statut;
-      const finalHeurePrevue = data.heurePrevue !== undefined ? data.heurePrevue : existing.heurePrevue;
+        // Déterminer le statut final
+        let finalStatut = data.statut ?? existing.statut;
+        const finalHeurePrevue = data.heurePrevue !== undefined ? data.heurePrevue : existing.heurePrevue;
+        const employesCount = data.employes !== undefined
+          ? (data.employes?.length || 0)
+          : await tx.interventionEmploye.count({ where: { interventionId: id } });
 
-      // Compter les employés assignés après mise à jour
-      const employesCount = data.employes !== undefined
-        ? (data.employes?.length || 0)
-        : await prisma.interventionEmploye.count({ where: { interventionId: id } });
+        if (finalHeurePrevue && employesCount > 0 && (finalStatut === 'A_PLANIFIER' || finalStatut === 'REPORTEE')) {
+          finalStatut = 'PLANIFIEE';
+        }
 
-      // Auto-PLANIFIEE : si heurePrevue + employés assignés et statut = A_PLANIFIER ou REPORTEE
-      if (
-        finalHeurePrevue &&
-        employesCount > 0 &&
-        (finalStatut === 'A_PLANIFIER' || finalStatut === 'REPORTEE')
-      ) {
-        finalStatut = 'PLANIFIEE';
-      }
-
-      const intervention = await prisma.intervention.update({
-        where: { id },
-        data: {
-          contratId: data.contratId !== undefined ? data.contratId : existing.contratId,
-          clientId: data.clientId ?? existing.clientId,
-          siteId: data.siteId !== undefined ? data.siteId : existing.siteId,
-          type: data.type ?? existing.type,
-          prestation: data.prestation ?? existing.prestation,
-          datePrevue: data.datePrevue ?? existing.datePrevue,
-          heurePrevue: finalHeurePrevue,
-          duree: data.duree !== undefined ? data.duree : existing.duree,
-          statut: finalStatut,
-          notesTerrain: data.notesTerrain ?? existing.notesTerrain,
-          responsable: data.responsable !== undefined ? data.responsable : existing.responsable,
-          bonCommandeId: data.bonCommandeId !== undefined ? data.bonCommandeId : (existing as any).bonCommandeId,
-          updatedById: req.user!.id,
-        },
-        include: {
-          client: {
-            select: { id: true, nomEntreprise: true },
+        return tx.intervention.update({
+          where: { id },
+          data: {
+            contratId: data.contratId !== undefined ? data.contratId : existing.contratId,
+            clientId: data.clientId ?? existing.clientId,
+            siteId: data.siteId !== undefined ? data.siteId : existing.siteId,
+            type: data.type ?? existing.type,
+            prestation: data.prestation ?? existing.prestation,
+            datePrevue: data.datePrevue ?? existing.datePrevue,
+            heurePrevue: finalHeurePrevue,
+            duree: data.duree !== undefined ? data.duree : existing.duree,
+            statut: finalStatut,
+            notesTerrain: data.notesTerrain ?? existing.notesTerrain,
+            responsable: data.responsable !== undefined ? data.responsable : existing.responsable,
+            bonCommandeId: data.bonCommandeId !== undefined ? data.bonCommandeId : (existing as any).bonCommandeId,
+            updatedById: req.user!.id,
           },
-          interventionEmployes: {
-            include: {
-              employe: {
-                include: { postes: true },
+          include: {
+            client: { select: { id: true, nomEntreprise: true } },
+            interventionEmployes: {
+              include: {
+                employe: { include: { postes: { select: { id: true, nom: true } } } },
+                poste: true,
               },
-              poste: true,
             },
           },
-        },
+        });
       });
 
       // Déplacement (glisser-déposer, modification de date) : décaler les suivantes de la série

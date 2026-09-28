@@ -1823,21 +1823,24 @@ function InterventionDetailDialog({
 
           {/* Boutons toujours visibles en bas de la fenêtre, et renvoyés à la ligne s'ils ne tiennent pas en largeur */}
           <DialogFooter className="sticky bottom-0 -mx-6 -mb-6 px-6 py-4 border-t bg-background flex-wrap gap-2 sm:space-x-0">
-            {(intervention.fieldIntervention || canRealiser) && (
+            {intervention.fieldIntervention ? (
+              <Button
+                variant="outline"
+                className="text-blue-700 border-blue-300 hover:bg-blue-50"
+                onClick={() => navigate(`/field-interventions/${intervention.fieldIntervention!.id}`)}
+              >
+                <FileText className="h-4 w-4 mr-2" />
+                Voir le rapport
+              </Button>
+            ) : canRealiser && (
               <Button
                 variant="outline"
                 className="text-blue-700 border-blue-300 hover:bg-blue-50"
                 disabled={voirRapportMut.isPending}
-                onClick={() => {
-                  if (intervention.fieldIntervention) {
-                    navigate(`/field-interventions/${intervention.fieldIntervention.id}`);
-                  } else {
-                    voirRapportMut.mutate(intervention.id);
-                  }
-                }}
+                onClick={() => voirRapportMut.mutate(intervention.id)}
               >
                 <FileText className="h-4 w-4 mr-2" />
-                Voir le rapport
+                Nouveau rapport terrain
               </Button>
             )}
             {canExport && intervention.type === 'OPERATION' && intervention.statut !== 'ANNULEE' && (
@@ -3494,11 +3497,12 @@ export function PlanningPage() {
     ],
     queryFn: () =>
       interventionsApi.list({
-        dateDebut: format(dateRangeStart, 'yyyy-MM-dd'),
-        dateFin: format(dateRangeEnd, 'yyyy-MM-dd'),
+        // EN_RETARD : pas de borne de date (toutes les interventions passées non réalisées)
+        dateDebut: filters.statut === 'EN_RETARD' ? undefined : format(dateRangeStart, 'yyyy-MM-dd'),
+        dateFin: filters.statut === 'EN_RETARD' ? format(new Date(), 'yyyy-MM-dd') : format(dateRangeEnd, 'yyyy-MM-dd'),
         clientId: filters.clientId || undefined,
         siteId: filters.siteId || undefined,
-        // EN_RETARD est un filtre virtuel géré côté client
+        employeId: filters.employeId || undefined,
         statut: filters.statut !== 'ALL' && filters.statut !== 'EN_RETARD' ? filters.statut : undefined,
         type: filters.type !== 'ALL' ? filters.type : undefined,
         prestation: filters.prestation || undefined,

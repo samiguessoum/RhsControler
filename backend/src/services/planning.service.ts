@@ -273,15 +273,18 @@ export const planningService = {
   /**
    * Récupère les interventions à planifier (dans les X prochains jours)
    */
-  async getAPlanifier(days: number = 7) {
+  async getAPlanifier(days: number = 7, employeId?: string) {
     const today = startOfDay(new Date());
     const futureDate = endOfDay(addDays(today, days));
 
+    const where: any = {
+      datePrevue: { gte: today, lte: futureDate },
+      statut: 'A_PLANIFIER',
+    };
+    if (employeId) where.interventionEmployes = { some: { employeId } };
+
     return prisma.intervention.findMany({
-      where: {
-        datePrevue: { gte: today, lte: futureDate },
-        statut: 'A_PLANIFIER',
-      },
+      where,
       include: {
         client: { select: { id: true, nomEntreprise: true, sites: { select: { id: true, nom: true, adresse: true } } } },
         contrat: { select: { id: true, type: true, prestations: true } },
@@ -300,14 +303,17 @@ export const planningService = {
   /**
    * Récupère les interventions en retard
    */
-  async getEnRetard() {
+  async getEnRetard(employeId?: string) {
     const today = startOfDay(new Date());
 
+    const where: any = {
+      datePrevue: { lt: today },
+      statut: { notIn: ['REALISEE', 'ANNULEE'] },
+    };
+    if (employeId) where.interventionEmployes = { some: { employeId } };
+
     return prisma.intervention.findMany({
-      where: {
-        datePrevue: { lt: today },
-        statut: { notIn: ['REALISEE', 'ANNULEE'] },
-      },
+      where,
       include: {
         client: { select: { id: true, nomEntreprise: true, sites: { select: { id: true, nom: true, adresse: true } } } },
         contrat: { select: { id: true, type: true, prestations: true } },
@@ -326,13 +332,14 @@ export const planningService = {
   /**
    * Récupère les interventions de la semaine courante
    */
-  async getSemaineCourante() {
+  async getSemaineCourante(employeId?: string) {
     const { start, end } = getCurrentWeekBounds();
 
+    const where: any = { datePrevue: { gte: start, lte: end } };
+    if (employeId) where.interventionEmployes = { some: { employeId } };
+
     return prisma.intervention.findMany({
-      where: {
-        datePrevue: { gte: start, lte: end },
-      },
+      where,
       include: {
         client: { select: { id: true, nomEntreprise: true, sites: { select: { id: true, nom: true, adresse: true } } } },
         contrat: { select: { id: true, type: true, prestations: true } },
@@ -596,12 +603,17 @@ export const planningService = {
         id: { not: ref.id },
         ...EN_ATTENTE,
       },
+      select: { id: true, datePrevue: true },
     });
-    for (const f of futures) {
-      await prisma.intervention.update({
-        where: { id: f.id },
-        data: { datePrevue: new Date(f.datePrevue.getTime() + deltaMs) },
-      });
+    if (futures.length > 0) {
+      await Promise.all(
+        futures.map((f) =>
+          prisma.intervention.update({
+            where: { id: f.id },
+            data: { datePrevue: new Date(f.datePrevue.getTime() + deltaMs) },
+          }),
+        ),
+      );
     }
   },
 

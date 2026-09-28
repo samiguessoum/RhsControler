@@ -322,6 +322,7 @@ export const interventionsApi = {
     clientId?: string;
     contratId?: string;
     siteId?: string;
+    employeId?: string;
     type?: string;
     statut?: string;
     prestation?: string;
