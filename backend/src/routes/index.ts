@@ -262,12 +262,12 @@ router.post('/planning/renouveler', authMiddleware, canDo('editContrat'), planni
 // ============ BONS DE COMMANDE ============
 router.get('/bons-commandes/alertes', authMiddleware, bonCommandeController.getAlerts);
 router.get('/bons-commandes', authMiddleware, bonCommandeController.list);
-router.post('/bons-commandes', authMiddleware, bonCommandeController.create);
+router.post('/bons-commandes', authMiddleware, canDo('editContrat'), bonCommandeController.create);
 router.get('/bons-commandes/:id', authMiddleware, bonCommandeController.getOne);
-router.put('/bons-commandes/:id', authMiddleware, bonCommandeController.update);
-router.delete('/bons-commandes/:id', authMiddleware, bonCommandeController.delete);
-router.post('/bons-commandes/:id/sites', authMiddleware, bonCommandeController.addSite);
-router.delete('/bons-commandes/:id/sites/:siteId', authMiddleware, bonCommandeController.removeSite);
+router.put('/bons-commandes/:id', authMiddleware, canDo('editContrat'), bonCommandeController.update);
+router.delete('/bons-commandes/:id', authMiddleware, canDo('editContrat'), bonCommandeController.delete);
+router.post('/bons-commandes/:id/sites', authMiddleware, canDo('editContrat'), bonCommandeController.addSite);
+router.delete('/bons-commandes/:id/sites/:siteId', authMiddleware, canDo('editContrat'), bonCommandeController.removeSite);
 
 // ============ IMPORT/EXPORT ============
 router.get('/export/clients', authMiddleware, canDo('exportData'), importExportController.exportClients);

@@ -305,19 +305,17 @@ export const clientController = {
         return res.status(404).json({ error: 'Client non trouvé' });
       }
 
-      await prisma.$transaction([
-        prisma.intervention.deleteMany({ where: { clientId: id } }),
-        prisma.contratSite.deleteMany({ where: { contrat: { clientId: id } } }),
-        prisma.contrat.deleteMany({ where: { clientId: id } }),
-        prisma.site.deleteMany({ where: { clientId: id } }),
-        prisma.siegeContact.deleteMany({ where: { clientId: id } }),
-        prisma.client.delete({ where: { id } }),
-      ]);
+      // Soft-delete : désactive le client sans détruire l'historique financier
+      // (factures, bons de commande, devis restent liés et consultables)
+      await prisma.client.update({
+        where: { id },
+        data: { actif: false },
+      });
 
       // Audit log
-      await createAuditLog(req.user!.id, 'DELETE', 'Client', id);
+      await createAuditLog(req.user!.id, 'DELETE', 'Client', id, { before: { actif: true } });
 
-      res.json({ message: 'Client supprimé' });
+      res.json({ message: 'Client désactivé' });
     } catch (error) {
       logger.error({ err: error }, 'Delete client error');
       return next(new AppError(500, 'Erreur serveur'));

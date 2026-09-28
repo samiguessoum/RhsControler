@@ -12,7 +12,9 @@ export const bonCommandeController = {
    */
   async list(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const { clientId, actif, enAlerte } = req.query;
+      const { clientId, actif, enAlerte, limit, page } = req.query;
+      const limitNum = Math.min(parseInt(String(limit || '200'), 10), 500);
+      const pageNum = Math.max(parseInt(String(page || '1'), 10), 1);
 
       const where: any = {};
       if (clientId) where.clientId = clientId as string;
@@ -27,6 +29,8 @@ export const bonCommandeController = {
           _count: { select: { interventions: true } },
         },
         orderBy: { createdAt: 'desc' },
+        take: limitNum,
+        skip: (pageNum - 1) * limitNum,
       });
 
       // Filtrer les BCs en alerte si demandé

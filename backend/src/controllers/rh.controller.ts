@@ -188,48 +188,50 @@ export const rhController = {
 
       const nouveauStatut = approuve ? 'APPROUVE' : 'REFUSE';
 
-      // Si approuvé, mettre à jour le solde
-      if (approuve && (conge.type === 'ANNUEL' || conge.type === 'RECUPERATION')) {
-        const annee = conge.dateDebut.getFullYear();
-        const soldeActuel = await prisma.soldeConge.findUnique({
-          where: { employeId_annee_type: { employeId: conge.employeId, annee, type: conge.type } },
-        });
-        const soldeApres = (soldeActuel?.joursRestants ?? 0) - conge.nbJours;
+      const updated = await prisma.$transaction(async (tx) => {
+        // Si approuvé, mettre à jour le solde dans la même transaction que le statut
+        if (approuve && (conge.type === 'ANNUEL' || conge.type === 'RECUPERATION')) {
+          const annee = conge.dateDebut.getFullYear();
+          const soldeActuel = await tx.soldeConge.findUnique({
+            where: { employeId_annee_type: { employeId: conge.employeId, annee, type: conge.type } },
+          });
+          const soldeApres = (soldeActuel?.joursRestants ?? 0) - conge.nbJours;
 
-        await prisma.soldeConge.upsert({
-          where: { employeId_annee_type: { employeId: conge.employeId, annee, type: conge.type } },
-          update: {
-            joursPris: { increment: conge.nbJours },
-            joursRestants: { decrement: conge.nbJours },
-          },
-          create: {
-            employeId: conge.employeId, annee, type: conge.type,
-            joursAcquis: 0, joursPris: conge.nbJours, joursRestants: -conge.nbJours,
-          },
-        });
+          await tx.soldeConge.upsert({
+            where: { employeId_annee_type: { employeId: conge.employeId, annee, type: conge.type } },
+            update: {
+              joursPris: { increment: conge.nbJours },
+              joursRestants: { decrement: conge.nbJours },
+            },
+            create: {
+              employeId: conge.employeId, annee, type: conge.type,
+              joursAcquis: 0, joursPris: conge.nbJours, joursRestants: -conge.nbJours,
+            },
+          });
 
-        await prisma.mouvementConge.create({
+          await tx.mouvementConge.create({
+            data: {
+              employeId: conge.employeId, typeOp: 'CONSOMMATION', sens: 'DEBIT',
+              jours: conge.nbJours, soldeApres,
+              motif: `Conge approuve du ${conge.dateDebut.toLocaleDateString('fr-FR')} au ${conge.dateFin.toLocaleDateString('fr-FR')}`,
+              annee, auteurId: req.user?.id,
+            },
+          });
+        }
+
+        return tx.conge.update({
+          where: { id },
           data: {
-            employeId: conge.employeId, typeOp: 'CONSOMMATION', sens: 'DEBIT',
-            jours: conge.nbJours, soldeApres,
-            motif: `Conge approuve du ${conge.dateDebut.toLocaleDateString('fr-FR')} au ${conge.dateFin.toLocaleDateString('fr-FR')}`,
-            annee, auteurId: req.user?.id,
+            statut: nouveauStatut,
+            approuveParId: req.user!.id,
+            dateReponse: new Date(),
+            commentaire,
+          },
+          include: {
+            employe: { select: { id: true, nom: true, prenom: true } },
+            approuvePar: { select: { id: true, nom: true, prenom: true } },
           },
         });
-      }
-
-      const updated = await prisma.conge.update({
-        where: { id },
-        data: {
-          statut: nouveauStatut,
-          approuveParId: req.user!.id,
-          dateReponse: new Date(),
-          commentaire,
-        },
-        include: {
-          employe: { select: { id: true, nom: true, prenom: true } },
-          approuvePar: { select: { id: true, nom: true, prenom: true } },
-        },
       });
 
       res.json({ conge: updated });
