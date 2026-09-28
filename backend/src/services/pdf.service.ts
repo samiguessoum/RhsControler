@@ -143,6 +143,7 @@ interface AttestationPassageDocument {
   prestataireNom: string;
   garantieMois: number;
   garantieMoisLabel: string;
+  garantieDureeLabel: string;
   garantieJours: number;
   garantieJoursLabel: string;
   dateProchaineOperationFr: string;
@@ -150,6 +151,8 @@ interface AttestationPassageDocument {
   title: string;
   showSignatures: boolean;
   showGuaranteeSection: boolean;
+  siteNom?: string | null;
+  siteAdresse?: string | null;
 }
 
 // Configuration de l'entreprise (fallback si pas en DB)
@@ -1733,6 +1736,26 @@ export async function generateAttestationPassagePDF(attestation: AttestationPass
         y += 44;
       }
 
+      // Bloc infos entreprise (adresse + RC/NIF/AI/NIS)
+      const companyAdresseLine = [COMPANY_INFO.address, COMPANY_INFO.city].filter(Boolean).join(', ');
+      const fiscalParts: string[] = [];
+      if (COMPANY_INFO.rc) fiscalParts.push(`RC : ${COMPANY_INFO.rc}`);
+      if (COMPANY_INFO.nif) fiscalParts.push(`NIF : ${COMPANY_INFO.nif}`);
+      if (COMPANY_INFO.ai) fiscalParts.push(`AI : ${COMPANY_INFO.ai}`);
+      if (COMPANY_INFO.nis) fiscalParts.push(`NIS : ${COMPANY_INFO.nis}`);
+      if (companyAdresseLine || fiscalParts.length > 0) {
+        doc.font('Helvetica').fontSize(8).fillColor('#374151');
+        if (companyAdresseLine) {
+          doc.text(companyAdresseLine, margin, y, { width: contentWidth, align: 'center' });
+          y += 13;
+        }
+        if (fiscalParts.length > 0) {
+          doc.text(fiscalParts.join('  |  '), margin, y, { width: contentWidth, align: 'center' });
+          y += 13;
+        }
+        y += 4;
+      }
+
       doc.font('Helvetica')
         .fontSize(12)
         .fillColor('#111827')
@@ -1768,9 +1791,20 @@ export async function generateAttestationPassagePDF(attestation: AttestationPass
       }
       y += 12;
 
+      // Site concerne
+      if (attestation.siteNom) {
+        const siteLabel = attestation.siteAdresse
+          ? ('Site traité : ' + attestation.siteNom + ' — ' + attestation.siteAdresse)
+          : ('Site traité : ' + attestation.siteNom);
+        doc.font('Helvetica-Bold').fontSize(11).fillColor('#111827')
+          .text(siteLabel, margin, y, { width: contentWidth, align: 'left' });
+        y = doc.y + 14;
+      }
+
       if (attestation.showGuaranteeSection) {
+        const dureeLabel = attestation.garantieDureeLabel || (attestation.garantieJoursLabel + ' jours');
         doc.text(
-          `Les opérations citées ci-dessus sont garanties pour une période de ${attestation.garantieJoursLabel} jours à compter de la date d’exécution des opérations.`,
+          'Les opérations citées ci-dessus sont garanties pour une période de ' + dureeLabel + " à compter de la date d'exécution des opérations.",
           margin,
           y,
           { width: contentWidth, align: 'justify', lineGap: 3 }
@@ -1778,7 +1812,7 @@ export async function generateAttestationPassagePDF(attestation: AttestationPass
         y = doc.y + 20;
 
         doc.text(
-          `La prochaine opération est recommandée pour le ${attestation.dateProchaineOperationFr}.`,
+          'La prochaine opération est recommandée pour le ' + attestation.dateProchaineOperationFr + '.',
           margin,
           y,
           { width: contentWidth, align: 'justify' }

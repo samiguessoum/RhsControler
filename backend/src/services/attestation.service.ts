@@ -19,6 +19,7 @@ type AttestationData = {
     prestataireNom: string;
     garantieMois: number;
     garantieMoisLabel: string;
+    garantieDureeLabel: string;
     garantieJours: number;
     garantieJoursLabel: string;
     dateProchaineOperationFr: string;
@@ -27,6 +28,8 @@ type AttestationData = {
     title: string;
     showSignatures: boolean;
     showGuaranteeSection: boolean;
+    siteNom?: string | null;
+    siteAdresse?: string | null;
   };
 };
 
@@ -110,6 +113,14 @@ export const attestationService = {
             formeJuridique: true,
           },
         },
+        site: {
+          select: {
+            nom: true,
+            adresse: true,
+            codePostal: true,
+            ville: true,
+          },
+        },
         contrat: {
           select: {
             id: true,
@@ -170,8 +181,23 @@ export const attestationService = {
     // Date de prochaine opération = date de réalisation effective + fréquence en jours
     const dateProchaineOperation = addDays(dateReference, garantieJours);
 
-    // Compatibilité : conserver garantieMois (arrondi) pour les anciens champs
+    // Durée de garantie — stratégie modulo 30
     const garantieMoisComputed = Math.max(1, Math.round((garantieJours / 30) * 10) / 10);
+    const moisEntiers = Math.floor(garantieJours / 30);
+    const joursRestants = garantieJours % 30;
+    let garantieDureeLabel: string;
+    if (moisEntiers === 0) {
+      garantieDureeLabel = `${joursRestants} jour${joursRestants > 1 ? 's' : ''}`;
+    } else if (joursRestants === 0) {
+      garantieDureeLabel = `${moisEntiers} mois`;
+    } else {
+      garantieDureeLabel = `${moisEntiers} mois et ${joursRestants} jour${joursRestants > 1 ? 's' : ''}`;
+    }
+
+    // Site concerné par l'intervention
+    const siteNom = intervention.site?.nom ?? null;
+    const siteAdresse = [intervention.site?.adresse, intervention.site?.codePostal, intervention.site?.ville]
+      .filter(Boolean).join(', ') || null;
 
     const vars: AttestationVariables = {
       date_reference_fr: format(dateReference, 'dd/MM/yyyy'),
@@ -196,6 +222,7 @@ export const attestationService = {
         prestataireNom,
         garantieMois: garantieMoisComputed,
         garantieMoisLabel: formatMoisLabel(garantieMoisComputed),
+        garantieDureeLabel,
         garantieJours,
         garantieJoursLabel: String(garantieJours),
         dateProchaineOperationFr: format(dateProchaineOperation, 'dd/MM/yyyy'),
@@ -209,6 +236,8 @@ export const attestationService = {
               : 'ATTESTATION DE PASSAGE',
         showSignatures: kind !== 'garantie',
         showGuaranteeSection: kind !== 'controle',
+        siteNom,
+        siteAdresse,
       },
     };
   },
