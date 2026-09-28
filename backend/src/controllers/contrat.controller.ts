@@ -20,6 +20,12 @@ function contratSiteData(cs: SiteInput) {
     premiereDateOperation: cs.premiereDateOperation ?? null,
     nombreOperations: cs.nombreOperations ?? null,
     nombreVisitesControleEntreOps: cs.nombreVisitesControleEntreOps ?? null,
+    nombreVisitesControle: cs.nombreVisitesControle ?? null,
+    frequenceControleJours: cs.frequenceControleJours ?? null,
+    frequenceControleMois: cs.frequenceControleMois ?? null,
+    frequenceRegles: cs.frequenceRegles ?? null,
+    frequenceReglesControle: cs.frequenceReglesControle ?? null,
+    nombrePassagesAnnuels: cs.nombrePassagesAnnuels ?? null,
     montantHT: cs.montantHT ?? null,
     notes: cs.notes ?? null,
   };
@@ -415,26 +421,30 @@ export const contratController = {
     try {
       const { id } = req.params;
 
-      const existing = await prisma.contrat.findUnique({
-        where: { id },
-      });
-
+      const existing = await prisma.contrat.findUnique({ where: { id } });
       if (!existing) {
         return res.status(404).json({ error: 'Contrat non trouvé' });
       }
 
-      // Supprimer toutes les interventions associées
-      await prisma.intervention.deleteMany({
-        where: { contratId: id },
+      // Bloquer si des factures sont liées (données financières — ne pas supprimer silencieusement)
+      const facturesCount = await prisma.facture.count({ where: { contratId: id } });
+      if (facturesCount > 0) {
+        return next(new AppError(409, `Impossible de supprimer ce contrat : ${facturesCount} facture(s) y sont liées. Annulez ou dissociez les factures avant de continuer.`));
+      }
+
+      // Bloquer si des bons de commande sont liés
+      const bcCount = await prisma.bonCommande.count({ where: { contratId: id } });
+      if (bcCount > 0) {
+        return next(new AppError(409, `Impossible de supprimer ce contrat : ${bcCount} bon(s) de commande y sont liés. Désactivez-les avant de continuer.`));
+      }
+
+      await prisma.$transaction(async (tx) => {
+        // Supprimer toutes les interventions associées
+        await tx.intervention.deleteMany({ where: { contratId: id } });
+        // ContratSites, avenants supprimés en cascade (onDelete: Cascade)
+        await tx.contrat.delete({ where: { id } });
       });
 
-      // ContratSites supprimés en cascade (onDelete: Cascade)
-
-      await prisma.contrat.delete({
-        where: { id },
-      });
-
-      // Audit log
       await createAuditLog(req.user!.id, 'DELETE', 'Contrat', id);
 
       res.json({ message: 'Contrat supprimé' });

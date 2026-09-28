@@ -1299,6 +1299,8 @@ model Facture {
   commande             Commande?     @relation(fields: [commandeId], references: [id])
   contratId            String?
   contrat              Contrat?      @relation("FacturesContrat", fields: [contratId], references: [id])
+  avenantId            String?
+  avenant              Avenant?      @relation(fields: [avenantId], references: [id], onDelete: SetNull)
   adresseFacturationId String?
   adresseFacturation   Adresse?      @relation("FactureAdresseFacturation", fields: [adresseFacturationId], references: [id])
   adresseLivraisonId   String?
@@ -2498,6 +2500,7 @@ model Avenant {
   createdAt                            DateTime  @default(now())
 
   interventions Intervention[]
+  factures      Facture[]
 
   @@unique([contratId, numero])
   @@index([contratId])

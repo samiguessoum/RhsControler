@@ -203,9 +203,13 @@ export const bonCommandeController = {
         return next(new AppError(404, 'Bon de commande non trouvé'));
       }
 
-      await prisma.bonCommande.update({
-        where: { id },
-        data: { actif: false },
+      await prisma.$transaction(async (tx) => {
+        // Dissocier les interventions encore non réalisées pour qu'elles ne dépendent plus du BC
+        await tx.intervention.updateMany({
+          where: { bonCommandeId: id, statut: { notIn: ['REALISEE', 'ANNULEE'] } },
+          data: { bonCommandeId: null },
+        });
+        await tx.bonCommande.update({ where: { id }, data: { actif: false } });
       });
 
       res.json({ message: 'Bon de commande désactivé' });

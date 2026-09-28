@@ -147,6 +147,44 @@ export const avenantController = {
       return next(new AppError(500, 'Erreur serveur'));
     }
   },
+  /**
+   * DELETE /api/contrats/:contratId/avenants/:avenantId
+   * Supprime un avenant et ses interventions non réalisées.
+   * Bloque si des interventions réalisées existent (données historiques).
+   */
+  async delete(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { contratId, avenantId } = req.params;
+
+      const avenant = await prisma.avenant.findUnique({
+        where: { id: avenantId },
+        include: { interventions: { select: { id: true, statut: true } } },
+      });
+
+      if (!avenant || avenant.contratId !== contratId) {
+        return next(new AppError(404, 'Avenant non trouvé'));
+      }
+
+      const realisees = avenant.interventions.filter((i) => i.statut === 'REALISEE');
+      if (realisees.length > 0) {
+        return next(new AppError(409, `Impossible de supprimer cet avenant : ${realisees.length} intervention(s) ont déjà été réalisées.`));
+      }
+
+      await prisma.$transaction(async (tx) => {
+        await tx.intervention.deleteMany({ where: { avenantId } });
+        await tx.avenant.delete({ where: { id: avenantId } });
+      });
+
+      await createAuditLog(req.user!.id, 'DELETE', 'Avenant', avenantId, {
+        before: { contratId, numero: avenant.numero },
+      });
+
+      res.json({ message: 'Avenant supprimé' });
+    } catch (error) {
+      logger.error({ err: error }, 'Avenant delete error');
+      return next(new AppError(500, 'Erreur serveur'));
+    }
+  },
 };
 
 export default avenantController;

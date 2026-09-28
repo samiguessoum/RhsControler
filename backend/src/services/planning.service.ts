@@ -1104,6 +1104,9 @@ export const planningService = {
               frequenceOperationsJours: contrat.frequenceOperationsJours,
               frequenceOperationsMois: (contrat as any).frequenceOperationsMois ?? null,
               nombreVisitesControleEntreOps: (contrat as any).nombreVisitesControleEntreOps ?? null,
+              nombreVisitesControle: (contrat as any).nombreVisitesControle ?? null,
+              frequenceControleJours: (contrat as any).frequenceControleJours ?? null,
+              frequenceControleMois: (contrat as any).frequenceControleMois ?? null,
               frequenceRegles: (contrat as any).frequenceRegles ?? null,
               planningAajuster: (contrat as any).planningAajuster ?? false,
               montantHT: (contrat as any).montantHT ?? null,
@@ -1114,6 +1117,10 @@ export const planningService = {
               nombrePassagesAnnuels: (contrat as any).nombrePassagesAnnuels ?? null,
               statut: 'ACTIF',
               refExterne: null, // Nouvelle période — la référence sera attribuée manuellement
+              // Copier les templates d'attestation personnalisés
+              attestationMessageTemplate: (contrat as any).attestationMessageTemplate ?? null,
+              attestationGarantieMessageTemplate: (contrat as any).attestationGarantieMessageTemplate ?? null,
+              attestationControleMessageTemplate: (contrat as any).attestationControleMessageTemplate ?? null,
               // La convention reste la même d'une période à l'autre
               dateDebutConvention: contrat.dateDebutConvention,
               dateFinConvention: contrat.dateFinConvention,
@@ -1143,7 +1150,11 @@ export const planningService = {
                 frequenceOperationsJours: cs.frequenceOperationsJours,
                 frequenceOperationsMois: (cs as any).frequenceOperationsMois ?? null,
                 nombreVisitesControleEntreOps: (cs as any).nombreVisitesControleEntreOps ?? null,
+                nombreVisitesControle: (cs as any).nombreVisitesControle ?? null,
+                frequenceControleJours: (cs as any).frequenceControleJours ?? null,
+                frequenceControleMois: (cs as any).frequenceControleMois ?? null,
                 frequenceRegles: (cs as any).frequenceRegles ?? null,
+                frequenceReglesControle: (cs as any).frequenceReglesControle ?? null,
                 montantHT: (cs as any).montantHT ?? null,
                 premiereDateOperation: advancePremiereDateOp,
                 nombreOperations: cs.nombreOperations,
