@@ -1,6 +1,6 @@
 import { prisma } from '../config/database.js';
 import { InterventionStatut, ContratStatut, InterventionType } from '@prisma/client';
-import { getProchaineDateIntervention, maxDate, isOverdue, isWithinDays, getCurrentWeekBounds } from '../utils/date.utils.js';
+import { getProchaineDateIntervention, skipAlgerianWeekend, maxDate, isOverdue, isWithinDays, getCurrentWeekBounds } from '../utils/date.utils.js';
 import { startOfDay, endOfDay, startOfMonth, addDays, addMonths, differenceInDays } from 'date-fns';
 import logger from '../lib/logger.js';
 
@@ -27,7 +27,7 @@ function datesControlesEntreOps(datesOps: Date[], nbEntreOps: number): Date[] {
     const fin = datesOps[i + 1].getTime();
     const espacement = (fin - debut) / (nbEntreOps + 1);
     for (let j = 1; j <= nbEntreOps; j++) {
-      dates.push(new Date(Math.round(debut + j * espacement)));
+      dates.push(skipAlgerianWeekend(new Date(Math.round(debut + j * espacement))));
     }
   }
   return dates;
@@ -485,9 +485,10 @@ export const planningService = {
             nextDate = addMonths(new Date(anchor), k * moisPerso);
           }
         } else {
+          // getProchaineDateIntervention applique déjà skipAlgerianWeekend
           nextDate = getProchaineDateIntervention(dateRealiseeEffective, joursPerso, moisPerso);
         }
-        suggestedDate = nextDate;
+        suggestedDate = modePlanning === 'ANCRAGE' ? skipAlgerianWeekend(nextDate) : nextDate;
 
         if (intervention.contrat.autoCreerProchaine || options.creerProchaine) {
           const serie = {

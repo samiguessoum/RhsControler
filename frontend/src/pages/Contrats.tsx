@@ -25,7 +25,14 @@ import {
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { clientsApi, contratsApi, interventionsApi, prestationsApi, usersApi } from '@/services/api';
 import { formatDate, cn } from '@/lib/utils';
-import { addDays, addMonths, format } from 'date-fns';
+import { addDays, addMonths, getDay, format } from 'date-fns';
+
+function skipAlgerianWeekend(d: Date): Date {
+  const day = getDay(d);
+  if (day === 5) return addDays(d, 2);
+  if (day === 6) return addDays(d, 1);
+  return d;
+}
 import { useAuthStore } from '@/store/auth.store';
 import type { Contrat, CreateContratInput, Client, User, ContratStatut, ContratType, ContratSiteInput, Prestation } from '@/types';
 
@@ -46,13 +53,13 @@ export function computeProjectionDates(
   if (nbOps && nbOps > 0) {
     for (let i = 0; i < nbOps && i < 500; i++) {
       dates.push(format(d, 'yyyy-MM-dd'));
-      d = suivante(d);
+      d = skipAlgerianWeekend(suivante(d));
     }
   } else if (dateFin && !ponctuel) {
     const fin = new Date(dateFin + 'T12:00:00');
     for (let i = 0; d <= fin && i < 500; i++) {
       dates.push(format(d, 'yyyy-MM-dd'));
-      d = suivante(d);
+      d = skipAlgerianWeekend(suivante(d));
     }
   }
   return dates;
@@ -67,7 +74,7 @@ export function computeProjectionControles(datesOps: string[], nbEntreOps: numbe
     const fin = new Date(datesOps[i + 1] + 'T12:00:00').getTime();
     const espacement = (fin - debut) / (nbEntreOps + 1);
     for (let j = 1; j <= nbEntreOps; j++) {
-      result.push(format(new Date(Math.round(debut + j * espacement)), 'yyyy-MM-dd'));
+      result.push(format(skipAlgerianWeekend(new Date(Math.round(debut + j * espacement))), 'yyyy-MM-dd'));
     }
   }
   return result;

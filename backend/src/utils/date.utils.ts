@@ -1,5 +1,17 @@
-import { addDays, addMonths, startOfDay, endOfDay, startOfWeek, endOfWeek, format } from 'date-fns';
+import { addDays, addMonths, getDay, startOfDay, endOfDay, startOfWeek, endOfWeek, format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+
+/**
+ * Décale une date au dimanche si elle tombe un vendredi (5) ou samedi (6),
+ * week-end algérien. N'affecte que les calculs automatiques — les saisies
+ * manuelles contournent cette fonction.
+ */
+export function skipAlgerianWeekend(d: Date): Date {
+  const day = getDay(d);
+  if (day === 5) return addDays(d, 2); // vendredi → dimanche
+  if (day === 6) return addDays(d, 1); // samedi → dimanche
+  return d;
+}
 
 /**
  * Calcule la prochaine date d'intervention selon un intervalle en jours ou en mois calendaires
@@ -9,8 +21,8 @@ export function getProchaineDateIntervention(
   jours?: number | null,
   mois?: number | null
 ): Date {
-  if (mois) return addMonths(derniereDate, mois);
-  return addDays(derniereDate, jours || 30);
+  if (mois) return skipAlgerianWeekend(addMonths(derniereDate, mois));
+  return skipAlgerianWeekend(addDays(derniereDate, jours || 30));
 }
 
 /**
