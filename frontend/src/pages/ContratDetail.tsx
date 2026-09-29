@@ -25,6 +25,7 @@ import {
   Search,
   FileSignature,
   Pencil,
+  Trash2,
   Banknote,
   X,
   Star,
@@ -108,6 +109,8 @@ export function ContratDetailPage() {
   const [showAvenantDialog, setShowAvenantDialog] = useState(false);
   const [avenantForm, setAvenantForm] = useState<AvenantForm>(AVENANT_VIDE);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editingAvenant, setEditingAvenant] = useState<any | null>(null);
+  const [deletingAvenantId, setDeletingAvenantId] = useState<string | null>(null);
   const { canDo } = useAuthStore();
 
   const queryClient = useQueryClient();
@@ -147,6 +150,31 @@ export function ContratDetailPage() {
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Erreur lors de la création de l\'avenant');
+    },
+  });
+
+  const updateAvenantMutation = useMutation({
+    mutationFn: (payload: any) => avenantApi.update(id!, editingAvenant!.id, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contrat', id] });
+      toast.success('Avenant mis à jour');
+      setEditingAvenant(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de la mise à jour');
+    },
+  });
+
+  const deleteAvenantMutation = useMutation({
+    mutationFn: (avenantId: string) => avenantApi.delete(id!, avenantId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contrat', id] });
+      toast.success('Avenant supprimé');
+      setDeletingAvenantId(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Impossible de supprimer cet avenant');
+      setDeletingAvenantId(null);
     },
   });
 
@@ -739,9 +767,29 @@ export function ContratDetailPage() {
                         Avenant n°{av.numero}
                         {av.nom && <span className="font-normal"> — {av.nom}</span>}
                       </span>
-                      <div className="flex items-center gap-2 text-xs text-amber-700">
-                        {av.dateSignature && <span>Signé le {formatDate(av.dateSignature)}</span>}
-                        {av.dateExpiration && <span>· Expire le {formatDate(av.dateExpiration)}</span>}
+                      <div className="flex items-center gap-2">
+                        <div className="text-xs text-amber-700">
+                          {av.dateSignature && <span>Signé le {formatDate(av.dateSignature)}</span>}
+                          {av.dateExpiration && <span> · Expire le {formatDate(av.dateExpiration)}</span>}
+                        </div>
+                        {canDo('editContrat') && (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => setEditingAvenant(av)}
+                              className="p-1 rounded hover:bg-amber-200 text-amber-700"
+                              title="Modifier"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              onClick={() => setDeletingAvenantId(av.id)}
+                              className="p-1 rounded hover:bg-red-100 text-red-500"
+                              title="Supprimer"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                     {av.numeroBonCommande && (
@@ -1445,6 +1493,114 @@ export function ContratDetailPage() {
               }
             >
               {createAvenantMutation.isPending ? 'Création...' : "Créer l'avenant"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog édition avenant */}
+      <Dialog open={!!editingAvenant} onOpenChange={(o) => { if (!o) setEditingAvenant(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Modifier l'avenant n°{editingAvenant?.numero}</DialogTitle>
+            <DialogDescription>Métadonnées uniquement — le planning des interventions reste inchangé.</DialogDescription>
+          </DialogHeader>
+          {editingAvenant && (
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-500">Nom de l'avenant</Label>
+                  <Input
+                    value={editingAvenant.nom ?? ''}
+                    onChange={(e) => setEditingAvenant((a: any) => ({ ...a, nom: e.target.value }))}
+                    placeholder="Optionnel"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-500">N° bon de commande</Label>
+                  <Input
+                    value={editingAvenant.numeroBonCommande ?? ''}
+                    onChange={(e) => setEditingAvenant((a: any) => ({ ...a, numeroBonCommande: e.target.value }))}
+                    placeholder="Optionnel"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-500">Date de signature</Label>
+                  <Input
+                    type="date"
+                    value={editingAvenant.dateSignature ? editingAvenant.dateSignature.slice(0, 10) : ''}
+                    onChange={(e) => setEditingAvenant((a: any) => ({ ...a, dateSignature: e.target.value || null }))}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-500">Date d'expiration</Label>
+                  <Input
+                    type="date"
+                    value={editingAvenant.dateExpiration ? editingAvenant.dateExpiration.slice(0, 10) : ''}
+                    onChange={(e) => setEditingAvenant((a: any) => ({ ...a, dateExpiration: e.target.value || null }))}
+                  />
+                </div>
+              </div>
+              {canDo('viewFacturation') && (
+                <div className="space-y-1">
+                  <Label className="text-xs text-gray-500">Montant HT (DA)</Label>
+                  <Input
+                    type="number"
+                    value={editingAvenant.montantHT ?? ''}
+                    onChange={(e) => setEditingAvenant((a: any) => ({ ...a, montantHT: e.target.value ? parseFloat(e.target.value) : null }))}
+                    placeholder="Optionnel"
+                  />
+                </div>
+              )}
+              <div className="space-y-1">
+                <Label className="text-xs text-gray-500">Notes</Label>
+                <Textarea
+                  rows={3}
+                  value={editingAvenant.notes ?? ''}
+                  onChange={(e) => setEditingAvenant((a: any) => ({ ...a, notes: e.target.value }))}
+                  placeholder="Contexte de l'avenant..."
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingAvenant(null)}>Annuler</Button>
+            <Button
+              onClick={() => updateAvenantMutation.mutate({
+                nom: editingAvenant?.nom,
+                numeroBonCommande: editingAvenant?.numeroBonCommande,
+                dateSignature: editingAvenant?.dateSignature ?? undefined,
+                dateExpiration: editingAvenant?.dateExpiration ?? undefined,
+                montantHT: editingAvenant?.montantHT ?? null,
+                notes: editingAvenant?.notes,
+              })}
+              disabled={updateAvenantMutation.isPending}
+            >
+              {updateAvenantMutation.isPending ? 'Enregistrement...' : 'Enregistrer'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog confirmation suppression avenant */}
+      <Dialog open={!!deletingAvenantId} onOpenChange={(o) => { if (!o) setDeletingAvenantId(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Supprimer cet avenant ?</DialogTitle>
+            <DialogDescription>
+              Toutes les interventions non réalisées de cet avenant seront supprimées. Cette action est irréversible.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeletingAvenantId(null)}>Annuler</Button>
+            <Button
+              variant="destructive"
+              onClick={() => deletingAvenantId && deleteAvenantMutation.mutate(deletingAvenantId)}
+              disabled={deleteAvenantMutation.isPending}
+            >
+              {deleteAvenantMutation.isPending ? 'Suppression...' : 'Supprimer'}
             </Button>
           </DialogFooter>
         </DialogContent>

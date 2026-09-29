@@ -148,6 +148,44 @@ export const avenantController = {
     }
   },
   /**
+   * PUT /api/contrats/:contratId/avenants/:avenantId
+   * Met à jour les métadonnées d'un avenant (pas le planning).
+   */
+  async update(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { contratId, avenantId } = req.params;
+      const { nom, numeroBonCommande, dateSignature, dateExpiration, montantHT, notes } = req.body;
+
+      const avenant = await prisma.avenant.findUnique({ where: { id: avenantId } });
+      if (!avenant || avenant.contratId !== contratId) {
+        return next(new AppError(404, 'Avenant non trouvé'));
+      }
+
+      const updated = await prisma.avenant.update({
+        where: { id: avenantId },
+        data: {
+          nom: nom !== undefined ? (nom || null) : avenant.nom,
+          numeroBonCommande: numeroBonCommande !== undefined ? (numeroBonCommande || null) : avenant.numeroBonCommande,
+          dateSignature: dateSignature !== undefined ? (dateSignature ? new Date(dateSignature) : null) : avenant.dateSignature,
+          dateExpiration: dateExpiration !== undefined ? (dateExpiration ? new Date(dateExpiration) : null) : avenant.dateExpiration,
+          montantHT: montantHT !== undefined ? (montantHT ?? null) : avenant.montantHT,
+          notes: notes !== undefined ? (notes || null) : avenant.notes,
+        },
+      });
+
+      await createAuditLog(req.user!.id, 'UPDATE', 'Avenant', avenantId, {
+        before: avenant,
+        after: updated,
+      });
+
+      res.json({ avenant: updated });
+    } catch (error) {
+      logger.error({ err: error }, 'Avenant update error');
+      return next(new AppError(500, 'Erreur serveur'));
+    }
+  },
+
+  /**
    * DELETE /api/contrats/:contratId/avenants/:avenantId
    * Supprime un avenant et ses interventions non réalisées.
    * Bloque si des interventions réalisées existent (données historiques).

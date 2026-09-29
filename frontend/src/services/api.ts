@@ -1839,6 +1839,21 @@ export const avenantApi = {
     const { data } = await api.post(`/contrats/${contratId}/avenants`, payload);
     return data as { avenant: any; interventionsCreees: any[]; count?: number; warning?: string };
   },
+  update: async (
+    contratId: string,
+    avenantId: string,
+    payload: {
+      nom?: string;
+      numeroBonCommande?: string;
+      dateSignature?: string;
+      dateExpiration?: string;
+      montantHT?: number | null;
+      notes?: string;
+    }
+  ) => {
+    const { data } = await api.put(`/contrats/${contratId}/avenants/${avenantId}`, payload);
+    return data as { avenant: any };
+  },
   delete: async (contratId: string, avenantId: string) => {
     await api.delete(`/contrats/${contratId}/avenants/${avenantId}`);
   },
