@@ -1199,6 +1199,7 @@ export function ContratsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statutFilter, setStatutFilter] = useState<ContratStatut | 'ALL'>('ALL');
   const [typeFilter, setTypeFilter] = useState<ContratType | 'ALL'>('ALL');
+  const [avenantFilter, setAvenantFilter] = useState(false);
   const clientIdFilter = searchParams.get('clientId') || undefined;
   const [clientFilter, setClientFilter] = useState<string>(clientIdFilter || 'ALL');
 
@@ -1355,8 +1356,12 @@ export function ContratsPage() {
       });
     }
 
+    if (avenantFilter) {
+      result = result.filter((c) => (c._count?.avenants ?? 0) > 0);
+    }
+
     return result;
-  }, [contrats, clientFilter, statutFilter, typeFilter, searchTerm, clientMap]);
+  }, [contrats, clientFilter, statutFilter, typeFilter, avenantFilter, searchTerm, clientMap]);
   const users = usersData || [];
   const prestations = prestationsData || [];
 
@@ -1458,6 +1463,17 @@ export function ContratsPage() {
               </button>
             ))}
           </div>
+          {/* Filtre avenant */}
+          <button
+            onClick={() => setAvenantFilter(v => !v)}
+            className={`h-7 px-3 rounded-lg text-xs font-semibold transition-all border ${
+              avenantFilter
+                ? 'bg-amber-100 text-amber-800 border-amber-300'
+                : 'bg-gray-100 text-gray-500 border-transparent hover:text-gray-700'
+            }`}
+          >
+            Avec avenant
+          </button>
         </div>
 
         <div className="flex items-center gap-2">
@@ -1536,6 +1552,11 @@ export function ContratsPage() {
                           </span>
                           {contrat.numeroBonCommande && (
                             <span className="text-[11px] text-gray-400">BC: {contrat.numeroBonCommande}</span>
+                          )}
+                          {(contrat._count?.avenants ?? 0) > 0 && (
+                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700">
+                              {contrat._count!.avenants} avenant{contrat._count!.avenants > 1 ? 's' : ''}
+                            </span>
                           )}
                         </div>
                       </div>

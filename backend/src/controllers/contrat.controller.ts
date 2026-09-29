@@ -138,7 +138,7 @@ export const contratController = {
               },
             },
             _count: {
-              select: { interventions: true },
+              select: { interventions: true, avenants: true },
             },
           },
         }),

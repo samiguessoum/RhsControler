@@ -156,6 +156,7 @@ export interface Contrat {
   avenants?: Avenant[];
   _count?: {
     interventions: number;
+    avenants: number;
   };
 }
 
