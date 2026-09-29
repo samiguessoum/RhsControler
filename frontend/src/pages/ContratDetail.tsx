@@ -1335,19 +1335,21 @@ export function ContratDetailPage() {
               </div>
 
               <div className="p-3 space-y-4">
-                {isPonctuel && (
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm text-gray-600 w-40 shrink-0">Nb opérations <span className="text-red-500">*</span></span>
-                    <Input
-                      type="number"
-                      className="h-8 w-24"
-                      min={1}
-                      placeholder="Ex : 4"
-                      value={avenantForm.nbOps ?? ''}
-                      onChange={(e) => majSerieAvenant({ nbOps: e.target.value ? Number(e.target.value) : undefined })}
-                    />
-                  </div>
-                )}
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-600 w-40 shrink-0">
+                    Nb opérations
+                    {isPonctuel && <span className="text-red-500"> *</span>}
+                    {!isPonctuel && <span className="text-gray-400 text-xs"> (optionnel)</span>}
+                  </span>
+                  <Input
+                    type="number"
+                    className="h-8 w-24"
+                    min={1}
+                    placeholder="Ex : 4"
+                    value={avenantForm.nbOps ?? ''}
+                    onChange={(e) => majSerieAvenant({ nbOps: e.target.value ? Number(e.target.value) : undefined })}
+                  />
+                </div>
 
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-gray-600 w-40 shrink-0">
@@ -1362,7 +1364,7 @@ export function ContratDetailPage() {
                   />
                 </div>
 
-                {isPonctuel && (avenantForm.nbOps || 0) > 1 && !avenantForm.freqOpsJours && (
+                {(avenantForm.nbOps || 0) > 1 && !avenantForm.freqOpsJours && (
                   <p className="text-xs text-red-600 pl-[10.5rem]">Indiquez la fréquence pour projeter les dates.</p>
                 )}
 
