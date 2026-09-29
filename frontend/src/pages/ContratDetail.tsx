@@ -89,8 +89,8 @@ const AVENANT_VIDE: AvenantForm = {
   premiereOp: '', datesOps: [], datesCtrl: [],
 };
 
-const projectionAvenant = (f: AvenantForm) => {
-  const datesOps = computeProjectionDates(f.premiereOp, f.nbOps, f.freqOpsJours, undefined, undefined, true);
+const projectionAvenant = (f: AvenantForm, ponctuel: boolean, dateFin?: string) => {
+  const datesOps = computeProjectionDates(f.premiereOp, f.nbOps, f.freqOpsJours, undefined, dateFin, ponctuel);
   return {
     datesOps,
     datesCtrl: computeProjectionControles(datesOps, f.nbCtrlEntreOps || 0),
@@ -238,7 +238,8 @@ export function ContratDetailPage() {
   const majSerieAvenant = (updates: Partial<AvenantForm>) =>
     setAvenantForm((f) => {
       const n = { ...f, ...updates };
-      const p = projectionAvenant(n);
+      const dateFin = (n.dateExpiration || contrat?.dateFin || '').slice(0, 10);
+      const p = projectionAvenant(n, isPonctuel, dateFin || undefined);
       return { ...n, datesOps: p.datesOps, datesCtrl: p.datesCtrl };
     });
   const cleDates = (serie: 'ops' | 'ctrl') => (serie === 'ops' ? 'datesOps' : 'datesCtrl' as const);
@@ -1405,7 +1406,10 @@ export function ContratDetailPage() {
                     const dates = f[cleDates(serie)].filter((_, j) => j !== i);
                     return { ...f, [cleDates(serie)]: dates, ...(serie === 'ops' ? { nbOps: dates.length } : {}) };
                   })}
-                  onReset={(serie) => setAvenantForm((f) => ({ ...f, [cleDates(serie)]: projectionAvenant(f)[cleDates(serie)] }))}
+                  onReset={(serie) => setAvenantForm((f) => {
+                    const dateFin = (f.dateExpiration || contrat?.dateFin || '').slice(0, 10);
+                    return { ...f, [cleDates(serie)]: projectionAvenant(f, isPonctuel, dateFin || undefined)[cleDates(serie)] };
+                  })}
                   onRemoveHorsContrat={() => setAvenantForm((f) => {
                     const datesCtrl = f.datesCtrl.filter((d) => !apresDerniereOperation(d, [...opsExistantes, ...f.datesOps]));
                     return { ...f, datesCtrl };
