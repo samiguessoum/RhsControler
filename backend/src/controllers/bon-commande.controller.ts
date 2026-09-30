@@ -133,7 +133,16 @@ export const bonCommandeController = {
         where: { id },
         include: {
           client: { select: { id: true, nomEntreprise: true } },
-          contrat: { select: { id: true, type: true, dateDebut: true, dateFin: true, prestations: true } },
+          contrat: {
+            select: {
+              id: true,
+              type: true,
+              dateDebut: true,
+              dateFin: true,
+              prestations: true,
+              contratSites: { include: { site: { select: { id: true, nom: true } } } },
+            },
+          },
           sites: { include: { site: { select: { id: true, nom: true, adresse: true } } } },
           interventions: {
             include: {
@@ -165,26 +174,42 @@ export const bonCommandeController = {
   async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const { quotaPassages, notes, seuilAlerte, actif, numero } = req.body;
+      const { quotaPassages, notes, seuilAlerte, actif, numero, siteIds } = req.body;
 
       const existing = await prisma.bonCommande.findUnique({ where: { id } });
       if (!existing) {
         return next(new AppError(404, 'Bon de commande non trouvé'));
       }
 
-      const bc = await prisma.bonCommande.update({
-        where: { id },
-        data: {
-          ...(numero !== undefined ? { numero: numero.trim() } : {}),
-          ...(quotaPassages !== undefined ? { quotaPassages: quotaPassages === null ? null : parseInt(quotaPassages) } : {}),
-          ...(notes !== undefined ? { notes } : {}),
-          ...(seuilAlerte !== undefined ? { seuilAlerte: parseInt(seuilAlerte) } : {}),
-          ...(actif !== undefined ? { actif: Boolean(actif) } : {}),
-        },
-        include: {
-          client: { select: { id: true, nomEntreprise: true } },
-          sites: { include: { site: { select: { id: true, nom: true } } } },
-        },
+      const bc = await prisma.$transaction(async (tx) => {
+        const updated = await tx.bonCommande.update({
+          where: { id },
+          data: {
+            ...(numero !== undefined ? { numero: numero.trim() } : {}),
+            ...(quotaPassages !== undefined ? { quotaPassages: quotaPassages === null ? null : parseInt(quotaPassages) } : {}),
+            ...(notes !== undefined ? { notes } : {}),
+            ...(seuilAlerte !== undefined ? { seuilAlerte: parseInt(seuilAlerte) } : {}),
+            ...(actif !== undefined ? { actif: Boolean(actif) } : {}),
+          },
+        });
+
+        if (siteIds !== undefined) {
+          await tx.bonCommandeSite.deleteMany({ where: { bcId: id } });
+          if ((siteIds as string[]).length > 0) {
+            await tx.bonCommandeSite.createMany({
+              data: (siteIds as string[]).map((siteId) => ({ bcId: id, siteId })),
+              skipDuplicates: true,
+            });
+          }
+        }
+
+        return tx.bonCommande.findUnique({
+          where: { id },
+          include: {
+            client: { select: { id: true, nomEntreprise: true } },
+            sites: { include: { site: { select: { id: true, nom: true } } } },
+          },
+        });
       });
 
       res.json({ bonCommande: bc });

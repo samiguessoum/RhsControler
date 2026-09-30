@@ -23,7 +23,7 @@ interface BonCommande {
   seuilAlerte: number;
   actif: boolean;
   notes: string | null;
-  sites: { site: { id: string; nom: string } }[];
+  sites: { siteId: string; site: { id: string; nom: string } }[];
   interventions?: any[];
 }
 
@@ -62,11 +62,13 @@ export function BonCommandesPage() {
   // Sélection
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get('id'));
 
-  // Édition inline quota / notes
+  // Édition inline quota / notes / périmètre
   const [editingQuota, setEditingQuota] = useState(false);
   const [quotaDraft, setQuotaDraft] = useState<string>('');
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState('');
+  const [editingPerimetre, setEditingPerimetre] = useState(false);
+  const [perimetreDraft, setPerimetreDraft] = useState<string[]>([]);
 
   // Fetch liste
   const { data: listData, isLoading: listLoading } = useQuery({
@@ -103,6 +105,8 @@ export function BonCommandesPage() {
     if (bc) {
       setQuotaDraft(bc.quotaPassages != null ? String(bc.quotaPassages) : '');
       setNotesDraft(bc.notes ?? '');
+      setPerimetreDraft((bc.sites ?? []).map((s) => s.siteId));
+      setEditingPerimetre(false);
     }
   }, [bc?.id]);
 
@@ -309,20 +313,82 @@ export function BonCommandesPage() {
               </div>
             </div>
 
-            {/* Sites couverts */}
+            {/* Sites couverts / périmètre */}
             <div className="bg-white rounded-lg border p-5 space-y-3">
-              <h2 className="font-semibold">Sites couverts</h2>
-              {bc.sites.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Aucun site lié à ce BC.</p>
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold">Périmètre</h2>
+                {!editingPerimetre && (
+                  <Button size="sm" variant="ghost" onClick={() => setEditingPerimetre(true)}>
+                    <Pencil className="h-3 w-3 mr-1" />
+                    Modifier
+                  </Button>
+                )}
+              </div>
+
+              {editingPerimetre ? (
+                (() => {
+                  const contratSites = (bc.contrat as any)?.contratSites ?? [];
+                  if (contratSites.length === 0) {
+                    return <p className="text-sm text-muted-foreground">Ce BC n'est pas lié à un contrat avec sites configurés.</p>;
+                  }
+                  return (
+                    <div className="space-y-3">
+                      <p className="text-xs text-muted-foreground">
+                        Sélectionnez les sites couverts par ce BC. Laissez tout vide pour qu'il s'applique à tous les sites du contrat.
+                      </p>
+                      <div className="space-y-1.5">
+                        {contratSites.map((cs: any) => {
+                          const checked = perimetreDraft.includes(cs.site.id);
+                          return (
+                            <label key={cs.site.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() =>
+                                  setPerimetreDraft((prev) =>
+                                    checked ? prev.filter((id) => id !== cs.site.id) : [...prev, cs.site.id]
+                                  )
+                                }
+                                className="rounded border-gray-300"
+                              />
+                              <Building2 className="h-4 w-4 text-muted-foreground" />
+                              {cs.site.nom}
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => updateMutation.mutate({ id: bc.id, payload: { siteIds: perimetreDraft } })}
+                          disabled={updateMutation.isPending}
+                        >
+                          Sauvegarder
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingPerimetre(false)}>
+                          Annuler
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })()
               ) : (
-                <ul className="space-y-1.5">
-                  {bc.sites.map((s) => (
-                    <li key={s.site.id} className="flex items-center gap-2 text-sm">
-                      <Building2 className="h-4 w-4 text-muted-foreground" />
-                      {s.site.nom}
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  {(bc.sites ?? []).length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      {bc.contrat ? 'Tous les sites du contrat' : 'Aucun site lié à ce BC.'}
+                    </p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {(bc.sites ?? []).map((s) => (
+                        <li key={s.siteId} className="flex items-center gap-2 text-sm">
+                          <Building2 className="h-4 w-4 text-muted-foreground" />
+                          {s.site?.nom ?? s.siteId}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
               )}
             </div>
 

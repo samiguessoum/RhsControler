@@ -166,6 +166,7 @@ export interface BonCommande {
   numero: string;
   clientId: string;
   contratId?: string | null;
+  contrat?: { id: string; type: string; contratSites?: { siteId: string; site: { id: string; nom: string } }[] } | null;
   date?: string | null;
   quotaPassages?: number | null;
   passagesConsommes: number;
@@ -173,6 +174,7 @@ export interface BonCommande {
   seuilAlerte: number;
   notes?: string | null;
   actif: boolean;
+  sites?: { siteId: string; site?: { id: string; nom: string } }[];
   createdAt: string;
   updatedAt: string;
 }

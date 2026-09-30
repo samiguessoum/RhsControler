@@ -140,6 +140,11 @@ export const contratController = {
             _count: {
               select: { interventions: true, avenants: true },
             },
+            bonsCommandes: {
+              select: { id: true, numero: true, date: true, sites: { select: { siteId: true } } },
+              where: { actif: true },
+              orderBy: { createdAt: 'desc' },
+            },
           },
         }),
         prisma.contrat.count({ where }),

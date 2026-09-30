@@ -1798,7 +1798,7 @@ export const bonCommandeApi = {
     const { data } = await api.post('/bons-commandes', payload);
     return data as { bonCommande: any };
   },
-  update: async (id: string, payload: { quotaPassages?: number | null; notes?: string; seuilAlerte?: number; actif?: boolean; numero?: string }) => {
+  update: async (id: string, payload: { quotaPassages?: number | null; notes?: string; seuilAlerte?: number; actif?: boolean; numero?: string; siteIds?: string[] }) => {
     const { data } = await api.put(`/bons-commandes/${id}`, payload);
     return data as { bonCommande: any };
   },

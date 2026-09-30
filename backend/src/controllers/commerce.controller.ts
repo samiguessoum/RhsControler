@@ -6,6 +6,7 @@ import { facturationEvents } from '../services/events.service.js';
 import { stockService } from '../services/stock.service.js';
 import logger from '../lib/logger.js';
 import { AppError } from '../lib/errors.js';
+import { resolverBC } from '../utils/bc.utils.js';
 
 
 // Préfixes par défaut (utilisés si aucun paramètre en base)
@@ -1791,9 +1792,9 @@ export const commerceController = {
               dateDebutConvention: true,
               numeroBonCommande: true,
               bonsCommandes: {
-                select: { numero: true, date: true },
+                select: { numero: true, date: true, sites: { select: { siteId: true } } },
+                where: { actif: true },
                 orderBy: { createdAt: 'desc' },
-                take: 1,
               },
             },
           },
@@ -1813,10 +1814,14 @@ export const commerceController = {
         const parts: string[] = [];
         if (contrat.nom?.trim()) parts.push(`Contrat « ${contrat.nom.trim()} »`);
         if (contrat.refExterne) parts.push(`Selon le contrat N° ${contrat.refExterne}`);
-        // Le n° saisi sur le contrat fait foi ; les BC importés servent de repli (avec leur date)
-        const bc = contrat.numeroBonCommande
-          ? { numero: contrat.numeroBonCommande, date: contrat.bonsCommandes?.find((b: any) => b.numero === contrat.numeroBonCommande)?.date ?? null }
-          : contrat.bonsCommandes?.[0] ?? null;
+        const siteId = (facture as any).site?.id ?? null;
+        const bcsAvecSites = (contrat.bonsCommandes ?? []).map((b: any) => ({
+          numero: b.numero,
+          date: b.date,
+          sites: b.sites ?? [],
+        }));
+        const bc = resolverBC(bcsAvecSites, siteId)
+          ?? (contrat.numeroBonCommande ? { numero: contrat.numeroBonCommande, date: null } : null);
         if (bc?.numero) {
           const bcDate = bc.date ? ` du ${new Intl.DateTimeFormat('fr-FR').format(new Date(bc.date))}` : '';
           parts.push(`Selon le Bon de commande "${bc.numero}"${bcDate}`);

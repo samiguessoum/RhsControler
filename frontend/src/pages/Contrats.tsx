@@ -93,6 +93,20 @@ export function horsBornes(date: string, debut: string, fin: string): boolean {
   return !!date && ((!!debut && date < debut) || (!!fin && date > fin));
 }
 
+function resolverBCFrontend(
+  bonsCommandes: { numero: string; date?: string | null; sites?: { siteId: string }[] }[],
+  siteId?: string | null,
+): { numero: string; date?: string | null } | null {
+  if (!bonsCommandes?.length) return null;
+  if (siteId) {
+    const bcSite = bonsCommandes.find((bc) => (bc.sites ?? []).some((s) => s.siteId === siteId));
+    if (bcSite) return bcSite;
+  }
+  const bcAll = bonsCommandes.find((bc) => (bc.sites ?? []).length === 0);
+  if (bcAll) return bcAll;
+  return bonsCommandes[0];
+}
+
 // Dates soumises au garde-fou convention : les opérations et les visites qui seront planifiées
 // (celles après la dernière opération sont ignorées).
 function datesAPlanifier(cs: ContratSiteInput): string[] {
@@ -1814,7 +1828,19 @@ export function ContratsPage() {
                     asChild
                   >
                     <Link
-                      to={`/commerce?tab=factures&contratId=${selectedContrat.id}&clientId=${selectedContrat.clientId}&siteId=${selectedContrat.contratSites?.[0]?.siteId || ''}&mentionSpeciale=${encodeURIComponent([selectedContrat.nom?.trim() ? `Contrat « ${selectedContrat.nom.trim()} »` : '', selectedContrat.refExterne ? `Selon le contrat N° ${(selectedContrat as any).refExterne}` : '', selectedContrat.numeroBonCommande ? `Selon le Bon de commande "${selectedContrat.numeroBonCommande}"` : '', (selectedContrat as any).dateDebutConvention ? `Convention signée le ${new Date((selectedContrat as any).dateDebutConvention).toLocaleDateString('fr-FR')}` : ''].filter(Boolean).join(' — '))}`}
+                      to={(() => {
+                        const firstSiteId = selectedContrat.contratSites?.[0]?.siteId || null;
+                        const resolvedBc = resolverBCFrontend(selectedContrat.bonsCommandes ?? [], firstSiteId)
+                          ?? (selectedContrat.numeroBonCommande ? { numero: selectedContrat.numeroBonCommande } : null);
+                        const bcPart = resolvedBc?.numero ? `Selon le Bon de commande "${resolvedBc.numero}"` : '';
+                        const mention = [
+                          selectedContrat.nom?.trim() ? `Contrat « ${selectedContrat.nom.trim()} »` : '',
+                          (selectedContrat as any).refExterne ? `Selon le contrat N° ${(selectedContrat as any).refExterne}` : '',
+                          bcPart,
+                          (selectedContrat as any).dateDebutConvention ? `Convention signée le ${new Date((selectedContrat as any).dateDebutConvention).toLocaleDateString('fr-FR')}` : '',
+                        ].filter(Boolean).join(' — ');
+                        return `/commerce?tab=factures&contratId=${selectedContrat.id}&clientId=${selectedContrat.clientId}&siteId=${firstSiteId || ''}&mentionSpeciale=${encodeURIComponent(mention)}`;
+                      })()}
                       onClick={() => setSelectedContrat(null)}
                     >
                       <Receipt className="h-3.5 w-3.5 mr-1.5" />
