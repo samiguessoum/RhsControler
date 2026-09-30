@@ -27,7 +27,8 @@ set -a; source .env.prod; set +a
 [ -n "${POSTGRES_PASSWORD:-}" ] || fail "POSTGRES_PASSWORD non défini dans .env.prod"
 
 log "Pull du dernier code..."
-git pull origin main
+git fetch origin main
+git reset --hard origin/main
 
 log "Build des images Docker..."
 docker compose -f docker-compose.prod.yml build --no-cache
