@@ -905,6 +905,7 @@ export const updateCommandeSchema = createCommandeSchema.partial().extend({
 export const createFactureSchema = z.object({
   clientId: z.string().uuid('ID client invalide'),
   siteId: z.string().uuid().optional().nullable(),
+  contratId: z.string().uuid().optional().nullable(),
   typeDocument: z.enum(['PRODUIT', 'SERVICE']).optional().nullable(),
   devisId: z.string().uuid().optional(),
   commandeId: z.string().uuid().optional(),
