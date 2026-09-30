@@ -156,6 +156,13 @@ export const avenantController = {
       const { contratId, avenantId } = req.params;
       const { nom, numeroBonCommande, dateSignature, dateExpiration, montantHT, notes } = req.body;
 
+      if (dateSignature && isNaN(new Date(dateSignature).getTime())) {
+        return next(new AppError(400, 'dateSignature invalide'));
+      }
+      if (dateExpiration && isNaN(new Date(dateExpiration).getTime())) {
+        return next(new AppError(400, 'dateExpiration invalide'));
+      }
+
       const avenant = await prisma.avenant.findUnique({ where: { id: avenantId } });
       if (!avenant || avenant.contratId !== contratId) {
         return next(new AppError(404, 'Avenant non trouvé'));

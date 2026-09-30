@@ -25,5 +25,6 @@ export function resolverBC(
   const bcAll = bonsCommandes.find((bc) => bc.sites.length === 0);
   if (bcAll) return { numero: bcAll.numero, date: bcAll.date };
 
-  return { numero: bonsCommandes[0].numero, date: bonsCommandes[0].date };
+  // Aucun BC ne couvre ce site — ne pas inventer un numéro incorrect sur la facture
+  return null;
 }

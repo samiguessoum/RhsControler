@@ -104,7 +104,7 @@ function resolverBCFrontend(
   }
   const bcAll = bonsCommandes.find((bc) => (bc.sites ?? []).length === 0);
   if (bcAll) return bcAll;
-  return bonsCommandes[0];
+  return null;
 }
 
 // Dates soumises au garde-fou convention : les opérations et les visites qui seront planifiées

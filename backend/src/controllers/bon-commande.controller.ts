@@ -212,6 +212,7 @@ export const bonCommandeController = {
         });
       });
 
+      if (!bc) return next(new AppError(404, 'Bon de commande non trouvé'));
       res.json({ bonCommande: bc });
     } catch (error) {
       logger.error({ err: error }, 'BonCommande update error');

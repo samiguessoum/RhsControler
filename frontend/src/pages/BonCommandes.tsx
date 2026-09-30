@@ -97,6 +97,7 @@ export function BonCommandesPage() {
       queryClient.invalidateQueries({ queryKey: ['bons-commandes'] });
       setEditingQuota(false);
       setEditingNotes(false);
+      setEditingPerimetre(false);
     },
   });
 
