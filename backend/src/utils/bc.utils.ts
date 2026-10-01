@@ -9,7 +9,7 @@ type BcForResolution = {
  * Priorité :
  *   1. BC lié explicitement à ce site (scope site)
  *   2. BC sans aucun site lié (scope contrat entier)
- *   3. Premier BC du contrat (fallback)
+ *   3. null — ne jamais mettre un mauvais BC sur une facture
  */
 export function resolverBC(
   bonsCommandes: BcForResolution[],

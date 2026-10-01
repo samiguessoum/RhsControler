@@ -182,7 +182,7 @@ export const bonCommandeController = {
       }
 
       const bc = await prisma.$transaction(async (tx) => {
-        const updated = await tx.bonCommande.update({
+        await tx.bonCommande.update({
           where: { id },
           data: {
             ...(numero !== undefined ? { numero: numero.trim() } : {}),
@@ -193,11 +193,11 @@ export const bonCommandeController = {
           },
         });
 
-        if (siteIds !== undefined) {
+        if (Array.isArray(siteIds)) {
           await tx.bonCommandeSite.deleteMany({ where: { bcId: id } });
-          if ((siteIds as string[]).length > 0) {
+          if (siteIds.length > 0) {
             await tx.bonCommandeSite.createMany({
-              data: (siteIds as string[]).map((siteId) => ({ bcId: id, siteId })),
+              data: siteIds.map((siteId: string) => ({ bcId: id, siteId })),
               skipDuplicates: true,
             });
           }

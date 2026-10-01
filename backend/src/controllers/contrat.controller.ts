@@ -144,6 +144,7 @@ export const contratController = {
               select: { id: true, numero: true, date: true, sites: { select: { siteId: true } } },
               where: { actif: true },
               orderBy: { createdAt: 'desc' },
+              take: 10,
             },
           },
         }),
@@ -196,6 +197,10 @@ export const contratController = {
           },
           bonsCommandes: {
             orderBy: { createdAt: 'desc' },
+            where: { actif: true },
+            include: {
+              sites: { select: { siteId: true } },
+            },
           },
           avenants: {
             orderBy: { numero: 'asc' },
