@@ -1,5 +1,5 @@
 import { addDays, addMonths, differenceInCalendarDays, format } from 'date-fns';
-import { frequenceALaDate, parsePeriodesFrequence } from '../utils/date.utils.js';
+import { frequenceOperationsALaDate } from '../utils/frequence.utils.js';
 import { prisma } from '../config/database.js';
 
 type BuildAttestationOptions = {
@@ -123,6 +123,7 @@ export const attestationService = {
             ville: true,
           },
         },
+        avenant: { select: { frequenceOperationsJours: true, frequenceOperationsMois: true, periodesFrequence: true } },
         contrat: {
           select: {
             id: true,
@@ -175,18 +176,9 @@ export const attestationService = {
       ? contratPrestations.join(', ')
       : (intervention.prestation?.trim() || 'prestation technique');
 
-    // Fréquence applicable au passage : période saisonnière du site couvrant la date de réalisation,
-    // sinon fréquence du site, sinon du contrat (mois prioritaire sur jours, comme le planning).
-    const cs = intervention.siteId
-      ? intervention.contrat?.contratSites?.find((s) => s.siteId === intervention.siteId)
-      : undefined;
-    const freqSource = cs && (cs.frequenceOperationsMois || cs.frequenceOperationsJours) ? cs : intervention.contrat;
-    const freq = frequenceALaDate(
-      dateReference,
-      freqSource?.frequenceOperationsJours ?? null,
-      freqSource?.frequenceOperationsMois ?? null,
-      parsePeriodesFrequence(cs?.periodesFrequence),
-    );
+    // Fréquence applicable au passage : avenant → site → contrat, période saisonnière couvrant la
+    // date de réalisation comprise (mois prioritaire sur jours, comme le planning)
+    const freq = frequenceOperationsALaDate(intervention as any, dateReference);
 
     // Date de prochaine opération = date de réalisation effective + fréquence (fallback 30 jours)
     const dateProchaineOperation = freq.mois

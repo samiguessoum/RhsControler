@@ -14,31 +14,72 @@ export function skipAlgerianWeekend(d: Date): Date {
 }
 
 /**
- * Période saisonnière d'un site de contrat : du mois `moisDebut` au mois `moisFin` (1-12, inclus),
- * les passages ont lieu tous les `frequenceJours` jours. moisDebut > moisFin = période à cheval
- * sur deux années (ex : novembre → février).
+ * Période saisonnière (site de contrat ou avenant), répétée chaque année : du jour `debut` au jour
+ * `fin` inclus (format "MM-JJ" ; à cheval sur deux années si debut > fin, ex : "11-15" → "02-28"),
+ * les passages ont lieu tous les `frequenceJours` jours ou tous les `frequenceMois` mois.
+ * Une période ne force aucune date : elle change seulement la fréquence des passages qui tombent
+ * dedans (le flux reste continu).
  */
-export type PeriodeFrequence = { moisDebut: number; moisFin: number; frequenceJours: number };
+export type PeriodeFrequence = {
+  debut: string;
+  fin: string;
+  frequenceJours: number | null;
+  frequenceMois: number | null;
+};
 
-/** Lit les périodes stockées (JSON) en ignorant toute entrée invalide. */
+const JOURS_PAR_MOIS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+/** "MM-JJ" valide (29 février accepté) ? */
+export function estJourAnnuel(v: unknown): v is string {
+  if (typeof v !== 'string' || !/^\d{2}-\d{2}$/.test(v)) return false;
+  const [m, j] = v.split('-').map(Number);
+  return m >= 1 && m <= 12 && j >= 1 && j <= JOURS_PAR_MOIS[m - 1];
+}
+
+const entierPositif = (v: unknown) => (Number.isInteger(v) && (v as number) > 0 ? (v as number) : null);
+
+/**
+ * Lit les périodes stockées (JSON) en ignorant toute entrée invalide. Accepte l'ancien format en
+ * mois entiers ({ moisDebut, moisFin, frequenceJours }).
+ */
 export function parsePeriodesFrequence(value: unknown): PeriodeFrequence[] {
   if (!Array.isArray(value)) return [];
-  const mois = (v: unknown) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 12;
-  return value
-    .filter((p: any) => p && mois(p.moisDebut) && mois(p.moisFin) && Number.isInteger(p.frequenceJours) && p.frequenceJours > 0)
-    .map((p: any) => ({ moisDebut: p.moisDebut, moisFin: p.moisFin, frequenceJours: p.frequenceJours }));
+  const result: PeriodeFrequence[] = [];
+  for (const p of value as any[]) {
+    if (!p) continue;
+    let debut = p.debut;
+    let fin = p.fin;
+    if (debut === undefined && Number.isInteger(p.moisDebut) && Number.isInteger(p.moisFin)) {
+      debut = `${String(p.moisDebut).padStart(2, '0')}-01`;
+      fin = `${String(p.moisFin).padStart(2, '0')}-${JOURS_PAR_MOIS[p.moisFin - 1] ?? 31}`;
+    }
+    const frequenceMois = entierPositif(p.frequenceMois);
+    const frequenceJours = frequenceMois ? null : entierPositif(p.frequenceJours);
+    if (estJourAnnuel(debut) && estJourAnnuel(fin) && (frequenceJours || frequenceMois)) {
+      result.push({ debut, fin, frequenceJours, frequenceMois });
+    }
+  }
+  return result;
 }
+
+/** Jour de l'année au format comparable MMJJ (ex : 5 septembre → 905). */
+const cleJour = (d: Date) => (d.getMonth() + 1) * 100 + d.getDate();
+const cle = (mmjj: string) => Number(mmjj.replace('-', ''));
 
 /** Période saisonnière couvrant la date (la première qui correspond), sinon null. */
 export function periodeALaDate(date: Date, periodes?: PeriodeFrequence[] | null): PeriodeFrequence | null {
   if (!periodes?.length) return null;
-  const m = date.getMonth() + 1;
-  return periodes.find((p) => (p.moisDebut <= p.moisFin ? m >= p.moisDebut && m <= p.moisFin : m >= p.moisDebut || m <= p.moisFin)) ?? null;
+  const k = cleJour(date);
+  return periodes.find((p) => {
+    const d = cle(p.debut);
+    const f = cle(p.fin);
+    return d <= f ? k >= d && k <= f : k >= d || k <= f;
+  }) ?? null;
 }
 
 /**
  * Fréquence qui s'applique à un passage à cette date : celle de la période saisonnière qui la
- * couvre, sinon la fréquence normale (jours ou mois).
+ * couvre, sinon la fréquence normale (mois prioritaire sur jours).
  */
 export function frequenceALaDate(
   date: Date,
@@ -47,8 +88,23 @@ export function frequenceALaDate(
   periodes?: PeriodeFrequence[] | null,
 ): { jours: number | null; mois: number | null } {
   const p = periodeALaDate(date, periodes);
-  if (p) return { jours: p.frequenceJours, mois: null };
+  if (p) return { jours: p.frequenceMois ? null : p.frequenceJours, mois: p.frequenceMois };
   return { jours: mois ? null : (jours ?? null), mois: mois ?? null };
+}
+
+/**
+ * Échéance théorique suivante (sans report du week-end). Pour générer une série, avancer sur les
+ * dates théoriques et ne reporter que chaque date affichée : sinon les reports s'accumulent
+ * (le 5 du mois devient le 7, puis le 9…).
+ */
+export function prochaineDateTheorique(
+  derniereDate: Date,
+  jours?: number | null,
+  mois?: number | null,
+  periodes?: PeriodeFrequence[] | null,
+): Date {
+  const f = frequenceALaDate(derniereDate, jours, mois, periodes);
+  return f.mois ? addMonths(derniereDate, f.mois) : addDays(derniereDate, f.jours || 30);
 }
 
 /**

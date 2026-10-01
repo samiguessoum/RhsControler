@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { prisma } from '../config/database.js';
 import { AppError } from '../lib/errors.js';
+import { parsePeriodesFrequence } from '../utils/date.utils.js';
 import logger from '../lib/logger.js';
 import { createAuditLog } from './audit.controller.js';
 import { planningService } from '../services/planning.service.js';
@@ -52,8 +53,15 @@ export const avenantController = {
         nombreVisitesControleEntreOps,
         datesOperations,
         datesControles,
+        frequenceOperationsJours,
+        frequenceOperationsMois,
+        periodesFrequence,
         notes,
       } = req.body;
+      // Fréquence propre à l'avenant (mois prioritaire sur jours) et ses périodes saisonnières
+      const freqMoisAvenant: number | null = frequenceOperationsMois || null;
+      const freqJoursAvenant: number | null = freqMoisAvenant ? null : (frequenceOperationsJours || null);
+      const periodesAvenant = parsePeriodesFrequence(periodesFrequence);
 
       const contrat = await prisma.contrat.findUnique({ where: { id: contratId } });
       if (!contrat) {
@@ -110,6 +118,9 @@ export const avenantController = {
             montantHT: montantHT ?? null,
             nombreOperationsSupplementaires: nbOps,
             nombreVisitesControleSupplementaires: datesControles ? datesControles.length : nbCtrlEntreOps,
+            frequenceOperationsJours: freqJoursAvenant,
+            frequenceOperationsMois: freqMoisAvenant,
+            periodesFrequence: periodesAvenant,
             notes: notes || null,
             createdById: req.user!.id,
           },
@@ -127,6 +138,8 @@ export const avenantController = {
           {
             datesOperations: datesOperations?.map((d: string) => new Date(d)),
             datesControles: datesControles?.map((d: string) => new Date(d)),
+            frequence: freqJoursAvenant || freqMoisAvenant ? { jours: freqJoursAvenant, mois: freqMoisAvenant } : undefined,
+            periodes: periodesAvenant,
           },
         );
         interventionsCreees = result.interventionsCreees;

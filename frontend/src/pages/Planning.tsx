@@ -1696,12 +1696,18 @@ function InterventionDetailDialog({
                         </span>
                       </p>
                     )}
-                    {(intervention as any).frequenceOperationsJours &&
-                      (intervention as any).frequenceOperationsJours !== intervention.contrat?.frequenceOperationsJours && (
+                    {((intervention as any).frequenceOperationsJours || (intervention as any).frequenceOperationsMois) &&
+                      ((intervention as any).frequenceOperationsEnPeriode ||
+                        (intervention as any).frequenceOperationsMois ||
+                        (intervention as any).frequenceOperationsJours !== intervention.contrat?.frequenceOperationsJours) && (
                         <p>
-                          <span className="text-muted-foreground">Fréquence du site:</span>{' '}
+                          <span className="text-muted-foreground">
+                            {(intervention as any).frequenceOperationsEnPeriode ? 'Fréquence de la période en cours:' : 'Fréquence du site:'}
+                          </span>{' '}
                           <span className="font-medium">
-                            Tous les {(intervention as any).frequenceOperationsJours} jours
+                            {(intervention as any).frequenceOperationsMois
+                              ? `Tous les ${(intervention as any).frequenceOperationsMois} mois`
+                              : `Tous les ${(intervention as any).frequenceOperationsJours} jours`}
                           </span>
                         </p>
                       )}

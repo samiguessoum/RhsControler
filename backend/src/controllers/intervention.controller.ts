@@ -7,7 +7,7 @@ import { startOfDay, endOfDay, parseISO } from 'date-fns';
 import attestationService from '../services/attestation.service.js';
 import logger from '../lib/logger.js';
 import { AppError } from '../lib/errors.js';
-import { parsePeriodesFrequence, periodeALaDate } from '../utils/date.utils.js';
+import { frequenceOperationsALaDate } from '../utils/frequence.utils.js';
 
 
 export const interventionController = {
@@ -272,7 +272,12 @@ export const interventionController = {
               },
             },
           },
-          avenant: { select: { id: true, numero: true, nom: true, numeroBonCommande: true } },
+          avenant: {
+            select: {
+              id: true, numero: true, nom: true, numeroBonCommande: true,
+              frequenceOperationsJours: true, frequenceOperationsMois: true, periodesFrequence: true,
+            },
+          },
           createdBy: {
             select: { id: true, nom: true, prenom: true },
           },
@@ -310,6 +315,8 @@ export const interventionController = {
       let remainingOperations: number | null = null;
       let remainingControles: number | null = null;
       let freqOpsJours: number | null = null;
+      let freqOpsMois: number | null = null;
+      let freqOpsEnPeriode = false;
       let freqCtrlsJours: number | null = null;
 
       if (intervention.contrat) {
@@ -322,11 +329,7 @@ export const interventionController = {
           if (cs) {
             maxOps = cs.nombreOperations ?? null;
             maxCtrls = cs.nombreVisitesControle ?? null;
-            freqOpsJours = cs.frequenceOperationsJours ?? null;
             freqCtrlsJours = cs.frequenceControleJours ?? null;
-            // Période saisonnière couvrant la date de l'intervention : sa fréquence prime
-            const periode = periodeALaDate(intervention.dateRealisee ?? intervention.datePrevue, parsePeriodesFrequence((cs as any).periodesFrequence));
-            if (periode) freqOpsJours = periode.frequenceJours;
           }
         }
 
@@ -336,9 +339,11 @@ export const interventionController = {
         if (maxCtrls === null) {
           maxCtrls = intervention.contrat.nombreVisitesControle ?? null;
         }
-        if (freqOpsJours === null) {
-          freqOpsJours = intervention.contrat.frequenceOperationsJours ?? null;
-        }
+        // Fréquence applicable à cette intervention : avenant → site → contrat, période saisonnière comprise
+        const freqOps = frequenceOperationsALaDate(intervention as any, intervention.dateRealisee ?? intervention.datePrevue);
+        freqOpsJours = freqOps.jours;
+        freqOpsMois = freqOps.mois;
+        freqOpsEnPeriode = freqOps.enPeriode;
         if (freqCtrlsJours === null) {
           freqCtrlsJours = intervention.contrat.frequenceControleJours ?? null;
         }
@@ -415,6 +420,8 @@ export const interventionController = {
           remainingOperations,
           remainingControles,
           frequenceOperationsJours: freqOpsJours,
+          frequenceOperationsMois: freqOpsMois,
+          frequenceOperationsEnPeriode: freqOpsEnPeriode,
           frequenceControleJours: freqCtrlsJours,
           previousIntervention,
         },

@@ -38,35 +38,73 @@ import type { Contrat, CreateContratInput, Client, User, ContratStatut, ContratT
 
 export const MOIS_LABELS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
 
-/** Mois (1-12) couverts par une période, à cheval sur l'année si moisDebut > moisFin. */
-function moisDePeriode(p: Pick<PeriodeFrequence, 'moisDebut' | 'moisFin'>): number[] {
-  const mois: number[] = [];
-  for (let m = p.moisDebut; mois.length < 12; m = (m % 12) + 1) {
-    mois.push(m);
-    if (m === p.moisFin) break;
-  }
-  return mois;
+const JOURS_PAR_MOIS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+const cleMMJJ = (mmjj: string) => Number(mmjj.replace('-', ''));
+const dansPeriode = (k: number, p: Pick<PeriodeFrequence, 'debut' | 'fin'>) => {
+  const d = cleMMJJ(p.debut);
+  const f = cleMMJJ(p.fin);
+  return d <= f ? k >= d && k <= f : k >= d || k <= f;
+};
+
+/** "MM-JJ" → "1er mai", "5 septembre"… */
+export function libelleJourAnnuel(mmjj: string): string {
+  const [m, j] = mmjj.split('-').map(Number);
+  return `${j === 1 ? '1er' : j} ${(MOIS_LABELS[m - 1] || '').toLowerCase()}`;
 }
 
-/** Même règle que le backend : période saisonnière couvrant la date, sinon null. */
+/** Libellé d'une fréquence : "tous les 14 jours", "tous les mois", "tous les 2 mois". */
+export function libelleFrequence(jours?: number | null, mois?: number | null): string {
+  if (mois) return mois === 1 ? 'tous les mois' : `tous les ${mois} mois`;
+  return `tous les ${jours} jours`;
+}
+
+/**
+ * Lit les périodes (y compris l'ancien format en mois entiers { moisDebut, moisFin }) vers le
+ * format { debut: "MM-JJ", fin: "MM-JJ", frequenceJours, frequenceMois }.
+ */
+export function normaliserPeriodes(periodes?: any[] | null): PeriodeFrequence[] {
+  return (periodes || []).map((p: any) => {
+    if (p?.debut) return { debut: p.debut, fin: p.fin, frequenceJours: p.frequenceJours ?? null, frequenceMois: p.frequenceMois ?? null };
+    const md = Number(p?.moisDebut) || 1;
+    const mf = Number(p?.moisFin) || 12;
+    return {
+      debut: `${String(md).padStart(2, '0')}-01`,
+      fin: `${String(mf).padStart(2, '0')}-${JOURS_PAR_MOIS[mf - 1]}`,
+      frequenceJours: p?.frequenceJours ?? null,
+      frequenceMois: null,
+    };
+  });
+}
+
+/** Même règle que le backend : période saisonnière couvrant la date (au jour près), sinon null. */
 export function periodeALaDate(d: Date, periodes?: PeriodeFrequence[]): PeriodeFrequence | null {
   if (!periodes?.length) return null;
-  const m = d.getMonth() + 1;
-  return periodes.find((p) => moisDePeriode(p).includes(m)) ?? null;
+  const k = (d.getMonth() + 1) * 100 + d.getDate();
+  return periodes.find((p) => dansPeriode(k, p)) ?? null;
 }
 
 /** Périodes complètes uniquement (une ligne en cours de saisie n'est ni projetée ni envoyée). */
 export function periodesValides(periodes?: PeriodeFrequence[]): PeriodeFrequence[] {
-  return (periodes || []).filter((p) => p.moisDebut >= 1 && p.moisDebut <= 12 && p.moisFin >= 1 && p.moisFin <= 12 && p.frequenceJours > 0);
+  const jourOk = (v: string) => {
+    const [m, j] = (v || '').split('-').map(Number);
+    return m >= 1 && m <= 12 && j >= 1 && j <= JOURS_PAR_MOIS[m - 1];
+  };
+  return (periodes || [])
+    .filter((p) => jourOk(p.debut) && jourOk(p.fin) && ((p.frequenceJours ?? 0) > 0 || (p.frequenceMois ?? 0) > 0))
+    .map((p) => (p.frequenceMois ? { ...p, frequenceJours: null } : { ...p, frequenceMois: null }));
 }
 
-/** Message d'erreur si deux périodes partagent un mois, sinon null. */
+/** Message d'erreur si deux périodes partagent un jour, sinon null. */
 export function chevauchementPeriodes(periodes: PeriodeFrequence[]): string | null {
   const vus = new Set<number>();
   for (const p of periodes) {
-    for (const m of moisDePeriode(p)) {
-      if (vus.has(m)) return `${MOIS_LABELS[m - 1]} figure dans deux périodes`;
-      vus.add(m);
+    for (let m = 1; m <= 12; m++) {
+      for (let j = 1; j <= JOURS_PAR_MOIS[m - 1]; j++) {
+        const k = m * 100 + j;
+        if (!dansPeriode(k, p)) continue;
+        if (vus.has(k)) return `Deux périodes se chevauchent (le ${libelleJourAnnuel(`${String(m).padStart(2, '0')}-${String(j).padStart(2, '0')}`)})`;
+        vus.add(k);
+      }
     }
   }
   return null;
@@ -84,24 +122,31 @@ export function computeProjectionDates(
   if (!premierDate) return [];
   // Ponctuel : une échéance unique n'a pas besoin de fréquence
   if (!frequenceJours && !frequenceMois && !(ponctuel && nbOps === 1)) return [];
-  // La fréquence est celle de la période saisonnière couvrant le passage, sinon la fréquence normale
-  const suivante = (d: Date) => {
-    const periode = periodeALaDate(d, periodes);
-    if (periode) return addDays(d, periode.frequenceJours);
-    return frequenceMois ? addMonths(d, frequenceMois) : addDays(d, frequenceJours || 30);
+  // La fréquence est celle de la période saisonnière couvrant l'échéance, sinon la fréquence normale.
+  // Même algo que le backend : on avance sur les échéances théoriques (t) et seule la date affichée
+  // est reportée hors week-end, pour que les reports ne s'accumulent pas.
+  const suivante = (t: Date) => {
+    const periode = periodeALaDate(t, periodes);
+    if (periode) return periode.frequenceMois ? addMonths(t, periode.frequenceMois) : addDays(t, periode.frequenceJours || 30);
+    return frequenceMois ? addMonths(t, frequenceMois) : addDays(t, frequenceJours || 30);
   };
   const dates: string[] = [];
-  let d = new Date(premierDate + 'T12:00:00');
+  let t = new Date(premierDate + 'T12:00:00');
+  let d = t;
+  const avancer = () => {
+    t = suivante(t);
+    d = skipAlgerianWeekend(t);
+  };
   if (nbOps && nbOps > 0) {
     for (let i = 0; i < nbOps && i < 500; i++) {
       dates.push(format(d, 'yyyy-MM-dd'));
-      d = skipAlgerianWeekend(suivante(d));
+      avancer();
     }
   } else if (dateFin && !ponctuel) {
     const fin = new Date(dateFin + 'T12:00:00');
     for (let i = 0; d <= fin && i < 500; i++) {
       dates.push(format(d, 'yyyy-MM-dd'));
-      d = skipAlgerianWeekend(suivante(d));
+      avancer();
     }
   }
   return dates;
@@ -328,13 +373,24 @@ export function ProjectionDates({
 
 export function FrequenceInput({
   jours,
+  mois,
   onChange,
   placeholder,
 }: {
-  jours?: number;
+  jours?: number | null;
+  mois?: number | null;
   onChange: (v: { jours?: number; mois?: number }) => void;
   placeholder?: string;
 }) {
+  // Unité choisie (jours / mois) : gardée localement pour pouvoir la changer avant de saisir le nombre
+  const [unite, setUnite] = useState<'jours' | 'mois'>(mois ? 'mois' : 'jours');
+  useEffect(() => {
+    if (mois) setUnite('mois');
+    else if (jours) setUnite('jours');
+  }, [jours, mois]);
+  const valeur = unite === 'mois' ? mois : jours;
+  const emettre = (n: number | undefined, u: 'jours' | 'mois') =>
+    onChange(u === 'mois' ? { jours: undefined, mois: n } : { jours: n, mois: undefined });
   return (
     <div className="flex items-center gap-2">
       <span className="text-xs text-gray-400 whitespace-nowrap">Tous les</span>
@@ -342,17 +398,58 @@ export function FrequenceInput({
         type="number"
         className="h-8 w-20"
         min={1}
+        step={1}
         placeholder={placeholder}
-        value={jours || ''}
-        onChange={(e) => onChange({ jours: e.target.value ? Number(e.target.value) : undefined, mois: undefined })}
+        value={valeur || ''}
+        onChange={(e) => emettre(e.target.value ? Math.max(1, Math.round(Number(e.target.value))) : undefined, unite)}
       />
-      <span className="text-xs text-gray-500 whitespace-nowrap">jours</span>
+      <Select
+        value={unite}
+        onValueChange={(u) => {
+          setUnite(u as 'jours' | 'mois');
+          emettre(valeur || undefined, u as 'jours' | 'mois');
+        }}
+      >
+        <SelectTrigger className="h-8 w-24"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          <SelectItem value="jours">jours</SelectItem>
+          <SelectItem value="mois">mois</SelectItem>
+        </SelectContent>
+      </Select>
     </div>
   );
 }
 
-// Périodes saisonnières d'un site : "de [mois] à [mois], tous les [N] jours". Hors de ces périodes,
-// la fréquence normale du site s'applique.
+// Sélecteur "jour + mois" d'une borne de période ("MM-JJ")
+function JourAnnuelInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [m, j] = (value || '01-01').split('-').map(Number);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const maj = (mois: number, jour: number) => onChange(`${pad(mois)}-${pad(Math.min(jour, JOURS_PAR_MOIS[mois - 1]))}`);
+  return (
+    <div className="flex items-center gap-1">
+      <Select value={String(j)} onValueChange={(v) => maj(m, Number(v))}>
+        <SelectTrigger className="h-8 w-16"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {Array.from({ length: JOURS_PAR_MOIS[m - 1] }, (_, i) => (
+            <SelectItem key={i + 1} value={String(i + 1)}>{i === 0 ? '1er' : i + 1}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select value={String(m)} onValueChange={(v) => maj(Number(v), j)}>
+        <SelectTrigger className="h-8 w-28"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {MOIS_LABELS.map((label, idx) => (
+            <SelectItem key={label} value={String(idx + 1)}>{label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+// Périodes saisonnières (site de contrat ou avenant) : "du [1er mai] au [1er septembre], tous les
+// [1] [mois]". Hors de ces périodes, la fréquence normale s'applique. Une période ne force aucune
+// date : elle change la fréquence des passages qui tombent dedans.
 export function PeriodesFrequenceInput({
   periodes,
   onChange,
@@ -363,28 +460,20 @@ export function PeriodesFrequenceInput({
   const maj = (i: number, champ: Partial<PeriodeFrequence>) =>
     onChange(periodes.map((p, j) => (j === i ? { ...p, ...champ } : p)));
   const chevauchement = chevauchementPeriodes(periodesValides(periodes));
-  const selectMois = (value: number, onValue: (m: number) => void) => (
-    <Select value={String(value)} onValueChange={(v) => onValue(Number(v))}>
-      <SelectTrigger className="h-8 w-32"><SelectValue /></SelectTrigger>
-      <SelectContent>
-        {MOIS_LABELS.map((label, idx) => (
-          <SelectItem key={label} value={String(idx + 1)}>{label}</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
   return (
     <div className="space-y-2">
       {periodes.map((p, i) => (
-        <div key={i} className="flex flex-wrap items-center gap-2 pl-2 border-l-2 border-amber-300">
-          <span className="text-xs text-gray-500">De</span>
-          {selectMois(p.moisDebut, (m) => maj(i, { moisDebut: m }))}
-          <span className="text-xs text-gray-500">à</span>
-          {selectMois(p.moisFin, (m) => maj(i, { moisFin: m }))}
+        // Clé dépendant du nombre de lignes : une suppression remonte les lignes (unité jours/mois à jour)
+        <div key={`${i}-${periodes.length}`} className="flex flex-wrap items-center gap-2 pl-2 border-l-2 border-amber-300">
+          <span className="text-xs text-gray-500">Du</span>
+          <JourAnnuelInput value={p.debut} onChange={(debut) => maj(i, { debut })} />
+          <span className="text-xs text-gray-500">au</span>
+          <JourAnnuelInput value={p.fin} onChange={(fin) => maj(i, { fin })} />
           <FrequenceInput
-            jours={p.frequenceJours || undefined}
+            jours={p.frequenceJours}
+            mois={p.frequenceMois}
             placeholder="Ex : 14"
-            onChange={(v) => maj(i, { frequenceJours: v.jours ?? 0 })}
+            onChange={(v) => maj(i, { frequenceJours: v.jours ?? null, frequenceMois: v.mois ?? null })}
           />
           <button
             type="button"
@@ -399,7 +488,7 @@ export function PeriodesFrequenceInput({
       {chevauchement && <p className="text-xs text-red-600">{chevauchement}</p>}
       <button
         type="button"
-        onClick={() => onChange([...periodes, { moisDebut: 6, moisFin: 9, frequenceJours: 0 }])}
+        onClick={() => onChange([...periodes, { debut: '05-01', fin: '09-01', frequenceJours: null, frequenceMois: null }])}
         className="text-xs text-primary hover:underline flex items-center gap-1"
       >
         <Plus className="h-3 w-3" />
@@ -569,13 +658,13 @@ export function ContratForm({
       premiereDateOperation: cs.premiereDateOperation?.split('T')[0],
       nombreOperations: cs.nombreOperations ?? undefined,
       nombreVisitesControleEntreOps: cs.nombreVisitesControleEntreOps ?? undefined,
-      periodesFrequence: cs.periodesFrequence ?? [],
+      periodesFrequence: normaliserPeriodes(cs.periodesFrequence),
       notes: cs.notes ?? undefined,
     })) || []
   );
 
   const projectionOps = (cs: ContratSiteInput, fin: string, t: ContratType = type) =>
-    computeProjectionDates(cs.premiereDateOperation || '', cs.nombreOperations, cs.frequenceOperationsJours, cs.frequenceOperationsMois, fin || undefined, t === 'PONCTUEL', t === 'PONCTUEL' ? [] : periodesValides(cs.periodesFrequence));
+    computeProjectionDates(cs.premiereDateOperation || '', cs.nombreOperations, cs.frequenceOperationsJours, cs.frequenceOperationsMois, fin || undefined, t === 'PONCTUEL', periodesValides(cs.periodesFrequence));
   const projectionCtrl = (cs: ContratSiteInput) =>
     computeProjectionControles(cs.datesPrevuesOperations || [], cs.nombreVisitesControleEntreOps || 0);
 
@@ -800,7 +889,7 @@ export function ContratForm({
               toast.error(`Configurez la fréquence des opérations pour ${siteName}`);
               return;
             }
-            const periodesSaisies = isPonctuel ? [] : (cs.periodesFrequence || []);
+            const periodesSaisies = cs.periodesFrequence || [];
             if (periodesValides(periodesSaisies).length !== periodesSaisies.length) {
               toast.error(`Complétez ou supprimez la période à fréquence spécifique incomplète pour ${siteName}`);
               setExpandedSites(prev => new Set([...prev, cs.siteId]));
@@ -851,7 +940,7 @@ export function ContratForm({
           nombreOperations: cs.nombreOperations ?? undefined,
           nombreVisitesControleEntreOps: cs.nombreVisitesControleEntreOps ?? undefined,
           // Toujours envoyé (tableau vide = aucune période) : sinon le backend conserve l'existant
-          periodesFrequence: isPonctuel ? [] : periodesValides(cs.periodesFrequence),
+          periodesFrequence: periodesValides(cs.periodesFrequence),
           notes: cs.notes ?? undefined,
         }));
 
@@ -1170,17 +1259,16 @@ export function ContratForm({
                             </span>
                             <FrequenceInput
                               jours={cs.frequenceOperationsJours}
+                              mois={cs.frequenceOperationsMois}
                               placeholder={isPonctuel ? 'Ex : 30' : 'Ex : 90'}
-                              onChange={(v) => updateSite(cs.siteId, { frequenceOperationsJours: v.jours, frequenceOperationsMois: undefined })}
+                              onChange={(v) => updateSite(cs.siteId, { frequenceOperationsJours: v.jours, frequenceOperationsMois: v.mois })}
                             />
                           </div>
 
-                          {!isPonctuel && (
-                            <PeriodesFrequenceInput
-                              periodes={cs.periodesFrequence || []}
-                              onChange={(periodesFrequence) => updateSite(cs.siteId, { periodesFrequence })}
-                            />
-                          )}
+                          <PeriodesFrequenceInput
+                            periodes={cs.periodesFrequence || []}
+                            onChange={(periodesFrequence) => updateSite(cs.siteId, { periodesFrequence })}
+                          />
 
                           <div className="flex items-center gap-3">
                             <span className="text-sm text-gray-600 w-40 shrink-0">1ère opération</span>

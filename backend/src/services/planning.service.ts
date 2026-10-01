@@ -1,6 +1,6 @@
 import { prisma } from '../config/database.js';
 import { InterventionStatut, ContratStatut, InterventionType } from '@prisma/client';
-import { getProchaineDateIntervention, parsePeriodesFrequence, type PeriodeFrequence, skipAlgerianWeekend, maxDate, isOverdue, isWithinDays, getCurrentWeekBounds } from '../utils/date.utils.js';
+import { getProchaineDateIntervention, prochaineDateTheorique, parsePeriodesFrequence, type PeriodeFrequence, skipAlgerianWeekend, maxDate, isOverdue, isWithinDays, getCurrentWeekBounds } from '../utils/date.utils.js';
 import { startOfDay, endOfDay, startOfMonth, addDays, addMonths, differenceInDays } from 'date-fns';
 import logger from '../lib/logger.js';
 
@@ -365,6 +365,7 @@ export const planningService = {
       where: { id: interventionId },
       include: {
         contrat: { include: { contratSites: true } },
+        avenant: { select: { frequenceOperationsJours: true, frequenceOperationsMois: true, periodesFrequence: true } },
         client: true,
       },
     });
@@ -458,6 +459,15 @@ export const planningService = {
         }
       }
 
+      // Opération d'avenant avec sa propre fréquence : elle (et ses périodes) prime sur le site
+      const av = (intervention as any).avenant;
+      const freqAvenant = intervention.type === 'OPERATION' && !!(av?.frequenceOperationsMois || av?.frequenceOperationsJours);
+      if (freqAvenant) {
+        moisPerso = av.frequenceOperationsMois ?? null;
+        joursPerso = moisPerso ? null : (av.frequenceOperationsJours ?? null);
+        periodes = parsePeriodesFrequence(av.periodesFrequence);
+      }
+
       // ── Étape 1 : Décaler les interventions futures si la date de réalisation
       //   diffère de la date prévue (ex : réalisé le 17 juin au lieu du 15 juin).
       //   S'applique à TOUS les types de contrat (annuel ET ponctuel), puis remet
@@ -477,7 +487,7 @@ export const planningService = {
           : (intervention.type === 'OPERATION' ? intervention.contrat?.premiereDateOperation : intervention.contrat?.premiereDateControle);
 
         let nextDate: Date;
-        if (anchor && moisPerso && periodes.length === 0) {
+        if (anchor && moisPerso && periodes.length === 0 && !freqAvenant) {
           // Mode ANCRAGE : prochaine échéance théorique de la série (ancre + k × fréquence)
           // strictement après l'échéance de l'intervention réalisée, pour éviter la dérive.
           modePlanning = 'ANCRAGE';
@@ -760,22 +770,28 @@ export const planningService = {
     const echeances = (premiere: Date | null, freq: Freq, nombre: number, periodes: PeriodeFrequence[] = []): Date[] => {
       if (!premiere) return [];
       const dates: Date[] = [];
-      let d = new Date(premiere);
+      // t = échéance théorique ; seule la date retenue est reportée hors week-end (pas de dérive)
+      let t = new Date(premiere);
+      let d = t;
+      const avancer = () => {
+        t = prochaineDateTheorique(t, freq!.jours, freq!.mois, periodes);
+        d = skipAlgerianWeekend(t);
+      };
       if (contrat.type === 'PONCTUEL') {
         for (let i = 0; i < nombre && i < MAX_ECHEANCES; i++) {
           if (!dateReprise || d >= dateReprise) dates.push(d);
           if (!freq) break; // Sans fréquence, toutes les ops tombent sur la même date : on en génère qu'une
-          d = getProchaineDateIntervention(d, freq.jours, freq.mois, periodes);
+          avancer();
         }
         return dates;
       }
       if (!freq) return [];
       if (dateReprise) {
-        for (let i = 0; d < dateReprise && i < MAX_ECHEANCES; i++) d = getProchaineDateIntervention(d, freq.jours, freq.mois, periodes);
+        for (let i = 0; d < dateReprise && i < MAX_ECHEANCES; i++) avancer();
       }
       for (let i = 0; i < MAX_ECHEANCES && (nombre > 0 ? i < nombre : d <= dateFinAnnuel); i++) {
         dates.push(d);
-        d = getProchaineDateIntervention(d, freq.jours, freq.mois, periodes);
+        avancer();
       }
       return dates;
     };
@@ -898,6 +914,10 @@ export const planningService = {
     params: {
       datesOperations?: Date[];
       datesControles?: Date[];
+      /** Fréquence propre à l'avenant (sinon celle du site / du contrat) */
+      frequence?: { jours: number | null; mois: number | null };
+      /** Périodes saisonnières de l'avenant (avec sa fréquence propre) */
+      periodes?: PeriodeFrequence[];
     } = {},
   ) {
     const contrat = await prisma.contrat.findUnique({
@@ -921,8 +941,9 @@ export const planningService = {
           nom: cs.site?.nom ?? 'site',
           prestations: cs.prestations?.length ? cs.prestations : contrat.prestations,
           montantApplique: (cs as any).montantHT ?? (contrat as any).montantHT ?? null,
-          freqOps: freqOpsSource(cs) ?? freqOpsSource(contrat),
-          periodes: parsePeriodesFrequence((cs as any).periodesFrequence),
+          // Fréquence de l'avenant (et ses périodes) si renseignée, sinon celle du site
+          freqOps: params.frequence ?? freqOpsSource(cs) ?? freqOpsSource(contrat),
+          periodes: params.frequence ? (params.periodes ?? []) : parsePeriodesFrequence((cs as any).periodesFrequence),
           premiereOp: cs.premiereDateOperation ?? contrat.premiereDateOperation,
         }))
       : [{
@@ -930,8 +951,8 @@ export const planningService = {
           nom: 'contrat',
           prestations: contrat.prestations,
           montantApplique: (contrat as any).montantHT ?? null,
-          freqOps: freqOpsSource(contrat),
-          periodes: [] as PeriodeFrequence[],
+          freqOps: params.frequence ?? freqOpsSource(contrat),
+          periodes: params.frequence ? (params.periodes ?? []) : ([] as PeriodeFrequence[]),
           premiereOp: contrat.premiereDateOperation,
         }];
 
@@ -955,13 +976,14 @@ export const planningService = {
           where: { ...serie, type: 'OPERATION', statut: { not: 'ANNULEE' } },
           orderBy: { datePrevue: 'desc' },
         });
-        let d = derniere
-          ? getProchaineDateIntervention(derniere.datePrevue, s.freqOps?.jours ?? null, s.freqOps?.mois ?? null, s.periodes)
+        // t = échéance théorique ; seule la date retenue est reportée hors week-end (pas de dérive)
+        let t = derniere
+          ? prochaineDateTheorique(derniere.datePrevue, s.freqOps?.jours ?? null, s.freqOps?.mois ?? null, s.periodes)
           : (s.premiereOp ? new Date(s.premiereOp) : startOfDay(new Date()));
         datesOps = [];
         for (let i = 0; i < nbOperations; i++) {
-          datesOps.push(d);
-          d = getProchaineDateIntervention(d, s.freqOps?.jours ?? null, s.freqOps?.mois ?? null, s.periodes);
+          datesOps.push(derniere || i > 0 ? skipAlgerianWeekend(t) : t);
+          t = prochaineDateTheorique(t, s.freqOps?.jours ?? null, s.freqOps?.mois ?? null, s.periodes);
         }
       } else {
         datesOps = [];

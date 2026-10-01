@@ -98,6 +98,7 @@ import type {
   // Zoning / Terrain
   ControlStatus,
   FieldIntervention,
+  PeriodeFrequence,
 } from '@/types';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
@@ -1833,6 +1834,9 @@ export const avenantApi = {
       nombreVisitesControleEntreOps?: number;
       datesOperations?: string[];
       datesControles?: string[];
+      frequenceOperationsJours?: number | null;
+      frequenceOperationsMois?: number | null;
+      periodesFrequence?: PeriodeFrequence[];
       notes?: string;
     }
   ) => {

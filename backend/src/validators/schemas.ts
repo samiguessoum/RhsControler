@@ -119,30 +119,45 @@ export const updatePrestationSchema = z.object({
 });
 
 // ============ CONTRATS ============
-// Période saisonnière : mois de début → mois de fin (inclus, à cheval sur l'année si début > fin)
+// Période saisonnière répétée chaque année : du jour `debut` au jour `fin` ("MM-JJ", inclus ; à cheval
+// sur l'année si debut > fin), fréquence en jours ou en mois
+const JOURS_PAR_MOIS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+const jourAnnuelSchema = z.string().refine((v) => {
+  if (!/^\d{2}-\d{2}$/.test(v)) return false;
+  const [m, j] = v.split('-').map(Number);
+  return m >= 1 && m <= 12 && j >= 1 && j <= JOURS_PAR_MOIS[m - 1];
+}, { message: 'Date de période invalide (format MM-JJ)' });
 const periodeFrequenceSchema = z.object({
-  moisDebut: z.number().int().min(1).max(12),
-  moisFin: z.number().int().min(1).max(12),
-  frequenceJours: z.number().int().min(1, 'Fréquence de période invalide').max(365, 'Fréquence de période invalide'),
+  debut: jourAnnuelSchema,
+  fin: jourAnnuelSchema,
+  frequenceJours: z.number().int().min(1).max(365).optional().nullable(),
+  frequenceMois: z.number().int().min(1).max(12).optional().nullable(),
+}).refine((p) => !!p.frequenceJours !== !!p.frequenceMois, {
+  message: 'Une période doit avoir une fréquence en jours ou en mois',
 });
-const moisDePeriode = (p: { moisDebut: number; moisFin: number }) => {
-  const mois: number[] = [];
-  for (let m = p.moisDebut; ; m = (m % 12) + 1) {
-    mois.push(m);
-    if (m === p.moisFin) break;
-  }
-  return mois;
+/** Jours (MMJJ) couverts par une période, sur une année bissextile. */
+const joursDePeriode = (p: { debut: string; fin: string }) => {
+  const d = Number(p.debut.replace('-', ''));
+  const f = Number(p.fin.replace('-', ''));
+  const jours: number[] = [];
+  JOURS_PAR_MOIS.forEach((n, i) => {
+    for (let j = 1; j <= n; j++) {
+      const k = (i + 1) * 100 + j;
+      if (d <= f ? k >= d && k <= f : k >= d || k <= f) jours.push(k);
+    }
+  });
+  return jours;
 };
 const periodesFrequenceSchema = z.array(periodeFrequenceSchema).max(12).refine((periodes) => {
   const vus = new Set<number>();
   for (const p of periodes) {
-    for (const m of moisDePeriode(p)) {
-      if (vus.has(m)) return false;
-      vus.add(m);
+    for (const k of joursDePeriode(p)) {
+      if (vus.has(k)) return false;
+      vus.add(k);
     }
   }
   return true;
-}, { message: 'Les périodes à fréquence spécifique d\'un site ne doivent pas se chevaucher' });
+}, { message: 'Les périodes à fréquence spécifique ne doivent pas se chevaucher' });
 
 const contratSiteSchema = z.object({
   siteId: z.string().uuid('ID site invalide'),
@@ -203,6 +218,9 @@ export const createAvenantSchema = z.object({
   nombreVisitesControleEntreOps: z.number().int().nonnegative().optional().default(0),
   datesOperations: z.array(z.string()).optional(),
   datesControles: z.array(z.string()).optional(),
+  frequenceOperationsJours: z.number().int().positive().optional().nullable(),
+  frequenceOperationsMois: z.number().int().positive().optional().nullable(),
+  periodesFrequence: periodesFrequenceSchema.optional(),
   notes: z.string().optional(),
 }).refine(
   (data) => data.nombreOperationsSupplementaires > 0 || !!data.datesOperations?.length || !!data.datesControles?.length,

@@ -49,10 +49,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { contratsApi, interventionsApi, prestationsApi, avenantApi, clientsApi, usersApi, bonCommandeApi } from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
-import { ContratForm, ProjectionDates, FrequenceInput, MOIS_LABELS, computeProjectionDates, computeProjectionControles, apresDerniereOperation, horsBornes } from './Contrats';
+import { ContratForm, ProjectionDates, FrequenceInput, PeriodesFrequenceInput, normaliserPeriodes, periodesValides, chevauchementPeriodes, libelleFrequence, libelleJourAnnuel, computeProjectionDates, computeProjectionControles, apresDerniereOperation, horsBornes } from './Contrats';
 import { addDays, format } from 'date-fns';
 import { formatDate, getStatutColor, getStatutLabel, cn } from '@/lib/utils';
-import type { Prestation, InterventionStatut } from '@/types';
+import type { Prestation, InterventionStatut, PeriodeFrequence } from '@/types';
 
 const STATUT_CONFIG: Record<string, { label: string; color: string; icon: typeof CheckCircle2 }> = {
   ACTIF: { label: 'Actif', color: 'bg-green-100 text-green-800 border-green-200', icon: CheckCircle2 },
@@ -79,6 +79,8 @@ type AvenantForm = {
   notes: string;
   nbOps?: number;
   freqOpsJours?: number;
+  freqOpsMois?: number;
+  periodes: PeriodeFrequence[];
   premiereOp: string;
   nbCtrlEntreOps?: number;
   datesOps: string[];
@@ -93,11 +95,11 @@ const formatDateBC = (d: string) => {
 
 const AVENANT_VIDE: AvenantForm = {
   nom: '', numeroBonCommande: '', dateSignature: '', dateExpiration: '', montantHT: '', notes: '',
-  premiereOp: '', datesOps: [], datesCtrl: [],
+  premiereOp: '', periodes: [], datesOps: [], datesCtrl: [],
 };
 
 const projectionAvenant = (f: AvenantForm, ponctuel: boolean, dateFin?: string) => {
-  const datesOps = computeProjectionDates(f.premiereOp, f.nbOps, f.freqOpsJours, undefined, dateFin, ponctuel);
+  const datesOps = computeProjectionDates(f.premiereOp, f.nbOps, f.freqOpsJours, f.freqOpsMois, dateFin, ponctuel, periodesValides(f.periodes));
   return {
     datesOps,
     datesCtrl: computeProjectionControles(datesOps, f.nbCtrlEntreOps || 0),
@@ -154,6 +156,10 @@ export function ContratDetailPage() {
         nombreVisitesControleEntreOps: avenantForm.nbCtrlEntreOps,
         datesOperations: avenantForm.datesOps.length ? avenantForm.datesOps : undefined,
         datesControles: avenantForm.datesCtrl.length ? avenantForm.datesCtrl : undefined,
+        // Fréquence et saisonnalité propres à l'avenant (passages suivants, attestation de garantie)
+        frequenceOperationsJours: avenantForm.freqOpsMois ? null : (avenantForm.freqOpsJours ?? null),
+        frequenceOperationsMois: avenantForm.freqOpsMois ?? null,
+        periodesFrequence: periodesValides(avenantForm.periodes),
         notes: avenantForm.notes || undefined,
       }),
     onSuccess: (res) => {
@@ -309,18 +315,23 @@ export function ContratDetailPage() {
   // la dernière intervention de chaque type
   const ouvrirAvenant = () => {
     const src: any = contrat?.contratSites?.[0] ?? contrat;
-    const freqJours: number | undefined = src?.frequenceOperationsMois ? undefined : (src?.frequenceOperationsJours ?? undefined);
+    const freqMois: number | undefined = src?.frequenceOperationsMois ?? undefined;
+    const freqJours: number | undefined = freqMois ? undefined : (src?.frequenceOperationsJours ?? undefined);
+    const periodes = normaliserPeriodes(src?.periodesFrequence);
     const derniereOp = interventions
       .filter((i) => i.type === 'OPERATION' && i.statut !== 'ANNULEE')
       .map((i) => i.datePrevue.slice(0, 10))
       .sort()
       .at(-1);
+    // Échéance suivant la dernière opération, à la fréquence applicable à cette date (saison comprise)
     const premiereOp = derniereOp
-      ? format(addDays(new Date(derniereOp + 'T12:00:00'), freqJours || 30), 'yyyy-MM-dd')
+      ? (computeProjectionDates(derniereOp, 2, freqJours, freqMois, undefined, true, periodes)[1] ?? format(new Date(), 'yyyy-MM-dd'))
       : format(new Date(), 'yyyy-MM-dd');
     setAvenantForm({
       ...AVENANT_VIDE,
       freqOpsJours: freqJours,
+      freqOpsMois: freqMois,
+      periodes,
       premiereOp,
       nbCtrlEntreOps: src?.nombreVisitesControleEntreOps ?? undefined,
     });
@@ -679,14 +690,14 @@ export function ContratDetailPage() {
 
                       {/* Paramètres du site */}
                       <div className="flex flex-wrap gap-2 mb-3">
-                        {cs.frequenceOperationsJours && (
+                        {(cs.frequenceOperationsJours || cs.frequenceOperationsMois) && (
                           <Badge variant="secondary" className="text-xs">
-                            Op: tous les {cs.frequenceOperationsJours}j
+                            Op: {libelleFrequence(cs.frequenceOperationsJours, cs.frequenceOperationsMois)}
                           </Badge>
                         )}
-                        {(cs.periodesFrequence ?? []).map((p, i) => (
+                        {normaliserPeriodes(cs.periodesFrequence).map((p, i) => (
                           <Badge key={i} variant="outline" className="text-xs bg-amber-50 border-amber-200 text-amber-800">
-                            {MOIS_LABELS[p.moisDebut - 1]} → {MOIS_LABELS[p.moisFin - 1]} : tous les {p.frequenceJours}j
+                            Du {libelleJourAnnuel(p.debut)} au {libelleJourAnnuel(p.fin)} : {libelleFrequence(p.frequenceJours, p.frequenceMois)}
                           </Badge>
                         ))}
                         {isPonctuel && cs.nombreOperations && (
@@ -1684,12 +1695,20 @@ export function ContratDetailPage() {
                   </span>
                   <FrequenceInput
                     jours={avenantForm.freqOpsJours}
+                    mois={avenantForm.freqOpsMois}
                     placeholder="Ex : 90"
-                    onChange={(v) => majSerieAvenant({ freqOpsJours: v.jours })}
+                    onChange={(v) => majSerieAvenant({ freqOpsJours: v.jours, freqOpsMois: v.mois })}
                   />
                 </div>
 
-                {(avenantForm.nbOps || 0) > 1 && !avenantForm.freqOpsJours && (
+                <div className="pl-[10.5rem]">
+                  <PeriodesFrequenceInput
+                    periodes={avenantForm.periodes}
+                    onChange={(periodes) => majSerieAvenant({ periodes })}
+                  />
+                </div>
+
+                {(avenantForm.nbOps || 0) > 1 && !avenantForm.freqOpsJours && !avenantForm.freqOpsMois && (
                   <p className="text-xs text-red-600 pl-[10.5rem]">Indiquez la fréquence pour projeter les dates.</p>
                 )}
 
@@ -1766,7 +1785,9 @@ export function ContratDetailPage() {
               disabled={
                 createAvenantMutation.isPending ||
                 (!avenantForm.datesOps.length && !avenantForm.datesCtrl.length) ||
-                avenantDatesInterdites.length > 0
+                avenantDatesInterdites.length > 0 ||
+                periodesValides(avenantForm.periodes).length !== avenantForm.periodes.length ||
+                !!chevauchementPeriodes(avenantForm.periodes)
               }
             >
               {createAvenantMutation.isPending ? 'Création...' : "Créer l'avenant"}

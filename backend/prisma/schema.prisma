@@ -639,8 +639,8 @@ model ContratSite {
   frequenceOperationsMois  Int?
   frequenceControleMois    Int?
   nombrePassagesAnnuels    Int?
-  // Périodes saisonnières : [{ moisDebut: 6, moisFin: 9, frequenceJours: 14 }] (mois 1-12, bornes incluses,
-  // période à cheval sur l'année si moisDebut > moisFin). Hors période : fréquence normale du site.
+  // Périodes saisonnières : [{ debut: "05-01", fin: "09-01", frequenceJours: null, frequenceMois: 1 }]
+  // (jours "MM-JJ" inclus, à cheval sur l'année si debut > fin). Hors période : fréquence normale du site.
   periodesFrequence        Json      @default("[]")
   createdAt                DateTime  @default(now())
   updatedAt                DateTime  @updatedAt
@@ -2497,6 +2497,10 @@ model Avenant {
   montantHT                            Decimal?  @db.Decimal(15, 2)
   nombreOperationsSupplementaires      Int       @default(0)
   nombreVisitesControleSupplementaires Int       @default(0)
+  // Fréquence propre à l'avenant (sinon celle du site / du contrat) et ses périodes saisonnières
+  frequenceOperationsJours             Int?
+  frequenceOperationsMois              Int?
+  periodesFrequence                    Json      @default("[]")
   notes                                String?
   createdById                          String
   createdBy                            User      @relation("AvenantCreatedBy", fields: [createdById], references: [id])

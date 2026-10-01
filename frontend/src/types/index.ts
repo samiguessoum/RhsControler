@@ -89,12 +89,13 @@ export interface Prestation {
 }
 
 // ============ CONTRAT SITE ============
-// Période saisonnière : du mois `moisDebut` au mois `moisFin` (1-12, inclus ; à cheval sur l'année
-// si moisDebut > moisFin), les opérations ont lieu tous les `frequenceJours` jours.
+// Période saisonnière répétée chaque année : du jour `debut` au jour `fin` ("MM-JJ", inclus ; à
+// cheval sur l'année si debut > fin), passages tous les `frequenceJours` jours ou `frequenceMois` mois.
 export interface PeriodeFrequence {
-  moisDebut: number;
-  moisFin: number;
-  frequenceJours: number;
+  debut: string;
+  fin: string;
+  frequenceJours: number | null;
+  frequenceMois: number | null;
 }
 
 export interface ContratSite {
