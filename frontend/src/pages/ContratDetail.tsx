@@ -49,7 +49,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { contratsApi, interventionsApi, prestationsApi, avenantApi, clientsApi, usersApi, bonCommandeApi } from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
-import { ContratForm, ProjectionDates, FrequenceInput, computeProjectionDates, computeProjectionControles, apresDerniereOperation, horsBornes } from './Contrats';
+import { ContratForm, ProjectionDates, FrequenceInput, MOIS_LABELS, computeProjectionDates, computeProjectionControles, apresDerniereOperation, horsBornes } from './Contrats';
 import { addDays, format } from 'date-fns';
 import { formatDate, getStatutColor, getStatutLabel, cn } from '@/lib/utils';
 import type { Prestation, InterventionStatut } from '@/types';
@@ -684,6 +684,11 @@ export function ContratDetailPage() {
                             Op: tous les {cs.frequenceOperationsJours}j
                           </Badge>
                         )}
+                        {(cs.periodesFrequence ?? []).map((p, i) => (
+                          <Badge key={i} variant="outline" className="text-xs bg-amber-50 border-amber-200 text-amber-800">
+                            {MOIS_LABELS[p.moisDebut - 1]} → {MOIS_LABELS[p.moisFin - 1]} : tous les {p.frequenceJours}j
+                          </Badge>
+                        ))}
                         {isPonctuel && cs.nombreOperations && (
                           <Badge variant="outline" className="text-xs bg-blue-50">
                             {cs.nombreOperations} op.

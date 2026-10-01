@@ -34,7 +34,43 @@ function skipAlgerianWeekend(d: Date): Date {
   return d;
 }
 import { useAuthStore } from '@/store/auth.store';
-import type { Contrat, CreateContratInput, Client, User, ContratStatut, ContratType, ContratSiteInput, Prestation } from '@/types';
+import type { Contrat, CreateContratInput, Client, User, ContratStatut, ContratType, ContratSiteInput, Prestation, PeriodeFrequence } from '@/types';
+
+export const MOIS_LABELS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+
+/** Mois (1-12) couverts par une période, à cheval sur l'année si moisDebut > moisFin. */
+function moisDePeriode(p: Pick<PeriodeFrequence, 'moisDebut' | 'moisFin'>): number[] {
+  const mois: number[] = [];
+  for (let m = p.moisDebut; mois.length < 12; m = (m % 12) + 1) {
+    mois.push(m);
+    if (m === p.moisFin) break;
+  }
+  return mois;
+}
+
+/** Même règle que le backend : période saisonnière couvrant la date, sinon null. */
+export function periodeALaDate(d: Date, periodes?: PeriodeFrequence[]): PeriodeFrequence | null {
+  if (!periodes?.length) return null;
+  const m = d.getMonth() + 1;
+  return periodes.find((p) => moisDePeriode(p).includes(m)) ?? null;
+}
+
+/** Périodes complètes uniquement (une ligne en cours de saisie n'est ni projetée ni envoyée). */
+export function periodesValides(periodes?: PeriodeFrequence[]): PeriodeFrequence[] {
+  return (periodes || []).filter((p) => p.moisDebut >= 1 && p.moisDebut <= 12 && p.moisFin >= 1 && p.moisFin <= 12 && p.frequenceJours > 0);
+}
+
+/** Message d'erreur si deux périodes partagent un mois, sinon null. */
+export function chevauchementPeriodes(periodes: PeriodeFrequence[]): string | null {
+  const vus = new Set<number>();
+  for (const p of periodes) {
+    for (const m of moisDePeriode(p)) {
+      if (vus.has(m)) return `${MOIS_LABELS[m - 1]} figure dans deux périodes`;
+      vus.add(m);
+    }
+  }
+  return null;
+}
 
 export function computeProjectionDates(
   premierDate: string,
@@ -43,11 +79,17 @@ export function computeProjectionDates(
   frequenceMois: number | undefined,
   dateFin: string | undefined,
   ponctuel: boolean,
+  periodes?: PeriodeFrequence[],
 ): string[] {
   if (!premierDate) return [];
   // Ponctuel : une échéance unique n'a pas besoin de fréquence
   if (!frequenceJours && !frequenceMois && !(ponctuel && nbOps === 1)) return [];
-  const suivante = (d: Date) => (frequenceMois ? addMonths(d, frequenceMois) : addDays(d, frequenceJours || 30));
+  // La fréquence est celle de la période saisonnière couvrant le passage, sinon la fréquence normale
+  const suivante = (d: Date) => {
+    const periode = periodeALaDate(d, periodes);
+    if (periode) return addDays(d, periode.frequenceJours);
+    return frequenceMois ? addMonths(d, frequenceMois) : addDays(d, frequenceJours || 30);
+  };
   const dates: string[] = [];
   let d = new Date(premierDate + 'T12:00:00');
   if (nbOps && nbOps > 0) {
@@ -309,6 +351,64 @@ export function FrequenceInput({
   );
 }
 
+// Périodes saisonnières d'un site : "de [mois] à [mois], tous les [N] jours". Hors de ces périodes,
+// la fréquence normale du site s'applique.
+export function PeriodesFrequenceInput({
+  periodes,
+  onChange,
+}: {
+  periodes: PeriodeFrequence[];
+  onChange: (periodes: PeriodeFrequence[]) => void;
+}) {
+  const maj = (i: number, champ: Partial<PeriodeFrequence>) =>
+    onChange(periodes.map((p, j) => (j === i ? { ...p, ...champ } : p)));
+  const chevauchement = chevauchementPeriodes(periodesValides(periodes));
+  const selectMois = (value: number, onValue: (m: number) => void) => (
+    <Select value={String(value)} onValueChange={(v) => onValue(Number(v))}>
+      <SelectTrigger className="h-8 w-32"><SelectValue /></SelectTrigger>
+      <SelectContent>
+        {MOIS_LABELS.map((label, idx) => (
+          <SelectItem key={label} value={String(idx + 1)}>{label}</SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+  return (
+    <div className="space-y-2">
+      {periodes.map((p, i) => (
+        <div key={i} className="flex flex-wrap items-center gap-2 pl-2 border-l-2 border-amber-300">
+          <span className="text-xs text-gray-500">De</span>
+          {selectMois(p.moisDebut, (m) => maj(i, { moisDebut: m }))}
+          <span className="text-xs text-gray-500">à</span>
+          {selectMois(p.moisFin, (m) => maj(i, { moisFin: m }))}
+          <FrequenceInput
+            jours={p.frequenceJours || undefined}
+            placeholder="Ex : 14"
+            onChange={(v) => maj(i, { frequenceJours: v.jours ?? 0 })}
+          />
+          <button
+            type="button"
+            onClick={() => onChange(periodes.filter((_, j) => j !== i))}
+            title="Supprimer cette période"
+            className="text-gray-300 hover:text-red-600"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      ))}
+      {chevauchement && <p className="text-xs text-red-600">{chevauchement}</p>}
+      <button
+        type="button"
+        onClick={() => onChange([...periodes, { moisDebut: 6, moisFin: 9, frequenceJours: 0 }])}
+        className="text-xs text-primary hover:underline flex items-center gap-1"
+      >
+        <Plus className="h-3 w-3" />
+        Période à fréquence différente (ex : été)
+      </button>
+    </div>
+  );
+}
+
 // Sélecteur de client avec recherche côté serveur : la liste des clients actifs chargée en
 // arrière-plan est plafonnée (voir clientController.list), donc taper une recherche interroge
 // le backend sur l'ensemble des clients au lieu de se limiter aux ~100 premiers par ordre alphabétique.
@@ -469,12 +569,13 @@ export function ContratForm({
       premiereDateOperation: cs.premiereDateOperation?.split('T')[0],
       nombreOperations: cs.nombreOperations ?? undefined,
       nombreVisitesControleEntreOps: cs.nombreVisitesControleEntreOps ?? undefined,
+      periodesFrequence: cs.periodesFrequence ?? [],
       notes: cs.notes ?? undefined,
     })) || []
   );
 
   const projectionOps = (cs: ContratSiteInput, fin: string, t: ContratType = type) =>
-    computeProjectionDates(cs.premiereDateOperation || '', cs.nombreOperations, cs.frequenceOperationsJours, cs.frequenceOperationsMois, fin || undefined, t === 'PONCTUEL');
+    computeProjectionDates(cs.premiereDateOperation || '', cs.nombreOperations, cs.frequenceOperationsJours, cs.frequenceOperationsMois, fin || undefined, t === 'PONCTUEL', t === 'PONCTUEL' ? [] : periodesValides(cs.periodesFrequence));
   const projectionCtrl = (cs: ContratSiteInput) =>
     computeProjectionControles(cs.datesPrevuesOperations || [], cs.nombreVisitesControleEntreOps || 0);
 
@@ -519,13 +620,13 @@ export function ContratForm({
       // convention si elle est postérieure) : la projection s'affiche dès le nombre / la fréquence
       const departParDefaut = [dateDebut, dateDebutConvention].filter(Boolean).sort().pop() || '';
       // Recalculer la projection des dates quand les paramètres changent
-      if (['premiereDateOperation', 'frequenceOperationsJours', 'frequenceOperationsMois', 'nombreOperations'].some((k) => k in updates)) {
+      if (['premiereDateOperation', 'frequenceOperationsJours', 'frequenceOperationsMois', 'nombreOperations', 'periodesFrequence'].some((k) => k in updates)) {
         if (!('premiereDateOperation' in updates) && !updated.premiereDateOperation && (updated.nombreOperations || updated.frequenceOperationsJours || updated.frequenceOperationsMois)) {
           updated.premiereDateOperation = departParDefaut;
         }
         updated.datesPrevuesOperations = projectionOps(updated, dateFin);
       }
-      const opsChanged = ['premiereDateOperation', 'frequenceOperationsJours', 'frequenceOperationsMois', 'nombreOperations', 'datesPrevuesOperations'].some((k) => k in updates);
+      const opsChanged = ['premiereDateOperation', 'frequenceOperationsJours', 'frequenceOperationsMois', 'nombreOperations', 'periodesFrequence', 'datesPrevuesOperations'].some((k) => k in updates);
       if ('nombreVisitesControleEntreOps' in updates || opsChanged) {
         updated.datesPrevuesControles = projectionCtrl(updated);
       }
@@ -582,19 +683,22 @@ export function ContratForm({
   const changerType = (value: ContratType) => {
     setType(value);
     if (value === 'PONCTUEL') setReconductionAuto(false);
-    setContratSites((sites) => sites.map((cs) => ({
-      ...cs,
-      ...(cs.datesPrevuesOperations ? { datesPrevuesOperations: projectionOps(cs, dateFin, value) } : {}),
-      ...(cs.datesPrevuesControles ? { datesPrevuesControles: projectionCtrl(cs) } : {}),
-    })));
+    setContratSites((sites) => sites.map((cs) => {
+      if (!cs.datesPrevuesOperations) return cs;
+      // Les visites de contrôle sont ancrées sur les opérations recalculées
+      const maj = { ...cs, datesPrevuesOperations: projectionOps(cs, dateFin, value) };
+      return { ...maj, datesPrevuesControles: projectionCtrl(maj) };
+    }));
   };
 
   const changerDateFin = (value: string) => {
     setDateFin(value);
-    setContratSites((sites) => sites.map((cs) => ({
-      ...cs,
-      ...(cs.datesPrevuesOperations ? { datesPrevuesOperations: projectionOps(cs, value) } : {}),
-    })));
+    setContratSites((sites) => sites.map((cs) => {
+      if (!cs.datesPrevuesOperations) return cs;
+      // Les visites de contrôle sont ancrées sur les opérations recalculées
+      const maj = { ...cs, datesPrevuesOperations: projectionOps(cs, value) };
+      return { ...maj, datesPrevuesControles: projectionCtrl(maj) };
+    }));
   };
 
   // Add prestation to a site
@@ -696,6 +800,18 @@ export function ContratForm({
               toast.error(`Configurez la fréquence des opérations pour ${siteName}`);
               return;
             }
+            const periodesSaisies = isPonctuel ? [] : (cs.periodesFrequence || []);
+            if (periodesValides(periodesSaisies).length !== periodesSaisies.length) {
+              toast.error(`Complétez ou supprimez la période à fréquence spécifique incomplète pour ${siteName}`);
+              setExpandedSites(prev => new Set([...prev, cs.siteId]));
+              return;
+            }
+            const chevauchement = chevauchementPeriodes(periodesSaisies);
+            if (chevauchement) {
+              toast.error(`${siteName} : ${chevauchement}`);
+              setExpandedSites(prev => new Set([...prev, cs.siteId]));
+              return;
+            }
             if ((cs.nombreOperations || freqOps) && !cs.premiereDateOperation) {
               toast.error(`Indiquez la date de la 1ère opération pour ${siteName}`);
               return;
@@ -734,6 +850,8 @@ export function ContratForm({
           frequenceOperationsMois: cs.frequenceOperationsMois ?? undefined,
           nombreOperations: cs.nombreOperations ?? undefined,
           nombreVisitesControleEntreOps: cs.nombreVisitesControleEntreOps ?? undefined,
+          // Toujours envoyé (tableau vide = aucune période) : sinon le backend conserve l'existant
+          periodesFrequence: isPonctuel ? [] : periodesValides(cs.periodesFrequence),
           notes: cs.notes ?? undefined,
         }));
 
@@ -1056,6 +1174,13 @@ export function ContratForm({
                               onChange={(v) => updateSite(cs.siteId, { frequenceOperationsJours: v.jours, frequenceOperationsMois: undefined })}
                             />
                           </div>
+
+                          {!isPonctuel && (
+                            <PeriodesFrequenceInput
+                              periodes={cs.periodesFrequence || []}
+                              onChange={(periodesFrequence) => updateSite(cs.siteId, { periodesFrequence })}
+                            />
+                          )}
 
                           <div className="flex items-center gap-3">
                             <span className="text-sm text-gray-600 w-40 shrink-0">1ère opération</span>

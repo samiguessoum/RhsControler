@@ -89,6 +89,14 @@ export interface Prestation {
 }
 
 // ============ CONTRAT SITE ============
+// Période saisonnière : du mois `moisDebut` au mois `moisFin` (1-12, inclus ; à cheval sur l'année
+// si moisDebut > moisFin), les opérations ont lieu tous les `frequenceJours` jours.
+export interface PeriodeFrequence {
+  moisDebut: number;
+  moisFin: number;
+  frequenceJours: number;
+}
+
 export interface ContratSite {
   id: string;
   contratId: string;
@@ -101,6 +109,7 @@ export interface ContratSite {
   premiereDateOperation?: string;
   nombreOperations?: number;
   nombreVisitesControleEntreOps?: number;
+  periodesFrequence?: PeriodeFrequence[];
   notes?: string;
   createdAt: string;
   updatedAt: string;
@@ -115,6 +124,7 @@ export interface ContratSiteInput {
   premiereDateOperation?: string;
   nombreOperations?: number;
   nombreVisitesControleEntreOps?: number;
+  periodesFrequence?: PeriodeFrequence[];
   notes?: string;
   datesPrevuesOperations?: string[];
   datesPrevuesControles?: string[];
