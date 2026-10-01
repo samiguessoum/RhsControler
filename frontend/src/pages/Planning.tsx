@@ -4653,11 +4653,14 @@ export function PlanningPage() {
                 interventionId: intervention.id,
                 interventionRef: intervention.type,
                 dateIntervention: intervention.dateRealisee || intervention.datePrevue,
+                contratId: intervention.contratId,
                 contratType: intervention.contrat?.type,
                 contratNumeroBonCommande: intervention.contrat?.numeroBonCommande,
+                contratRefExterne: (intervention.contrat as any)?.refExterne,
                 contratDateDebut: intervention.contrat?.dateDebut,
                 contratDateDebutConvention: intervention.contrat?.dateDebutConvention,
                 contratNom: intervention.contrat?.nom,
+                contratBonsCommandes: (intervention.contrat as any)?.bonsCommandes ?? [],
                 avenant: intervention.avenant
                   ? { numero: intervention.avenant.numero, nom: intervention.avenant.nom, numeroBonCommande: intervention.avenant.numeroBonCommande }
                   : undefined,

@@ -93,18 +93,15 @@ export function horsBornes(date: string, debut: string, fin: string): boolean {
   return !!date && ((!!debut && date < debut) || (!!fin && date > fin));
 }
 
-function resolverBCFrontend(
+function resolveBCsPairFrontend(
   bonsCommandes: { numero: string; date?: string | null; sites?: { siteId: string }[] }[],
   siteId?: string | null,
-): { numero: string; date?: string | null } | null {
-  if (!bonsCommandes?.length) return null;
-  if (siteId) {
-    const bcSite = bonsCommandes.find((bc) => (bc.sites ?? []).some((s) => s.siteId === siteId));
-    if (bcSite) return bcSite;
-  }
-  const bcAll = bonsCommandes.find((bc) => (bc.sites ?? []).length === 0);
-  if (bcAll) return bcAll;
-  return null;
+): { bcConvention: { numero: string } | null; bcSite: { numero: string } | null } {
+  const bcConvention = bonsCommandes.find((bc) => (bc.sites ?? []).length === 0) ?? null;
+  const bcSite = siteId
+    ? (bonsCommandes.find((bc) => (bc.sites ?? []).some((s) => s.siteId === siteId)) ?? null)
+    : null;
+  return { bcConvention, bcSite };
 }
 
 // Dates soumises au garde-fou convention : les opérations et les visites qui seront planifiées
@@ -1830,14 +1827,20 @@ export function ContratsPage() {
                     <Link
                       to={(() => {
                         const firstSiteId = selectedContrat.contratSites?.[0]?.siteId || null;
-                        const resolvedBc = resolverBCFrontend(selectedContrat.bonsCommandes ?? [], firstSiteId)
-                          ?? (selectedContrat.numeroBonCommande ? { numero: selectedContrat.numeroBonCommande } : null);
-                        const bcPart = resolvedBc?.numero ? `Selon le Bon de commande "${resolvedBc.numero}"` : '';
+                        const bcs = selectedContrat.bonsCommandes ?? [];
+                        const { bcConvention, bcSite } = resolveBCsPairFrontend(bcs, firstSiteId);
+                        const both = bcConvention && bcSite;
+                        const bcParts: string[] = [];
+                        if (bcConvention) bcParts.push(`BC${both ? ' convention' : ''} N° ${bcConvention.numero}`);
+                        if (bcSite) bcParts.push(`BC${both ? ' site' : ''} N° ${bcSite.numero}`);
+                        if (!bcConvention && !bcSite && bcs.length === 0 && selectedContrat.numeroBonCommande) {
+                          bcParts.push(`Bon de commande N° ${selectedContrat.numeroBonCommande}`);
+                        }
                         const mention = [
                           selectedContrat.nom?.trim() ? `Contrat « ${selectedContrat.nom.trim()} »` : '',
                           (selectedContrat as any).refExterne ? `Selon le contrat N° ${(selectedContrat as any).refExterne}` : '',
-                          bcPart,
                           (selectedContrat as any).dateDebutConvention ? `Convention signée le ${new Date((selectedContrat as any).dateDebutConvention).toLocaleDateString('fr-FR')}` : '',
+                          ...bcParts,
                         ].filter(Boolean).join(' — ');
                         return `/commerce?tab=factures&contratId=${selectedContrat.id}&clientId=${selectedContrat.clientId}&siteId=${firstSiteId || ''}&mentionSpeciale=${encodeURIComponent(mention)}`;
                       })()}

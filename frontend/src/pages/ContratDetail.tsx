@@ -221,14 +221,14 @@ export function ContratDetailPage() {
   });
 
   const deleteBCMutation = useMutation({
-    mutationFn: (bcId: string) => bonCommandeApi.update(bcId, { actif: false }),
+    mutationFn: (bcId: string) => bonCommandeApi.delete(bcId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contrat', id] });
-      toast.success('Bon de commande désactivé');
+      toast.success('Bon de commande supprimé');
       setDeletingBCId(null);
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Impossible de désactiver ce BC');
+      toast.error(error.response?.data?.error || 'Impossible de supprimer ce BC');
       setDeletingBCId(null);
     },
   });
@@ -1821,9 +1821,9 @@ export function ContratDetailPage() {
       <Dialog open={!!deletingBCId} onOpenChange={(o) => { if (!o) setDeletingBCId(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Désactiver ce bon de commande ?</DialogTitle>
+            <DialogTitle>Supprimer ce bon de commande ?</DialogTitle>
             <DialogDescription>
-              Le BC sera retiré de ce contrat. Les factures existantes ne seront pas affectées.
+              Le BC sera supprimé et dissocié des interventions liées. Les factures existantes ne seront pas affectées.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -1833,7 +1833,7 @@ export function ContratDetailPage() {
               onClick={() => deletingBCId && deleteBCMutation.mutate(deletingBCId)}
               disabled={deleteBCMutation.isPending}
             >
-              {deleteBCMutation.isPending ? 'Désactivation...' : 'Désactiver'}
+              {deleteBCMutation.isPending ? 'Suppression...' : 'Supprimer'}
             </Button>
           </DialogFooter>
         </DialogContent>

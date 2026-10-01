@@ -3098,29 +3098,42 @@ export function CommercePage() {
       dateIntervention?: string;
       contratType?: 'PONCTUEL' | 'ANNUEL';
       contratNumeroBonCommande?: string;
+      contratRefExterne?: string | null;
       contratDateDebut?: string;
       contratDateDebutConvention?: string | null;
       contratNom?: string | null;
+      contratBonsCommandes?: { numero: string; date?: string | null; sites: { siteId: string }[] }[];
       avenant?: { numero: number; nom?: string | null; numeroBonCommande?: string | null };
     } | null;
 
     if (state?.generateFacture && state.clientId) {
       setActiveTab('factures');
 
-      const dateDebutStr = state.contratDateDebut ? new Date(state.contratDateDebut).toLocaleDateString('fr-FR') : '';
       const mentions: string[] = [];
-      if (state.contratNom?.trim()) {
-        mentions.push(`Contrat « ${state.contratNom.trim()} »`);
-      }
+      if (state.contratNom?.trim()) mentions.push(`Contrat « ${state.contratNom.trim()} »`);
+      if (state.contratRefExterne) mentions.push(`Selon le contrat N° ${state.contratRefExterne}`);
+
       if (state.contratType === 'PONCTUEL' && state.contratNumeroBonCommande) {
+        const dateDebutStr = state.contratDateDebut ? new Date(state.contratDateDebut).toLocaleDateString('fr-FR') : '';
         mentions.push(`Selon le bon de commande "${state.contratNumeroBonCommande}"${dateDebutStr ? ` du ${dateDebutStr}` : ''}`);
       } else if (state.contratType === 'ANNUEL') {
-        // Date de signature de la convention (et non le début de la période de prestations)
         if (state.contratDateDebutConvention) {
           mentions.push(`Convention signée le ${new Date(state.contratDateDebutConvention).toLocaleDateString('fr-FR')}`);
         }
-        if (state.contratNumeroBonCommande) mentions.push(`Selon le bon de commande "${state.contratNumeroBonCommande}"`);
+        // Résolution des BCs : convention (all-sites) + site spécifique
+        const bcs = state.contratBonsCommandes ?? [];
+        const siteId = state.siteId ?? null;
+        const bcSite = siteId ? (bcs.find(bc => (bc.sites ?? []).some(s => s.siteId === siteId)) ?? null) : null;
+        const bcConvention = bcs.find(bc => (bc.sites ?? []).length === 0) ?? null;
+        const both = bcConvention && bcSite;
+        if (bcConvention) mentions.push(`BC${both ? ' convention' : ''} N° ${bcConvention.numero}`);
+        if (bcSite) mentions.push(`BC${both ? ' site' : ''} N° ${bcSite.numero}`);
+        // Fallback legacy uniquement si aucun BonCommande entity
+        if (!bcConvention && !bcSite && bcs.length === 0 && state.contratNumeroBonCommande) {
+          mentions.push(`Bon de commande N° ${state.contratNumeroBonCommande}`);
+        }
       }
+
       if (state.avenant) {
         const av = state.avenant;
         mentions.push(

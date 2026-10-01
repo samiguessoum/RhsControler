@@ -81,8 +81,6 @@ interface FactureDocument extends DocumentBase {
   typeDocument?: string | null;
   refBonCommandeClient?: string | null;
   mentionSpeciale?: string | null;
-  bonCommandeNumero?: string | null;
-  bonCommandeDate?: Date | string | null;
   dateOperation?: Date | null;
   site?: {
     nom: string;
@@ -1321,16 +1319,6 @@ export async function generateFacturePDF(facture: FactureDocument): Promise<Buff
       mentionY += 16;
 
       let factureTableStartY = mentionY + 6;
-      if (facture.bonCommandeNumero) {
-        const bcDateStr = facture.bonCommandeDate
-          ? ` du ${new Intl.DateTimeFormat('fr-FR').format(new Date(facture.bonCommandeDate as string))}`
-          : '';
-        doc.font('Helvetica-Bold')
-          .fontSize(9)
-          .fillColor('#111827')
-          .text(`Bon de commande N° ${facture.bonCommandeNumero}${bcDateStr}`, 28, factureTableStartY, { width: 420 });
-        factureTableStartY += 16;
-      }
       if (facture.refBonCommandeClient) {
         doc.font('Helvetica-Bold')
           .fontSize(9)

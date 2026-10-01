@@ -28,3 +28,24 @@ export function resolverBC(
   // Aucun BC ne couvre ce site — ne pas inventer un numéro incorrect sur la facture
   return null;
 }
+
+/**
+ * Retourne la paire (BC convention, BC site) pour affichage complet sur une facture.
+ * - bcConvention : BC sans aucun lien de site (scope contrat entier)
+ * - bcSite      : BC lié explicitement au site de la facture
+ * Les deux peuvent être null. Si le même BC est à la fois convention et site (cas impossible
+ * par construction) bcSite prend la priorité et bcConvention sera null.
+ */
+export function resolveBCsPair(
+  bonsCommandes: BcForResolution[],
+  siteId?: string | null,
+): { bcConvention: { numero: string; date: Date | null } | null; bcSite: { numero: string; date: Date | null } | null } {
+  const raw_bcConvention = bonsCommandes.find((bc) => bc.sites.length === 0) ?? null;
+  const raw_bcSite = siteId
+    ? (bonsCommandes.find((bc) => bc.sites.some((s) => s.siteId === siteId)) ?? null)
+    : null;
+  return {
+    bcConvention: raw_bcConvention ? { numero: raw_bcConvention.numero, date: raw_bcConvention.date } : null,
+    bcSite: raw_bcSite ? { numero: raw_bcSite.numero, date: raw_bcSite.date } : null,
+  };
+}

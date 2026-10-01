@@ -264,6 +264,12 @@ export const interventionController = {
                 select: { id: true, nom: true, prenom: true },
               },
               contratSites: true,
+              bonsCommandes: {
+                select: { id: true, numero: true, date: true, sites: { select: { siteId: true } } },
+                where: { actif: true },
+                orderBy: { createdAt: 'desc' },
+                take: 10,
+              },
             },
           },
           avenant: { select: { id: true, numero: true, nom: true, numeroBonCommande: true } },
