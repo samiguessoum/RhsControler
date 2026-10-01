@@ -119,6 +119,31 @@ export const updatePrestationSchema = z.object({
 });
 
 // ============ CONTRATS ============
+// Période saisonnière : mois de début → mois de fin (inclus, à cheval sur l'année si début > fin)
+const periodeFrequenceSchema = z.object({
+  moisDebut: z.number().int().min(1).max(12),
+  moisFin: z.number().int().min(1).max(12),
+  frequenceJours: z.number().int().min(1, 'Fréquence de période invalide').max(365, 'Fréquence de période invalide'),
+});
+const moisDePeriode = (p: { moisDebut: number; moisFin: number }) => {
+  const mois: number[] = [];
+  for (let m = p.moisDebut; ; m = (m % 12) + 1) {
+    mois.push(m);
+    if (m === p.moisFin) break;
+  }
+  return mois;
+};
+const periodesFrequenceSchema = z.array(periodeFrequenceSchema).max(12).refine((periodes) => {
+  const vus = new Set<number>();
+  for (const p of periodes) {
+    for (const m of moisDePeriode(p)) {
+      if (vus.has(m)) return false;
+      vus.add(m);
+    }
+  }
+  return true;
+}, { message: 'Les périodes à fréquence spécifique d\'un site ne doivent pas se chevaucher' });
+
 const contratSiteSchema = z.object({
   siteId: z.string().uuid('ID site invalide'),
   prestations: z.array(z.string()).min(1, 'Au moins une prestation requise').optional(),
@@ -129,6 +154,7 @@ const contratSiteSchema = z.object({
   nombreOperations: z.number().int().positive().optional().nullable(),
   nombreVisitesControleEntreOps: z.number().int().nonnegative().optional().nullable(),
   notes: z.string().optional().nullable(),
+  periodesFrequence: periodesFrequenceSchema.optional(),
   // Dates projetées (éventuellement retouchées) dans le formulaire : prioritaires sur la fréquence
   datesPrevuesOperations: z.array(z.string()).optional(),
   datesPrevuesControles: z.array(z.string()).optional(),

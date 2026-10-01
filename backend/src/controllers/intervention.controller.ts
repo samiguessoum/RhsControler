@@ -7,6 +7,7 @@ import { startOfDay, endOfDay, parseISO } from 'date-fns';
 import attestationService from '../services/attestation.service.js';
 import logger from '../lib/logger.js';
 import { AppError } from '../lib/errors.js';
+import { parsePeriodesFrequence, periodeALaDate } from '../utils/date.utils.js';
 
 
 export const interventionController = {
@@ -323,6 +324,9 @@ export const interventionController = {
             maxCtrls = cs.nombreVisitesControle ?? null;
             freqOpsJours = cs.frequenceOperationsJours ?? null;
             freqCtrlsJours = cs.frequenceControleJours ?? null;
+            // Période saisonnière couvrant la date de l'intervention : sa fréquence prime
+            const periode = periodeALaDate(intervention.dateRealisee ?? intervention.datePrevue, parsePeriodesFrequence((cs as any).periodesFrequence));
+            if (periode) freqOpsJours = periode.frequenceJours;
           }
         }
 

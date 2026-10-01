@@ -9,8 +9,15 @@ import { AppError } from '../lib/errors.js';
 
 type SiteInput = Record<string, any>;
 
-/** Données d'un ContratSite à enregistrer (identiques en création et en modification). */
-function contratSiteData(cs: SiteInput) {
+/**
+ * Données d'un ContratSite à enregistrer (identiques en création et en modification).
+ * `precedent` : ContratSite existant du même site (modification). Les ContratSites sont recréés à
+ * chaque modification : les champs que le formulaire ne gère pas (import CSV : montant, règles,
+ * contrôles…) et les périodes saisonnières non transmises sont repris de l'existant au lieu
+ * d'être remis à null.
+ */
+function contratSiteData(cs: SiteInput, precedent?: SiteInput | null) {
+  const garder = (k: string) => (cs[k] !== undefined ? cs[k] : precedent?.[k]) ?? null;
   return {
     siteId: cs.siteId,
     prestations: cs.prestations || [],
@@ -20,14 +27,15 @@ function contratSiteData(cs: SiteInput) {
     premiereDateOperation: cs.premiereDateOperation ?? null,
     nombreOperations: cs.nombreOperations ?? null,
     nombreVisitesControleEntreOps: cs.nombreVisitesControleEntreOps ?? null,
-    nombreVisitesControle: cs.nombreVisitesControle ?? null,
-    frequenceControleJours: cs.frequenceControleJours ?? null,
-    frequenceControleMois: cs.frequenceControleMois ?? null,
-    premiereDateControle: cs.premiereDateControle ?? null,
-    frequenceRegles: cs.frequenceRegles ?? null,
-    frequenceReglesControle: cs.frequenceReglesControle ?? null,
-    nombrePassagesAnnuels: cs.nombrePassagesAnnuels ?? null,
-    montantHT: cs.montantHT ?? null,
+    nombreVisitesControle: garder('nombreVisitesControle'),
+    frequenceControleJours: garder('frequenceControleJours'),
+    frequenceControleMois: garder('frequenceControleMois'),
+    premiereDateControle: garder('premiereDateControle'),
+    frequenceRegles: garder('frequenceRegles'),
+    frequenceReglesControle: garder('frequenceReglesControle'),
+    nombrePassagesAnnuels: garder('nombrePassagesAnnuels'),
+    montantHT: garder('montantHT'),
+    periodesFrequence: garder('periodesFrequence') ?? [],
     notes: cs.notes ?? null,
   };
 }
@@ -80,6 +88,7 @@ function empreintePlanning(contrat: Record<string, any>, sites: SiteInput[]) {
     dOp: jour(cs.premiereDateOperation),
     nOp: cs.nombreOperations ?? null,
     nCtEO: cs.nombreVisitesControleEntreOps ?? null,
+    periodes: cs.periodesFrequence ?? [],
   });
   return JSON.stringify({
     type: contrat.type,
@@ -413,7 +422,8 @@ export const contratController = {
         await prisma.$transaction(async (tx) => {
           await tx.contratSite.deleteMany({ where: { contratId: id } });
           for (const cs of data.contratSites || []) {
-            await tx.contratSite.create({ data: { contratId: id, ...contratSiteData(cs) } });
+            const precedent = existing.contratSites.find((e) => e.siteId === cs.siteId);
+            await tx.contratSite.create({ data: { contratId: id, ...contratSiteData(cs, precedent) } });
           }
         });
       }

@@ -14,15 +14,56 @@ export function skipAlgerianWeekend(d: Date): Date {
 }
 
 /**
- * Calcule la prochaine date d'intervention selon un intervalle en jours ou en mois calendaires
+ * Période saisonnière d'un site de contrat : du mois `moisDebut` au mois `moisFin` (1-12, inclus),
+ * les passages ont lieu tous les `frequenceJours` jours. moisDebut > moisFin = période à cheval
+ * sur deux années (ex : novembre → février).
+ */
+export type PeriodeFrequence = { moisDebut: number; moisFin: number; frequenceJours: number };
+
+/** Lit les périodes stockées (JSON) en ignorant toute entrée invalide. */
+export function parsePeriodesFrequence(value: unknown): PeriodeFrequence[] {
+  if (!Array.isArray(value)) return [];
+  const mois = (v: unknown) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 12;
+  return value
+    .filter((p: any) => p && mois(p.moisDebut) && mois(p.moisFin) && Number.isInteger(p.frequenceJours) && p.frequenceJours > 0)
+    .map((p: any) => ({ moisDebut: p.moisDebut, moisFin: p.moisFin, frequenceJours: p.frequenceJours }));
+}
+
+/** Période saisonnière couvrant la date (la première qui correspond), sinon null. */
+export function periodeALaDate(date: Date, periodes?: PeriodeFrequence[] | null): PeriodeFrequence | null {
+  if (!periodes?.length) return null;
+  const m = date.getMonth() + 1;
+  return periodes.find((p) => (p.moisDebut <= p.moisFin ? m >= p.moisDebut && m <= p.moisFin : m >= p.moisDebut || m <= p.moisFin)) ?? null;
+}
+
+/**
+ * Fréquence qui s'applique à un passage à cette date : celle de la période saisonnière qui la
+ * couvre, sinon la fréquence normale (jours ou mois).
+ */
+export function frequenceALaDate(
+  date: Date,
+  jours: number | null | undefined,
+  mois: number | null | undefined,
+  periodes?: PeriodeFrequence[] | null,
+): { jours: number | null; mois: number | null } {
+  const p = periodeALaDate(date, periodes);
+  if (p) return { jours: p.frequenceJours, mois: null };
+  return { jours: mois ? null : (jours ?? null), mois: mois ?? null };
+}
+
+/**
+ * Calcule la prochaine date d'intervention selon un intervalle en jours ou en mois calendaires.
+ * Avec des périodes saisonnières, la fréquence est celle qui s'applique à la date du passage.
  */
 export function getProchaineDateIntervention(
   derniereDate: Date,
   jours?: number | null,
-  mois?: number | null
+  mois?: number | null,
+  periodes?: PeriodeFrequence[] | null,
 ): Date {
-  if (mois) return skipAlgerianWeekend(addMonths(derniereDate, mois));
-  return skipAlgerianWeekend(addDays(derniereDate, jours || 30));
+  const f = frequenceALaDate(derniereDate, jours, mois, periodes);
+  if (f.mois) return skipAlgerianWeekend(addMonths(derniereDate, f.mois));
+  return skipAlgerianWeekend(addDays(derniereDate, f.jours || 30));
 }
 
 /**

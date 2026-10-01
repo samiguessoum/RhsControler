@@ -1,6 +1,6 @@
 import { prisma } from '../config/database.js';
 import { InterventionStatut, ContratStatut, InterventionType } from '@prisma/client';
-import { getProchaineDateIntervention, skipAlgerianWeekend, maxDate, isOverdue, isWithinDays, getCurrentWeekBounds } from '../utils/date.utils.js';
+import { getProchaineDateIntervention, parsePeriodesFrequence, type PeriodeFrequence, skipAlgerianWeekend, maxDate, isOverdue, isWithinDays, getCurrentWeekBounds } from '../utils/date.utils.js';
 import { startOfDay, endOfDay, startOfMonth, addDays, addMonths, differenceInDays } from 'date-fns';
 import logger from '../lib/logger.js';
 
@@ -424,12 +424,15 @@ export const planningService = {
       let moisPerso: number | null = null;
       let maxCount: number | null = null;
       let csForAnchor: any = null;
+      // Périodes saisonnières du site (opérations uniquement) : la fréquence suit la date du passage
+      let periodes: PeriodeFrequence[] = [];
 
       if (intervention.siteId && intervention.contrat.contratSites) {
         const cs = intervention.contrat.contratSites.find((s) => s.siteId === intervention.siteId);
         if (cs) {
           csForAnchor = cs;
           if (intervention.type === 'OPERATION') {
+            periodes = parsePeriodesFrequence((cs as any).periodesFrequence);
             moisPerso = (cs as any).frequenceOperationsMois ?? null;
             joursPerso = moisPerso ? null : (cs.frequenceOperationsJours ?? null);
           } else {
@@ -474,7 +477,7 @@ export const planningService = {
           : (intervention.type === 'OPERATION' ? intervention.contrat?.premiereDateOperation : intervention.contrat?.premiereDateControle);
 
         let nextDate: Date;
-        if (anchor && moisPerso) {
+        if (anchor && moisPerso && periodes.length === 0) {
           // Mode ANCRAGE : prochaine échéance théorique de la série (ancre + k × fréquence)
           // strictement après l'échéance de l'intervention réalisée, pour éviter la dérive.
           modePlanning = 'ANCRAGE';
@@ -486,7 +489,7 @@ export const planningService = {
           }
         } else {
           // getProchaineDateIntervention applique déjà skipAlgerianWeekend
-          nextDate = getProchaineDateIntervention(dateRealiseeEffective, joursPerso, moisPerso);
+          nextDate = getProchaineDateIntervention(dateRealiseeEffective, joursPerso, moisPerso, periodes);
         }
         suggestedDate = modePlanning === 'ANCRAGE' ? skipAlgerianWeekend(nextDate) : nextDate;
 
@@ -754,7 +757,7 @@ export const planningService = {
     };
 
     // Calcule les échéances théoriques d'une série d'opérations
-    const echeances = (premiere: Date | null, freq: Freq, nombre: number): Date[] => {
+    const echeances = (premiere: Date | null, freq: Freq, nombre: number, periodes: PeriodeFrequence[] = []): Date[] => {
       if (!premiere) return [];
       const dates: Date[] = [];
       let d = new Date(premiere);
@@ -762,17 +765,17 @@ export const planningService = {
         for (let i = 0; i < nombre && i < MAX_ECHEANCES; i++) {
           if (!dateReprise || d >= dateReprise) dates.push(d);
           if (!freq) break; // Sans fréquence, toutes les ops tombent sur la même date : on en génère qu'une
-          d = getProchaineDateIntervention(d, freq.jours, freq.mois);
+          d = getProchaineDateIntervention(d, freq.jours, freq.mois, periodes);
         }
         return dates;
       }
       if (!freq) return [];
       if (dateReprise) {
-        for (let i = 0; d < dateReprise && i < MAX_ECHEANCES; i++) d = getProchaineDateIntervention(d, freq.jours, freq.mois);
+        for (let i = 0; d < dateReprise && i < MAX_ECHEANCES; i++) d = getProchaineDateIntervention(d, freq.jours, freq.mois, periodes);
       }
       for (let i = 0; i < MAX_ECHEANCES && (nombre > 0 ? i < nombre : d <= dateFinAnnuel); i++) {
         dates.push(d);
-        d = getProchaineDateIntervention(d, freq.jours, freq.mois);
+        d = getProchaineDateIntervention(d, freq.jours, freq.mois, periodes);
       }
       return dates;
     };
@@ -785,6 +788,7 @@ export const planningService = {
             prestations: cs.prestations?.length ? cs.prestations : contrat.prestations,
             montantApplique: (cs as any).montantHT ?? (contrat as any).montantHT ?? null,
             freqOps: frequenceOps(cs) ?? frequenceOps(contrat),
+            periodes: parsePeriodesFrequence((cs as any).periodesFrequence),
             nbCtrlEntreOps: (cs as any).nombreVisitesControleEntreOps ?? (contrat as any).nombreVisitesControleEntreOps ?? 0,
             premiereOp: cs.premiereDateOperation,
             nbOps: cs.nombreOperations || 0,
@@ -797,6 +801,7 @@ export const planningService = {
           prestations: contrat.prestations,
           montantApplique: (contrat as any).montantHT ?? null,
           freqOps: frequenceOps(contrat),
+          periodes: [] as PeriodeFrequence[],
           nbCtrlEntreOps: (contrat as any).nombreVisitesControleEntreOps ?? 0,
           premiereOp: contrat.premiereDateOperation,
           nbOps: contrat.nombreOperations || 0,
@@ -808,7 +813,7 @@ export const planningService = {
       const base = { contratId: contrat.id, clientId: contrat.clientId, siteId: s.siteId, createdById: userId, montantApplique: s.montantApplique };
 
       // ── Opérations
-      const datesOps = (s.datesOps?.length ? s.datesOps : echeances(s.premiereOp, s.freqOps, s.nbOps)).filter(dansConvention);
+      const datesOps = (s.datesOps?.length ? s.datesOps : echeances(s.premiereOp, s.freqOps, s.nbOps, s.periodes)).filter(dansConvention);
       const opsData = datesOps.flatMap((date) =>
         s.prestations
           .filter((prestation) => !consommer(s.siteId, 'OPERATION', prestation))
@@ -917,6 +922,7 @@ export const planningService = {
           prestations: cs.prestations?.length ? cs.prestations : contrat.prestations,
           montantApplique: (cs as any).montantHT ?? (contrat as any).montantHT ?? null,
           freqOps: freqOpsSource(cs) ?? freqOpsSource(contrat),
+          periodes: parsePeriodesFrequence((cs as any).periodesFrequence),
           premiereOp: cs.premiereDateOperation ?? contrat.premiereDateOperation,
         }))
       : [{
@@ -925,6 +931,7 @@ export const planningService = {
           prestations: contrat.prestations,
           montantApplique: (contrat as any).montantHT ?? null,
           freqOps: freqOpsSource(contrat),
+          periodes: [] as PeriodeFrequence[],
           premiereOp: contrat.premiereDateOperation,
         }];
 
@@ -949,12 +956,12 @@ export const planningService = {
           orderBy: { datePrevue: 'desc' },
         });
         let d = derniere
-          ? getProchaineDateIntervention(derniere.datePrevue, s.freqOps?.jours ?? null, s.freqOps?.mois ?? null)
+          ? getProchaineDateIntervention(derniere.datePrevue, s.freqOps?.jours ?? null, s.freqOps?.mois ?? null, s.periodes)
           : (s.premiereOp ? new Date(s.premiereOp) : startOfDay(new Date()));
         datesOps = [];
         for (let i = 0; i < nbOperations; i++) {
           datesOps.push(d);
-          d = getProchaineDateIntervention(d, s.freqOps?.jours ?? null, s.freqOps?.mois ?? null);
+          d = getProchaineDateIntervention(d, s.freqOps?.jours ?? null, s.freqOps?.mois ?? null, s.periodes);
         }
       } else {
         datesOps = [];
@@ -1172,6 +1179,7 @@ export const planningService = {
                 frequenceReglesControle: (cs as any).frequenceReglesControle ?? null,
                 montantHT: (cs as any).montantHT ?? null,
                 notes: (cs as any).notes ?? null,
+                periodesFrequence: (cs as any).periodesFrequence ?? [],
                 premiereDateOperation: advancePremiereDateOp,
                 premiereDateControle: (() => {
                   if (!(cs as any).premiereDateControle) return null;

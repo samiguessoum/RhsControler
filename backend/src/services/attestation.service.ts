@@ -1,4 +1,5 @@
-import { addDays, format } from 'date-fns';
+import { addDays, addMonths, differenceInCalendarDays, format } from 'date-fns';
+import { frequenceALaDate, parsePeriodesFrequence } from '../utils/date.utils.js';
 import { prisma } from '../config/database.js';
 
 type BuildAttestationOptions = {
@@ -128,12 +129,15 @@ export const attestationService = {
             prestations: true,
             nombreOperations: true,
             frequenceOperationsJours: true,
+            frequenceOperationsMois: true,
             attestationMessageTemplate: true,
             attestationControleMessageTemplate: true,
             contratSites: {
               select: {
                 siteId: true,
                 frequenceOperationsJours: true,
+                frequenceOperationsMois: true,
+                periodesFrequence: true,
                 nombreOperations: true,
               },
             },
@@ -171,27 +175,35 @@ export const attestationService = {
       ? contratPrestations.join(', ')
       : (intervention.prestation?.trim() || 'prestation technique');
 
-    // Fréquence en jours : depuis le ContratSite du site concerné, sinon contrat
-    let frequenceJours: number | null = null;
-    if (intervention.siteId && intervention.contrat?.contratSites) {
-      const cs = intervention.contrat.contratSites.find((s) => s.siteId === intervention.siteId);
-      if (cs?.frequenceOperationsJours) frequenceJours = cs.frequenceOperationsJours;
-    }
-    if (frequenceJours == null && intervention.contrat?.frequenceOperationsJours) {
-      frequenceJours = intervention.contrat.frequenceOperationsJours;
-    }
-    // Fallback : 30 jours
-    const garantieJours = frequenceJours ?? 30;
+    // Fréquence applicable au passage : période saisonnière du site couvrant la date de réalisation,
+    // sinon fréquence du site, sinon du contrat (mois prioritaire sur jours, comme le planning).
+    const cs = intervention.siteId
+      ? intervention.contrat?.contratSites?.find((s) => s.siteId === intervention.siteId)
+      : undefined;
+    const freqSource = cs && (cs.frequenceOperationsMois || cs.frequenceOperationsJours) ? cs : intervention.contrat;
+    const freq = frequenceALaDate(
+      dateReference,
+      freqSource?.frequenceOperationsJours ?? null,
+      freqSource?.frequenceOperationsMois ?? null,
+      parsePeriodesFrequence(cs?.periodesFrequence),
+    );
 
-    // Date de prochaine opération = date de réalisation effective + fréquence en jours
-    const dateProchaineOperation = addDays(dateReference, garantieJours);
+    // Date de prochaine opération = date de réalisation effective + fréquence (fallback 30 jours)
+    const dateProchaineOperation = freq.mois
+      ? addMonths(dateReference, freq.mois)
+      : addDays(dateReference, freq.jours ?? 30);
+    const garantieJours = freq.mois
+      ? differenceInCalendarDays(dateProchaineOperation, dateReference)
+      : (freq.jours ?? 30);
 
     // Durée de garantie — stratégie modulo 30
     const garantieMoisComputed = Math.max(1, Math.round((garantieJours / 30) * 10) / 10);
     const moisEntiers = Math.floor(garantieJours / 30);
     const joursRestants = garantieJours % 30;
     let garantieDureeLabel: string;
-    if (moisEntiers === 0) {
+    if (freq.mois) {
+      garantieDureeLabel = `${freq.mois} mois`;
+    } else if (moisEntiers === 0) {
       garantieDureeLabel = `${joursRestants} jour${joursRestants > 1 ? 's' : ''}`;
     } else if (joursRestants === 0) {
       garantieDureeLabel = `${moisEntiers} mois`;
