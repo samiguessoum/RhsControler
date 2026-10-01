@@ -113,9 +113,11 @@ export function ContratDetailPage() {
   const [deletingAvenantId, setDeletingAvenantId] = useState<string | null>(null);
   const [showCreateBC, setShowCreateBC] = useState(false);
   const [newBCNumero, setNewBCNumero] = useState('');
+  const [newBCQuota, setNewBCQuota] = useState('');
   const [newBCSiteIds, setNewBCSiteIds] = useState<string[]>([]);
   const [editingBCId, setEditingBCId] = useState<string | null>(null);
   const [editingBCSiteIds, setEditingBCSiteIds] = useState<string[]>([]);
+  const [editingBCQuota, setEditingBCQuota] = useState('');
   const [deletingBCId, setDeletingBCId] = useState<string | null>(null);
   const { canDo } = useAuthStore();
 
@@ -189,6 +191,7 @@ export function ContratDetailPage() {
       numero: newBCNumero.trim(),
       clientId: contrat!.clientId,
       contratId: id!,
+      quotaPassages: newBCQuota ? parseInt(newBCQuota) : undefined,
       siteIds: newBCSiteIds,
     }),
     onSuccess: () => {
@@ -196,6 +199,7 @@ export function ContratDetailPage() {
       toast.success('Bon de commande créé');
       setShowCreateBC(false);
       setNewBCNumero('');
+      setNewBCQuota('');
       setNewBCSiteIds([]);
     },
     onError: (error: any) => {
@@ -203,12 +207,12 @@ export function ContratDetailPage() {
     },
   });
 
-  const updateBCSitesMutation = useMutation({
-    mutationFn: ({ bcId, siteIds }: { bcId: string; siteIds: string[] }) =>
-      bonCommandeApi.update(bcId, { siteIds }),
+  const updateBCMutation = useMutation({
+    mutationFn: ({ bcId, siteIds, quotaPassages }: { bcId: string; siteIds: string[]; quotaPassages?: number | null }) =>
+      bonCommandeApi.update(bcId, { siteIds, quotaPassages }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contrat', id] });
-      toast.success('Périmètre mis à jour');
+      toast.success('Bon de commande mis à jour');
       setEditingBCId(null);
     },
     onError: (error: any) => {
@@ -876,14 +880,27 @@ export function ContratDetailPage() {
               {/* Formulaire création */}
               {showCreateBC && (
                 <div className="p-3 rounded-lg border border-blue-200 bg-blue-50 space-y-3">
-                  <div>
-                    <Label className="text-xs font-medium text-blue-900">Numéro BC</Label>
-                    <Input
-                      value={newBCNumero}
-                      onChange={(e) => setNewBCNumero(e.target.value)}
-                      placeholder="ex: BC-2026-042"
-                      className="mt-1 h-8 text-sm"
-                    />
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="col-span-2">
+                      <Label className="text-xs font-medium text-blue-900">Numéro BC</Label>
+                      <Input
+                        value={newBCNumero}
+                        onChange={(e) => setNewBCNumero(e.target.value)}
+                        placeholder="ex: BC-2026-042"
+                        className="mt-1 h-8 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs font-medium text-blue-900">Nb opérations</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={newBCQuota}
+                        onChange={(e) => setNewBCQuota(e.target.value)}
+                        placeholder="ex: 12"
+                        className="mt-1 h-8 text-sm"
+                      />
+                    </div>
                   </div>
                   {(contrat.contratSites?.length ?? 0) > 0 && (
                     <div>
@@ -913,7 +930,7 @@ export function ContratDetailPage() {
                     >
                       {createBCMutation.isPending ? 'Création...' : 'Créer'}
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => { setShowCreateBC(false); setNewBCNumero(''); setNewBCSiteIds([]); }}>
+                    <Button size="sm" variant="outline" onClick={() => { setShowCreateBC(false); setNewBCNumero(''); setNewBCQuota(''); setNewBCSiteIds([]); }}>
                       Annuler
                     </Button>
                   </div>
@@ -939,9 +956,10 @@ export function ContratDetailPage() {
                             onClick={() => {
                               setEditingBCId(bc.id);
                               setEditingBCSiteIds((bc.sites ?? []).map((s: any) => s.siteId));
+                              setEditingBCQuota(bc.quotaPassages != null ? String(bc.quotaPassages) : '');
                             }}
                             className="p-1 rounded hover:bg-indigo-200 text-indigo-700"
-                            title="Modifier le périmètre"
+                            title="Modifier"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
@@ -956,12 +974,30 @@ export function ContratDetailPage() {
                       )}
                     </div>
                     {!isEditing && (
-                      <p className="text-xs text-indigo-600">
-                        {siteNames.length === 0 ? 'Tous les sites' : siteNames.join(', ')}
-                      </p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-indigo-600">
+                          {siteNames.length === 0 ? 'Tous les sites' : siteNames.join(', ')}
+                        </p>
+                        {bc.quotaPassages != null && (
+                          <p className="text-xs text-indigo-500">
+                            {bc.passagesConsommes ?? 0}/{bc.quotaPassages} op.
+                          </p>
+                        )}
+                      </div>
                     )}
                     {isEditing && (
                       <div className="space-y-2">
+                        <div>
+                          <Label className="text-xs font-medium text-indigo-900">Nb opérations</Label>
+                          <Input
+                            type="number"
+                            min={1}
+                            value={editingBCQuota}
+                            onChange={(e) => setEditingBCQuota(e.target.value)}
+                            placeholder="ex: 12"
+                            className="mt-1 h-7 text-xs"
+                          />
+                        </div>
                         <Label className="text-xs font-medium text-indigo-900">Sites couverts (vide = tous)</Label>
                         <div className="space-y-1">
                           {contrat.contratSites?.map((cs) => (
@@ -981,10 +1017,14 @@ export function ContratDetailPage() {
                         <div className="flex gap-2">
                           <Button
                             size="sm"
-                            onClick={() => updateBCSitesMutation.mutate({ bcId: bc.id, siteIds: editingBCSiteIds })}
-                            disabled={updateBCSitesMutation.isPending}
+                            onClick={() => updateBCMutation.mutate({
+                              bcId: bc.id,
+                              siteIds: editingBCSiteIds,
+                              quotaPassages: editingBCQuota ? parseInt(editingBCQuota) : null,
+                            })}
+                            disabled={updateBCMutation.isPending}
                           >
-                            {updateBCSitesMutation.isPending ? 'Sauvegarde...' : 'Sauvegarder'}
+                            {updateBCMutation.isPending ? 'Sauvegarde...' : 'Sauvegarder'}
                           </Button>
                           <Button size="sm" variant="outline" onClick={() => setEditingBCId(null)}>
                             Annuler
