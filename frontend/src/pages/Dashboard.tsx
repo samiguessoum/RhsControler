@@ -23,6 +23,7 @@ import { dashboardApi } from '@/services/api';
 import { getStatutColor, getStatutLabel, formatDate } from '@/lib/utils';
 import type { Intervention, Alerte } from '@/types';
 import { useAuthStore } from '@/store/auth.store';
+import { NIVEAUX_BC, type NiveauAlerteBC } from '@/lib/bc';
 
 const QUERY_CONFIG = {
   refetchOnWindowFocus: true,
@@ -254,8 +255,8 @@ function AlertesPanel({ alertes }: { alertes: Alerte[] }) {
 
   const getConfig = (type: string, joursRestants?: number, niveauAlerte?: string) => {
     if (type === 'BC_EN_ALERTE') {
-      if (niveauAlerte === 'EPUISE') return { dot: 'bg-red-600', pill: 'bg-red-100 text-red-700', label: 'text-red-600' };
-      if (niveauAlerte === 'DERNIER') return { dot: 'bg-orange-500', pill: 'bg-orange-100 text-orange-700', label: 'text-orange-600' };
+      if (niveauAlerte === 'EPUISE' || niveauAlerte === 'DEPASSE' || niveauAlerte === 'EXPIRE') return { dot: 'bg-red-600', pill: 'bg-red-100 text-red-700', label: 'text-red-600' };
+      if (niveauAlerte === 'DERNIER' || niveauAlerte === 'INSUFFISANT') return { dot: 'bg-orange-500', pill: 'bg-orange-100 text-orange-700', label: 'text-orange-600' };
       return { dot: 'bg-yellow-500', pill: 'bg-yellow-100 text-yellow-700', label: 'text-yellow-600' };
     }
     if (type === 'CONTRAT_SANS_INTERVENTION' || type === 'CONTRAT_HORS_VALIDITE') {
@@ -274,9 +275,8 @@ function AlertesPanel({ alertes }: { alertes: Alerte[] }) {
 
   const getTypeLabel = (type: string, niveauAlerte?: string) => {
     if (type === 'BC_EN_ALERTE') {
-      if (niveauAlerte === 'EPUISE') return 'BC épuisé';
-      if (niveauAlerte === 'DERNIER') return 'BC — dernier passage';
-      return 'BC en alerte';
+      const niveau = niveauAlerte ? NIVEAUX_BC[niveauAlerte as NiveauAlerteBC] : null;
+      return niveau ? `BC — ${niveau.label.toLowerCase()}` : 'BC en alerte';
     }
     if (type === 'CONTRAT_SANS_INTERVENTION') return 'Sans intervention';
     if (type === 'CONTRAT_HORS_VALIDITE') return 'Hors validité';
@@ -308,6 +308,7 @@ function AlertesPanel({ alertes }: { alertes: Alerte[] }) {
             <Link
               key={a.id}
               to={href}
+              title={a.type === 'BC_EN_ALERTE' ? (a as any).message : undefined}
               className="group flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors"
             >
               <div className={`w-2 h-2 rounded-full flex-shrink-0 ${cfg.dot}`} />
@@ -318,7 +319,7 @@ function AlertesPanel({ alertes }: { alertes: Alerte[] }) {
                 <p className={`text-xs ${cfg.label}`}>{getTypeLabel(a.type, (a as any).niveauAlerte)}</p>
               </div>
               <div className={`text-center px-3 py-1.5 rounded-xl ${cfg.pill} flex-shrink-0`}>
-                {a.type === 'BC_EN_ALERTE' && (a as any).passagesRestants !== undefined ? (
+                {a.type === 'BC_EN_ALERTE' && (a as any).passagesRestants != null ? (
                   <>
                     <p className="text-base font-black leading-none">{(a as any).passagesRestants}</p>
                     <p className="text-[9px] font-semibold mt-0.5 opacity-70">pass.</p>

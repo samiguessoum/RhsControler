@@ -53,6 +53,7 @@ import { ContratForm, ProjectionDates, FrequenceInput, PeriodesFrequenceInput, n
 import { addDays, format } from 'date-fns';
 import { formatDate, getStatutColor, getStatutLabel, cn } from '@/lib/utils';
 import type { Prestation, InterventionStatut, PeriodeFrequence } from '@/types';
+import { NIVEAUX_BC, formatDateBC, type PrevisionBC } from '@/lib/bc';
 
 const STATUT_CONFIG: Record<string, { label: string; color: string; icon: typeof CheckCircle2 }> = {
   ACTIF: { label: 'Actif', color: 'bg-green-100 text-green-800 border-green-200', icon: CheckCircle2 },
@@ -87,12 +88,6 @@ type AvenantForm = {
   datesCtrl: string[];
 };
 
-// Date de signature d'un BC (stockée à minuit UTC) → JJ/MM/AAAA sans décalage de fuseau
-const formatDateBC = (d: string) => {
-  const [y, m, j] = String(d).slice(0, 10).split('-');
-  return `${j}/${m}/${y}`;
-};
-
 const AVENANT_VIDE: AvenantForm = {
   nom: '', numeroBonCommande: '', dateSignature: '', dateExpiration: '', montantHT: '', notes: '',
   premiereOp: '', periodes: [], datesOps: [], datesCtrl: [],
@@ -123,11 +118,15 @@ export function ContratDetailPage() {
   const [newBCNumero, setNewBCNumero] = useState('');
   const [newBCQuota, setNewBCQuota] = useState('');
   const [newBCDate, setNewBCDate] = useState('');
+  const [newBCFinValidite, setNewBCFinValidite] = useState('');
+  const [newBCSeuil, setNewBCSeuil] = useState('2');
   const [newBCSiteIds, setNewBCSiteIds] = useState<string[]>([]);
   const [editingBCId, setEditingBCId] = useState<string | null>(null);
   const [editingBCSiteIds, setEditingBCSiteIds] = useState<string[]>([]);
   const [editingBCQuota, setEditingBCQuota] = useState('');
   const [editingBCDate, setEditingBCDate] = useState('');
+  const [editingBCFinValidite, setEditingBCFinValidite] = useState('');
+  const [editingBCSeuil, setEditingBCSeuil] = useState('');
   const [deletingBCId, setDeletingBCId] = useState<string | null>(null);
   const { canDo } = useAuthStore();
 
@@ -206,28 +205,49 @@ export function ContratDetailPage() {
       clientId: contrat!.clientId,
       contratId: id!,
       date: newBCDate || null,
+      dateFinValidite: newBCFinValidite || null,
       quotaPassages: newBCQuota ? parseInt(newBCQuota) : undefined,
+      seuilAlerte: newBCSeuil !== '' ? parseInt(newBCSeuil) : undefined,
       siteIds: newBCSiteIds,
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contrat', id] });
+      queryClient.invalidateQueries({ queryKey: ['bons-commandes'] });
       toast.success('Bon de commande créé');
-      setShowCreateBC(false);
-      setNewBCNumero('');
-      setNewBCQuota('');
-      setNewBCDate('');
-      setNewBCSiteIds([]);
+      resetNewBC();
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Erreur lors de la création du BC');
     },
   });
 
+  const resetNewBC = () => {
+    setShowCreateBC(false);
+    setNewBCNumero('');
+    setNewBCQuota('');
+    setNewBCDate('');
+    setNewBCFinValidite('');
+    setNewBCSeuil('2');
+    setNewBCSiteIds([]);
+  };
+
+  // Prévisions des BC du contrat (consommation, épuisement prévu, fin de validité)
+  const { data: bcsPrevisionData } = useQuery({
+    queryKey: ['bons-commandes', 'contrat', id],
+    queryFn: () => bonCommandeApi.list({ contratId: id!, actif: true }),
+    enabled: !!id,
+  });
+  const previsionsBC = useMemo(
+    () => new Map<string, PrevisionBC>((bcsPrevisionData?.bonsCommandes ?? []).map((b: any) => [b.id, b])),
+    [bcsPrevisionData],
+  );
+
   const updateBCMutation = useMutation({
-    mutationFn: ({ bcId, siteIds, quotaPassages, date }: { bcId: string; siteIds: string[]; quotaPassages?: number | null; date?: string | null }) =>
-      bonCommandeApi.update(bcId, { siteIds, quotaPassages, date }),
+    mutationFn: ({ bcId, ...payload }: { bcId: string; siteIds: string[]; quotaPassages?: number | null; date?: string | null; dateFinValidite?: string | null; seuilAlerte?: number }) =>
+      bonCommandeApi.update(bcId, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contrat', id] });
+      queryClient.invalidateQueries({ queryKey: ['bons-commandes'] });
       toast.success('Bon de commande mis à jour');
       setEditingBCId(null);
     },
@@ -240,6 +260,7 @@ export function ContratDetailPage() {
     mutationFn: (bcId: string) => bonCommandeApi.delete(bcId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contrat', id] });
+      queryClient.invalidateQueries({ queryKey: ['bons-commandes'] });
       toast.success('Bon de commande supprimé');
       setDeletingBCId(null);
     },
@@ -936,6 +957,25 @@ export function ContratDetailPage() {
                         className="mt-1 h-8 text-sm"
                       />
                     </div>
+                    <div>
+                      <Label className="text-xs font-medium text-blue-900">Valable jusqu'au</Label>
+                      <Input
+                        type="date"
+                        value={newBCFinValidite}
+                        onChange={(e) => setNewBCFinValidite(e.target.value)}
+                        className="mt-1 h-8 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs font-medium text-blue-900">Alerter à N op. restantes</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={newBCSeuil}
+                        onChange={(e) => setNewBCSeuil(e.target.value)}
+                        className="mt-1 h-8 text-sm"
+                      />
+                    </div>
                   </div>
                   {(contrat.contratSites?.length ?? 0) > 0 && (
                     <div>
@@ -965,7 +1005,7 @@ export function ContratDetailPage() {
                     >
                       {createBCMutation.isPending ? 'Création...' : 'Créer'}
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => { setShowCreateBC(false); setNewBCNumero(''); setNewBCQuota(''); setNewBCDate(''); setNewBCSiteIds([]); }}>
+                    <Button size="sm" variant="outline" onClick={resetNewBC}>
                       Annuler
                     </Button>
                   </div>
@@ -981,6 +1021,8 @@ export function ContratDetailPage() {
                   contrat.contratSites?.find(cs => cs.siteId === s.siteId)?.site?.nom ?? s.siteId
                 );
                 const isEditing = editingBCId === bc.id;
+                const prev = previsionsBC.get(bc.id);
+                const niveau = prev?.niveauAlerte ? NIVEAUX_BC[prev.niveauAlerte] : null;
                 return (
                   <div key={bc.id} className="p-3 rounded-lg bg-indigo-50 border border-indigo-100 text-sm space-y-2">
                     <div className="flex items-center justify-between">
@@ -1000,6 +1042,8 @@ export function ContratDetailPage() {
                               setEditingBCSiteIds((bc.sites ?? []).map((s: any) => s.siteId));
                               setEditingBCQuota(bc.quotaPassages != null ? String(bc.quotaPassages) : '');
                               setEditingBCDate(bc.date ? String(bc.date).slice(0, 10) : '');
+                              setEditingBCFinValidite(bc.dateFinValidite ? String(bc.dateFinValidite).slice(0, 10) : '');
+                              setEditingBCSeuil(String(bc.seuilAlerte ?? 2));
                             }}
                             className="p-1 rounded hover:bg-indigo-200 text-indigo-700"
                             title="Modifier"
@@ -1017,16 +1061,34 @@ export function ContratDetailPage() {
                       )}
                     </div>
                     {!isEditing && (
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs text-indigo-600">
-                          {siteNames.length === 0 ? 'Tous les sites' : siteNames.join(', ')}
-                        </p>
-                        {bc.quotaPassages != null && (
-                          <p className="text-xs text-indigo-500">
-                            {bc.passagesConsommes ?? 0}/{bc.quotaPassages} op.
+                      <>
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs text-indigo-600">
+                            {siteNames.length === 0 ? 'Tous les sites' : siteNames.join(', ')}
                           </p>
+                          <p className="text-xs text-indigo-500" title="Opérations réalisées imputées au BC / quota">
+                            {bc.quotaPassages != null
+                              ? `${bc.passagesConsommes ?? 0}/${bc.quotaPassages} op. réalisées`
+                              : `${bc.passagesConsommes ?? 0} op. réalisées (sans quota)`}
+                          </p>
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-indigo-500">
+                          <span>
+                            {bc.dateFinValidite ? `Valable jusqu'au ${formatDateBC(bc.dateFinValidite)}` : 'Sans date de fin'}
+                          </span>
+                          {prev && (prev.operationsPlanifiees ?? 0) + (prev.operationsNonCouvertes ?? 0) > 0 && (
+                            <span title="Opérations planifiées non réalisées qui consommeront ce BC">
+                              {(prev.operationsPlanifiees ?? 0) + (prev.operationsNonCouvertes ?? 0)} op. planifiées
+                            </span>
+                          )}
+                        </div>
+                        {niveau && (
+                          <div className="flex items-start gap-2 pt-1">
+                            <Badge className={cn('shrink-0 text-[10px]', niveau.badge)}>{niveau.label}</Badge>
+                            <p className={cn('text-xs', niveau.texte)}>{prev?.motifs?.join(' · ')}</p>
+                          </div>
                         )}
-                      </div>
+                      </>
                     )}
                     {isEditing && (
                       <div className="space-y-2">
@@ -1048,6 +1110,25 @@ export function ContratDetailPage() {
                               type="date"
                               value={editingBCDate}
                               onChange={(e) => setEditingBCDate(e.target.value)}
+                              className="mt-1 h-7 text-xs"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs font-medium text-indigo-900">Valable jusqu'au</Label>
+                            <Input
+                              type="date"
+                              value={editingBCFinValidite}
+                              onChange={(e) => setEditingBCFinValidite(e.target.value)}
+                              className="mt-1 h-7 text-xs"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs font-medium text-indigo-900">Alerter à N op. restantes</Label>
+                            <Input
+                              type="number"
+                              min={0}
+                              value={editingBCSeuil}
+                              onChange={(e) => setEditingBCSeuil(e.target.value)}
                               className="mt-1 h-7 text-xs"
                             />
                           </div>
@@ -1076,6 +1157,8 @@ export function ContratDetailPage() {
                               siteIds: editingBCSiteIds,
                               quotaPassages: editingBCQuota ? parseInt(editingBCQuota) : null,
                               date: editingBCDate || null,
+                              dateFinValidite: editingBCFinValidite || null,
+                              ...(editingBCSeuil !== '' ? { seuilAlerte: parseInt(editingBCSeuil) } : {}),
                             })}
                             disabled={updateBCMutation.isPending}
                           >

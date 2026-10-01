@@ -117,6 +117,7 @@ import {
   bonCommandeApi,
 } from '@/services/api';
 import { cn, formatDate, getStatutColor, getStatutLabel } from '@/lib/utils';
+import { bcCouvreSite } from '@/lib/bc';
 import { useAuthStore } from '@/store/auth.store';
 import { EmployeSelector } from '@/components/EmployeSelector';
 import { PlanningMap } from '@/components/PlanningMap';
@@ -1210,6 +1211,7 @@ function InterventionDetailDialog({
   onAnnuler,
   onUpdateHoraire,
   onUpdateEmployes,
+  onUpdateBonCommande,
   onGenerateFacture,
   onDownloadAttestation,
   onDownloadAttestationGarantie,
@@ -1230,6 +1232,7 @@ function InterventionDetailDialog({
   onAnnuler: () => void;
   onUpdateHoraire: (data: { heurePrevue?: string; duree?: number }) => void;
   onUpdateEmployes: (employes: InterventionEmployeInput[]) => void;
+  onUpdateBonCommande: (bonCommandeId: string | null) => void;
   onGenerateFacture: () => void;
   onDownloadAttestation: () => void;
   onDownloadAttestationGarantie: () => void;
@@ -1251,6 +1254,19 @@ function InterventionDetailDialog({
   const [horaireError, setHoraireError] = useState<string | null>(null);
   const [selectedEmployes, setSelectedEmployes] = useState<InterventionEmployeInput[]>([]);
   const [employesModified, setEmployesModified] = useState(false);
+
+  // BC du client pouvant couvrir l'intervention (choix ou correction manuelle)
+  const bcModifiable = !!intervention && canEdit && intervention.type !== 'CONTROLE' && intervention.statut !== 'ANNULEE';
+  const { data: bcsClientData } = useQuery({
+    queryKey: ['bons-commandes', 'client', intervention?.clientId],
+    queryFn: () => bonCommandeApi.list({ clientId: intervention!.clientId, actif: true }),
+    enabled: bcModifiable,
+  });
+  const bcsPossibles = (bcsClientData?.bonsCommandes ?? []).filter(
+    (bc: any) =>
+      bcCouvreSite(bc, intervention?.siteId) &&
+      (!intervention?.contratId || !bc.contrat || bc.contrat.id === intervention.contratId),
+  );
 
   const voirRapportMut = useMutation({
     mutationFn: (interventionId: string) => interventionsApi.startFieldReport(interventionId),
@@ -1677,6 +1693,39 @@ function InterventionDetailDialog({
                 <p className="font-medium break-words">
                   {formatDate(intervention.dateRealisee, 'd MMMM yyyy')}
                 </p>
+              </div>
+            )}
+            {(bcModifiable || intervention.bonCommande) && (
+              <div className="min-w-0">
+                <span className="text-muted-foreground">Bon de commande:</span>
+                {bcModifiable ? (
+                  <Select
+                    value={intervention.bonCommandeId || 'none'}
+                    onValueChange={(v) => onUpdateBonCommande(v === 'none' ? null : v)}
+                  >
+                    <SelectTrigger className="h-8 mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">
+                        {intervention.type === 'OPERATION' && intervention.contratId && !intervention.avenant && intervention.statut !== 'REALISEE'
+                          ? 'Automatique (à la réalisation)'
+                          : 'Aucun'}
+                      </SelectItem>
+                      {intervention.bonCommande && !bcsPossibles.some((bc: any) => bc.id === intervention.bonCommande!.id) && (
+                        <SelectItem value={intervention.bonCommande.id}>BC-{intervention.bonCommande.numero}</SelectItem>
+                      )}
+                      {bcsPossibles.map((bc: any) => (
+                        <SelectItem key={bc.id} value={bc.id}>
+                          BC-{bc.numero}
+                          {bc.passagesRestants != null ? ` (${bc.passagesRestants} restant${Math.abs(bc.passagesRestants) > 1 ? 's' : ''})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="font-medium break-words">BC-{intervention.bonCommande!.numero}</p>
+                )}
               </div>
             )}
           </div>
@@ -2408,7 +2457,7 @@ function CreateInterventionDialog({
   const [notesTerrain, setNotesTerrain] = useState('');
   const [selectedEmployes, setSelectedEmployes] = useState<InterventionEmployeInput[]>([]);
   const [bonCommandeId, setBonCommandeId] = useState('');
-  const [clientBcs, setClientBcs] = useState<{ id: string; numero: string; passagesRestants: number | null }[]>([]);
+  const [clientBcs, setClientBcs] = useState<{ id: string; numero: string; sites: { siteId: string }[]; passagesRestants: number | null }[]>([]);
   const [previousNotes, setPreviousNotes] = useState<{
     notesTerrain: string;
     dateRealisee: string;
@@ -2438,6 +2487,7 @@ function CreateInterventionDialog({
           .map((bc: any) => ({
             id: bc.id,
             numero: bc.numero,
+            sites: bc.sites ?? [],
             passagesRestants:
               bc.quotaPassages != null ? bc.quotaPassages - bc.passagesConsommes : null,
           }));
@@ -2628,7 +2678,7 @@ function CreateInterventionDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Aucun</SelectItem>
-                  {clientBcs.map((bc) => (
+                  {clientBcs.filter((bc) => bcCouvreSite(bc, siteId) || bc.id === bonCommandeId).map((bc) => (
                     <SelectItem key={bc.id} value={bc.id}>
                       BC-{bc.numero}
                       {bc.passagesRestants != null ? ` (${bc.passagesRestants} restant${bc.passagesRestants > 1 ? 's' : ''})` : ''}
@@ -3755,6 +3805,7 @@ export function PlanningPage() {
       interventionsApi.update(id, data),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['interventions'] });
+      queryClient.invalidateQueries({ queryKey: ['bons-commandes'] });
       queryClient.refetchQueries({ queryKey: ['interventions'] });
       if (variables?.id) {
         queryClient.invalidateQueries({ queryKey: ['intervention', variables.id] });
@@ -3776,6 +3827,7 @@ export function PlanningPage() {
       options: { notesTerrain?: string; creerProchaine?: boolean; dateRealisee?: string };
     }) => interventionsApi.realiser(id, options),
     onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['bons-commandes'] });
       queryClient.invalidateQueries({ queryKey: ['interventions'] });
       queryClient.refetchQueries({ queryKey: ['interventions'] });
       // Invalider TOUTES les queries d'interventions individuelles
@@ -4612,6 +4664,13 @@ export function PlanningPage() {
             updateMutation.mutate({
               id: selectedIntervention.id,
               data: { employes: employesData },
+            });
+          }}
+          onUpdateBonCommande={(bonCommandeId) => {
+            if (!selectedIntervention) return;
+            updateMutation.mutate({
+              id: selectedIntervention.id,
+              data: { bonCommandeId },
             });
           }}
           onGenerateFacture={async () => {

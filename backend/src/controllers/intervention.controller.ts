@@ -278,6 +278,7 @@ export const interventionController = {
               frequenceOperationsJours: true, frequenceOperationsMois: true, periodesFrequence: true,
             },
           },
+          bonCommande: { select: { id: true, numero: true, actif: true } },
           createdBy: {
             select: { id: true, nom: true, prenom: true },
           },

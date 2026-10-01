@@ -1783,7 +1783,7 @@ export const emailApi = {
 
 // ─── Bons de commande ────────────────────────────────────────────────────────
 export const bonCommandeApi = {
-  list: async (params?: { clientId?: string; actif?: boolean; enAlerte?: boolean }) => {
+  list: async (params?: { clientId?: string; contratId?: string; actif?: boolean; enAlerte?: boolean }) => {
     const { data } = await api.get('/bons-commandes', { params });
     return data as { bonsCommandes: any[]; count: number };
   },
@@ -1795,11 +1795,11 @@ export const bonCommandeApi = {
     const { data } = await api.get('/bons-commandes/alertes');
     return data as { bonsCommandes: any[]; count: number };
   },
-  create: async (payload: { numero: string; clientId: string; contratId?: string; date?: string | null; quotaPassages?: number | null; seuilAlerte?: number; notes?: string; siteIds?: string[] }) => {
+  create: async (payload: { numero: string; clientId: string; contratId?: string; date?: string | null; dateFinValidite?: string | null; quotaPassages?: number | null; seuilAlerte?: number; notes?: string; siteIds?: string[] }) => {
     const { data } = await api.post('/bons-commandes', payload);
     return data as { bonCommande: any };
   },
-  update: async (id: string, payload: { date?: string | null; quotaPassages?: number | null; notes?: string; seuilAlerte?: number; actif?: boolean; numero?: string; siteIds?: string[] }) => {
+  update: async (id: string, payload: { date?: string | null; dateFinValidite?: string | null; quotaPassages?: number | null; notes?: string; seuilAlerte?: number; actif?: boolean; numero?: string; siteIds?: string[] }) => {
     const { data } = await api.put(`/bons-commandes/${id}`, payload);
     return data as { bonCommande: any };
   },

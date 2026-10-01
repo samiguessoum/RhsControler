@@ -2456,6 +2456,7 @@ model BonCommande {
   contratId         String?
   contrat           Contrat?  @relation(fields: [contratId], references: [id])
   date              DateTime? // Date du bon de commande (affiché "Selon le BC X du DATE" sur facture)
+  dateFinValidite   DateTime? // Fin de validité du BC : alerte à l'approche, plus de rattachement automatique après
   quotaPassages     Int?
   passagesConsommes Int       @default(0)
   seuilAlerte       Int       @default(2)

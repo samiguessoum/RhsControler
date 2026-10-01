@@ -179,6 +179,7 @@ export interface BonCommande {
   contratId?: string | null;
   contrat?: { id: string; type: string; contratSites?: { siteId: string; site: { id: string; nom: string } }[] } | null;
   date?: string | null;
+  dateFinValidite?: string | null;
   quotaPassages?: number | null;
   passagesConsommes: number;
   passagesRestants?: number | null;
@@ -247,6 +248,7 @@ export interface Intervention {
   interventionEmployes?: InterventionEmploye[];
   remplaceeParOperation?: boolean;
   avenant?: { id: string; numero: number; nom?: string | null; numeroBonCommande?: string | null } | null;
+  bonCommandeId?: string | null;
   bonCommande?: { id: string; numero: string } | null;
   previousIntervention?: PreviousIntervention | null;
   fieldIntervention?: {
@@ -527,7 +529,7 @@ export interface CreateInterventionInput {
   notesTerrain?: string;
   responsable?: string;
   employes?: InterventionEmployeInput[];
-  bonCommandeId?: string;
+  bonCommandeId?: string | null;
 }
 
 // ============ STOCK ============

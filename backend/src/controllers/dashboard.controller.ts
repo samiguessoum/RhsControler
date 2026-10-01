@@ -315,26 +315,27 @@ export const dashboardController = {
         reconductionAuto: c.reconductionAuto,
       }));
 
-      const bcAlertes = bcsEnAlerte.map((bc: any) => {
-        const sitesLabel = bc.sites?.map((s: any) => s.site?.nom).filter(Boolean).join(', ') || null;
-        const niveauLabel = bc.niveauAlerte === 'EPUISE' ? 'BC épuisé'
-          : bc.niveauAlerte === 'DERNIER' ? 'Dernier passage restant'
-          : `${bc.passagesRestants} passages restants`;
-        const quotaLabel = bc.quotaPassages == null ? '(quota inconnu — à compléter)' : `sur ${bc.quotaPassages}`;
+      const bcAlertes = bcsEnAlerte.map((bc) => {
+        const sitesLabel = bc.sites?.map((s) => s.site?.nom).filter(Boolean).join(', ') || null;
+        const quotaLabel = bc.quotaPassages != null ? ` (${bc.passagesConsommes}/${bc.quotaPassages} réalisées)` : '';
         return {
           id: `bc-${bc.id}`,
           type: 'BC_EN_ALERTE',
           niveauAlerte: bc.niveauAlerte,
-          message: bc.quotaPassages == null
-            ? `BC ${bc.numero} — quota inconnu, à renseigner`
-            : `BC ${bc.numero} — ${niveauLabel} ${quotaLabel}`,
+          message: `BC ${bc.numero}${quotaLabel} — ${bc.motifs.join(' · ')}`,
+          motifs: bc.motifs,
           client: bc.client,
           bcId: bc.id,
           bcNumero: bc.numero,
+          contratId: bc.contratId,
           sitesLabel,
           passagesRestants: bc.passagesRestants,
           passagesConsommes: bc.passagesConsommes,
           quotaPassages: bc.quotaPassages,
+          operationsPlanifiees: bc.operationsPlanifiees,
+          operationsNonCouvertes: bc.operationsNonCouvertes,
+          dateEpuisementPrevue: bc.dateEpuisementPrevue,
+          dateFinValidite: bc.dateFinValidite,
         };
       });
 

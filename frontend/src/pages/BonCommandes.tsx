@@ -9,18 +9,20 @@ import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
 import { ShoppingCart, AlertTriangle, Plus, Pencil, Trash2, Building2, Calendar, CheckCircle2, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import { NIVEAUX_BC, formatDateBC, type PrevisionBC } from '@/lib/bc';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-interface BonCommande {
+interface BonCommande extends PrevisionBC {
   id: string;
   numero: string;
   client: { id: string; nomEntreprise: string };
   contrat?: { id: string; type: string } | null;
   date?: string | null;
+  dateFinValidite?: string | null;
   quotaPassages: number | null;
   passagesConsommes: number;
-  passagesRestants: number | null;
   seuilAlerte: number;
   actif: boolean;
   notes: string | null;
@@ -30,21 +32,12 @@ interface BonCommande {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function getNiveauAlerte(bc: BonCommande): 'EPUISE' | 'DERNIER' | 'ALERTE' | null {
-  if (bc.quotaPassages === null) return null;
-  const restants = bc.quotaPassages - bc.passagesConsommes;
-  if (restants <= 0) return 'EPUISE';
-  if (restants <= 1) return 'DERNIER';
-  if (restants <= bc.seuilAlerte) return 'ALERTE';
-  return null;
-}
-
 function getStatutChip(bc: BonCommande) {
-  const niveau = getNiveauAlerte(bc);
   if (!bc.actif) return <Badge variant="secondary">Inactif</Badge>;
-  if (niveau === 'EPUISE') return <Badge className="bg-red-600 text-white">Épuisé</Badge>;
-  if (niveau === 'DERNIER') return <Badge className="bg-orange-500 text-white">Dernier passage</Badge>;
-  if (niveau === 'ALERTE') return <Badge className="bg-yellow-500 text-white">En alerte</Badge>;
+  if (bc.niveauAlerte) {
+    const n = NIVEAUX_BC[bc.niveauAlerte];
+    return <Badge className={n.badge}>{n.label}</Badge>;
+  }
   return <Badge className="bg-green-600 text-white">Actif</Badge>;
 }
 
@@ -66,6 +59,10 @@ export function BonCommandesPage() {
   // Édition inline quota / notes / périmètre
   const [editingQuota, setEditingQuota] = useState(false);
   const [quotaDraft, setQuotaDraft] = useState<string>('');
+  const [editingSeuil, setEditingSeuil] = useState(false);
+  const [seuilDraft, setSeuilDraft] = useState('');
+  const [editingFinValidite, setEditingFinValidite] = useState(false);
+  const [finValiditeDraft, setFinValiditeDraft] = useState('');
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState('');
   const [editingPerimetre, setEditingPerimetre] = useState(false);
@@ -97,8 +94,13 @@ export function BonCommandesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bons-commandes'] });
       setEditingQuota(false);
+      setEditingSeuil(false);
+      setEditingFinValidite(false);
       setEditingNotes(false);
       setEditingPerimetre(false);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de la mise à jour du BC');
     },
   });
 
@@ -106,6 +108,10 @@ export function BonCommandesPage() {
   useEffect(() => {
     if (bc) {
       setQuotaDraft(bc.quotaPassages != null ? String(bc.quotaPassages) : '');
+      setSeuilDraft(String(bc.seuilAlerte));
+      setFinValiditeDraft(bc.dateFinValidite ? String(bc.dateFinValidite).slice(0, 10) : '');
+      setEditingSeuil(false);
+      setEditingFinValidite(false);
       setNotesDraft(bc.notes ?? '');
       setPerimetreDraft((bc.sites ?? []).map((s) => s.siteId));
       setEditingPerimetre(false);
@@ -117,11 +123,7 @@ export function BonCommandesPage() {
     !filterClient || b.client.nomEntreprise.toLowerCase().includes(filterClient.toLowerCase())
   );
 
-  const passagesRestants = bc
-    ? bc.quotaPassages != null
-      ? bc.quotaPassages - bc.passagesConsommes
-      : null
-    : null;
+  const passagesRestants = bc?.passagesRestants ?? null;
   const progressPct = bc?.quotaPassages
     ? Math.min(100, Math.round((bc.passagesConsommes / bc.quotaPassages) * 100))
     : 0;
@@ -172,7 +174,7 @@ export function BonCommandesPage() {
             <p className="p-4 text-sm text-muted-foreground">Aucun bon de commande trouvé.</p>
           )}
           {bcs.map((b) => {
-            const niveau = getNiveauAlerte(b);
+            const niveau = b.actif && b.niveauAlerte ? NIVEAUX_BC[b.niveauAlerte] : null;
             return (
               <button
                 key={b.id}
@@ -185,14 +187,7 @@ export function BonCommandesPage() {
                 <div className="flex items-center justify-between mb-0.5">
                   <span className="font-medium text-sm">BC-{b.numero}</span>
                   {niveau && (
-                    <span
-                      className={cn(
-                        'text-xs font-semibold',
-                        niveau === 'EPUISE' ? 'text-red-600' : niveau === 'DERNIER' ? 'text-orange-500' : 'text-yellow-600'
-                      )}
-                    >
-                      {niveau === 'EPUISE' ? '0 restant' : niveau === 'DERNIER' ? '1 restant' : `${b.quotaPassages! - b.passagesConsommes} restants`}
-                    </span>
+                    <span className={cn('text-xs font-semibold', niveau.texte)}>{niveau.label}</span>
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground truncate">{b.client.nomEntreprise}</p>
@@ -232,12 +227,22 @@ export function BonCommandesPage() {
                 </p>
                 {bc.date && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    Signé le {String(bc.date).slice(0, 10).split('-').reverse().join('/')}
+                    Signé le {formatDateBC(bc.date)}
                   </p>
                 )}
               </div>
               {getStatutChip(bc)}
             </div>
+
+            {/* Alertes et prévision (information uniquement : rien n'est bloqué ni supprimé) */}
+            {bc.actif && (bc.motifs?.length ?? 0) > 0 && (
+              <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <ul className="space-y-1 text-sm text-amber-900">
+                  {bc.motifs!.map((m) => <li key={m}>{m}</li>)}
+                </ul>
+              </div>
+            )}
 
             {/* Quota & passages */}
             <div className="bg-white rounded-lg border p-5 space-y-4">
@@ -275,6 +280,14 @@ export function BonCommandesPage() {
                   <p className="text-xs text-muted-foreground">restants</p>
                 </div>
               </div>
+
+              {bc.actif && bc.contrat && (
+                <p className="text-xs text-muted-foreground">
+                  {(bc.operationsPlanifiees ?? 0) + (bc.operationsNonCouvertes ?? 0)} opération(s) planifiée(s) imputable(s) à ce BC
+                  {bc.dateEpuisementPrevue && ` — épuisement prévu le ${formatDateBC(bc.dateEpuisementPrevue)}`}
+                  {(bc.operationsNonCouvertes ?? 0) > 0 && ` — ${bc.operationsNonCouvertes} sans BC disponible`}
+                </p>
+              )}
 
               {/* Quota éditable */}
               <div className="flex items-center gap-3">
@@ -316,7 +329,65 @@ export function BonCommandesPage() {
 
               <div className="flex items-center gap-3">
                 <label className="text-sm font-medium w-32">Seuil alerte</label>
-                <span className="text-sm">{bc.seuilAlerte} passage(s)</span>
+                {editingSeuil ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      value={seuilDraft}
+                      onChange={(e) => setSeuilDraft(e.target.value)}
+                      className="w-24 h-8 text-sm"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={() => updateMutation.mutate({ id: bc.id, payload: { seuilAlerte: parseInt(seuilDraft) } })}
+                      disabled={updateMutation.isPending || seuilDraft === ''}
+                    >
+                      Sauvegarder
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditingSeuil(false)}>
+                      Annuler
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">{bc.seuilAlerte} passage(s) restant(s)</span>
+                    <Button size="sm" variant="ghost" onClick={() => setEditingSeuil(true)}>
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium w-32">Valable jusqu'au</label>
+                {editingFinValidite ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="date"
+                      value={finValiditeDraft}
+                      onChange={(e) => setFinValiditeDraft(e.target.value)}
+                      className="w-40 h-8 text-sm"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={() => updateMutation.mutate({ id: bc.id, payload: { dateFinValidite: finValiditeDraft || null } })}
+                      disabled={updateMutation.isPending}
+                    >
+                      Sauvegarder
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditingFinValidite(false)}>
+                      Annuler
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">{bc.dateFinValidite ? formatDateBC(bc.dateFinValidite) : '—'}</span>
+                    <Button size="sm" variant="ghost" onClick={() => setEditingFinValidite(true)}>
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
 

@@ -3,6 +3,7 @@ import { InterventionStatut, ContratStatut, InterventionType } from '@prisma/cli
 import { getProchaineDateIntervention, prochaineDateTheorique, parsePeriodesFrequence, type PeriodeFrequence, skipAlgerianWeekend, maxDate, isOverdue, isWithinDays, getCurrentWeekBounds } from '../utils/date.utils.js';
 import { startOfDay, endOfDay, startOfMonth, addDays, addMonths, differenceInDays } from 'date-fns';
 import logger from '../lib/logger.js';
+import { rattacherEtConsommerBC, avecPrevisions } from './bon-commande.service.js';
 
 /**
  * Règle métier : aucune visite de contrôle après la dernière opération du contrat (par site).
@@ -163,22 +164,8 @@ export const planningService = {
         sites: { include: { site: { select: { id: true, nom: true } } } },
       },
     });
-    return bcs
-      .filter((bc) => {
-        if (bc.quotaPassages === null) return false; // quota inconnu
-        const restants = bc.quotaPassages - bc.passagesConsommes;
-        return restants <= bc.seuilAlerte;
-      })
-      .map((bc) => ({
-        ...bc,
-        passagesRestants: (bc.quotaPassages ?? 0) - bc.passagesConsommes,
-        niveauAlerte:
-          bc.passagesConsommes >= (bc.quotaPassages ?? 0)
-            ? 'EPUISE'
-            : bc.passagesConsommes >= (bc.quotaPassages ?? 0) - 1
-            ? 'DERNIER'
-            : 'ALERTE',
-      }));
+    // Quota (seuil, épuisé, dépassé), prévision sur les opérations planifiées et fin de validité
+    return (await avecPrevisions(bcs)).filter((bc) => bc.niveauAlerte !== null);
   },
 
   /**
@@ -404,6 +391,9 @@ export const planningService = {
             data: { passagesConsommes: { increment: 1 } },
           });
         }
+      } else if (!wasAlreadyRealisee && !intervention.bonCommandeId) {
+        // Opération de contrat sans BC choisi : rattachement au BC applicable (site, puis convention)
+        await rattacherEtConsommerBC(tx, intervention, dateRealiseeEffective);
       }
 
       return tx.intervention.findUnique({
@@ -721,7 +711,9 @@ export const planningService = {
       select: { siteId: true, datePrevue: true },
     });
 
-    // Échéances déjà consommées par série : réalisées ou supprimées volontairement par un utilisateur
+    // Échéances déjà consommées par série : réalisées ou supprimées volontairement par un utilisateur,
+    // plus celles en attente rattachées à un BC (conservées par la régénération, à ne pas recréer).
+    // Une opération réalisée rattachée à un BC reste une échéance du contrat.
     const consommees = new Map<string, number>();
     const cle = (siteId: string | null, type: string, prestation: string | null) => `${siteId ?? ''}|${type}|${prestation ?? ''}`;
     if (options.ignorerEcheancesConsommees) {
@@ -730,8 +722,7 @@ export const planningService = {
           contratId,
           type: { in: ['OPERATION', 'CONTROLE'] },
           avenantId: null,
-          bonCommandeId: null,
-          OR: [{ statut: 'REALISEE' }, { statut: 'ANNULEE' }],
+          OR: [{ statut: 'REALISEE' }, { statut: 'ANNULEE' }, { bonCommandeId: { not: null } }],
         },
         select: { siteId: true, type: true, prestation: true },
       });

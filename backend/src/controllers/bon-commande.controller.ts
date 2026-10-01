@@ -4,6 +4,7 @@ import { prisma } from '../config/database.js';
 import { AppError } from '../lib/errors.js';
 import logger from '../lib/logger.js';
 import planningService from '../services/planning.service.js';
+import { avecPrevisions } from '../services/bon-commande.service.js';
 
 /** Date de signature du BC : '' / null → null, sinon Date valide (undefined si invalide). */
 function parseDateBC(value: unknown): Date | null | undefined {
@@ -19,12 +20,14 @@ async function sitesDuClient(siteIds: string[], clientId: string): Promise<boole
   return count === new Set(siteIds).size;
 }
 
-/** Entier positif optionnel : '' / null → null, sinon entier ≥ 0 (undefined si invalide). */
-function parseIntBC(value: unknown): number | null | undefined {
+/** Entier positif optionnel : '' / null → null, sinon entier ≥ min (undefined si invalide). */
+function parseIntBC(value: unknown, min = 0): number | null | undefined {
   if (value === null || value === '') return null;
   const n = parseInt(String(value), 10);
-  return Number.isNaN(n) || n < 0 ? undefined : n;
+  return Number.isNaN(n) || n < min ? undefined : n;
 }
+
+const MSG_QUOTA_SEUIL = 'Nombre d\'opérations (≥ 1, ou vide si inconnu) ou seuil d\'alerte invalide';
 
 export const bonCommandeController = {
   /**
@@ -33,12 +36,13 @@ export const bonCommandeController = {
    */
   async list(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const { clientId, actif, enAlerte, limit, page } = req.query;
+      const { clientId, contratId, actif, enAlerte, limit, page } = req.query;
       const limitNum = Math.min(parseInt(String(limit || '200'), 10), 500);
       const pageNum = Math.max(parseInt(String(page || '1'), 10), 1);
 
       const where: any = {};
       if (clientId) where.clientId = clientId as string;
+      if (contratId) where.contratId = contratId as string;
       if (actif !== undefined) where.actif = actif === 'true';
 
       const bcs = await prisma.bonCommande.findMany({
@@ -54,13 +58,10 @@ export const bonCommandeController = {
         skip: (pageNum - 1) * limitNum,
       });
 
-      // Filtrer les BCs en alerte si demandé
-      let result = bcs;
+      // Prévisions (épuisement, fin de validité) ; filtre des BCs en alerte si demandé
+      let result = await avecPrevisions(bcs);
       if (enAlerte === 'true') {
-        result = bcs.filter((bc) => {
-          if (bc.quotaPassages === null) return false;
-          return bc.quotaPassages - bc.passagesConsommes <= bc.seuilAlerte;
-        });
+        result = result.filter((bc) => bc.niveauAlerte !== null);
       }
 
       res.json({ bonsCommandes: result, count: result.length });
@@ -76,7 +77,7 @@ export const bonCommandeController = {
    */
   async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const { numero, clientId, contratId, date, quotaPassages, seuilAlerte, notes, siteIds } = req.body;
+      const { numero, clientId, contratId, date, dateFinValidite, quotaPassages, seuilAlerte, notes, siteIds } = req.body;
 
       if (!numero?.trim()) {
         return next(new AppError(400, 'Le numéro du BC est requis'));
@@ -88,10 +89,14 @@ export const bonCommandeController = {
       if (dateBC === undefined) {
         return next(new AppError(400, 'Date de signature du BC invalide'));
       }
-      const quota = quotaPassages !== undefined ? parseIntBC(quotaPassages) : null;
+      const finValidite = dateFinValidite !== undefined ? parseDateBC(dateFinValidite) : null;
+      if (finValidite === undefined) {
+        return next(new AppError(400, 'Date de fin de validité du BC invalide'));
+      }
+      const quota = quotaPassages !== undefined ? parseIntBC(quotaPassages, 1) : null;
       const seuil = seuilAlerte !== undefined ? parseIntBC(seuilAlerte) : 2;
       if (quota === undefined || seuil === undefined) {
-        return next(new AppError(400, 'Nombre d\'opérations ou seuil d\'alerte invalide'));
+        return next(new AppError(400, MSG_QUOTA_SEUIL));
       }
       if (siteIds !== undefined && !Array.isArray(siteIds)) {
         return next(new AppError(400, 'siteIds doit être un tableau'));
@@ -127,7 +132,8 @@ export const bonCommandeController = {
           clientId,
           contratId: contratId || null,
           date: dateBC,
-          quotaPassages: quota || null,
+          dateFinValidite: finValidite,
+          quotaPassages: quota,
           seuilAlerte: seuil ?? 2,
           notes: notes || null,
           ...(siteIds?.length
@@ -202,9 +208,8 @@ export const bonCommandeController = {
         return next(new AppError(404, 'Bon de commande non trouvé'));
       }
 
-      const passagesRestants = bc.quotaPassages !== null ? bc.quotaPassages - bc.passagesConsommes : null;
-
-      res.json({ bonCommande: { ...bc, passagesRestants } });
+      const [avecPrevision] = await avecPrevisions([bc]);
+      res.json({ bonCommande: avecPrevision });
     } catch (error) {
       logger.error({ err: error }, 'BonCommande getOne error');
       return next(new AppError(500, 'Erreur serveur'));
@@ -218,7 +223,7 @@ export const bonCommandeController = {
   async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const { quotaPassages, notes, seuilAlerte, actif, numero, siteIds, date } = req.body;
+      const { quotaPassages, notes, seuilAlerte, actif, numero, siteIds, date, dateFinValidite } = req.body;
 
       const existing = await prisma.bonCommande.findUnique({ where: { id } });
       if (!existing) {
@@ -229,10 +234,14 @@ export const bonCommandeController = {
       if (date !== undefined && dateBC === undefined) {
         return next(new AppError(400, 'Date de signature du BC invalide'));
       }
-      const quota = quotaPassages !== undefined ? parseIntBC(quotaPassages) : undefined;
+      const finValidite = dateFinValidite !== undefined ? parseDateBC(dateFinValidite) : undefined;
+      if (dateFinValidite !== undefined && finValidite === undefined) {
+        return next(new AppError(400, 'Date de fin de validité du BC invalide'));
+      }
+      const quota = quotaPassages !== undefined ? parseIntBC(quotaPassages, 1) : undefined;
       const seuil = seuilAlerte !== undefined ? parseIntBC(seuilAlerte) : undefined;
       if ((quotaPassages !== undefined && quota === undefined) || (seuilAlerte !== undefined && (seuil === undefined || seuil === null))) {
-        return next(new AppError(400, 'Nombre d\'opérations ou seuil d\'alerte invalide'));
+        return next(new AppError(400, MSG_QUOTA_SEUIL));
       }
       if (Array.isArray(siteIds) && !(await sitesDuClient(siteIds, existing.clientId))) {
         return next(new AppError(400, 'Un des sites n\'appartient pas à ce client'));
@@ -255,7 +264,8 @@ export const bonCommandeController = {
           data: {
             ...(numero !== undefined ? { numero: numero.trim() } : {}),
             ...(dateBC !== undefined ? { date: dateBC } : {}),
-            ...(quotaPassages !== undefined ? { quotaPassages: quota || null } : {}),
+            ...(finValidite !== undefined ? { dateFinValidite: finValidite } : {}),
+            ...(quotaPassages !== undefined ? { quotaPassages: quota } : {}),
             ...(notes !== undefined ? { notes } : {}),
             ...(seuil != null ? { seuilAlerte: seuil } : {}),
             ...(actif !== undefined ? { actif: Boolean(actif) } : {}),
