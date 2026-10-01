@@ -47,7 +47,7 @@ import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { contratsApi, interventionsApi, prestationsApi, avenantApi, clientsApi, usersApi } from '@/services/api';
+import { contratsApi, interventionsApi, prestationsApi, avenantApi, clientsApi, usersApi, bonCommandeApi } from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
 import { ContratForm, ProjectionDates, FrequenceInput, computeProjectionDates, computeProjectionControles, apresDerniereOperation, horsBornes } from './Contrats';
 import { addDays, format } from 'date-fns';
@@ -111,6 +111,12 @@ export function ContratDetailPage() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editingAvenant, setEditingAvenant] = useState<any | null>(null);
   const [deletingAvenantId, setDeletingAvenantId] = useState<string | null>(null);
+  const [showCreateBC, setShowCreateBC] = useState(false);
+  const [newBCNumero, setNewBCNumero] = useState('');
+  const [newBCSiteIds, setNewBCSiteIds] = useState<string[]>([]);
+  const [editingBCId, setEditingBCId] = useState<string | null>(null);
+  const [editingBCSiteIds, setEditingBCSiteIds] = useState<string[]>([]);
+  const [deletingBCId, setDeletingBCId] = useState<string | null>(null);
   const { canDo } = useAuthStore();
 
   const queryClient = useQueryClient();
@@ -175,6 +181,51 @@ export function ContratDetailPage() {
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Impossible de supprimer cet avenant');
       setDeletingAvenantId(null);
+    },
+  });
+
+  const createBCMutation = useMutation({
+    mutationFn: () => bonCommandeApi.create({
+      numero: newBCNumero.trim(),
+      clientId: contrat!.clientId,
+      contratId: id!,
+      siteIds: newBCSiteIds,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contrat', id] });
+      toast.success('Bon de commande créé');
+      setShowCreateBC(false);
+      setNewBCNumero('');
+      setNewBCSiteIds([]);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de la création du BC');
+    },
+  });
+
+  const updateBCSitesMutation = useMutation({
+    mutationFn: ({ bcId, siteIds }: { bcId: string; siteIds: string[] }) =>
+      bonCommandeApi.update(bcId, { siteIds }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contrat', id] });
+      toast.success('Périmètre mis à jour');
+      setEditingBCId(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Erreur lors de la mise à jour');
+    },
+  });
+
+  const deleteBCMutation = useMutation({
+    mutationFn: (bcId: string) => bonCommandeApi.update(bcId, { actif: false }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['contrat', id] });
+      toast.success('Bon de commande désactivé');
+      setDeletingBCId(null);
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Impossible de désactiver ce BC');
+      setDeletingBCId(null);
     },
   });
 
@@ -804,6 +855,148 @@ export function ContratDetailPage() {
                 ))}
               </CardContent>
             </Card>
+
+          {/* Carte Bons de commande */}
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Banknote className="h-5 w-5 text-primary" />
+                  Bons de commande
+                </CardTitle>
+                {canDo('editContrat') && !showCreateBC && (
+                  <Button size="sm" variant="outline" onClick={() => setShowCreateBC(true)}>
+                    <Plus className="h-3.5 w-3.5 mr-1" />
+                    Ajouter
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {/* Formulaire création */}
+              {showCreateBC && (
+                <div className="p-3 rounded-lg border border-blue-200 bg-blue-50 space-y-3">
+                  <div>
+                    <Label className="text-xs font-medium text-blue-900">Numéro BC</Label>
+                    <Input
+                      value={newBCNumero}
+                      onChange={(e) => setNewBCNumero(e.target.value)}
+                      placeholder="ex: BC-2026-042"
+                      className="mt-1 h-8 text-sm"
+                    />
+                  </div>
+                  {(contrat.contratSites?.length ?? 0) > 0 && (
+                    <div>
+                      <Label className="text-xs font-medium text-blue-900">Sites couverts (vide = tous)</Label>
+                      <div className="mt-1 space-y-1">
+                        {contrat.contratSites?.map((cs) => (
+                          <label key={cs.siteId} className="flex items-center gap-2 text-xs cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={newBCSiteIds.includes(cs.siteId)}
+                              onChange={(e) => setNewBCSiteIds(prev =>
+                                e.target.checked ? [...prev, cs.siteId] : prev.filter(s => s !== cs.siteId)
+                              )}
+                              className="rounded"
+                            />
+                            {cs.site?.nom ?? cs.siteId}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => createBCMutation.mutate()}
+                      disabled={!newBCNumero.trim() || createBCMutation.isPending}
+                    >
+                      {createBCMutation.isPending ? 'Création...' : 'Créer'}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => { setShowCreateBC(false); setNewBCNumero(''); setNewBCSiteIds([]); }}>
+                      Annuler
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Liste des BCs */}
+              {(!contrat.bonsCommandes || contrat.bonsCommandes.length === 0) && !showCreateBC && (
+                <p className="text-sm text-muted-foreground">Aucun bon de commande pour ce contrat.</p>
+              )}
+              {contrat.bonsCommandes?.map((bc: any) => {
+                const siteNames = (bc.sites ?? []).map((s: any) =>
+                  contrat.contratSites?.find(cs => cs.siteId === s.siteId)?.site?.nom ?? s.siteId
+                );
+                const isEditing = editingBCId === bc.id;
+                return (
+                  <div key={bc.id} className="p-3 rounded-lg bg-indigo-50 border border-indigo-100 text-sm space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-indigo-900">{bc.numero}</span>
+                      {canDo('editContrat') && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => {
+                              setEditingBCId(bc.id);
+                              setEditingBCSiteIds((bc.sites ?? []).map((s: any) => s.siteId));
+                            }}
+                            className="p-1 rounded hover:bg-indigo-200 text-indigo-700"
+                            title="Modifier le périmètre"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            onClick={() => setDeletingBCId(bc.id)}
+                            className="p-1 rounded hover:bg-red-100 text-red-500"
+                            title="Désactiver"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {!isEditing && (
+                      <p className="text-xs text-indigo-600">
+                        {siteNames.length === 0 ? 'Tous les sites' : siteNames.join(', ')}
+                      </p>
+                    )}
+                    {isEditing && (
+                      <div className="space-y-2">
+                        <Label className="text-xs font-medium text-indigo-900">Sites couverts (vide = tous)</Label>
+                        <div className="space-y-1">
+                          {contrat.contratSites?.map((cs) => (
+                            <label key={cs.siteId} className="flex items-center gap-2 text-xs cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={editingBCSiteIds.includes(cs.siteId)}
+                                onChange={(e) => setEditingBCSiteIds(prev =>
+                                  e.target.checked ? [...prev, cs.siteId] : prev.filter(s => s !== cs.siteId)
+                                )}
+                                className="rounded"
+                              />
+                              {cs.site?.nom ?? cs.siteId}
+                            </label>
+                          ))}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => updateBCSitesMutation.mutate({ bcId: bc.id, siteIds: editingBCSiteIds })}
+                            disabled={updateBCSitesMutation.isPending}
+                          >
+                            {updateBCSitesMutation.isPending ? 'Sauvegarde...' : 'Sauvegarder'}
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => setEditingBCId(null)}>
+                            Annuler
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
 
           {/* Carte Options */}
           <Card>
@@ -1579,6 +1772,28 @@ export function ContratDetailPage() {
               disabled={updateAvenantMutation.isPending}
             >
               {updateAvenantMutation.isPending ? 'Enregistrement...' : 'Enregistrer'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog confirmation désactivation BC */}
+      <Dialog open={!!deletingBCId} onOpenChange={(o) => { if (!o) setDeletingBCId(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Désactiver ce bon de commande ?</DialogTitle>
+            <DialogDescription>
+              Le BC sera retiré de ce contrat. Les factures existantes ne seront pas affectées.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeletingBCId(null)}>Annuler</Button>
+            <Button
+              variant="destructive"
+              onClick={() => deletingBCId && deleteBCMutation.mutate(deletingBCId)}
+              disabled={deleteBCMutation.isPending}
+            >
+              {deleteBCMutation.isPending ? 'Désactivation...' : 'Désactiver'}
             </Button>
           </DialogFooter>
         </DialogContent>
