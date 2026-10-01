@@ -3093,6 +3093,7 @@ export function CommercePage() {
       generateFacture?: boolean;
       clientId?: string;
       siteId?: string;
+      contratId?: string | null;
       prestations?: { nom: string; prix?: number }[];
       interventionId?: string;
       dateIntervention?: string;
@@ -3147,6 +3148,7 @@ export function CommercePage() {
       setFactureForm({
         clientId: state.clientId,
         siteId: state.siteId || undefined,
+        contratId: state.contratId || undefined,
         typeDocument: 'SERVICE',
         lignes: prestations.map((p) => ({
           ...EMPTY_LINE,

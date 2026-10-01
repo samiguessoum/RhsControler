@@ -268,7 +268,6 @@ export const interventionController = {
                 select: { id: true, numero: true, date: true, sites: { select: { siteId: true } } },
                 where: { actif: true },
                 orderBy: { createdAt: 'desc' },
-                take: 10,
               },
             },
           },

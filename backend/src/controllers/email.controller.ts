@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/database.js';
 import { sendEmail, testSmtpConnection, buildEmailHtml } from '../services/email.service.js';
 import { EmailProfileType } from '@prisma/client';
-import { resolveBCsPair } from '../utils/bc.utils.js';
+import { construireMentionSpecialeFacture } from '../utils/bc.utils.js';
 
 const CLIENT_SELECT = {
   id: true, nomEntreprise: true, code: true,
@@ -204,34 +204,8 @@ export const emailController = {
       });
       if (!facture) return res.status(404).json({ error: 'Facture introuvable' });
 
-      // Même logique que exportFacturePDF : construire mentionSpeciale si non stockée
-      let mentionSpeciale = (facture as any).mentionSpeciale ?? null;
-      const contrat = (facture as any).contrat;
-      if (!mentionSpeciale && contrat) {
-        const siteId = (facture as any).site?.id ?? null;
-        const bcsAvecSites = (contrat.bonsCommandes ?? []).map((b: any) => ({
-          numero: b.numero, date: b.date, sites: b.sites ?? [],
-        }));
-        const fmt = (d: Date) => new Intl.DateTimeFormat('fr-FR').format(new Date(d));
-        const parts: string[] = [];
-        if (contrat.nom?.trim()) parts.push(`Contrat « ${contrat.nom.trim()} »`);
-        if (contrat.refExterne) parts.push(`Selon le contrat N° ${contrat.refExterne}`);
-        if (contrat.dateDebutConvention) parts.push(`Convention signée le ${fmt(contrat.dateDebutConvention)}`);
-        const { bcConvention, bcSite } = resolveBCsPair(bcsAvecSites, siteId);
-        const both = bcConvention && bcSite;
-        if (bcConvention) {
-          const d = bcConvention.date ? ` du ${fmt(bcConvention.date)}` : '';
-          parts.push(`BC${both ? ' convention' : ''} N° ${bcConvention.numero}${d}`);
-        }
-        if (bcSite) {
-          const d = bcSite.date ? ` du ${fmt(bcSite.date)}` : '';
-          parts.push(`BC${both ? ' site' : ''} N° ${bcSite.numero}${d}`);
-        }
-        if (!bcConvention && !bcSite && bcsAvecSites.length === 0 && contrat.numeroBonCommande) {
-          parts.push(`Bon de commande N° ${contrat.numeroBonCommande}`);
-        }
-        if (parts.length > 0) mentionSpeciale = parts.join(' — ');
-      }
+      // Mention spéciale : contrat + BC convention + BC du site de la facture
+      const mentionSpeciale = await construireMentionSpecialeFacture(facture as any);
 
       const { generateFacturePDF } = await import('../services/pdf.service.js');
       const [pdfBuffer, ctx] = await Promise.all([

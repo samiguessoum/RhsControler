@@ -6,7 +6,7 @@ import { facturationEvents } from '../services/events.service.js';
 import { stockService } from '../services/stock.service.js';
 import logger from '../lib/logger.js';
 import { AppError } from '../lib/errors.js';
-import { resolveBCsPair } from '../utils/bc.utils.js';
+import { construireMentionSpecialeFacture } from '../utils/bc.utils.js';
 
 
 // Préfixes par défaut (utilisés si aucun paramètre en base)
@@ -1807,38 +1807,8 @@ export const commerceController = {
         return res.status(404).json({ error: 'Facture non trouvée' });
       }
 
-      // Construire la mentionSpeciale depuis le contrat lié si non déjà définie manuellement
-      let mentionSpeciale = (facture as any).mentionSpeciale ?? null;
-      const contrat = (facture as any).contrat;
-      if (!mentionSpeciale && contrat) {
-        const siteId = (facture as any).site?.id ?? null;
-        const bcsAvecSites = (contrat.bonsCommandes ?? []).map((b: any) => ({
-          numero: b.numero,
-          date: b.date,
-          sites: b.sites ?? [],
-        }));
-        const fmt = (d: Date) => new Intl.DateTimeFormat('fr-FR').format(new Date(d));
-        const parts: string[] = [];
-        if (contrat.nom?.trim()) parts.push(`Contrat « ${contrat.nom.trim()} »`);
-        if (contrat.refExterne) parts.push(`Selon le contrat N° ${contrat.refExterne}`);
-        if (contrat.dateDebutConvention) parts.push(`Convention signée le ${fmt(contrat.dateDebutConvention)}`);
-        // BCs : convention (all-sites) et/ou site spécifique
-        const { bcConvention, bcSite } = resolveBCsPair(bcsAvecSites, siteId);
-        const both = bcConvention && bcSite;
-        if (bcConvention) {
-          const d = bcConvention.date ? ` du ${fmt(bcConvention.date)}` : '';
-          parts.push(`BC${both ? ' convention' : ''} N° ${bcConvention.numero}${d}`);
-        }
-        if (bcSite) {
-          const d = bcSite.date ? ` du ${fmt(bcSite.date)}` : '';
-          parts.push(`BC${both ? ' site' : ''} N° ${bcSite.numero}${d}`);
-        }
-        // Fallback legacy : uniquement si aucun BonCommande entity n'existe
-        if (!bcConvention && !bcSite && bcsAvecSites.length === 0 && contrat.numeroBonCommande) {
-          parts.push(`Bon de commande N° ${contrat.numeroBonCommande}`);
-        }
-        if (parts.length > 0) mentionSpeciale = parts.join(' — ');
-      }
+      // Mention spéciale : contrat + BC convention + BC du site de la facture
+      const mentionSpeciale = await construireMentionSpecialeFacture(facture as any);
 
       const { generateFacturePDF } = await import('../services/pdf.service.js');
       const pdfBuffer = await generateFacturePDF({

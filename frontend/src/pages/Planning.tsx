@@ -4608,8 +4608,16 @@ export function PlanningPage() {
             });
           }}
           onGenerateFacture={async () => {
-            const intervention = selectedInterventionDetail || selectedIntervention;
+            let intervention = selectedInterventionDetail || selectedIntervention;
             if (!intervention) return;
+            // Le détail (contrat + bons de commande par site) est indispensable pour la mention BC
+            if (intervention.contratId && !(intervention.contrat as any)?.bonsCommandes) {
+              try {
+                intervention = await interventionsApi.get(intervention.id);
+              } catch {
+                // Le backend complètera de toute façon les BC à la génération du PDF
+              }
+            }
             const site = intervention.site || intervention.client?.sites?.[0];
 
             // Prix des prestations définis sur le ContratSite correspondant
