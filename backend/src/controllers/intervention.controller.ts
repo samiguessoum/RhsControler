@@ -450,6 +450,14 @@ export const interventionController = {
         }
       }
 
+      // Le BC doit appartenir au client de l'intervention
+      if (data.bonCommandeId) {
+        const bc = await prisma.bonCommande.findUnique({ where: { id: data.bonCommandeId }, select: { clientId: true, actif: true } });
+        if (!bc || !bc.actif || bc.clientId !== data.clientId) {
+          return res.status(400).json({ error: 'Bon de commande introuvable pour ce client' });
+        }
+      }
+
       const intervention = await prisma.intervention.create({
         data: {
           contratId: data.contratId,
@@ -530,22 +538,32 @@ export const interventionController = {
         }
       }
 
+      if (bcChange && data.bonCommandeId) {
+        const bc = await prisma.bonCommande.findUnique({ where: { id: data.bonCommandeId }, select: { clientId: true, actif: true } });
+        if (!bc || !bc.actif || bc.clientId !== (data.clientId ?? existing.clientId)) {
+          return res.status(400).json({ error: 'Bon de commande introuvable pour ce client' });
+        }
+      }
+
       // Tout dans une seule transaction : BC + employes + intervention.update sont atomiques
       const intervention = await prisma.$transaction(async (tx) => {
         // BC cohérence pour les opérations uniquement (pas les contrôles)
         if (estOperation && existing.statut === 'REALISEE') {
+          // updateMany + passagesConsommes > 0 : jamais de compteur négatif (ex : réalisée alors que le BC était inactif)
           if (corrigeStatut) {
             if ((existing as any).bonCommandeId) {
-              await tx.bonCommande.update({
-                where: { id: (existing as any).bonCommandeId },
+              await tx.bonCommande.updateMany({
+                where: { id: (existing as any).bonCommandeId, passagesConsommes: { gt: 0 } },
                 data: { passagesConsommes: { decrement: 1 } },
               });
             }
-          } else if (bcChange && (existing as any).bonCommandeId) {
-            await tx.bonCommande.update({
-              where: { id: (existing as any).bonCommandeId },
-              data: { passagesConsommes: { decrement: 1 } },
-            });
+          } else if (bcChange) {
+            if ((existing as any).bonCommandeId) {
+              await tx.bonCommande.updateMany({
+                where: { id: (existing as any).bonCommandeId, passagesConsommes: { gt: 0 } },
+                data: { passagesConsommes: { decrement: 1 } },
+              });
+            }
             if (data.bonCommandeId) {
               await tx.bonCommande.update({
                 where: { id: data.bonCommandeId },

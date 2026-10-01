@@ -85,6 +85,12 @@ type AvenantForm = {
   datesCtrl: string[];
 };
 
+// Date de signature d'un BC (stockée à minuit UTC) → JJ/MM/AAAA sans décalage de fuseau
+const formatDateBC = (d: string) => {
+  const [y, m, j] = String(d).slice(0, 10).split('-');
+  return `${j}/${m}/${y}`;
+};
+
 const AVENANT_VIDE: AvenantForm = {
   nom: '', numeroBonCommande: '', dateSignature: '', dateExpiration: '', montantHT: '', notes: '',
   premiereOp: '', datesOps: [], datesCtrl: [],
@@ -114,10 +120,12 @@ export function ContratDetailPage() {
   const [showCreateBC, setShowCreateBC] = useState(false);
   const [newBCNumero, setNewBCNumero] = useState('');
   const [newBCQuota, setNewBCQuota] = useState('');
+  const [newBCDate, setNewBCDate] = useState('');
   const [newBCSiteIds, setNewBCSiteIds] = useState<string[]>([]);
   const [editingBCId, setEditingBCId] = useState<string | null>(null);
   const [editingBCSiteIds, setEditingBCSiteIds] = useState<string[]>([]);
   const [editingBCQuota, setEditingBCQuota] = useState('');
+  const [editingBCDate, setEditingBCDate] = useState('');
   const [deletingBCId, setDeletingBCId] = useState<string | null>(null);
   const { canDo } = useAuthStore();
 
@@ -191,6 +199,7 @@ export function ContratDetailPage() {
       numero: newBCNumero.trim(),
       clientId: contrat!.clientId,
       contratId: id!,
+      date: newBCDate || null,
       quotaPassages: newBCQuota ? parseInt(newBCQuota) : undefined,
       siteIds: newBCSiteIds,
     }),
@@ -200,6 +209,7 @@ export function ContratDetailPage() {
       setShowCreateBC(false);
       setNewBCNumero('');
       setNewBCQuota('');
+      setNewBCDate('');
       setNewBCSiteIds([]);
     },
     onError: (error: any) => {
@@ -208,8 +218,8 @@ export function ContratDetailPage() {
   });
 
   const updateBCMutation = useMutation({
-    mutationFn: ({ bcId, siteIds, quotaPassages }: { bcId: string; siteIds: string[]; quotaPassages?: number | null }) =>
-      bonCommandeApi.update(bcId, { siteIds, quotaPassages }),
+    mutationFn: ({ bcId, siteIds, quotaPassages, date }: { bcId: string; siteIds: string[]; quotaPassages?: number | null; date?: string | null }) =>
+      bonCommandeApi.update(bcId, { siteIds, quotaPassages, date }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contrat', id] });
       toast.success('Bon de commande mis à jour');
@@ -901,6 +911,15 @@ export function ContratDetailPage() {
                         className="mt-1 h-8 text-sm"
                       />
                     </div>
+                    <div>
+                      <Label className="text-xs font-medium text-blue-900">Date de signature</Label>
+                      <Input
+                        type="date"
+                        value={newBCDate}
+                        onChange={(e) => setNewBCDate(e.target.value)}
+                        className="mt-1 h-8 text-sm"
+                      />
+                    </div>
                   </div>
                   {(contrat.contratSites?.length ?? 0) > 0 && (
                     <div>
@@ -930,7 +949,7 @@ export function ContratDetailPage() {
                     >
                       {createBCMutation.isPending ? 'Création...' : 'Créer'}
                     </Button>
-                    <Button size="sm" variant="outline" onClick={() => { setShowCreateBC(false); setNewBCNumero(''); setNewBCQuota(''); setNewBCSiteIds([]); }}>
+                    <Button size="sm" variant="outline" onClick={() => { setShowCreateBC(false); setNewBCNumero(''); setNewBCQuota(''); setNewBCDate(''); setNewBCSiteIds([]); }}>
                       Annuler
                     </Button>
                   </div>
@@ -949,7 +968,14 @@ export function ContratDetailPage() {
                 return (
                   <div key={bc.id} className="p-3 rounded-lg bg-indigo-50 border border-indigo-100 text-sm space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="font-semibold text-indigo-900">{bc.numero}</span>
+                      <span className="font-semibold text-indigo-900">
+                        {bc.numero}
+                        {bc.date && (
+                          <span className="ml-2 text-xs font-normal text-indigo-600">
+                            signé le {formatDateBC(bc.date)}
+                          </span>
+                        )}
+                      </span>
                       {canDo('editContrat') && (
                         <div className="flex items-center gap-1">
                           <button
@@ -957,6 +983,7 @@ export function ContratDetailPage() {
                               setEditingBCId(bc.id);
                               setEditingBCSiteIds((bc.sites ?? []).map((s: any) => s.siteId));
                               setEditingBCQuota(bc.quotaPassages != null ? String(bc.quotaPassages) : '');
+                              setEditingBCDate(bc.date ? String(bc.date).slice(0, 10) : '');
                             }}
                             className="p-1 rounded hover:bg-indigo-200 text-indigo-700"
                             title="Modifier"
@@ -987,16 +1014,27 @@ export function ContratDetailPage() {
                     )}
                     {isEditing && (
                       <div className="space-y-2">
-                        <div>
-                          <Label className="text-xs font-medium text-indigo-900">Nb opérations</Label>
-                          <Input
-                            type="number"
-                            min={1}
-                            value={editingBCQuota}
-                            onChange={(e) => setEditingBCQuota(e.target.value)}
-                            placeholder="ex: 12"
-                            className="mt-1 h-7 text-xs"
-                          />
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-xs font-medium text-indigo-900">Nb opérations</Label>
+                            <Input
+                              type="number"
+                              min={1}
+                              value={editingBCQuota}
+                              onChange={(e) => setEditingBCQuota(e.target.value)}
+                              placeholder="ex: 12"
+                              className="mt-1 h-7 text-xs"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs font-medium text-indigo-900">Date de signature</Label>
+                            <Input
+                              type="date"
+                              value={editingBCDate}
+                              onChange={(e) => setEditingBCDate(e.target.value)}
+                              className="mt-1 h-7 text-xs"
+                            />
+                          </div>
                         </div>
                         <Label className="text-xs font-medium text-indigo-900">Sites couverts (vide = tous)</Label>
                         <div className="space-y-1">
@@ -1021,6 +1059,7 @@ export function ContratDetailPage() {
                               bcId: bc.id,
                               siteIds: editingBCSiteIds,
                               quotaPassages: editingBCQuota ? parseInt(editingBCQuota) : null,
+                              date: editingBCDate || null,
                             })}
                             disabled={updateBCMutation.isPending}
                           >

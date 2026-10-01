@@ -3115,7 +3115,11 @@ export function CommercePage() {
       if (state.contratRefExterne) mentions.push(`Selon le contrat N° ${state.contratRefExterne}`);
 
       if (state.contratType === 'PONCTUEL' && state.contratNumeroBonCommande) {
-        const dateDebutStr = state.contratDateDebut ? new Date(state.contratDateDebut).toLocaleDateString('fr-FR') : '';
+        // Date de signature du BC si renseignée, sinon date de début du contrat
+        const bcEntite = (state.contratBonsCommandes ?? []).find((bc) => bc.numero === state.contratNumeroBonCommande);
+        const dateDebutStr = bcEntite?.date
+          ? String(bcEntite.date).slice(0, 10).split('-').reverse().join('/')
+          : state.contratDateDebut ? new Date(state.contratDateDebut).toLocaleDateString('fr-FR') : '';
         mentions.push(`Selon le bon de commande "${state.contratNumeroBonCommande}"${dateDebutStr ? ` du ${dateDebutStr}` : ''}`);
       } else if (state.contratType === 'ANNUEL') {
         if (state.contratDateDebutConvention) {
@@ -3127,8 +3131,10 @@ export function CommercePage() {
         const bcSite = siteId ? (bcs.find(bc => (bc.sites ?? []).some(s => s.siteId === siteId)) ?? null) : null;
         const bcConvention = bcs.find(bc => (bc.sites ?? []).length === 0) ?? null;
         const both = bcConvention && bcSite;
-        if (bcConvention) mentions.push(`BC${both ? ' convention' : ''} N° ${bcConvention.numero}`);
-        if (bcSite) mentions.push(`BC${both ? ' site' : ''} N° ${bcSite.numero}`);
+        // Date de signature du BC (stockée à minuit UTC) → " du JJ/MM/AAAA"
+        const duBC = (d?: string | null) => (d ? ` du ${String(d).slice(0, 10).split('-').reverse().join('/')}` : '');
+        if (bcConvention) mentions.push(`BC${both ? ' convention' : ''} N° ${bcConvention.numero}${duBC(bcConvention.date)}`);
+        if (bcSite) mentions.push(`BC${both ? ' site' : ''} N° ${bcSite.numero}${duBC(bcSite.date)}`);
         // Fallback legacy uniquement si aucun BonCommande entity
         if (!bcConvention && !bcSite && bcs.length === 0 && state.contratNumeroBonCommande) {
           mentions.push(`Bon de commande N° ${state.contratNumeroBonCommande}`);

@@ -60,10 +60,35 @@ type ContratForMention = {
 
 const fmtDate = (d: Date) => new Intl.DateTimeFormat('fr-FR').format(new Date(d));
 
-/** Le numéro de BC figure-t-il déjà dans la mention (formats "N° X", "\"X\"", "« X »") ? */
+const escapeRegex = (v: string) => v.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Référence à un BC dans une mention : "BC N° X", "BC site N° X", "Bon de commande N° X",
+ * "bon de commande \"X\"", "« X »"… — exige le préfixe BC / bon de commande pour ne pas confondre
+ * avec un autre numéro (ex : "Selon le contrat N° X"). Groupe 1 = référence complète.
+ */
+function regexReferenceBC(numero: string): RegExp {
+  return new RegExp(
+    `((?:\\bBC(?:\\s+(?:convention|site))?|bon\\s+de\\s+commande)\\s*(?:N°\\s*)?["«]?\\s*${escapeRegex(numero)}(?![A-Za-z0-9/-])\\s*["»]?)`,
+    'i',
+  );
+}
+
+/** Le numéro de BC figure-t-il déjà dans la mention ? */
 function mentionContientBC(mention: string, numero: string): boolean {
-  const esc = numero.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(N°\\s*|["«]\\s*)${esc}(?![A-Za-z0-9])`, 'i').test(mention);
+  return regexReferenceBC(numero).test(mention);
+}
+
+/** Ajoute " du JJ/MM/AAAA" après la référence au BC si la mention ne porte pas encore sa date. */
+function completerDateBC(mention: string, numero: string, date: Date | null): string {
+  if (!date) return mention;
+  const re = regexReferenceBC(numero);
+  const m = re.exec(mention);
+  if (!m) return mention;
+  const fin = m.index + m[0].length;
+  if (/^\s*(?:du|signé\s+le|en\s+date\s+du)\s+\d/i.test(mention.slice(fin))) return mention;
+  const ref = m[0].replace(/\s+$/, '');
+  return `${mention.slice(0, m.index)}${ref} du ${fmtDate(date)}${mention.slice(m.index + ref.length)}`;
 }
 
 /**
@@ -95,20 +120,26 @@ export async function construireMentionSpecialeFacture(facture: {
   }
 
   const both = bcConvention && bcSite;
-  const bcParts: { numero: string; texte: string }[] = [];
+  const bcParts: { numero: string; date: Date | null; texte: string }[] = [];
   if (bcConvention) {
     const d = bcConvention.date ? ` du ${fmtDate(bcConvention.date)}` : '';
-    bcParts.push({ numero: bcConvention.numero, texte: `BC${both ? ' convention' : ''} N° ${bcConvention.numero}${d}` });
+    bcParts.push({ numero: bcConvention.numero, date: bcConvention.date, texte: `BC${both ? ' convention' : ''} N° ${bcConvention.numero}${d}` });
   }
-  if (bcSite) {
+  if (bcSite && bcSite.numero !== bcConvention?.numero) {
     const d = bcSite.date ? ` du ${fmtDate(bcSite.date)}` : '';
-    bcParts.push({ numero: bcSite.numero, texte: `BC${both ? ' site' : ''} N° ${bcSite.numero}${d}` });
+    bcParts.push({ numero: bcSite.numero, date: bcSite.date, texte: `BC${both ? ' site' : ''} N° ${bcSite.numero}${d}` });
   }
 
   const stockee = facture.mentionSpeciale?.trim();
   if (stockee) {
-    const manquants = bcParts.filter((p) => !mentionContientBC(stockee, p.numero)).map((p) => p.texte);
-    return manquants.length ? [stockee, ...manquants].join(' — ') : stockee;
+    // BC déjà cité → on lui ajoute sa date de signature si elle manque ; BC absent → ajouté en fin
+    let mention = stockee;
+    const manquants: string[] = [];
+    for (const p of bcParts) {
+      if (mentionContientBC(mention, p.numero)) mention = completerDateBC(mention, p.numero, p.date);
+      else manquants.push(p.texte);
+    }
+    return manquants.length ? [mention, ...manquants].join(' — ') : mention;
   }
 
   const parts: string[] = [];

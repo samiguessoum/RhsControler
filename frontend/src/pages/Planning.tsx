@@ -2422,8 +2422,9 @@ function CreateInterventionDialog({
       setBonCommandeId('');
       return;
     }
+    setBonCommandeId('');
     bonCommandeApi
-      .list({ actif: true })
+      .list({ clientId, actif: true })
       .then((res: any) => {
         const all: any[] = res?.bonsCommandes ?? [];
         const forClient = all
@@ -2615,12 +2616,12 @@ function CreateInterventionDialog({
           {clientBcs.length > 0 && (
             <div className="space-y-2">
               <Label>Bon de commande</Label>
-              <Select value={bonCommandeId} onValueChange={setBonCommandeId}>
+              <Select value={bonCommandeId || 'none'} onValueChange={(v) => setBonCommandeId(v === 'none' ? '' : v)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Aucun BC (optionnel)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Aucun</SelectItem>
+                  <SelectItem value="none">Aucun</SelectItem>
                   {clientBcs.map((bc) => (
                     <SelectItem key={bc.id} value={bc.id}>
                       BC-{bc.numero}

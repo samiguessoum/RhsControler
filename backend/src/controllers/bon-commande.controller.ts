@@ -5,6 +5,27 @@ import { AppError } from '../lib/errors.js';
 import logger from '../lib/logger.js';
 import planningService from '../services/planning.service.js';
 
+/** Date de signature du BC : '' / null → null, sinon Date valide (undefined si invalide). */
+function parseDateBC(value: unknown): Date | null | undefined {
+  if (value === null || value === '') return null;
+  const d = new Date(String(value));
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
+/** Tous les sites doivent appartenir au client du BC. */
+async function sitesDuClient(siteIds: string[], clientId: string): Promise<boolean> {
+  if (!siteIds.length) return true;
+  const count = await prisma.site.count({ where: { id: { in: siteIds }, clientId } });
+  return count === new Set(siteIds).size;
+}
+
+/** Entier positif optionnel : '' / null → null, sinon entier ≥ 0 (undefined si invalide). */
+function parseIntBC(value: unknown): number | null | undefined {
+  if (value === null || value === '') return null;
+  const n = parseInt(String(value), 10);
+  return Number.isNaN(n) || n < 0 ? undefined : n;
+}
+
 export const bonCommandeController = {
   /**
    * GET /api/bons-commandes
@@ -55,7 +76,7 @@ export const bonCommandeController = {
    */
   async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const { numero, clientId, contratId, quotaPassages, seuilAlerte, notes, siteIds } = req.body;
+      const { numero, clientId, contratId, date, quotaPassages, seuilAlerte, notes, siteIds } = req.body;
 
       if (!numero?.trim()) {
         return next(new AppError(400, 'Le numéro du BC est requis'));
@@ -63,11 +84,33 @@ export const bonCommandeController = {
       if (!clientId) {
         return next(new AppError(400, 'Le clientId est requis'));
       }
+      const dateBC = date !== undefined ? parseDateBC(date) : null;
+      if (dateBC === undefined) {
+        return next(new AppError(400, 'Date de signature du BC invalide'));
+      }
+      const quota = quotaPassages !== undefined ? parseIntBC(quotaPassages) : null;
+      const seuil = seuilAlerte !== undefined ? parseIntBC(seuilAlerte) : 2;
+      if (quota === undefined || seuil === undefined) {
+        return next(new AppError(400, 'Nombre d\'opérations ou seuil d\'alerte invalide'));
+      }
+      if (siteIds !== undefined && !Array.isArray(siteIds)) {
+        return next(new AppError(400, 'siteIds doit être un tableau'));
+      }
+      if (Array.isArray(siteIds) && !(await sitesDuClient(siteIds, clientId))) {
+        return next(new AppError(400, 'Un des sites n\'appartient pas à ce client'));
+      }
 
       // Vérifier que le client existe
       const client = await prisma.client.findUnique({ where: { id: clientId } });
       if (!client) {
         return next(new AppError(404, 'Client non trouvé'));
+      }
+
+      if (contratId) {
+        const contrat = await prisma.contrat.findUnique({ where: { id: contratId }, select: { clientId: true } });
+        if (!contrat || contrat.clientId !== clientId) {
+          return next(new AppError(400, 'Contrat introuvable pour ce client'));
+        }
       }
 
       // Vérifier unicité numero + clientId
@@ -83,8 +126,9 @@ export const bonCommandeController = {
           numero: numero.trim(),
           clientId,
           contratId: contratId || null,
-          quotaPassages: quotaPassages ? parseInt(quotaPassages) : null,
-          seuilAlerte: seuilAlerte !== undefined ? parseInt(seuilAlerte) : 2,
+          date: dateBC,
+          quotaPassages: quota || null,
+          seuilAlerte: seuil ?? 2,
           notes: notes || null,
           ...(siteIds?.length
             ? {
@@ -174,11 +218,35 @@ export const bonCommandeController = {
   async update(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const { quotaPassages, notes, seuilAlerte, actif, numero, siteIds } = req.body;
+      const { quotaPassages, notes, seuilAlerte, actif, numero, siteIds, date } = req.body;
 
       const existing = await prisma.bonCommande.findUnique({ where: { id } });
       if (!existing) {
         return next(new AppError(404, 'Bon de commande non trouvé'));
+      }
+
+      const dateBC = date !== undefined ? parseDateBC(date) : undefined;
+      if (date !== undefined && dateBC === undefined) {
+        return next(new AppError(400, 'Date de signature du BC invalide'));
+      }
+      const quota = quotaPassages !== undefined ? parseIntBC(quotaPassages) : undefined;
+      const seuil = seuilAlerte !== undefined ? parseIntBC(seuilAlerte) : undefined;
+      if ((quotaPassages !== undefined && quota === undefined) || (seuilAlerte !== undefined && (seuil === undefined || seuil === null))) {
+        return next(new AppError(400, 'Nombre d\'opérations ou seuil d\'alerte invalide'));
+      }
+      if (Array.isArray(siteIds) && !(await sitesDuClient(siteIds, existing.clientId))) {
+        return next(new AppError(400, 'Un des sites n\'appartient pas à ce client'));
+      }
+      if (numero !== undefined) {
+        if (typeof numero !== 'string' || !numero.trim()) {
+          return next(new AppError(400, 'Le numéro du BC est requis'));
+        }
+        const doublon = await prisma.bonCommande.findFirst({
+          where: { numero: numero.trim(), clientId: existing.clientId, NOT: { id } },
+        });
+        if (doublon) {
+          return next(new AppError(409, `Un BC avec le numéro "${numero.trim()}" existe déjà pour ce client`));
+        }
       }
 
       const bc = await prisma.$transaction(async (tx) => {
@@ -186,9 +254,10 @@ export const bonCommandeController = {
           where: { id },
           data: {
             ...(numero !== undefined ? { numero: numero.trim() } : {}),
-            ...(quotaPassages !== undefined ? { quotaPassages: quotaPassages === null ? null : parseInt(quotaPassages) } : {}),
+            ...(dateBC !== undefined ? { date: dateBC } : {}),
+            ...(quotaPassages !== undefined ? { quotaPassages: quota || null } : {}),
             ...(notes !== undefined ? { notes } : {}),
-            ...(seuilAlerte !== undefined ? { seuilAlerte: parseInt(seuilAlerte) } : {}),
+            ...(seuil != null ? { seuilAlerte: seuil } : {}),
             ...(actif !== undefined ? { actif: Boolean(actif) } : {}),
           },
         });
@@ -268,7 +337,7 @@ export const bonCommandeController = {
       }
 
       const site = await prisma.site.findUnique({ where: { id: siteId } });
-      if (!site) {
+      if (!site || site.clientId !== bc.clientId) {
         return next(new AppError(404, 'Site non trouvé'));
       }
 

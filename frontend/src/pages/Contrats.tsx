@@ -1832,7 +1832,10 @@ export function ContratsPage() {
                         const firstSiteId = selectedContrat.contratSites?.[0]?.siteId || null;
                         const resolvedBc = resolverBCFrontend(selectedContrat.bonsCommandes ?? [], firstSiteId)
                           ?? (selectedContrat.numeroBonCommande ? { numero: selectedContrat.numeroBonCommande } : null);
-                        const bcPart = resolvedBc?.numero ? `Selon le Bon de commande "${resolvedBc.numero}"` : '';
+                        const bcDate = (resolvedBc as { date?: string | null } | null)?.date;
+                        const bcPart = resolvedBc?.numero
+                          ? `Selon le Bon de commande "${resolvedBc.numero}"${bcDate ? ` du ${String(bcDate).slice(0, 10).split('-').reverse().join('/')}` : ''}`
+                          : '';
                         const mention = [
                           selectedContrat.nom?.trim() ? `Contrat « ${selectedContrat.nom.trim()} »` : '',
                           (selectedContrat as any).refExterne ? `Selon le contrat N° ${(selectedContrat as any).refExterne}` : '',

@@ -17,6 +17,7 @@ interface BonCommande {
   numero: string;
   client: { id: string; nomEntreprise: string };
   contrat?: { id: string; type: string } | null;
+  date?: string | null;
   quotaPassages: number | null;
   passagesConsommes: number;
   passagesRestants: number | null;
@@ -229,6 +230,11 @@ export function BonCommandesPage() {
                   <Building2 className="h-4 w-4" />
                   {bc.client.nomEntreprise}
                 </p>
+                {bc.date && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Signé le {String(bc.date).slice(0, 10).split('-').reverse().join('/')}
+                  </p>
+                )}
               </div>
               {getStatutChip(bc)}
             </div>
