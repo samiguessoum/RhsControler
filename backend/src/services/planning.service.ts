@@ -6,30 +6,34 @@ import logger from '../lib/logger.js';
 import { rattacherEtConsommerBC, avecPrevisions } from './bon-commande.service.js';
 
 /**
- * Règle métier : aucune visite de contrôle après la dernière opération du contrat (par site).
- * Appliquée uniquement à la génération du planning ; ensuite, le planning se gère manuellement.
- * Sans opération, pas de borne.
- */
-function apresDerniereOperation(visiteDate: Date, opDates: Date[]): boolean {
-  if (opDates.length === 0) return false;
-  const derniere = Math.max(...opDates.map((d) => startOfDay(d).getTime()));
-  return startOfDay(visiteDate).getTime() > derniere;
-}
-
-/**
  * Génère les dates de contrôles ancrées aux opérations : entre chaque paire consécutive
  * d'opérations, répartit `nbEntreOps` visites à espacement égal.
+ * Avec `queue`, le contrat peut se terminer par des visites : après la dernière opération, on
+ * répartit les visites comme si une opération suivante avait lieu (`queue.prochaine`) et on garde
+ * celles qui tombent au plus tard à `queue.fin`. Sans date de fin, pas de visites en queue.
  */
-function datesControlesEntreOps(datesOps: Date[], nbEntreOps: number): Date[] {
-  if (nbEntreOps <= 0 || datesOps.length < 2) return [];
+function datesControlesEntreOps(
+  datesOps: Date[],
+  nbEntreOps: number,
+  queue?: { fin: Date | null; prochaine: (derniere: Date) => Date },
+): Date[] {
+  if (nbEntreOps <= 0 || datesOps.length === 0) return [];
   const dates: Date[] = [];
-  for (let i = 0; i < datesOps.length - 1; i++) {
-    const debut = datesOps[i].getTime();
-    const fin = datesOps[i + 1].getTime();
+  const repartir = (debut: number, fin: number) => {
     const espacement = (fin - debut) / (nbEntreOps + 1);
+    const visites: Date[] = [];
     for (let j = 1; j <= nbEntreOps; j++) {
-      dates.push(skipAlgerianWeekend(new Date(Math.round(debut + j * espacement))));
+      visites.push(skipAlgerianWeekend(new Date(Math.round(debut + j * espacement))));
     }
+    return visites;
+  };
+  for (let i = 0; i < datesOps.length - 1; i++) {
+    dates.push(...repartir(datesOps[i].getTime(), datesOps[i + 1].getTime()));
+  }
+  if (queue?.fin) {
+    const derniere = datesOps[datesOps.length - 1];
+    const limite = endOfDay(queue.fin);
+    dates.push(...repartir(derniere.getTime(), queue.prochaine(derniere).getTime()).filter((d) => d <= limite));
   }
   return dates;
 }
@@ -704,8 +708,8 @@ export const planningService = {
     const interventionsCreees: any[] = [];
     const MAX_ECHEANCES = 500;
 
-    // Opérations déjà réalisées ou issues d'avenants/BC : prises en compte pour la règle
-    // "aucun contrôle après la dernière opération" mais ne bloquent pas la régénération.
+    // Opérations déjà réalisées ou issues d'avenants/BC : ancres des visites de contrôle
+    // mais ne bloquent pas la régénération.
     const opsConservees = await prisma.intervention.findMany({
       where: { contratId, type: 'OPERATION', statut: { not: 'ANNULEE' } },
       select: { siteId: true, datePrevue: true },
@@ -744,6 +748,8 @@ export const planningService = {
       ? new Date((contrat as any).datePriseEnComptePlanification)
       : null;
     const dateFinAnnuel = contrat.dateFin || addDays(new Date(contrat.dateDebut), 365);
+    // Fin du contrat pour les visites de contrôle en queue (ponctuel sans date de fin : aucune)
+    const finContrat: Date | null = contrat.type === 'PONCTUEL' ? contrat.dateFin : dateFinAnnuel;
     // Garde-fou : rien avant la signature de la convention ni après sa fin (si renseignées)
     const debutConvention = contrat.dateDebutConvention ? startOfDay(contrat.dateDebutConvention) : null;
     const finConvention = contrat.dateFinConvention ? endOfDay(contrat.dateFinConvention) : null;
@@ -830,18 +836,23 @@ export const planningService = {
       interventionsCreees.push(...opsCreees);
 
       // ── Visites de contrôle ancrées aux opérations
-      // Toutes les opérations du site (nouvelles + conservées) servent d'ancres.
+      // Toutes les opérations du site (nouvelles + conservées) servent d'ancres. Le contrat peut
+      // se terminer par une visite : celles saisies après la dernière opération sont conservées.
       const toutesOpsDatesSite = [
         ...datesOps,
         ...opsConservees.filter((iv) => iv.siteId === s.siteId).map((iv) => iv.datePrevue),
       ].sort((a, b) => a.getTime() - b.getTime());
 
+      // Visites en queue jusqu'à la fin du contrat, à la fréquence des opérations du site
+      const queue = s.freqOps
+        ? { fin: finContrat, prochaine: (d: Date) => prochaineDateTheorique(d, s.freqOps!.jours, s.freqOps!.mois, s.periodes) }
+        : undefined;
       const datesCtrl = s.datesCtrl?.length
         ? s.datesCtrl.filter(dansConvention)
-        : datesControlesEntreOps(toutesOpsDatesSite, s.nbCtrlEntreOps).filter(dansConvention);
+        : datesControlesEntreOps(toutesOpsDatesSite, s.nbCtrlEntreOps, queue).filter(dansConvention);
 
       const ctrlData = datesCtrl
-        .filter((date) => !apresDerniereOperation(date, toutesOpsDatesSite) && !consommer(s.siteId, 'CONTROLE', null))
+        .filter(() => !consommer(s.siteId, 'CONTROLE', null))
         .map((date) => ({ ...base, type: 'CONTROLE' as const, datePrevue: date, statut: 'A_PLANIFIER' as const }));
       const ctrlCreees = await prisma.intervention.createManyAndReturn({ data: ctrlData });
       interventionsCreees.push(...ctrlCreees);
@@ -909,6 +920,8 @@ export const planningService = {
       frequence?: { jours: number | null; mois: number | null };
       /** Périodes saisonnières de l'avenant (avec sa fréquence propre) */
       periodes?: PeriodeFrequence[];
+      /** Date d'expiration de l'avenant : borne les visites de contrôle en queue (sinon fin du contrat) */
+      fin?: Date | null;
     } = {},
   ) {
     const contrat = await prisma.contrat.findUnique({
@@ -954,6 +967,11 @@ export const planningService = {
     }
 
     const interventionsCreees: any[] = [];
+    // Fin des visites de contrôle en queue : expiration de l'avenant, sinon fin du contrat,
+    // et jamais après la fin de convention
+    const finAvenant = [params.fin ?? contrat.dateFin, contrat.dateFinConvention]
+      .filter((d): d is Date => !!d)
+      .sort((a, b) => a.getTime() - b.getTime())[0] ?? null;
 
     for (const s of series) {
       const serie = { contratId: contrat.id, siteId: s.siteId };
@@ -1010,11 +1028,11 @@ export const planningService = {
       }
       const datesCtrl: Date[] = params.datesControles?.length
         ? [...params.datesControles].sort((a, b) => a.getTime() - b.getTime())
-        : datesControlesEntreOps(toutesOpsAvenant, nbCtrlEntreOps);
+        : datesControlesEntreOps(toutesOpsAvenant, nbCtrlEntreOps, s.freqOps
+          ? { fin: finAvenant, prochaine: (d: Date) => prochaineDateTheorique(d, s.freqOps!.jours, s.freqOps!.mois, s.periodes) }
+          : undefined);
 
-      const ctrlAvenantData = datesCtrl
-        .filter((d) => !apresDerniereOperation(d, toutesOpsAvenant))
-        .map((currentDate) => ({
+      const ctrlAvenantData = datesCtrl.map((currentDate) => ({
           ...serie,
           clientId: contrat.clientId,
           avenantId,

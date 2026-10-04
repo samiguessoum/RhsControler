@@ -62,11 +62,8 @@ function dateHorsConvention(contrat: Record<string, any>, contratSites?: SiteInp
   const fin = jour(contrat.dateFinConvention);
   if (contrat.dateDebutConvention && fin && fin < debut!) return 'La fin de convention est antérieure à sa date de signature';
   for (const cs of contratSites || []) {
-    // Les visites après la dernière opération ne sont pas planifiées : elles ne comptent pas
-    const ops: string[] = (cs.datesPrevuesOperations || []).map(jour).filter(Boolean);
-    const derniereOp = ops.reduce((max: string | null, d) => (!max || d > max ? d : max), null);
-    const ctrl: string[] = (cs.datesPrevuesControles || []).map(jour).filter((d: string | null) => d && (!derniereOp || d <= derniereOp));
-    for (const j of [...ops, ...ctrl]) {
+    const dates: string[] = [...(cs.datesPrevuesOperations || []), ...(cs.datesPrevuesControles || [])].map(jour).filter(Boolean) as string[];
+    for (const j of dates) {
       if (debut && j < debut) return `Intervention prévue le ${j} avant le début de la convention (${debut})`;
       if (fin && j > fin) return `Intervention prévue le ${j} après la fin de la convention (${fin})`;
     }

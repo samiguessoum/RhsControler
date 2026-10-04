@@ -110,6 +110,14 @@ export function chevauchementPeriodes(periodes: PeriodeFrequence[]): string | nu
   return null;
 }
 
+// Échéance théorique suivant `t` : fréquence de la période saisonnière couvrant `t`, sinon la
+// fréquence normale (même règle que prochaineDateTheorique côté backend)
+export function echeanceSuivante(t: Date, frequenceJours?: number, frequenceMois?: number, periodes?: PeriodeFrequence[]): Date {
+  const periode = periodeALaDate(t, periodes);
+  if (periode) return periode.frequenceMois ? addMonths(t, periode.frequenceMois) : addDays(t, periode.frequenceJours || 30);
+  return frequenceMois ? addMonths(t, frequenceMois) : addDays(t, frequenceJours || 30);
+}
+
 export function computeProjectionDates(
   premierDate: string,
   nbOps: number | undefined,
@@ -125,11 +133,7 @@ export function computeProjectionDates(
   // La fréquence est celle de la période saisonnière couvrant l'échéance, sinon la fréquence normale.
   // Même algo que le backend : on avance sur les échéances théoriques (t) et seule la date affichée
   // est reportée hors week-end, pour que les reports ne s'accumulent pas.
-  const suivante = (t: Date) => {
-    const periode = periodeALaDate(t, periodes);
-    if (periode) return periode.frequenceMois ? addMonths(t, periode.frequenceMois) : addDays(t, periode.frequenceJours || 30);
-    return frequenceMois ? addMonths(t, frequenceMois) : addDays(t, frequenceJours || 30);
-  };
+  const suivante = (t: Date) => echeanceSuivante(t, frequenceJours, frequenceMois, periodes);
   const dates: string[] = [];
   let t = new Date(premierDate + 'T12:00:00');
   let d = t;
@@ -152,26 +156,42 @@ export function computeProjectionDates(
   return dates;
 }
 
-/** Même algo que le backend : répartit nbEntreOps contrôles entre chaque paire d'opérations. */
-export function computeProjectionControles(datesOps: string[], nbEntreOps: number): string[] {
-  if (nbEntreOps <= 0 || datesOps.length < 2) return [];
-  const result: string[] = [];
-  for (let i = 0; i < datesOps.length - 1; i++) {
-    const debut = new Date(datesOps[i] + 'T12:00:00').getTime();
-    const fin = new Date(datesOps[i + 1] + 'T12:00:00').getTime();
+/**
+ * Même algo que le backend : répartit nbEntreOps contrôles entre chaque paire d'opérations.
+ * Avec `queue`, le contrat peut se terminer par des visites : après la dernière opération, on
+ * répartit les visites comme si une opération suivante avait lieu (à la fréquence des opérations)
+ * et on garde celles qui tombent au plus tard à `queue.fin`. Sans date de fin, pas de queue.
+ */
+export function computeProjectionControles(
+  datesOps: string[],
+  nbEntreOps: number,
+  queue?: { fin?: string; frequenceJours?: number; frequenceMois?: number; periodes?: PeriodeFrequence[] },
+): string[] {
+  const ops = datesOps.filter(Boolean).sort();
+  if (nbEntreOps <= 0 || ops.length === 0) return [];
+  const repartir = (debut: number, fin: number) => {
     const espacement = (fin - debut) / (nbEntreOps + 1);
+    const visites: string[] = [];
     for (let j = 1; j <= nbEntreOps; j++) {
-      result.push(format(skipAlgerianWeekend(new Date(Math.round(debut + j * espacement))), 'yyyy-MM-dd'));
+      visites.push(format(skipAlgerianWeekend(new Date(Math.round(debut + j * espacement))), 'yyyy-MM-dd'));
     }
+    return visites;
+  };
+  const result: string[] = [];
+  for (let i = 0; i < ops.length - 1; i++) {
+    result.push(...repartir(new Date(ops[i] + 'T12:00:00').getTime(), new Date(ops[i + 1] + 'T12:00:00').getTime()));
+  }
+  if (queue?.fin && (queue.frequenceJours || queue.frequenceMois)) {
+    const derniere = new Date(ops[ops.length - 1] + 'T12:00:00');
+    const suivante = echeanceSuivante(derniere, queue.frequenceJours, queue.frequenceMois, queue.periodes);
+    result.push(...repartir(derniere.getTime(), suivante.getTime()).filter((d) => d <= queue.fin!));
   }
   return result;
 }
 
-// Même règle que le backend : aucune visite de contrôle après la dernière opération (dates yyyy-MM-dd).
-export function apresDerniereOperation(date: string, opDates: string[]): boolean {
-  const ops = opDates.filter(Boolean);
-  if (!date || ops.length === 0) return false;
-  return date > ops.reduce((max, d) => (d > max ? d : max));
+// Fin des visites de contrôle en queue : la plus proche des dates de fin renseignées (yyyy-MM-dd)
+export function finPourControles(...fins: (string | undefined | null)[]): string | undefined {
+  return fins.filter((f): f is string => !!f).sort()[0];
 }
 
 // Date hors de [debut, fin] (yyyy-MM-dd, bornes facultatives). Sert au garde-fou convention
@@ -194,11 +214,10 @@ function resolverBCFrontend(
   return null;
 }
 
-// Dates soumises au garde-fou convention : les opérations et les visites qui seront planifiées
-// (celles après la dernière opération sont ignorées).
+// Dates soumises au garde-fou convention : opérations et visites de contrôle (le contrat peut se
+// terminer par une visite).
 function datesAPlanifier(cs: ContratSiteInput): string[] {
-  const ops = cs.datesPrevuesOperations || [];
-  return [...ops, ...(cs.datesPrevuesControles || []).filter((d) => !apresDerniereOperation(d, ops))];
+  return [...(cs.datesPrevuesOperations || []), ...(cs.datesPrevuesControles || [])];
 }
 
 // Croix de suppression d'une date de la projection (masquée s'il ne reste qu'une date : pour ne
@@ -220,12 +239,10 @@ function SupprimerDate({ visible, onClick }: { visible: boolean; onClick: () => 
 type SerieDates = 'ops' | 'ctrl';
 
 // Projection éditable des dates d'opérations et de visites de contrôle (formulaire contrat et
-// avenant). `opsExistantes` : opérations déjà au planning (avenant), prises en compte pour les
-// visites remplacées ou tombant après la dernière opération.
+// avenant).
 export function ProjectionDates({
   ops,
   ctrl,
-  opsExistantes = [],
   debutConvention,
   finConvention,
   debutPeriode,
@@ -233,11 +250,9 @@ export function ProjectionDates({
   onChangeDate,
   onRemoveDate,
   onReset,
-  onRemoveHorsContrat,
 }: {
   ops: string[];
   ctrl: string[];
-  opsExistantes?: string[];
   debutConvention: string;
   finConvention: string;
   debutPeriode: string;
@@ -245,12 +260,9 @@ export function ProjectionDates({
   onChangeDate: (serie: SerieDates, index: number, value: string) => void;
   onRemoveDate: (serie: SerieDates, index: number) => void;
   onReset: (serie: SerieDates) => void;
-  onRemoveHorsContrat: () => void;
 }) {
   if (ops.length === 0 && ctrl.length === 0) return null;
-  const toutesOps = [...opsExistantes, ...ops];
-  const nbHorsContrat = ctrl.filter((d) => apresDerniereOperation(d, toutesOps)).length;
-  const nbInterdites = [...ops, ...ctrl.filter((d) => !apresDerniereOperation(d, toutesOps))]
+  const nbInterdites = [...ops, ...ctrl]
     .filter((d) => horsBornes(d, debutConvention, finConvention)).length;
   const nbAutrePeriode = ops
     .filter((d) => !horsBornes(d, debutConvention, finConvention) && horsBornes(d, debutPeriode, finPeriode)).length;
@@ -310,23 +322,9 @@ export function ProjectionDates({
 
       {ctrl.length > 0 && (
         <div className="space-y-1.5">
-          {nbHorsContrat > 0 && (
-            <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5">
-              Attention : {nbHorsContrat} visite(s) de contrôle tombent après la dernière opération et ne seront pas planifiées.
-              Ajustez le nombre, la fréquence ou la date de départ si besoin.
-              <button
-                type="button"
-                onClick={onRemoveHorsContrat}
-                className="ml-1 font-medium underline hover:text-red-900"
-              >
-                Retirer les dates en rouge
-              </button>
-            </p>
-          )}
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-gray-600">
               Contrôles ({ctrl.length})
-              {nbHorsContrat > 0 && <span className="font-normal text-red-500"> · en rouge : après la dernière opération</span>}
             </span>
             <button type="button" onClick={() => onReset('ctrl')} className="text-xs text-blue-500 hover:text-blue-700">
               ↺ Recalculer
@@ -334,26 +332,19 @@ export function ProjectionDates({
           </div>
           <div className="grid grid-cols-3 gap-1.5">
             {ctrl.map((date, i) => {
-              const horsContrat = apresDerniereOperation(date, toutesOps);
-              const interdite = !horsContrat && horsBornes(date, debutConvention, finConvention);
-              const autrePeriode = !horsContrat && !interdite && horsBornes(date, debutPeriode, finPeriode);
+              const interdite = horsBornes(date, debutConvention, finConvention);
+              const autrePeriode = !interdite && horsBornes(date, debutPeriode, finPeriode);
               return (
                 <div
                   key={i}
                   className="flex items-center gap-1 group"
-                  title={
-                    horsContrat ? 'Après la dernière opération : ne sera pas planifiée'
-                      : interdite ? 'Hors convention : à modifier ou supprimer'
-                      : autrePeriode ? 'Hors de la période de prestations'
-                      : undefined
-                  }
+                  title={interdite ? 'Hors convention : à modifier ou supprimer' : autrePeriode ? 'Hors de la période de prestations' : undefined}
                 >
                   <span className="text-[10px] text-gray-400 w-4 flex-shrink-0">#{i + 1}</span>
                   <Input
                     type="date"
                     className={cn(
                       'h-7 text-xs px-1.5',
-                      horsContrat && 'line-through text-red-500 bg-red-50 border-red-200',
                       interdite && 'text-red-600 bg-red-50 border-red-500 ring-1 ring-red-500',
                       autrePeriode && 'text-orange-700 bg-orange-50 border-orange-300'
                     )}
@@ -665,8 +656,14 @@ export function ContratForm({
 
   const projectionOps = (cs: ContratSiteInput, fin: string, t: ContratType = type) =>
     computeProjectionDates(cs.premiereDateOperation || '', cs.nombreOperations, cs.frequenceOperationsJours, cs.frequenceOperationsMois, fin || undefined, t === 'PONCTUEL', periodesValides(cs.periodesFrequence));
-  const projectionCtrl = (cs: ContratSiteInput) =>
-    computeProjectionControles(cs.datesPrevuesOperations || [], cs.nombreVisitesControleEntreOps || 0);
+  // Visites en queue jusqu'à la fin du contrat (sans dépasser la fin de convention)
+  const projectionCtrl = (cs: ContratSiteInput, fin: string = dateFin) =>
+    computeProjectionControles(cs.datesPrevuesOperations || [], cs.nombreVisitesControleEntreOps || 0, {
+      fin: finPourControles(fin, dateFinConvention),
+      frequenceJours: cs.frequenceOperationsJours,
+      frequenceMois: cs.frequenceOperationsMois,
+      periodes: periodesValides(cs.periodesFrequence),
+    });
 
   // État pour les sites dépliés/repliés — dépliés par défaut pour ne pas cacher
   // les prestations/prix (source d'oublis fréquente)
@@ -749,14 +746,6 @@ export function ContratForm({
     }));
   };
 
-  // Retire les visites en rouge (après la dernière opération : elles ne seraient pas planifiées)
-  const removeControlesApresDerniereOp = (siteId: string) => {
-    setContratSites(contratSites.map(cs => cs.siteId !== siteId ? cs : {
-      ...cs,
-      datesPrevuesControles: (cs.datesPrevuesControles || []).filter((d) => !apresDerniereOperation(d, cs.datesPrevuesOperations || [])),
-    }));
-  };
-
   const resetSiteDates = (siteId: string, type: 'ops' | 'ctrl') => {
     const cs = contratSites.find(s => s.siteId === siteId);
     if (!cs) return;
@@ -786,7 +775,7 @@ export function ContratForm({
       if (!cs.datesPrevuesOperations) return cs;
       // Les visites de contrôle sont ancrées sur les opérations recalculées
       const maj = { ...cs, datesPrevuesOperations: projectionOps(cs, value) };
-      return { ...maj, datesPrevuesControles: projectionCtrl(maj) };
+      return { ...maj, datesPrevuesControles: projectionCtrl(maj, value) };
     }));
   };
 
@@ -1306,7 +1295,6 @@ export function ContratForm({
                               onChangeDate={(t, i, v) => updateSiteDate(cs.siteId, t, i, v)}
                               onRemoveDate={(t, i) => removeSiteDate(cs.siteId, t, i)}
                               onReset={(t) => resetSiteDates(cs.siteId, t)}
-                              onRemoveHorsContrat={() => removeControlesApresDerniereOp(cs.siteId)}
                             />
                           </div>
                         ) : null}

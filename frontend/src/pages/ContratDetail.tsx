@@ -49,7 +49,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { contratsApi, interventionsApi, prestationsApi, avenantApi, clientsApi, usersApi, bonCommandeApi } from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
-import { ContratForm, ProjectionDates, FrequenceInput, PeriodesFrequenceInput, normaliserPeriodes, periodesValides, chevauchementPeriodes, libelleFrequence, libelleJourAnnuel, computeProjectionDates, computeProjectionControles, apresDerniereOperation, horsBornes } from './Contrats';
+import { ContratForm, ProjectionDates, FrequenceInput, PeriodesFrequenceInput, normaliserPeriodes, periodesValides, chevauchementPeriodes, libelleFrequence, libelleJourAnnuel, computeProjectionDates, computeProjectionControles, finPourControles, horsBornes } from './Contrats';
 import { addDays, format } from 'date-fns';
 import { formatDate, getStatutColor, getStatutLabel, cn } from '@/lib/utils';
 import type { Prestation, InterventionStatut, PeriodeFrequence } from '@/types';
@@ -93,11 +93,17 @@ const AVENANT_VIDE: AvenantForm = {
   premiereOp: '', periodes: [], datesOps: [], datesCtrl: [],
 };
 
-const projectionAvenant = (f: AvenantForm, ponctuel: boolean, dateFin?: string) => {
+// `finConvention` borne en plus les visites de contrôle en queue (après la dernière opération)
+const projectionAvenant = (f: AvenantForm, ponctuel: boolean, dateFin?: string, finConvention?: string) => {
   const datesOps = computeProjectionDates(f.premiereOp, f.nbOps, f.freqOpsJours, f.freqOpsMois, dateFin, ponctuel, periodesValides(f.periodes));
   return {
     datesOps,
-    datesCtrl: computeProjectionControles(datesOps, f.nbCtrlEntreOps || 0),
+    datesCtrl: computeProjectionControles(datesOps, f.nbCtrlEntreOps || 0, {
+      fin: finPourControles(dateFin, finConvention),
+      frequenceJours: f.freqOpsJours,
+      frequenceMois: f.freqOpsMois,
+      periodes: periodesValides(f.periodes),
+    }),
   };
 };
 
@@ -325,10 +331,6 @@ export function ContratDetailPage() {
   const interventions = interventionsData?.interventions || [];
   const isPonctuel = contrat?.type === 'PONCTUEL';
 
-  // Opérations déjà au planning : visites remplacées / après la dernière opération dans la projection
-  const opsExistantes = interventions
-    .filter((i) => i.type === 'OPERATION' && i.statut !== 'ANNULEE')
-    .map((i) => i.datePrevue.slice(0, 10));
   const avenantDebutConvention = (contrat?.dateDebutConvention || contrat?.dateDebut || '').slice(0, 10);
   const avenantFinConvention = (contrat?.dateFinConvention || '').slice(0, 10);
 
@@ -364,14 +366,11 @@ export function ContratDetailPage() {
     setAvenantForm((f) => {
       const n = { ...f, ...updates };
       const dateFin = (n.dateExpiration || contrat?.dateFin || '').slice(0, 10);
-      const p = projectionAvenant(n, isPonctuel, dateFin || undefined);
+      const p = projectionAvenant(n, isPonctuel, dateFin || undefined, avenantFinConvention);
       return { ...n, datesOps: p.datesOps, datesCtrl: p.datesCtrl };
     });
   const cleDates = (serie: 'ops' | 'ctrl') => (serie === 'ops' ? 'datesOps' : 'datesCtrl' as const);
-  const avenantDatesInterdites = [
-    ...avenantForm.datesOps,
-    ...avenantForm.datesCtrl.filter((d) => !apresDerniereOperation(d, [...opsExistantes, ...avenantForm.datesOps])),
-  ].filter((d) => horsBornes(d, avenantDebutConvention, avenantFinConvention));
+  const avenantDatesInterdites = [...avenantForm.datesOps, ...avenantForm.datesCtrl].filter((d) => horsBornes(d, avenantDebutConvention, avenantFinConvention));
 
   // Stats des interventions
   const interventionStats = useMemo(() => {
@@ -1825,7 +1824,6 @@ export function ContratDetailPage() {
                 <ProjectionDates
                   ops={avenantForm.datesOps}
                   ctrl={avenantForm.datesCtrl}
-                  opsExistantes={opsExistantes}
                   debutConvention={avenantDebutConvention}
                   finConvention={avenantFinConvention}
                   debutPeriode={(contrat?.dateDebut || '').slice(0, 10)}
@@ -1837,11 +1835,7 @@ export function ContratDetailPage() {
                   })}
                   onReset={(serie) => setAvenantForm((f) => {
                     const dateFin = (f.dateExpiration || contrat?.dateFin || '').slice(0, 10);
-                    return { ...f, [cleDates(serie)]: projectionAvenant(f, isPonctuel, dateFin || undefined)[cleDates(serie)] };
-                  })}
-                  onRemoveHorsContrat={() => setAvenantForm((f) => {
-                    const datesCtrl = f.datesCtrl.filter((d) => !apresDerniereOperation(d, [...opsExistantes, ...f.datesOps]));
-                    return { ...f, datesCtrl };
+                    return { ...f, [cleDates(serie)]: projectionAvenant(f, isPonctuel, dateFin || undefined, avenantFinConvention)[cleDates(serie)] };
                   })}
                 />
               </div>

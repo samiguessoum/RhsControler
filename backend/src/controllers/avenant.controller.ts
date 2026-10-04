@@ -69,24 +69,11 @@ export const avenantController = {
       }
 
 
-      // Garde-fou convention, comme à la création du contrat (les visites après la dernière
-      // opération ne sont pas planifiées : elles ne comptent pas)
+      // Garde-fou convention, comme à la création du contrat
       const jour = (d: any) => (d ? new Date(d).toISOString().slice(0, 10) : null);
       const debutConvention = jour(contrat.dateDebutConvention) ?? jour(contrat.dateDebut);
       const finConvention = jour(contrat.dateFinConvention);
-      const opsPrevues: string[] = (datesOperations || []).map(jour).filter(Boolean);
-      if ((datesControles || []).length) {
-        const opsExistantes = await prisma.intervention.findMany({
-          where: { contratId, type: 'OPERATION', statut: { not: 'ANNULEE' } },
-          select: { datePrevue: true },
-        });
-        opsPrevues.push(...opsExistantes.map((o) => jour(o.datePrevue)!));
-      }
-      const derniereOp = opsPrevues.reduce((max: string | null, d) => (!max || d > max ? d : max), null);
-      const aVerifier = [
-        ...(datesOperations || []).map(jour),
-        ...(datesControles || []).map(jour).filter((d: string | null) => !derniereOp || d! <= derniereOp),
-      ].filter(Boolean) as string[];
+      const aVerifier = [...(datesOperations || []), ...(datesControles || [])].map(jour).filter(Boolean) as string[];
       for (const j of aVerifier) {
         if (debutConvention && j < debutConvention) {
           return next(new AppError(400, `Intervention prévue le ${j} avant le début de la convention (${debutConvention})`));
@@ -140,6 +127,7 @@ export const avenantController = {
             datesControles: datesControles?.map((d: string) => new Date(d)),
             frequence: freqJoursAvenant || freqMoisAvenant ? { jours: freqJoursAvenant, mois: freqMoisAvenant } : undefined,
             periodes: periodesAvenant,
+            fin: dateExpiration ? new Date(dateExpiration) : null,
           },
         );
         interventionsCreees = result.interventionsCreees;
