@@ -111,11 +111,24 @@ export function chevauchementPeriodes(periodes: PeriodeFrequence[]): string | nu
 }
 
 // Échéance théorique suivant `t` : fréquence de la période saisonnière couvrant `t`, sinon la
-// fréquence normale (même règle que prochaineDateTheorique côté backend)
+// fréquence normale ; avancée si une période plus rapprochée commence avant, sans précéder son
+// début (même règle que prochaineDateTheorique côté backend)
 export function echeanceSuivante(t: Date, frequenceJours?: number, frequenceMois?: number, periodes?: PeriodeFrequence[]): Date {
+  const ajouter = (jours?: number | null, mois?: number | null) => (mois ? addMonths(t, mois) : addDays(t, jours || 30));
   const periode = periodeALaDate(t, periodes);
-  if (periode) return periode.frequenceMois ? addMonths(t, periode.frequenceMois) : addDays(t, periode.frequenceJours || 30);
-  return frequenceMois ? addMonths(t, frequenceMois) : addDays(t, frequenceJours || 30);
+  let prochaine = periode ? ajouter(periode.frequenceJours, periode.frequenceMois) : ajouter(frequenceJours, frequenceMois);
+  for (const p of periodes ?? []) {
+    const [m, j] = p.debut.split('-').map(Number);
+    for (let annee = t.getFullYear(); annee <= prochaine.getFullYear(); annee++) {
+      const debut = new Date(t);
+      debut.setFullYear(annee, m - 1, j);
+      if (debut <= t || debut >= prochaine) continue;
+      const enPeriode = ajouter(p.frequenceMois ? null : p.frequenceJours, p.frequenceMois);
+      const candidate = enPeriode > debut ? enPeriode : debut;
+      if (candidate < prochaine) prochaine = candidate;
+    }
+  }
+  return prochaine;
 }
 
 export function computeProjectionDates(

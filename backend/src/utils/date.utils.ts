@@ -92,10 +92,18 @@ export function frequenceALaDate(
   return { jours: mois ? null : (jours ?? null), mois: mois ?? null };
 }
 
+const ajouterFrequence = (d: Date, f: { jours: number | null; mois: number | null }) =>
+  f.mois ? addMonths(d, f.mois) : addDays(d, f.jours || 30);
+
 /**
  * Échéance théorique suivante (sans report du week-end). Pour générer une série, avancer sur les
  * dates théoriques et ne reporter que chaque date affichée : sinon les reports s'accumulent
  * (le 5 du mois devient le 7, puis le 9…).
+ *
+ * La fréquence est celle de la date du passage. Exception : si une période plus rapprochée
+ * commence avant l'échéance ainsi obtenue, le passage suivant est avancé pour la respecter, sans
+ * précéder le début de la période (ex : 90 j toute l'année, 30 j du 1er mai au 30 septembre ;
+ * passage le 20 avril → suivant le 20 mai au lieu du 19 juillet).
  */
 export function prochaineDateTheorique(
   derniereDate: Date,
@@ -103,8 +111,19 @@ export function prochaineDateTheorique(
   mois?: number | null,
   periodes?: PeriodeFrequence[] | null,
 ): Date {
-  const f = frequenceALaDate(derniereDate, jours, mois, periodes);
-  return f.mois ? addMonths(derniereDate, f.mois) : addDays(derniereDate, f.jours || 30);
+  let prochaine = ajouterFrequence(derniereDate, frequenceALaDate(derniereDate, jours, mois, periodes));
+  for (const p of periodes ?? []) {
+    const [m, j] = p.debut.split('-').map(Number);
+    for (let annee = derniereDate.getFullYear(); annee <= prochaine.getFullYear(); annee++) {
+      const debut = new Date(derniereDate);
+      debut.setFullYear(annee, m - 1, j);
+      if (debut <= derniereDate || debut >= prochaine) continue;
+      const enPeriode = ajouterFrequence(derniereDate, { jours: p.frequenceMois ? null : p.frequenceJours, mois: p.frequenceMois });
+      const candidate = maxDate(debut, enPeriode);
+      if (candidate < prochaine) prochaine = candidate;
+    }
+  }
+  return prochaine;
 }
 
 /**
@@ -117,9 +136,7 @@ export function getProchaineDateIntervention(
   mois?: number | null,
   periodes?: PeriodeFrequence[] | null,
 ): Date {
-  const f = frequenceALaDate(derniereDate, jours, mois, periodes);
-  if (f.mois) return skipAlgerianWeekend(addMonths(derniereDate, f.mois));
-  return skipAlgerianWeekend(addDays(derniereDate, f.jours || 30));
+  return skipAlgerianWeekend(prochaineDateTheorique(derniereDate, jours, mois, periodes));
 }
 
 /**

@@ -1,5 +1,6 @@
-import { addDays, addMonths, differenceInCalendarDays, format } from 'date-fns';
-import { frequenceOperationsALaDate } from '../utils/frequence.utils.js';
+import { addMonths, differenceInCalendarDays, format } from 'date-fns';
+import { sourceFrequenceOperations } from '../utils/frequence.utils.js';
+import { frequenceALaDate, prochaineDateTheorique } from '../utils/date.utils.js';
 import { prisma } from '../config/database.js';
 
 type BuildAttestationOptions = {
@@ -177,24 +178,20 @@ export const attestationService = {
       ? contratPrestations.join(', ')
       : (intervention.prestation?.trim() || 'prestation technique');
 
-    // Fréquence applicable au passage : avenant → site → contrat, période saisonnière couvrant la
-    // date de réalisation comprise (mois prioritaire sur jours, comme le planning)
-    const freq = frequenceOperationsALaDate(intervention as any, dateReference);
+    // Fréquence applicable au passage : avenant → site → contrat, période saisonnière comprise
+    // (mois prioritaire sur jours). Prochaine opération = même règle que le planning : fréquence
+    // de la date du passage, avancée si une période plus rapprochée commence avant (fallback 30 j)
+    const src = sourceFrequenceOperations(intervention as any);
+    const freq = frequenceALaDate(dateReference, src.jours, src.mois, src.periodes);
+    const dateProchaineOperation = prochaineDateTheorique(dateReference, src.jours, src.mois, src.periodes);
+    const garantieJours = differenceInCalendarDays(dateProchaineOperation, dateReference);
 
-    // Date de prochaine opération = date de réalisation effective + fréquence (fallback 30 jours)
-    const dateProchaineOperation = freq.mois
-      ? addMonths(dateReference, freq.mois)
-      : addDays(dateReference, freq.jours ?? 30);
-    const garantieJours = freq.mois
-      ? differenceInCalendarDays(dateProchaineOperation, dateReference)
-      : (freq.jours ?? 30);
-
-    // Durée de garantie — stratégie modulo 30
+    // Durée de garantie — en mois si l'échéance tombe sur un nombre entier de mois, sinon modulo 30
     const garantieMoisComputed = Math.max(1, Math.round((garantieJours / 30) * 10) / 10);
     const moisEntiers = Math.floor(garantieJours / 30);
     const joursRestants = garantieJours % 30;
     let garantieDureeLabel: string;
-    if (freq.mois) {
+    if (freq.mois && dateProchaineOperation.getTime() === addMonths(dateReference, freq.mois).getTime()) {
       garantieDureeLabel = `${freq.mois} mois`;
     } else if (moisEntiers === 0) {
       garantieDureeLabel = `${joursRestants} jour${joursRestants > 1 ? 's' : ''}`;
