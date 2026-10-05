@@ -151,8 +151,9 @@ export const attestationService = {
       throw new Error('Intervention non trouvée');
     }
 
-    if (intervention.statut !== 'REALISEE') {
-      throw new Error("Impossible de générer une attestation pour une intervention non réalisée");
+    // Générable avant réalisation (comme la facture) : seule une intervention annulée est exclue
+    if (intervention.statut === 'ANNULEE') {
+      throw new Error("Impossible de générer une attestation pour une intervention annulée");
     }
 
     if (kind === 'controle' && intervention.type !== 'CONTROLE') {
@@ -168,7 +169,7 @@ export const attestationService = {
     const clientFormeJuridique = intervention.client?.formeJuridique?.trim() || '';
     const clientDisplayName = normalizeClientDisplayName([clientFormeJuridique, clientNom].filter(Boolean).join(' '));
 
-    // Date de référence = date de réalisation effective (pas la date planifiée)
+    // Date de référence = date de réalisation effective, sinon date planifiée (pas encore réalisée)
     const dateReference = intervention.dateRealisee || intervention.datePrevue;
 
     const contratPrestations = intervention.contrat?.prestations || [];
