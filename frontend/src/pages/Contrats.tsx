@@ -2027,7 +2027,7 @@ export function ContratsPage() {
       </Dialog>
 
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
+        <DialogContent onInteractOutside={(e) => e.preventDefault()} className="max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
           <DialogHeader className="px-6 pt-6 pb-4">
             <DialogTitle>Nouveau contrat</DialogTitle>
             <DialogDescription>
@@ -2047,7 +2047,7 @@ export function ContratsPage() {
       </Dialog>
 
       <Dialog open={!!editingContrat} onOpenChange={() => setEditingContrat(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
+        <DialogContent onInteractOutside={(e) => e.preventDefault()} className="max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
           <DialogHeader className="px-6 pt-6 pb-4">
             <DialogTitle>Modifier le contrat</DialogTitle>
             <DialogDescription>

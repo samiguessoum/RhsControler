@@ -1650,7 +1650,7 @@ export function ContratDetailPage() {
 
       {/* Dialog Modifier le contrat */}
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
+        <DialogContent onInteractOutside={(e) => e.preventDefault()} className="max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
           <DialogHeader className="px-6 pt-6 pb-4">
             <DialogTitle>Modifier le contrat</DialogTitle>
             <DialogDescription>Mettez à jour les informations du contrat</DialogDescription>
@@ -1673,7 +1673,7 @@ export function ContratDetailPage() {
 
       {/* Dialog Avenant */}
       <Dialog open={showAvenantDialog} onOpenChange={setShowAvenantDialog}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent onInteractOutside={(e) => e.preventDefault()} className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileSignature className="h-5 w-5 text-primary" />
@@ -1875,7 +1875,7 @@ export function ContratDetailPage() {
 
       {/* Dialog édition avenant */}
       <Dialog open={!!editingAvenant} onOpenChange={(o) => { if (!o) setEditingAvenant(null); }}>
-        <DialogContent className="max-w-lg">
+        <DialogContent onInteractOutside={(e) => e.preventDefault()} className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Modifier l'avenant n°{editingAvenant?.numero}</DialogTitle>
             <DialogDescription>Métadonnées uniquement — le planning des interventions reste inchangé.</DialogDescription>
