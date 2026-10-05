@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Plus, MoreVertical, FileText, CalendarClock, MapPin, Trash2, X, ChevronDown, ChevronUp, Search, Clock, CheckCircle2, Calendar, Pencil, Check, Receipt, RefreshCw } from 'lucide-react';
+import { Plus, MoreVertical, FileText, CalendarClock, MapPin, Trash2, X, ChevronDown, ChevronUp, Search, Clock, CheckCircle2, Calendar, Pencil, Check, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -198,20 +198,6 @@ export function finPourControles(...fins: (string | undefined | null)[]): string
 // (bloquant, même règle que le backend) et à l'avertissement hors période de prestations.
 export function horsBornes(date: string, debut: string, fin: string): boolean {
   return !!date && ((!!debut && date < debut) || (!!fin && date > fin));
-}
-
-function resolverBCFrontend(
-  bonsCommandes: { numero: string; date?: string | null; sites?: { siteId: string }[] }[],
-  siteId?: string | null,
-): { numero: string; date?: string | null } | null {
-  if (!bonsCommandes?.length) return null;
-  if (siteId) {
-    const bcSite = bonsCommandes.find((bc) => (bc.sites ?? []).some((s) => s.siteId === siteId));
-    if (bcSite) return bcSite;
-  }
-  const bcAll = bonsCommandes.find((bc) => (bc.sites ?? []).length === 0);
-  if (bcAll) return bcAll;
-  return null;
 }
 
 // Dates soumises au garde-fou convention : opérations et visites de contrôle (le contrat peut se
@@ -2022,35 +2008,6 @@ export function ContratsPage() {
                   </Link>
                 </Button>
                 <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-emerald-700 border-emerald-300 hover:bg-emerald-50"
-                    asChild
-                  >
-                    <Link
-                      to={(() => {
-                        const firstSiteId = selectedContrat.contratSites?.[0]?.siteId || null;
-                        const resolvedBc = resolverBCFrontend(selectedContrat.bonsCommandes ?? [], firstSiteId)
-                          ?? (selectedContrat.numeroBonCommande ? { numero: selectedContrat.numeroBonCommande } : null);
-                        const bcDate = (resolvedBc as { date?: string | null } | null)?.date;
-                        const bcPart = resolvedBc?.numero
-                          ? `Selon le Bon de commande "${resolvedBc.numero}"${bcDate ? ` du ${String(bcDate).slice(0, 10).split('-').reverse().join('/')}` : ''}`
-                          : '';
-                        const mention = [
-                          selectedContrat.nom?.trim() ? `Contrat « ${selectedContrat.nom.trim()} »` : '',
-                          (selectedContrat as any).refExterne ? `Selon le contrat N° ${(selectedContrat as any).refExterne}` : '',
-                          bcPart,
-                          (selectedContrat as any).dateDebutConvention ? `Convention signée le ${new Date((selectedContrat as any).dateDebutConvention).toLocaleDateString('fr-FR')}` : '',
-                        ].filter(Boolean).join(' — ');
-                        return `/commerce?tab=factures&contratId=${selectedContrat.id}&clientId=${selectedContrat.clientId}&siteId=${firstSiteId || ''}&mentionSpeciale=${encodeURIComponent(mention)}`;
-                      })()}
-                      onClick={() => setSelectedContrat(null)}
-                    >
-                      <Receipt className="h-3.5 w-3.5 mr-1.5" />
-                      Créer une facture
-                    </Link>
-                  </Button>
                   <Button
                     size="sm"
                     variant="outline"
