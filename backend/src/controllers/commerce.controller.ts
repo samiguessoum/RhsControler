@@ -6,7 +6,7 @@ import { facturationEvents } from '../services/events.service.js';
 import { stockService } from '../services/stock.service.js';
 import logger from '../lib/logger.js';
 import { AppError } from '../lib/errors.js';
-import { construireMentionSpecialeFacture } from '../utils/bc.utils.js';
+import { construireEnTeteFacture } from '../utils/bc.utils.js';
 
 
 // Préfixes par défaut (utilisés si aucun paramètre en base)
@@ -1807,14 +1807,16 @@ export const commerceController = {
         return res.status(404).json({ error: 'Facture non trouvée' });
       }
 
-      // Mention spéciale : contrat + BC convention + BC du site de la facture
-      const mentionSpeciale = await construireMentionSpecialeFacture(facture as any);
+      // En-tête : convention, BC concerné (opération / site / contrat), mention libre
+      const enTete = await construireEnTeteFacture({
+        ...facture,
+        refBonCommandeClient: facture.commande?.refBonCommandeClient ?? null,
+      });
 
       const { generateFacturePDF } = await import('../services/pdf.service.js');
       const pdfBuffer = await generateFacturePDF({
         ...facture,
-        mentionSpeciale,
-        refBonCommandeClient: facture.commande?.refBonCommandeClient ?? null,
+        enTete,
       } as any);
 
       res.setHeader('Content-Type', 'application/pdf');

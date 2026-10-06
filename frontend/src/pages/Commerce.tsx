@@ -3110,45 +3110,10 @@ export function CommercePage() {
     if (state?.generateFacture && state.clientId) {
       setActiveTab('factures');
 
-      const mentions: string[] = [];
-      if (state.contratNom?.trim()) mentions.push(`Contrat « ${state.contratNom.trim()} »`);
-      if (state.contratRefExterne) mentions.push(`Selon le contrat N° ${state.contratRefExterne}`);
-
-      if (state.contratType === 'PONCTUEL' && state.contratNumeroBonCommande) {
-        // Date de signature du BC si renseignée, sinon date de début du contrat
-        const bcEntite = (state.contratBonsCommandes ?? []).find((bc) => bc.numero === state.contratNumeroBonCommande);
-        const dateDebutStr = bcEntite?.date
-          ? String(bcEntite.date).slice(0, 10).split('-').reverse().join('/')
-          : state.contratDateDebut ? new Date(state.contratDateDebut).toLocaleDateString('fr-FR') : '';
-        mentions.push(`Selon le bon de commande "${state.contratNumeroBonCommande}"${dateDebutStr ? ` du ${dateDebutStr}` : ''}`);
-      } else if (state.contratType === 'ANNUEL') {
-        if (state.contratDateDebutConvention) {
-          mentions.push(`Convention signée le ${new Date(state.contratDateDebutConvention).toLocaleDateString('fr-FR')}`);
-        }
-        // Résolution des BCs : convention (all-sites) + site spécifique
-        const bcs = state.contratBonsCommandes ?? [];
-        const siteId = state.siteId ?? null;
-        const bcSite = siteId ? (bcs.find(bc => (bc.sites ?? []).some(s => s.siteId === siteId)) ?? null) : null;
-        const bcConvention = bcs.find(bc => (bc.sites ?? []).length === 0) ?? null;
-        const both = bcConvention && bcSite;
-        // Date de signature du BC (stockée à minuit UTC) → " du JJ/MM/AAAA"
-        const duBC = (d?: string | null) => (d ? ` du ${String(d).slice(0, 10).split('-').reverse().join('/')}` : '');
-        if (bcConvention) mentions.push(`BC${both ? ' convention' : ''} N° ${bcConvention.numero}${duBC(bcConvention.date)}`);
-        if (bcSite) mentions.push(`BC${both ? ' site' : ''} N° ${bcSite.numero}${duBC(bcSite.date)}`);
-        // Fallback legacy uniquement si aucun BonCommande entity
-        if (!bcConvention && !bcSite && bcs.length === 0 && state.contratNumeroBonCommande) {
-          mentions.push(`Bon de commande N° ${state.contratNumeroBonCommande}`);
-        }
-      }
-
-      if (state.avenant) {
-        const av = state.avenant;
-        mentions.push(
-          `Avenant n°${av.numero}${av.nom?.trim() ? ` « ${av.nom.trim()} »` : ''}` +
-          (av.numeroBonCommande?.trim() ? ` selon le bon de commande "${av.numeroBonCommande.trim()}"` : '')
-        );
-      }
-      const mentionSpeciale = mentions.join(' — ');
+      // Convention et bon de commande sont ajoutés automatiquement sur le PDF :
+      // la mention ne garde que les précisions libres (ici, l'avenant facturé)
+      const av = state.avenant;
+      const mentionSpeciale = av ? `Avenant n°${av.numero}${av.nom?.trim() ? ` « ${av.nom.trim()} »` : ''}` : '';
       const prestations = state.prestations?.length ? state.prestations : [{ nom: 'Prestation de service' }];
 
       setFactureForm({
@@ -5734,10 +5699,10 @@ export function CommercePage() {
               <Input
                 value={factureForm.mentionSpeciale || ''}
                 onChange={(e) => setFactureForm({ ...factureForm, mentionSpeciale: e.target.value })}
-                placeholder='Ex: Selon le bon de commande "1234" du 01/01/2026'
+                placeholder="Précisions à ajouter sur le PDF"
               />
               <p className="text-xs text-muted-foreground">
-                Affichée en gras sur le PDF, à la place de la mention "Opération du..."
+                Affichée en gras sur le PDF, sous la convention et le bon de commande (ajoutés automatiquement)
               </p>
             </div>
 

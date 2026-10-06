@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../config/database.js';
 import { sendEmail, testSmtpConnection, buildEmailHtml } from '../services/email.service.js';
 import { EmailProfileType } from '@prisma/client';
-import { construireMentionSpecialeFacture } from '../utils/bc.utils.js';
+import { construireEnTeteFacture } from '../utils/bc.utils.js';
 
 const CLIENT_SELECT = {
   id: true, nomEntreprise: true, code: true,
@@ -204,15 +204,17 @@ export const emailController = {
       });
       if (!facture) return res.status(404).json({ error: 'Facture introuvable' });
 
-      // Mention spéciale : contrat + BC convention + BC du site de la facture
-      const mentionSpeciale = await construireMentionSpecialeFacture(facture as any);
+      // En-tête : convention, BC concerné (opération / site / contrat), mention libre
+      const enTete = await construireEnTeteFacture({
+        ...facture,
+        refBonCommandeClient: (facture as any).commande?.refBonCommandeClient ?? null,
+      });
 
       const { generateFacturePDF } = await import('../services/pdf.service.js');
       const [pdfBuffer, ctx] = await Promise.all([
         generateFacturePDF({
           ...facture,
-          mentionSpeciale,
-          refBonCommandeClient: (facture as any).commande?.refBonCommandeClient ?? null,
+          enTete,
         } as any),
         getEmailContext('FACTURATION'),
       ]);

@@ -50,106 +50,112 @@ export function resolveBCsPair(
   };
 }
 
-type ContratForMention = {
-  nom?: string | null;
-  refExterne?: string | null;
-  dateDebutConvention?: Date | null;
-  numeroBonCommande?: string | null;
-  bonsCommandes?: BcForResolution[] | null;
-} | null;
+const fmtDate = (d: Date) => new Intl.DateTimeFormat('fr-FR', { timeZone: 'UTC' }).format(new Date(d));
 
-const fmtDate = (d: Date) => new Intl.DateTimeFormat('fr-FR').format(new Date(d));
+/** Segments que l'ancien pré-remplissage mettait dans la mention spéciale : désormais calculés à part. */
+const SEGMENT_AUTO =
+  /^(?:Contrat\s+«|Selon\s+le\s+contrat\s+N°|Convention\s+signée\s+le|La\s+convention\b|BC(?:\s+(?:convention|site))?\s+N°|Bon\s+de\s+commande\s+N°|Selon\s+le\s+bon\s+de\s+commande\b)/i;
 
-const escapeRegex = (v: string) => v.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Mention libre saisie par l'utilisateur, sans les segments automatiques des anciennes factures. */
+export function mentionLibre(mention?: string | null): string | null {
+  const segments = (mention ?? '')
+    .split(/\s+—\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s && !SEGMENT_AUTO.test(s));
+  return segments.length ? segments.join(' — ') : null;
+}
+
+export type EnTeteFacture = {
+  /** « La convention REF du JJ/MM/AAAA » — null sans convention */
+  convention: string | null;
+  /** « Selon le bon de commande N° X du JJ/MM/AAAA » — null sans BC */
+  bonCommande: string | null;
+  /** Précisions libres de l'utilisateur (mention spéciale) */
+  mention: string | null;
+};
 
 /**
- * Référence à un BC dans une mention : "BC N° X", "BC site N° X", "Bon de commande N° X",
- * "bon de commande \"X\"", "« X »"… — exige le préfixe BC / bon de commande pour ne pas confondre
- * avec un autre numéro (ex : "Selon le contrat N° X"). Groupe 1 = référence complète.
+ * Lignes d'en-tête d'une facture (PDF téléchargé et PDF envoyé par email), sous la ligne du site :
+ *   1. la convention du contrat (référence + date de signature), s'il y en a une ;
+ *   2. le bon de commande concerné : celui de l'avenant, sinon le BC rattaché à l'opération
+ *      facturée (même site, même jour), sinon le BC du site, sinon le BC du contrat ;
+ *   3. la mention spéciale libre.
  */
-function regexReferenceBC(numero: string): RegExp {
-  return new RegExp(
-    `((?:\\bBC(?:\\s+(?:convention|site))?|bon\\s+de\\s+commande)\\s*(?:N°\\s*)?["«]?\\s*${escapeRegex(numero)}(?![A-Za-z0-9/-])\\s*["»]?)`,
-    'i',
-  );
-}
-
-/** Le numéro de BC figure-t-il déjà dans la mention ? */
-function mentionContientBC(mention: string, numero: string): boolean {
-  return regexReferenceBC(numero).test(mention);
-}
-
-/** Ajoute " du JJ/MM/AAAA" après la référence au BC si la mention ne porte pas encore sa date. */
-function completerDateBC(mention: string, numero: string, date: Date | null): string {
-  if (!date) return mention;
-  const re = regexReferenceBC(numero);
-  const m = re.exec(mention);
-  if (!m) return mention;
-  const fin = m.index + m[0].length;
-  if (/^\s*(?:du|signé\s+le|en\s+date\s+du)\s+\d/i.test(mention.slice(fin))) return mention;
-  const ref = m[0].replace(/\s+$/, '');
-  return `${mention.slice(0, m.index)}${ref} du ${fmtDate(date)}${mention.slice(m.index + ref.length)}`;
-}
-
-/**
- * Mention spéciale finale d'une facture (PDF téléchargé et PDF envoyé par email).
- * - Mention stockée vide → construite depuis le contrat (nom, réf, convention, BCs).
- * - Mention stockée présente → conservée, et complétée par le BC convention / BC site
- *   s'ils n'y figurent pas encore (ex : facture créée avant l'ajout du BC, ou pré-remplie sans).
- * Sans contrat lié, le BC du site est retrouvé s'il est unique pour ce client (jamais de BC ambigu).
- */
-export async function construireMentionSpecialeFacture(facture: {
+export async function construireEnTeteFacture(facture: {
   clientId: string;
   siteId?: string | null;
+  contratId?: string | null;
+  avenantId?: string | null;
+  dateOperation?: Date | null;
   mentionSpeciale?: string | null;
-  contrat?: ContratForMention;
-}): Promise<string | null> {
-  const contrat = facture.contrat ?? null;
+  refBonCommandeClient?: string | null;
+}): Promise<EnTeteFacture> {
+  const { prisma } = await import('../config/database.js');
   const siteId = facture.siteId ?? null;
-  const bcs = (contrat?.bonsCommandes ?? []).map((b) => ({ numero: b.numero, date: b.date, sites: b.sites ?? [] }));
 
-  let { bcConvention, bcSite } = resolveBCsPair(bcs, siteId);
-  if (!contrat && siteId) {
-    const { prisma } = await import('../config/database.js');
+  const contrat = facture.contratId
+    ? await prisma.contrat.findUnique({
+        where: { id: facture.contratId },
+        select: {
+          refExterne: true,
+          dateDebutConvention: true,
+          numeroBonCommande: true,
+          bonsCommandes: {
+            where: { actif: true },
+            orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+            select: { id: true, numero: true, date: true, sites: { select: { siteId: true } } },
+          },
+        },
+      })
+    : null;
+
+  let convention: string | null = null;
+  if (contrat?.refExterne || contrat?.dateDebutConvention) {
+    convention = ['La convention', contrat.refExterne, contrat.dateDebutConvention && `du ${fmtDate(contrat.dateDebutConvention)}`]
+      .filter(Boolean)
+      .join(' ');
+  }
+
+  let bc: { numero: string; date: Date | null } | null = null;
+  if (facture.avenantId) {
+    const av = await prisma.avenant.findUnique({ where: { id: facture.avenantId }, select: { numeroBonCommande: true, dateSignature: true } });
+    if (av?.numeroBonCommande?.trim()) bc = { numero: av.numeroBonCommande.trim(), date: av.dateSignature };
+  }
+  if (!bc && facture.contratId && facture.dateOperation) {
+    // BC réellement consommé par l'opération facturée
+    const jour = new Date(facture.dateOperation);
+    const debut = new Date(Date.UTC(jour.getUTCFullYear(), jour.getUTCMonth(), jour.getUTCDate()));
+    const op = await prisma.intervention.findFirst({
+      where: {
+        contratId: facture.contratId,
+        ...(siteId ? { siteId } : {}),
+        avenantId: facture.avenantId ?? null,
+        statut: 'REALISEE',
+        bonCommandeId: { not: null },
+        dateRealisee: { gte: debut, lt: new Date(debut.getTime() + 86_400_000) },
+      },
+      select: { bonCommande: { select: { numero: true, date: true } } },
+    });
+    if (op?.bonCommande) bc = op.bonCommande;
+  }
+  if (!bc && !facture.avenantId && contrat) bc = resolverBC(contrat.bonsCommandes, siteId);
+  if (!bc && !contrat && siteId) {
+    // Sans contrat : le BC du site s'il est unique pour ce client (jamais de BC ambigu)
     const candidats = await prisma.bonCommande.findMany({
       where: { clientId: facture.clientId, actif: true, sites: { some: { siteId } } },
       select: { numero: true, date: true },
       take: 2,
     });
-    if (candidats.length === 1) bcSite = candidats[0];
+    if (candidats.length === 1) bc = candidats[0];
   }
+  if (!bc && !facture.avenantId && contrat?.numeroBonCommande?.trim() && contrat.bonsCommandes.length === 0) {
+    bc = { numero: contrat.numeroBonCommande.trim(), date: null }; // champ historique du contrat
+  }
+  if (!bc && facture.refBonCommandeClient?.trim()) bc = { numero: facture.refBonCommandeClient.trim(), date: null };
 
-  const both = bcConvention && bcSite;
-  const bcParts: { numero: string; date: Date | null; texte: string }[] = [];
-  if (bcConvention) {
-    const d = bcConvention.date ? ` du ${fmtDate(bcConvention.date)}` : '';
-    bcParts.push({ numero: bcConvention.numero, date: bcConvention.date, texte: `BC${both ? ' convention' : ''} N° ${bcConvention.numero}${d}` });
-  }
-  if (bcSite && bcSite.numero !== bcConvention?.numero) {
-    const d = bcSite.date ? ` du ${fmtDate(bcSite.date)}` : '';
-    bcParts.push({ numero: bcSite.numero, date: bcSite.date, texte: `BC${both ? ' site' : ''} N° ${bcSite.numero}${d}` });
-  }
-
-  const stockee = facture.mentionSpeciale?.trim();
-  if (stockee) {
-    // BC déjà cité → on lui ajoute sa date de signature si elle manque ; BC absent → ajouté en fin
-    let mention = stockee;
-    const manquants: string[] = [];
-    for (const p of bcParts) {
-      if (mentionContientBC(mention, p.numero)) mention = completerDateBC(mention, p.numero, p.date);
-      else manquants.push(p.texte);
-    }
-    return manquants.length ? [mention, ...manquants].join(' — ') : mention;
-  }
-
-  const parts: string[] = [];
-  if (contrat?.nom?.trim()) parts.push(`Contrat « ${contrat.nom.trim()} »`);
-  if (contrat?.refExterne) parts.push(`Selon le contrat N° ${contrat.refExterne}`);
-  if (contrat?.dateDebutConvention) parts.push(`Convention signée le ${fmtDate(contrat.dateDebutConvention)}`);
-  parts.push(...bcParts.map((p) => p.texte));
-  // Fallback legacy : uniquement si aucun BonCommande entity n'existe
-  if (contrat && bcParts.length === 0 && bcs.length === 0 && contrat.numeroBonCommande) {
-    parts.push(`Bon de commande N° ${contrat.numeroBonCommande}`);
-  }
-  return parts.length > 0 ? parts.join(' — ') : null;
+  return {
+    convention,
+    bonCommande: bc ? `Selon le bon de commande N° ${bc.numero}${bc.date ? ` du ${fmtDate(bc.date)}` : ''}` : null,
+    mention: mentionLibre(facture.mentionSpeciale),
+  };
 }

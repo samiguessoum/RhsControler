@@ -79,8 +79,8 @@ interface FactureDocument extends DocumentBase {
   totalPaye: number;
   type?: string | null;
   typeDocument?: string | null;
-  refBonCommandeClient?: string | null;
-  mentionSpeciale?: string | null;
+  /** Lignes d'en-tête sous le site : convention, bon de commande, mention libre (vides = omises) */
+  enTete?: { convention: string | null; bonCommande: string | null; mention: string | null };
   dateOperation?: Date | null;
   site?: {
     nom: string;
@@ -1292,41 +1292,33 @@ export async function generateFacturePDF(facture: FactureDocument): Promise<Buff
           .text(`Site : ${facture.site.nom}${facture.site.ville ? ` — ${facture.site.ville}` : ''}`, 28, afterPartiesY, { width: 420 });
       }
       let mentionY = afterPartiesY + (facture.site ? 16 : 0);
-      if (facture.mentionSpeciale) {
+      // Convention, bon de commande, puis précisions libres — chaque ligne absente est sautée
+      const lignesEnTete = [facture.enTete?.convention, facture.enTete?.bonCommande, facture.enTete?.mention]
+        .filter((l): l is string => !!l?.trim());
+      for (const ligne of lignesEnTete) {
         doc.font('Helvetica-Bold')
           .fontSize(10)
           .fillColor('#111827')
-          .text(facture.mentionSpeciale, 28, mentionY, { width: 420 });
-        // La mention peut tenir sur plusieurs lignes (contrat, bon de commande, avenant)
-        mentionY += doc.heightOfString(facture.mentionSpeciale, { width: 420 }) + 2;
+          .text(ligne, 28, mentionY, { width: 420 });
+        mentionY += doc.heightOfString(ligne, { width: 420 }) + 2;
       }
 
-      // Date de l'opération : utilise la date réelle de l'opération (renseignée depuis le Planning)
-      // si disponible, sinon tente de l'extraire de la description de la 1ère ligne, sinon la date de facture.
+      // Dernière ligne, systématique : date réelle de l'opération (renseignée depuis le Planning),
+      // sinon extraite de la description de la 1ère ligne, sinon la date de facture.
       let dateOperationStr: string;
       if (facture.dateOperation) {
         dateOperationStr = formatDate(facture.dateOperation);
       } else {
-        const firstLigneDesc = facture.lignes?.[0]?.description ?? '';
-        const dateMatch = firstLigneDesc.match(/(\d{2}\/\d{2}\/\d{4})/);
+        const dateMatch = (facture.lignes?.[0]?.description ?? '').match(/(\d{2}\/\d{2}\/\d{4})/);
         dateOperationStr = dateMatch ? dateMatch[1] : formatDate(facture.dateFacture);
       }
-
       doc.font('Helvetica-Bold')
         .fontSize(10)
         .fillColor('#111827')
-        .text(`Opération du ${dateOperationStr}`, 28, mentionY, { width: 420 });
+        .text(`Opération du : ${dateOperationStr}`, 28, mentionY, { width: 420 });
       mentionY += 16;
 
-      let factureTableStartY = mentionY + 6;
-      if (facture.refBonCommandeClient) {
-        doc.font('Helvetica-Bold')
-          .fontSize(9)
-          .fillColor('#111827')
-          .text(`Selon le bon de commande "${facture.refBonCommandeClient}"`, 28, factureTableStartY, { width: 420 });
-        factureTableStartY += 16;
-      }
-
+      const factureTableStartY = mentionY + 6;
       const tableEndY = drawInvoiceLinesTable(doc, facture, factureTableStartY);
       const totalsEndY = drawInvoiceTotals(doc, facture, tableEndY);
 
