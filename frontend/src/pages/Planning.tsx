@@ -3806,6 +3806,7 @@ export function PlanningPage() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['interventions'] });
       queryClient.invalidateQueries({ queryKey: ['bons-commandes'] });
+      queryClient.invalidateQueries({ queryKey: ['contrat'] }); // compteurs BC de la fiche contrat
       queryClient.refetchQueries({ queryKey: ['interventions'] });
       if (variables?.id) {
         queryClient.invalidateQueries({ queryKey: ['intervention', variables.id] });
@@ -3828,6 +3829,7 @@ export function PlanningPage() {
     }) => interventionsApi.realiser(id, options),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['bons-commandes'] });
+      queryClient.invalidateQueries({ queryKey: ['contrat'] }); // compteurs BC de la fiche contrat
       queryClient.invalidateQueries({ queryKey: ['interventions'] });
       queryClient.refetchQueries({ queryKey: ['interventions'] });
       // Invalider TOUTES les queries d'interventions individuelles

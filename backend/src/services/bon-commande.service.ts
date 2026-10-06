@@ -77,19 +77,30 @@ const selectCouverture = {
 } as const;
 
 /**
- * À la réalisation d'une opération de contrat sans BC : rattache le BC applicable et le consomme.
+ * À la réalisation d'une opération sans BC : rattache le BC applicable et le consomme.
+ * BC candidats : ceux du contrat, plus les BC du client sans contrat liés au site de l'opération
+ * (BC saisi seulement pour un ou plusieurs sites).
  * À appeler dans la transaction qui passe l'intervention à REALISEE (une seule fois).
  * Hors périmètre : contrôles, types hors contrat, opérations d'avenant (BC propre à l'avenant).
  */
 export async function rattacherEtConsommerBC(
   tx: Prisma.TransactionClient,
-  intervention: { id: string; type: string; contratId: string | null; siteId: string | null; avenantId: string | null },
+  intervention: { id: string; type: string; clientId: string; contratId: string | null; siteId: string | null; avenantId: string | null },
   dateRealisee: Date,
 ): Promise<{ id: string; numero: string } | null> {
-  if (intervention.type !== 'OPERATION' || !intervention.contratId || intervention.avenantId) return null;
+  if (intervention.type !== 'OPERATION' || intervention.avenantId) return null;
+  if (!intervention.contratId && !intervention.siteId) return null;
 
   const bcs = await tx.bonCommande.findMany({
-    where: { contratId: intervention.contratId, actif: true },
+    where: {
+      actif: true,
+      OR: [
+        ...(intervention.contratId ? [{ contratId: intervention.contratId }] : []),
+        ...(intervention.siteId
+          ? [{ contratId: null, clientId: intervention.clientId, sites: { some: { siteId: intervention.siteId } } }]
+          : []),
+      ],
+    },
     select: selectCouverture,
   });
   const bc = choisirBC(bcs, intervention.siteId, dateRealisee);

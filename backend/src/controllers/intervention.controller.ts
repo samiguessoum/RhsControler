@@ -8,6 +8,7 @@ import attestationService from '../services/attestation.service.js';
 import logger from '../lib/logger.js';
 import { AppError } from '../lib/errors.js';
 import { frequenceOperationsALaDate } from '../utils/frequence.utils.js';
+import { rattacherEtConsommerBC } from '../services/bon-commande.service.js';
 
 
 export const interventionController = {
@@ -540,6 +541,7 @@ export const interventionController = {
 
       const estOperation = existing.type !== 'CONTROLE';
       const corrigeStatut = data.statut && data.statut !== 'REALISEE' && existing.statut === 'REALISEE';
+      const passeRealisee = data.statut === 'REALISEE' && existing.statut !== 'REALISEE';
       const bcChange = data.bonCommandeId !== undefined && data.bonCommandeId !== (existing as any).bonCommandeId;
 
       // Validation : si contratId change, il doit appartenir au même client
@@ -610,7 +612,7 @@ export const interventionController = {
           finalStatut = 'PLANIFIEE';
         }
 
-        return tx.intervention.update({
+        const updated = await tx.intervention.update({
           where: { id },
           data: {
             contratId: data.contratId !== undefined ? data.contratId : existing.contratId,
@@ -625,6 +627,7 @@ export const interventionController = {
             notesTerrain: data.notesTerrain ?? existing.notesTerrain,
             responsable: data.responsable !== undefined ? data.responsable : existing.responsable,
             bonCommandeId: data.bonCommandeId !== undefined ? data.bonCommandeId : (existing as any).bonCommandeId,
+            ...(passeRealisee && !existing.dateRealisee ? { dateRealisee: data.datePrevue ? new Date(data.datePrevue) : existing.datePrevue } : {}),
             updatedById: req.user!.id,
           },
           include: {
@@ -637,6 +640,20 @@ export const interventionController = {
             },
           },
         });
+
+        // Passage à REALISEE depuis le formulaire : même consommation de BC que « Marquer comme terminé »
+        if (passeRealisee && updated.type !== 'CONTROLE') {
+          if (updated.bonCommandeId) {
+            await tx.bonCommande.updateMany({
+              where: { id: updated.bonCommandeId, actif: true },
+              data: { passagesConsommes: { increment: 1 } },
+            });
+          } else {
+            const bc = await rattacherEtConsommerBC(tx, updated, updated.dateRealisee ?? updated.datePrevue);
+            if (bc) return { ...updated, bonCommandeId: bc.id };
+          }
+        }
+        return updated;
       });
 
       // Déplacement (glisser-déposer, modification de date) : décaler les suivantes de la série

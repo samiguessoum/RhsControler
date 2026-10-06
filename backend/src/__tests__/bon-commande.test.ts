@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('../config/database.js', () => ({ prisma: {} }));
 
-const { choisirBC, bcsCandidats, simulerContrat, bcValideA } = await import('../services/bon-commande.service.js');
+const { choisirBC, bcsCandidats, simulerContrat, bcValideA, rattacherEtConsommerBC } = await import('../services/bon-commande.service.js');
 
 const d = (s: string) => new Date(`${s}T00:00:00Z`);
 let seq = 0;
@@ -141,5 +141,45 @@ describe('prévisions', () => {
     const copie = JSON.stringify(b);
     simulerContrat([b], [op('s', '2026-11-01'), op('s', '2026-12-01'), op('s', '2027-01-01')], auj);
     expect(JSON.stringify(b)).toBe(copie);
+  });
+});
+
+describe('rattachement automatique à la réalisation', () => {
+  const tx = (bcs: ReturnType<typeof bc>[]) => {
+    const t = {
+      bonCommande: { findMany: vi.fn(async () => bcs), update: vi.fn(async () => ({})) },
+      intervention: { update: vi.fn(async () => ({})) },
+    };
+    return t;
+  };
+  const interv = (o: Partial<{ contratId: string | null; siteId: string | null; avenantId: string | null; type: string }> = {}) => ({
+    id: 'i1', clientId: 'cl', type: 'OPERATION', contratId: 'ct', siteId: 's', avenantId: null, ...o,
+  });
+
+  it('cherche aussi les BC sans contrat liés au site', async () => {
+    const t = tx([{ ...bc({ id: 'siteSeul', sites: ['s'] }), numero: 'X' } as any]);
+    const res = await rattacherEtConsommerBC(t as any, interv(), d('2026-03-01'));
+    expect(res?.id).toBe('siteSeul');
+    const where = (t.bonCommande.findMany.mock.calls[0] as any)[0].where;
+    expect(where.OR).toEqual([
+      { contratId: 'ct' },
+      { contratId: null, clientId: 'cl', sites: { some: { siteId: 's' } } },
+    ]);
+    expect(t.bonCommande.update).toHaveBeenCalledWith({ where: { id: 'siteSeul' }, data: { passagesConsommes: { increment: 1 } } });
+  });
+
+  it('opération hors contrat : seulement les BC du site', async () => {
+    const t = tx([]);
+    await rattacherEtConsommerBC(t as any, interv({ contratId: null }), d('2026-03-01'));
+    expect((t.bonCommande.findMany.mock.calls[0] as any)[0].where.OR).toEqual([
+      { contratId: null, clientId: 'cl', sites: { some: { siteId: 's' } } },
+    ]);
+  });
+
+  it('contrôles et avenants exclus', async () => {
+    const t = tx([]);
+    expect(await rattacherEtConsommerBC(t as any, interv({ type: 'CONTROLE' }), d('2026-03-01'))).toBeNull();
+    expect(await rattacherEtConsommerBC(t as any, interv({ avenantId: 'av' }), d('2026-03-01'))).toBeNull();
+    expect(t.bonCommande.findMany).not.toHaveBeenCalled();
   });
 });
