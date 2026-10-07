@@ -86,11 +86,13 @@ type AvenantForm = {
   nbCtrlEntreOps?: number;
   datesOps: string[];
   datesCtrl: string[];
+  // Sites du contrat concernés (tous cochés à l'ouverture)
+  siteIds: string[];
 };
 
 const AVENANT_VIDE: AvenantForm = {
   nom: '', numeroBonCommande: '', dateSignature: '', dateExpiration: '', montantHT: '', notes: '',
-  premiereOp: '', periodes: [], datesOps: [], datesCtrl: [],
+  premiereOp: '', periodes: [], datesOps: [], datesCtrl: [], siteIds: [],
 };
 
 // `finConvention` borne en plus les visites de contrôle en queue (après la dernière opération)
@@ -165,6 +167,7 @@ export function ContratDetailPage() {
         frequenceOperationsJours: avenantForm.freqOpsMois ? null : (avenantForm.freqOpsJours ?? null),
         frequenceOperationsMois: avenantForm.freqOpsMois ?? null,
         periodesFrequence: periodesValides(avenantForm.periodes),
+        siteIds: avenantForm.siteIds,
         notes: avenantForm.notes || undefined,
       }),
     onSuccess: (res) => {
@@ -357,6 +360,7 @@ export function ContratDetailPage() {
       periodes,
       premiereOp,
       nbCtrlEntreOps: src?.nombreVisitesControleEntreOps ?? undefined,
+      siteIds: (contrat?.contratSites || []).map((cs) => cs.siteId),
     });
     setShowAvenantDialog(true);
   };
@@ -900,6 +904,11 @@ export function ContratDetailPage() {
                       +{av.nombreOperationsSupplementaires} opération(s), +{av.nombreVisitesControleSupplementaires} visite(s) de contrôle
                       {canDo('viewFacturation') && av.montantHT != null && ` — ${Number(av.montantHT).toLocaleString('fr-FR')} DA HT`}
                     </p>
+                    {(av.siteIds?.length ?? 0) > 0 && (
+                      <p className="text-xs text-amber-700">
+                        Sites : {av.siteIds!.map((s) => contrat.contratSites?.find((cs) => cs.siteId === s)?.site?.nom ?? s).join(', ')}
+                      </p>
+                    )}
                     {av.notes && <p className="text-xs text-muted-foreground whitespace-pre-wrap">{av.notes}</p>}
                   </div>
                 ))}
@@ -1746,6 +1755,32 @@ export function ContratDetailPage() {
               )}
             </div>
 
+            {/* Sites concernés (contrat multi-sites) */}
+            {(contrat?.contratSites?.length ?? 0) > 1 && (
+              <div className="rounded-lg border p-3 space-y-2">
+                <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Sites concernés</span>
+                <div className="space-y-1">
+                  {contrat?.contratSites?.map((cs) => (
+                    <label key={cs.siteId} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={avenantForm.siteIds.includes(cs.siteId)}
+                        onChange={(e) => setAvenantForm((f) => ({
+                          ...f,
+                          siteIds: e.target.checked ? [...f.siteIds, cs.siteId] : f.siteIds.filter((s) => s !== cs.siteId),
+                        }))}
+                        className="rounded"
+                      />
+                      {cs.site?.nom ?? cs.siteId}
+                    </label>
+                  ))}
+                </div>
+                {avenantForm.siteIds.length === 0 && (
+                  <p className="text-xs text-red-600">Cochez au moins un site.</p>
+                )}
+              </div>
+            )}
+
             {/* Planning — même logique que le formulaire contrat */}
             <div className="rounded-lg border divide-y divide-gray-100 overflow-hidden">
               <div className="px-3 pt-3 pb-1">
@@ -1826,8 +1861,9 @@ export function ContratDetailPage() {
                   ctrl={avenantForm.datesCtrl}
                   debutConvention={avenantDebutConvention}
                   finConvention={avenantFinConvention}
-                  debutPeriode={(contrat?.dateDebut || '').slice(0, 10)}
-                  finPeriode={(contrat?.dateFin || '').slice(0, 10)}
+                  // Période de l'avenant (signature → expiration), à défaut celle du contrat
+                  debutPeriode={(avenantForm.dateSignature || contrat?.dateDebut || '').slice(0, 10)}
+                  finPeriode={(avenantForm.dateExpiration || contrat?.dateFin || '').slice(0, 10)}
                   onChangeDate={(serie, i, v) => setAvenantForm((f) => ({ ...f, [cleDates(serie)]: f[cleDates(serie)].map((d, j) => (j === i ? v : d)) }))}
                   onRemoveDate={(serie, i) => setAvenantForm((f) => {
                     const dates = f[cleDates(serie)].filter((_, j) => j !== i);
@@ -1862,6 +1898,7 @@ export function ContratDetailPage() {
               disabled={
                 createAvenantMutation.isPending ||
                 (!avenantForm.datesOps.length && !avenantForm.datesCtrl.length) ||
+                ((contrat?.contratSites?.length ?? 0) > 0 && avenantForm.siteIds.length === 0) ||
                 avenantDatesInterdites.length > 0 ||
                 periodesValides(avenantForm.periodes).length !== avenantForm.periodes.length ||
                 !!chevauchementPeriodes(avenantForm.periodes)

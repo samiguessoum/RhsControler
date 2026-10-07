@@ -902,7 +902,7 @@ export const planningService = {
 
   /**
    * Génère les interventions supplémentaires d'un avenant.
-   * Pour chaque site du contrat (ou au niveau contrat s'il n'a pas de sites) :
+   * Pour chaque site concerné du contrat (tous par défaut ; au niveau contrat s'il n'a pas de sites) :
    *  - dates explicites issues de la projection de l'avenant si fournies,
    *  - sinon N opérations à la fréquence du site depuis la dernière intervention existante,
    *    et contrôles ancrés entre chaque paire d'opérations (même algo que genererPlanningContrat).
@@ -922,6 +922,8 @@ export const planningService = {
       periodes?: PeriodeFrequence[];
       /** Date d'expiration de l'avenant : borne les visites de contrôle en queue (sinon fin du contrat) */
       fin?: Date | null;
+      /** Sites du contrat concernés par l'avenant (vide ou absent = tous) */
+      siteIds?: string[];
     } = {},
   ) {
     const contrat = await prisma.contrat.findUnique({
@@ -939,8 +941,12 @@ export const planningService = {
       return mois || jours ? { mois, jours } : null;
     };
 
-    const series = contrat.contratSites.length > 0
-      ? contrat.contratSites.map((cs) => ({
+    const sitesConcernes = params.siteIds?.length
+      ? contrat.contratSites.filter((cs) => params.siteIds!.includes(cs.siteId))
+      : contrat.contratSites;
+
+    const series = sitesConcernes.length > 0
+      ? sitesConcernes.map((cs) => ({
           siteId: cs.siteId as string | null,
           nom: cs.site?.nom ?? 'site',
           prestations: cs.prestations?.length ? cs.prestations : contrat.prestations,

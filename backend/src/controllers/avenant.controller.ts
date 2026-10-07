@@ -56,6 +56,7 @@ export const avenantController = {
         frequenceOperationsJours,
         frequenceOperationsMois,
         periodesFrequence,
+        siteIds,
         notes,
       } = req.body;
       // Fréquence propre à l'avenant (mois prioritaire sur jours) et ses périodes saisonnières
@@ -63,10 +64,21 @@ export const avenantController = {
       const freqJoursAvenant: number | null = freqMoisAvenant ? null : (frequenceOperationsJours || null);
       const periodesAvenant = parsePeriodesFrequence(periodesFrequence);
 
-      const contrat = await prisma.contrat.findUnique({ where: { id: contratId } });
+      const contrat = await prisma.contrat.findUnique({
+        where: { id: contratId },
+        include: { contratSites: { select: { siteId: true } } },
+      });
       if (!contrat) {
         return next(new AppError(404, 'Contrat non trouvé'));
       }
+
+      // Sites concernés : sous-ensemble des sites du contrat ; tous cochés = tous les sites (liste vide)
+      const sitesContrat = contrat.contratSites.map((cs) => cs.siteId);
+      const sitesAvenant: string[] = [...new Set((siteIds ?? []) as string[])];
+      if (sitesAvenant.some((s) => !sitesContrat.includes(s))) {
+        return next(new AppError(400, 'Site non rattaché à ce contrat'));
+      }
+      const sitesConcernes = sitesAvenant.length === sitesContrat.length ? [] : sitesAvenant;
 
 
       // Garde-fou convention, comme à la création du contrat
@@ -108,6 +120,7 @@ export const avenantController = {
             frequenceOperationsJours: freqJoursAvenant,
             frequenceOperationsMois: freqMoisAvenant,
             periodesFrequence: periodesAvenant,
+            siteIds: sitesConcernes,
             notes: notes || null,
             createdById: req.user!.id,
           },
@@ -128,6 +141,7 @@ export const avenantController = {
             frequence: freqJoursAvenant || freqMoisAvenant ? { jours: freqJoursAvenant, mois: freqMoisAvenant } : undefined,
             periodes: periodesAvenant,
             fin: dateExpiration ? new Date(dateExpiration) : null,
+            siteIds: sitesConcernes,
           },
         );
         interventionsCreees = result.interventionsCreees;

@@ -2502,6 +2502,8 @@ model Avenant {
   frequenceOperationsJours             Int?
   frequenceOperationsMois              Int?
   periodesFrequence                    Json      @default("[]")
+  // Sites du contrat concernés par l'avenant (vide = tous les sites du contrat)
+  siteIds                              String[]  @default([])
   notes                                String?
   createdById                          String
   createdBy                            User      @relation("AvenantCreatedBy", fields: [createdById], references: [id])

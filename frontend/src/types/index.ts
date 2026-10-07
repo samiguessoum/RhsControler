@@ -203,6 +203,8 @@ export interface Avenant {
   montantHT?: number | null;
   nombreOperationsSupplementaires: number;
   nombreVisitesControleSupplementaires: number;
+  /** Sites du contrat concernés (vide = tous) */
+  siteIds?: string[];
   notes?: string | null;
   createdById: string;
   createdBy?: User;

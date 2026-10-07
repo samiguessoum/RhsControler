@@ -221,6 +221,8 @@ export const createAvenantSchema = z.object({
   frequenceOperationsJours: z.number().int().positive().optional().nullable(),
   frequenceOperationsMois: z.number().int().positive().optional().nullable(),
   periodesFrequence: periodesFrequenceSchema.optional(),
+  // Sites du contrat concernés (vide ou absent = tous les sites du contrat)
+  siteIds: z.array(z.string()).optional(),
   notes: z.string().optional(),
 }).refine(
   (data) => data.nombreOperationsSupplementaires > 0 || !!data.datesOperations?.length || !!data.datesControles?.length,
