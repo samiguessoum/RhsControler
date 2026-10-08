@@ -721,7 +721,7 @@ export function ContratDetailPage() {
                                   <div className="bg-slate-700" style={{ width: `${(st.operations.realisees / st.operations.total) * 100}%` }} />
                                 </div>
                                 {st.controles.total > 0 && (
-                                  <p className="text-[11px] text-gray-500">{st.controles.realisees}/{st.controles.total} visites de contrôle</p>
+                                  <p className="text-[11px] text-gray-500">{st.controles.realisees}/{st.controles.total} VC</p>
                                 )}
                               </div>
                             )}
@@ -735,7 +735,7 @@ export function ContratDetailPage() {
                                 {isPonctuel && cs.nombreOperations
                                   ? <>{pl(cs.nombreOperations, 'opération')}{frequence && `, ${frequence}`}</>
                                   : frequence ? frequence.charAt(0).toUpperCase() + frequence.slice(1) : '—'}
-                                {!!cs.nombreVisitesControleEntreOps && <span className="text-gray-500"> · {pl(cs.nombreVisitesControleEntreOps, 'visite')} de contrôle entre chaque opération</span>}
+                                {!!cs.nombreVisitesControleEntreOps && <span className="text-gray-500"> · {cs.nombreVisitesControleEntreOps} VC entre chaque opération</span>}
                               </dd>
                             </div>
                             <div className="flex gap-2">
@@ -751,7 +751,7 @@ export function ContratDetailPage() {
                                   {periodes.map((p, i) => (
                                     <p key={i}>
                                       Du {libelleJourAnnuel(p.debut)} au {libelleJourAnnuel(p.fin)} : {libelleFrequence(p.frequenceJours, p.frequenceMois)}
-                                      {p.nombreVisitesControleEntreOps != null && <span className="text-gray-500">, {p.nombreVisitesControleEntreOps} VC entre chaque op.</span>}
+                                      {p.nombreVisitesControleEntreOps != null && <span className="text-gray-500">, {p.nombreVisitesControleEntreOps} VC entre chaque opération</span>}
                                     </p>
                                   ))}
                                 </dd>
@@ -784,28 +784,46 @@ export function ContratDetailPage() {
                             )}
                           </dl>
 
-                          {/* Prestations (+ prix) */}
-                          {cs.prestations?.length ? (
-                            <div className="flex flex-wrap gap-1.5">
-                              {cs.prestations.map((p) => {
-                                const prix = cs.prixPrestations?.[p];
-                                return (
-                                  <button
-                                    key={p}
-                                    type="button"
-                                    onClick={() => setSelectedPrestationName(p)}
-                                    className="inline-flex items-center gap-1.5 rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-50"
-                                    title="Voir la fiche prestation"
-                                  >
-                                    {p}
-                                    {canDo('viewFacturation') && prix != null && (
-                                      <span className="font-medium text-gray-900">· {Number(prix).toLocaleString('fr-FR')} DA</span>
-                                    )}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          ) : null}
+                          {/* Prestations fournies (+ prix HT par opération) */}
+                          {cs.prestations?.length ? (() => {
+                            const voirPrix = canDo('viewFacturation');
+                            const prix = cs.prestations.map((p) => cs.prixPrestations?.[p]);
+                            const total = prix.reduce<number>((t, v) => t + (v != null ? Number(v) : 0), 0);
+                            return (
+                              <table className="w-full max-w-md text-xs">
+                                <thead>
+                                  <tr className="border-b text-gray-500">
+                                    <th className="py-1 text-left font-medium">Prestation fournie</th>
+                                    {voirPrix && <th className="py-1 text-right font-medium">Prix HT / opération</th>}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {cs.prestations.map((p, i) => (
+                                    <tr key={p} className="border-b border-gray-100">
+                                      <td className="py-1">
+                                        <button type="button" onClick={() => setSelectedPrestationName(p)} className="text-gray-900 underline-offset-2 hover:underline" title="Voir la fiche prestation">
+                                          {p}
+                                        </button>
+                                      </td>
+                                      {voirPrix && (
+                                        <td className="py-1 text-right tabular-nums">
+                                          {prix[i] != null ? `${Number(prix[i]).toLocaleString('fr-FR')} DA` : <span className="text-amber-700">Non renseigné</span>}
+                                        </td>
+                                      )}
+                                    </tr>
+                                  ))}
+                                </tbody>
+                                {voirPrix && cs.prestations.length > 1 && total > 0 && (
+                                  <tfoot>
+                                    <tr>
+                                      <td className="py-1 text-gray-500">Total par passage</td>
+                                      <td className="py-1 text-right font-semibold tabular-nums text-gray-900">{total.toLocaleString('fr-FR')} DA</td>
+                                    </tr>
+                                  </tfoot>
+                                )}
+                              </table>
+                            );
+                          })() : null}
 
                           {cs.notes && <p className="text-xs text-gray-500 whitespace-pre-wrap">{cs.notes}</p>}
                         </div>
