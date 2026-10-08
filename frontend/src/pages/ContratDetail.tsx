@@ -764,6 +764,7 @@ export function ContratDetailPage() {
                         {normaliserPeriodes(cs.periodesFrequence).map((p, i) => (
                           <Badge key={i} variant="outline" className="text-xs bg-amber-50 border-amber-200 text-amber-800">
                             Du {libelleJourAnnuel(p.debut)} au {libelleJourAnnuel(p.fin)} : {libelleFrequence(p.frequenceJours, p.frequenceMois)}
+                            {p.nombreVisitesControleEntreOps != null && <>, {p.nombreVisitesControleEntreOps} VC entre chaque OP</>}
                           </Badge>
                         ))}
                         {isPonctuel && cs.nombreOperations && (

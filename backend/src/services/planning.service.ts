@@ -1,13 +1,14 @@
 import { prisma } from '../config/database.js';
 import { InterventionStatut, ContratStatut, InterventionType } from '@prisma/client';
-import { getProchaineDateIntervention, prochaineDateTheorique, parsePeriodesFrequence, type PeriodeFrequence, skipAlgerianWeekend, maxDate, isOverdue, isWithinDays, getCurrentWeekBounds } from '../utils/date.utils.js';
+import { getProchaineDateIntervention, prochaineDateTheorique, nbControlesEntre, parsePeriodesFrequence, type PeriodeFrequence, skipAlgerianWeekend, maxDate, isOverdue, isWithinDays, getCurrentWeekBounds } from '../utils/date.utils.js';
 import { startOfDay, endOfDay, startOfMonth, addDays, addMonths, differenceInDays } from 'date-fns';
 import logger from '../lib/logger.js';
 import { rattacherEtConsommerBC, avecPrevisions } from './bon-commande.service.js';
 
 /**
  * Génère les dates de contrôles ancrées aux opérations : entre chaque paire consécutive
- * d'opérations, répartit `nbEntreOps` visites à espacement égal.
+ * d'opérations, répartit `nbEntreOps` visites à espacement égal (ou le nombre de la période
+ * saisonnière de l'intervalle, voir nbControlesEntre).
  * Avec `queue`, le contrat peut se terminer par des visites : après la dernière opération, on
  * répartit les visites comme si une opération suivante avait lieu (`queue.prochaine`) et on garde
  * celles qui tombent au plus tard à `queue.fin`. Sans date de fin, pas de visites en queue.
@@ -16,13 +17,15 @@ function datesControlesEntreOps(
   datesOps: Date[],
   nbEntreOps: number,
   queue?: { fin: Date | null; prochaine: (derniere: Date) => Date },
+  periodes: PeriodeFrequence[] = [],
 ): Date[] {
-  if (nbEntreOps <= 0 || datesOps.length === 0) return [];
+  if (!aDesControles(nbEntreOps, periodes) || datesOps.length === 0) return [];
   const dates: Date[] = [];
   const repartir = (debut: number, fin: number) => {
-    const espacement = (fin - debut) / (nbEntreOps + 1);
+    const nb = nbControlesEntre(new Date(debut), new Date(fin), nbEntreOps, periodes);
+    const espacement = (fin - debut) / (nb + 1);
     const visites: Date[] = [];
-    for (let j = 1; j <= nbEntreOps; j++) {
+    for (let j = 1; j <= nb; j++) {
       visites.push(skipAlgerianWeekend(new Date(Math.round(debut + j * espacement))));
     }
     return visites;
@@ -37,6 +40,10 @@ function datesControlesEntreOps(
   }
   return dates;
 }
+
+/** Des visites entre opérations sont-elles prévues (hors période ou dans une période) ? */
+const aDesControles = (nbEntreOps: number, periodes: PeriodeFrequence[] = []) =>
+  nbEntreOps > 0 || periodes.some((p) => (p.nombreVisitesControleEntreOps ?? 0) > 0);
 
 /** Interventions encore "en attente" d'une série : non réalisées et non annulées. */
 const EN_ATTENTE = {
@@ -849,7 +856,7 @@ export const planningService = {
         : undefined;
       const datesCtrl = s.datesCtrl?.length
         ? s.datesCtrl.filter(dansConvention)
-        : datesControlesEntreOps(toutesOpsDatesSite, s.nbCtrlEntreOps, queue).filter(dansConvention);
+        : datesControlesEntreOps(toutesOpsDatesSite, s.nbCtrlEntreOps, queue, s.periodes).filter(dansConvention);
 
       const ctrlData = datesCtrl
         .filter(() => !consommer(s.siteId, 'CONTROLE', null))
@@ -1025,7 +1032,7 @@ export const planningService = {
 
       // Dates des contrôles de l'avenant (explicites ou ancrées entre toutes les ops : existantes + nouvelles)
       let toutesOpsAvenant = datesOps;
-      if (!params.datesControles?.length && nbCtrlEntreOps > 0) {
+      if (!params.datesControles?.length && aDesControles(nbCtrlEntreOps, s.periodes)) {
         const opsExistantes = await prisma.intervention.findMany({
           where: { contratId: contrat.id, siteId: s.siteId, type: 'OPERATION', statut: { not: 'ANNULEE' } },
           select: { datePrevue: true },
@@ -1039,7 +1046,7 @@ export const planningService = {
         ? [...params.datesControles].sort((a, b) => a.getTime() - b.getTime())
         : datesControlesEntreOps(toutesOpsAvenant, nbCtrlEntreOps, s.freqOps
           ? { fin: finAvenant, prochaine: (d: Date) => prochaineDateTheorique(d, s.freqOps!.jours, s.freqOps!.mois, s.periodes) }
-          : undefined);
+          : undefined, s.periodes);
 
       const ctrlAvenantData = datesCtrl.map((currentDate) => ({
           ...serie,

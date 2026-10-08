@@ -19,12 +19,15 @@ export function skipAlgerianWeekend(d: Date): Date {
  * les passages ont lieu tous les `frequenceJours` jours ou tous les `frequenceMois` mois.
  * Une période ne force aucune date : elle change seulement la fréquence des passages qui tombent
  * dedans (le flux reste continu).
+ * `nombreVisitesControleEntreOps` : visites de contrôle entre deux opérations pendant la période
+ * (null = même nombre qu'en dehors ; 0 = aucune).
  */
 export type PeriodeFrequence = {
   debut: string;
   fin: string;
   frequenceJours: number | null;
   frequenceMois: number | null;
+  nombreVisitesControleEntreOps?: number | null;
 };
 
 const JOURS_PAR_MOIS = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
@@ -55,8 +58,11 @@ export function parsePeriodesFrequence(value: unknown): PeriodeFrequence[] {
     }
     const frequenceMois = entierPositif(p.frequenceMois);
     const frequenceJours = frequenceMois ? null : entierPositif(p.frequenceJours);
+    const nbCtrl = Number.isInteger(p.nombreVisitesControleEntreOps) && p.nombreVisitesControleEntreOps >= 0
+      ? (p.nombreVisitesControleEntreOps as number)
+      : null;
     if (estJourAnnuel(debut) && estJourAnnuel(fin) && (frequenceJours || frequenceMois)) {
-      result.push({ debut, fin, frequenceJours, frequenceMois });
+      result.push({ debut, fin, frequenceJours, frequenceMois, nombreVisitesControleEntreOps: nbCtrl });
     }
   }
   return result;
@@ -75,6 +81,21 @@ export function periodeALaDate(date: Date, periodes?: PeriodeFrequence[] | null)
     const f = cle(p.fin);
     return d <= f ? k >= d && k <= f : k >= d || k <= f;
   }) ?? null;
+}
+
+/**
+ * Visites de contrôle entre deux opérations consécutives : nombre de la période saisonnière de
+ * l'opération de départ, sinon de celle de l'opération d'arrivée (intervalle raccourci par le
+ * début d'une période), sinon le nombre normal. Période sans nombre = nombre normal.
+ */
+export function nbControlesEntre(
+  debut: Date,
+  fin: Date,
+  nbNormal: number,
+  periodes?: PeriodeFrequence[] | null,
+): number {
+  const p = periodeALaDate(debut, periodes) ?? periodeALaDate(fin, periodes);
+  return p?.nombreVisitesControleEntreOps ?? nbNormal;
 }
 
 /**

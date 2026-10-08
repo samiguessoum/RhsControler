@@ -64,7 +64,12 @@ export function libelleFrequence(jours?: number | null, mois?: number | null): s
  */
 export function normaliserPeriodes(periodes?: any[] | null): PeriodeFrequence[] {
   return (periodes || []).map((p: any) => {
-    if (p?.debut) return { debut: p.debut, fin: p.fin, frequenceJours: p.frequenceJours ?? null, frequenceMois: p.frequenceMois ?? null };
+    if (p?.debut) {
+      return {
+        debut: p.debut, fin: p.fin, frequenceJours: p.frequenceJours ?? null, frequenceMois: p.frequenceMois ?? null,
+        nombreVisitesControleEntreOps: p.nombreVisitesControleEntreOps ?? null,
+      };
+    }
     const md = Number(p?.moisDebut) || 1;
     const mf = Number(p?.moisFin) || 12;
     return {
@@ -170,7 +175,17 @@ export function computeProjectionDates(
 }
 
 /**
- * Même algo que le backend : répartit nbEntreOps contrôles entre chaque paire d'opérations.
+ * Même règle que nbControlesEntre côté backend : nombre de VC de la période de l'opération de
+ * départ, sinon de celle de l'opération d'arrivée, sinon le nombre normal.
+ */
+function nbControlesEntre(debut: Date, fin: Date, nbNormal: number, periodes?: PeriodeFrequence[]): number {
+  const p = periodeALaDate(debut, periodes) ?? periodeALaDate(fin, periodes);
+  return p?.nombreVisitesControleEntreOps ?? nbNormal;
+}
+
+/**
+ * Même algo que le backend : répartit nbEntreOps contrôles entre chaque paire d'opérations
+ * (ou le nombre de la période saisonnière de l'intervalle, `queue.periodes`).
  * Avec `queue`, le contrat peut se terminer par des visites : après la dernière opération, on
  * répartit les visites comme si une opération suivante avait lieu (à la fréquence des opérations)
  * et on garde celles qui tombent au plus tard à `queue.fin`. Sans date de fin, pas de queue.
@@ -181,11 +196,13 @@ export function computeProjectionControles(
   queue?: { fin?: string; frequenceJours?: number; frequenceMois?: number; periodes?: PeriodeFrequence[] },
 ): string[] {
   const ops = datesOps.filter(Boolean).sort();
-  if (nbEntreOps <= 0 || ops.length === 0) return [];
+  const periodes = queue?.periodes ?? [];
+  if ((nbEntreOps <= 0 && !periodes.some((p) => (p.nombreVisitesControleEntreOps ?? 0) > 0)) || ops.length === 0) return [];
   const repartir = (debut: number, fin: number) => {
-    const espacement = (fin - debut) / (nbEntreOps + 1);
+    const nb = nbControlesEntre(new Date(debut), new Date(fin), nbEntreOps, periodes);
+    const espacement = (fin - debut) / (nb + 1);
     const visites: string[] = [];
-    for (let j = 1; j <= nbEntreOps; j++) {
+    for (let j = 1; j <= nb; j++) {
       visites.push(format(skipAlgerianWeekend(new Date(Math.round(debut + j * espacement))), 'yyyy-MM-dd'));
     }
     return visites;
@@ -438,7 +455,8 @@ function JourAnnuelInput({ value, onChange }: { value: string; onChange: (v: str
 }
 
 // Périodes saisonnières (site de contrat ou avenant) : "du [1er mai] au [1er septembre], tous les
-// [1] [mois]". Hors de ces périodes, la fréquence normale s'applique. Une période ne force aucune
+// [1] [mois], [1] VC entre chaque OP". Hors de ces périodes, la fréquence et le nombre de VC
+// normaux s'appliquent (VC vide = même nombre qu'en dehors). Une période ne force aucune
 // date : elle change la fréquence des passages qui tombent dedans.
 export function PeriodesFrequenceInput({
   periodes,
@@ -465,6 +483,16 @@ export function PeriodesFrequenceInput({
             placeholder="Ex : 14"
             onChange={(v) => maj(i, { frequenceJours: v.jours ?? null, frequenceMois: v.mois ?? null })}
           />
+          <Input
+            type="number"
+            min={0}
+            className="h-8 w-16"
+            placeholder="idem"
+            title="VC entre chaque OP pendant la période (vide = même nombre qu'en dehors)"
+            value={p.nombreVisitesControleEntreOps ?? ''}
+            onChange={(e) => maj(i, { nombreVisitesControleEntreOps: e.target.value === '' ? null : Number(e.target.value) })}
+          />
+          <span className="text-xs text-gray-500">VC entre chaque OP</span>
           <button
             type="button"
             onClick={() => onChange(periodes.filter((_, j) => j !== i))}
@@ -478,7 +506,7 @@ export function PeriodesFrequenceInput({
       {chevauchement && <p className="text-xs text-red-600">{chevauchement}</p>}
       <button
         type="button"
-        onClick={() => onChange([...periodes, { debut: '05-01', fin: '09-01', frequenceJours: null, frequenceMois: null }])}
+        onClick={() => onChange([...periodes, { debut: '05-01', fin: '09-01', frequenceJours: null, frequenceMois: null, nombreVisitesControleEntreOps: null }])}
         className="text-xs text-primary hover:underline flex items-center gap-1"
       >
         <Plus className="h-3 w-3" />

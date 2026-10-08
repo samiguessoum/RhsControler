@@ -96,6 +96,8 @@ export interface PeriodeFrequence {
   fin: string;
   frequenceJours: number | null;
   frequenceMois: number | null;
+  // VC entre deux opérations pendant la période (null = même nombre qu'en dehors, 0 = aucune)
+  nombreVisitesControleEntreOps?: number | null;
 }
 
 export interface ContratSite {

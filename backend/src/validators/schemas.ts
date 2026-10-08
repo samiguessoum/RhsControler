@@ -132,6 +132,8 @@ const periodeFrequenceSchema = z.object({
   fin: jourAnnuelSchema,
   frequenceJours: z.number().int().min(1).max(365).optional().nullable(),
   frequenceMois: z.number().int().min(1).max(12).optional().nullable(),
+  // Visites de contrôle entre deux opérations pendant la période (absent = même nombre qu'en dehors)
+  nombreVisitesControleEntreOps: z.number().int().min(0).max(20).optional().nullable(),
 }).refine((p) => !!p.frequenceJours !== !!p.frequenceMois, {
   message: 'Une période doit avoir une fréquence en jours ou en mois',
 });
