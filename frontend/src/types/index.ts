@@ -100,6 +100,14 @@ export interface PeriodeFrequence {
   nombreVisitesControleEntreOps?: number | null;
 }
 
+/** Avancement des passages (avenant ou site d'un contrat), calculé par l'API */
+export interface StatsPassages {
+  operations: { realisees: number; total: number };
+  controles: { realisees: number; total: number };
+  prochainPassage: string | null;
+  dernierPassage: string | null;
+}
+
 export interface ContratSite {
   id: string;
   contratId: string;
@@ -114,6 +122,7 @@ export interface ContratSite {
   nombreVisitesControleEntreOps?: number;
   periodesFrequence?: PeriodeFrequence[];
   notes?: string;
+  stats?: StatsPassages;
   createdAt: string;
   updatedAt: string;
 }
@@ -238,11 +247,7 @@ export interface Avenant {
   interventions?: Pick<Intervention, 'id' | 'type' | 'datePrevue' | 'statut'>[];
   bonCommande?: { id: string; numero: string; quotaPassages: number | null; passagesConsommes: number; actif: boolean } | null;
   /** Avancement calculé par l'API (passages hors annulés) */
-  stats?: {
-    operations: { realisees: number; total: number };
-    controles: { realisees: number; total: number };
-    prochainPassage: string | null;
-  };
+  stats?: StatsPassages;
 }
 
 // ============ INTERVENTION ============

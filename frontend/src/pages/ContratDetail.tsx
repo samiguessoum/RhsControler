@@ -55,7 +55,7 @@ import { ContratForm, ProjectionDates, FrequenceInput, PeriodesFrequenceInput, n
 import { addDays, format } from 'date-fns';
 import { formatDate, getStatutColor, getStatutLabel, cn } from '@/lib/utils';
 import type { Prestation, InterventionStatut, PeriodeFrequence } from '@/types';
-import { formatDateBC } from '@/lib/bc';
+import { formatDateBC, bcCouvreSite } from '@/lib/bc';
 import { BonCommandeDialog, ConsommationBC, Statut, StatutBC, TONS, pl, validiteBC, type BonCommandeAffiche } from '@/components/BonCommande';
 import { FichePrevisionnelleDialog } from '@/components/FichePrevisionnelleDialog';
 
@@ -137,6 +137,7 @@ export function ContratDetailPage() {
   const [supprimerBCAvenant, setSupprimerBCAvenant] = useState(true);
   const [bcDialog, setBcDialog] = useState<{ bc: BonCommandeAffiche | null } | null>(null);
   const [showBCInactifs, setShowBCInactifs] = useState(false);
+  const [rechercheSite, setRechercheSite] = useState('');
   const [deletingBCId, setDeletingBCId] = useState<string | null>(null);
   const { canDo } = useAuthStore();
 
@@ -656,130 +657,165 @@ export function ContratDetailPage() {
           </Card>
 
           {/* Sites du contrat */}
-          {contrat.contratSites && contrat.contratSites.length > 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <MapPin className="h-5 w-5 text-primary" />
-                  Sites du contrat
-                  <Badge variant="secondary" className="ml-2">
-                    {contrat.contratSites.length}
-                  </Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {contrat.contratSites.map((cs) => (
-                    <div
-                      key={cs.id}
-                      className="p-4 rounded-xl border bg-gradient-to-br from-gray-50 to-white hover:shadow-md transition-shadow"
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10">
-                            <Building2 className="h-4 w-4 text-primary" />
-                          </div>
-                          <div>
-                            <h4 className="font-semibold text-sm">{cs.site?.nom}</h4>
-                            {cs.site?.adresse && (
-                              <p className="text-xs text-muted-foreground">{cs.site.adresse}</p>
-                            )}
-                          </div>
-                        </div>
+          {contrat.contratSites && contrat.contratSites.length > 0 && (() => {
+            const jour = new Date().toISOString().slice(0, 10);
+            const recherche = rechercheSite.trim().toLowerCase();
+            const sites = [...contrat.contratSites]
+              .sort((a, b) => (a.site?.nom ?? '').localeCompare(b.site?.nom ?? ''))
+              .filter((cs) => !recherche || [cs.site?.nom, cs.site?.ville, cs.site?.adresse].some((v) => v?.toLowerCase().includes(recherche)));
+            return (
+              <Card>
+                <CardHeader className="pb-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <MapPin className="h-5 w-5 text-primary" />
+                      Sites du contrat
+                      <span className="text-sm font-normal text-gray-400">({contrat.contratSites.length})</span>
+                    </CardTitle>
+                    {contrat.contratSites.length > 5 && (
+                      <div className="relative w-56">
+                        <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                        <Input value={rechercheSite} onChange={(e) => setRechercheSite(e.target.value)} placeholder="Rechercher un site…" className="h-8 pl-8 text-sm" />
                       </div>
-
-                      {/* Contact du site */}
-                      {cs.site?.contacts && cs.site.contacts.length > 0 && (
-                        <div className="mb-3 p-2 rounded-lg bg-white border text-xs">
-                          <p className="font-medium text-gray-700">
-                            {cs.site.contacts[0].nom}
-                            {cs.site.contacts[0].fonction && (
-                              <span className="text-muted-foreground">
-                                {' '}
-                                - {cs.site.contacts[0].fonction}
-                              </span>
-                            )}
-                          </p>
-                          <div className="flex items-center gap-3 mt-1 text-muted-foreground">
-                            {cs.site.contacts[0].tel && (
-                              <span className="flex items-center gap-1">
-                                <Phone className="h-3 w-3" />
-                                {cs.site.contacts[0].tel}
-                              </span>
-                            )}
-                            {cs.site.contacts[0].email && (
-                              <span className="flex items-center gap-1">
-                                <Mail className="h-3 w-3" />
-                                {cs.site.contacts[0].email}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Paramètres du site */}
-                      <div className="flex flex-wrap gap-2 mb-3">
-                        {(cs.frequenceOperationsJours || cs.frequenceOperationsMois) && (
-                          <Badge variant="secondary" className="text-xs">
-                            Op: {libelleFrequence(cs.frequenceOperationsJours, cs.frequenceOperationsMois)}
-                          </Badge>
-                        )}
-                        {normaliserPeriodes(cs.periodesFrequence).map((p, i) => (
-                          <Badge key={i} variant="outline" className="text-xs bg-amber-50 border-amber-200 text-amber-800">
-                            Du {libelleJourAnnuel(p.debut)} au {libelleJourAnnuel(p.fin)} : {libelleFrequence(p.frequenceJours, p.frequenceMois)}
-                            {p.nombreVisitesControleEntreOps != null && <>, {p.nombreVisitesControleEntreOps} VC entre chaque OP</>}
-                          </Badge>
-                        ))}
-                        {isPonctuel && cs.nombreOperations && (
-                          <Badge variant="outline" className="text-xs bg-blue-50">
-                            {cs.nombreOperations} op.
-                          </Badge>
-                        )}
-                        {cs.nombreVisitesControleEntreOps != null && cs.nombreVisitesControleEntreOps > 0 && (
-                          <Badge variant="outline" className="text-xs bg-purple-50">
-                            {cs.nombreVisitesControleEntreOps} ctrl/intervalle
-                          </Badge>
-                        )}
-                      </div>
-
-                      {/* Date 1ère opération */}
-                      {cs.premiereDateOperation && (
-                        <div className="text-xs p-2 rounded bg-blue-50">
-                          <span className="text-blue-600">1ère op:</span>{' '}
-                          <span className="font-medium">{formatDate(cs.premiereDateOperation)}</span>
-                        </div>
-                      )}
-
-                      {/* Prestations du site + prix */}
-                      {cs.prestations?.length ? (
-                        <div className="mt-3 pt-3 border-t space-y-1.5">
-                          {cs.prestations.map((p) => {
-                            const prix = cs.prixPrestations?.[p];
-                            return (
-                              <div key={p} className="flex items-center justify-between gap-2">
-                                <button type="button" onClick={() => setSelectedPrestationName(p)}>
-                                  <Badge variant="outline" className="text-xs cursor-pointer hover:bg-primary/10">
-                                    <Eye className="h-3 w-3 mr-1" />
-                                    {p}
-                                  </Badge>
-                                </button>
-                                {canDo('viewFacturation') && prix != null && (
-                                  <span className="text-xs font-semibold text-green-700 bg-green-50 px-2 py-0.5 rounded border border-green-100 flex items-center gap-1">
-                                    <Banknote className="h-3 w-3" />
-                                    {Number(prix).toLocaleString('fr-FR')} DA
-                                  </span>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {sites.length === 0 && <p className="text-sm text-muted-foreground">Aucun site ne correspond à la recherche.</p>}
+                  <div className="divide-y">
+                    {sites.map((cs) => {
+                      const site = cs.site;
+                      const st = cs.stats;
+                      const adresse = [site?.adresse, [site?.codePostal, site?.ville].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+                      const contact = site?.contacts?.[0];
+                      const telContact = contact?.telMobile || contact?.tel || site?.tel;
+                      const periodes = normaliserPeriodes(cs.periodesFrequence);
+                      const enRetard = !!st?.prochainPassage && String(st.prochainPassage).slice(0, 10) < jour;
+                      const bcsSite = bcsActifs.filter((b) => !b.avenants?.length && bcCouvreSite(b, cs.siteId));
+                      const frequence = cs.frequenceOperationsJours || cs.frequenceOperationsMois
+                        ? libelleFrequence(cs.frequenceOperationsJours, cs.frequenceOperationsMois)
+                        : contrat.frequenceOperationsJours ? libelleFrequence(contrat.frequenceOperationsJours, null) : null;
+                      return (
+                        <div key={cs.id} className="py-4 first:pt-1 last:pb-0 space-y-3 text-sm">
+                          {/* Identité du site */}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <Link to={`/sites/${cs.siteId}`} className="font-semibold text-gray-900 underline-offset-2 hover:underline">
+                                {site?.nom ?? 'Site'}
+                              </Link>
+                              {adresse && <p className="text-xs text-gray-500">{adresse}</p>}
+                              {(contact || telContact) && (
+                                <p className="mt-0.5 text-xs text-gray-500">
+                                  {contact && <>{[contact.prenom, contact.nom].filter(Boolean).join(' ')}{contact.fonction && ` (${contact.fonction})`}</>}
+                                  {telContact && <>{contact && ' · '}<a href={`tel:${telContact.replace(/\s/g, '')}`} className="text-gray-700 hover:underline">{telContact}</a></>}
+                                  {contact?.email && <> · <a href={`mailto:${contact.email}`} className="text-gray-700 hover:underline">{contact.email}</a></>}
+                                </p>
+                              )}
+                            </div>
+                            {st && st.operations.total > 0 && (
+                              <div className="w-36 shrink-0 space-y-1 text-right">
+                                <p className="text-xs text-gray-600">
+                                  <span className="font-medium text-gray-900">{st.operations.realisees}/{st.operations.total}</span> opérations
+                                </p>
+                                <div className="flex h-1.5 overflow-hidden rounded-full bg-gray-100">
+                                  <div className="bg-slate-700" style={{ width: `${(st.operations.realisees / st.operations.total) * 100}%` }} />
+                                </div>
+                                {st.controles.total > 0 && (
+                                  <p className="text-[11px] text-gray-500">{st.controles.realisees}/{st.controles.total} visites de contrôle</p>
                                 )}
                               </div>
-                            );
-                          })}
+                            )}
+                          </div>
+
+                          {/* Planification / suivi */}
+                          <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-xs sm:grid-cols-2">
+                            <div className="flex gap-2">
+                              <dt className="w-28 shrink-0 text-gray-500">Fréquence</dt>
+                              <dd className="text-gray-900">
+                                {isPonctuel && cs.nombreOperations
+                                  ? <>{pl(cs.nombreOperations, 'opération')}{frequence && `, ${frequence}`}</>
+                                  : frequence ? frequence.charAt(0).toUpperCase() + frequence.slice(1) : '—'}
+                                {!!cs.nombreVisitesControleEntreOps && <span className="text-gray-500"> · {pl(cs.nombreVisitesControleEntreOps, 'visite')} de contrôle entre chaque opération</span>}
+                              </dd>
+                            </div>
+                            <div className="flex gap-2">
+                              <dt className="w-28 shrink-0 text-gray-500">Prochain passage</dt>
+                              <dd className={cn('text-gray-900', enRetard && 'text-orange-700')}>
+                                {st?.prochainPassage ? <>{formatDate(st.prochainPassage)}{enRetard && ' (en retard)'}</> : <span className="text-gray-400">Aucun prévu</span>}
+                              </dd>
+                            </div>
+                            {periodes.length > 0 && (
+                              <div className="flex gap-2">
+                                <dt className="w-28 shrink-0 text-gray-500">Saisonnier</dt>
+                                <dd className="space-y-0.5 text-gray-900">
+                                  {periodes.map((p, i) => (
+                                    <p key={i}>
+                                      Du {libelleJourAnnuel(p.debut)} au {libelleJourAnnuel(p.fin)} : {libelleFrequence(p.frequenceJours, p.frequenceMois)}
+                                      {p.nombreVisitesControleEntreOps != null && <span className="text-gray-500">, {p.nombreVisitesControleEntreOps} VC entre chaque op.</span>}
+                                    </p>
+                                  ))}
+                                </dd>
+                              </div>
+                            )}
+                            <div className="flex gap-2">
+                              <dt className="w-28 shrink-0 text-gray-500">Dernier passage</dt>
+                              <dd className="text-gray-900">{st?.dernierPassage ? formatDate(st.dernierPassage) : <span className="text-gray-400">Aucun</span>}</dd>
+                            </div>
+                            {cs.premiereDateOperation && (
+                              <div className="flex gap-2">
+                                <dt className="w-28 shrink-0 text-gray-500">1re opération</dt>
+                                <dd className="text-gray-900">{formatDate(cs.premiereDateOperation)}</dd>
+                              </div>
+                            )}
+                            {bcsActifs.length > 0 && (
+                              <div className="flex gap-2">
+                                <dt className="w-28 shrink-0 text-gray-500">Bon de commande</dt>
+                                <dd className="text-gray-900">
+                                  {bcsSite.length === 0 && <span className="text-amber-700">Aucun BC actif</span>}
+                                  {bcsSite.map((b, i) => (
+                                    <span key={b.id}>
+                                      {i > 0 && ', '}
+                                      <Link to={`/bons-commandes?id=${b.id}`} className="hover:underline">N° {b.numero}</Link>
+                                      {b.quotaPassages != null && <span className="text-gray-500"> ({b.passagesConsommes}/{b.quotaPassages})</span>}
+                                    </span>
+                                  ))}
+                                </dd>
+                              </div>
+                            )}
+                          </dl>
+
+                          {/* Prestations (+ prix) */}
+                          {cs.prestations?.length ? (
+                            <div className="flex flex-wrap gap-1.5">
+                              {cs.prestations.map((p) => {
+                                const prix = cs.prixPrestations?.[p];
+                                return (
+                                  <button
+                                    key={p}
+                                    type="button"
+                                    onClick={() => setSelectedPrestationName(p)}
+                                    className="inline-flex items-center gap-1.5 rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-50"
+                                    title="Voir la fiche prestation"
+                                  >
+                                    {p}
+                                    {canDo('viewFacturation') && prix != null && (
+                                      <span className="font-medium text-gray-900">· {Number(prix).toLocaleString('fr-FR')} DA</span>
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+
+                          {cs.notes && <p className="text-xs text-gray-500 whitespace-pre-wrap">{cs.notes}</p>}
                         </div>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
         </div>
 
         {/* Colonne droite - Stats et options */}

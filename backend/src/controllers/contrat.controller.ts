@@ -107,37 +107,45 @@ function empreintePlanning(contrat: Record<string, any>, sites: SiteInput[]) {
   });
 }
 
-const statsAvenantVides = () => ({
+const statsVides = () => ({
   operations: { realisees: 0, total: 0 },
   controles: { realisees: 0, total: 0 },
   prochainPassage: null as Date | null,
+  dernierPassage: null as Date | null,
 });
 
 /**
- * Avancement de chaque avenant du contrat : passages réalisés / prévus (hors annulés et visites
- * couvertes par une opération) et date du prochain passage non réalisé.
+ * Avancement des passages du contrat par avenant ou par site : réalisés / prévus (hors annulés et
+ * visites couvertes par une opération), dernier passage réalisé et prochain passage non réalisé.
  */
-async function statsAvenants(contratId: string) {
+async function statsPassages(contratId: string, par: 'avenantId' | 'siteId') {
   const groupes = await prisma.intervention.groupBy({
-    by: ['avenantId', 'type', 'statut'],
+    by: [par, 'type', 'statut'],
     where: {
       contratId,
-      avenantId: { not: null },
+      [par]: { not: null },
       type: { in: ['OPERATION', 'CONTROLE'] },
       statut: { not: 'ANNULEE' },
       remplaceeParOperation: false,
     },
     _count: { _all: true },
     _min: { datePrevue: true },
+    _max: { dateRealisee: true, datePrevue: true },
   });
-  const stats = new Map<string, ReturnType<typeof statsAvenantVides>>();
-  for (const g of groupes) {
-    const s = stats.get(g.avenantId!) ?? statsAvenantVides();
+  const stats = new Map<string, ReturnType<typeof statsVides>>();
+  for (const g of groupes as any[]) {
+    const cle = g[par] as string;
+    const s = stats.get(cle) ?? statsVides();
     const serie = g.type === 'OPERATION' ? s.operations : s.controles;
     serie.total += g._count._all;
-    if (g.statut === 'REALISEE') serie.realisees += g._count._all;
-    else if (g._min.datePrevue && (!s.prochainPassage || g._min.datePrevue < s.prochainPassage)) s.prochainPassage = g._min.datePrevue;
-    stats.set(g.avenantId!, s);
+    if (g.statut === 'REALISEE') {
+      serie.realisees += g._count._all;
+      const dernier = g._max.dateRealisee ?? g._max.datePrevue;
+      if (dernier && (!s.dernierPassage || dernier > s.dernierPassage)) s.dernierPassage = dernier;
+    } else if (g._min.datePrevue && (!s.prochainPassage || g._min.datePrevue < s.prochainPassage)) {
+      s.prochainPassage = g._min.datePrevue;
+    }
+    stats.set(cle, s);
   }
   return stats;
 }
@@ -229,7 +237,11 @@ export const contratController = {
           },
           contratSites: {
             include: {
-              site: true,
+              site: {
+                include: {
+                  contacts: { where: { actif: true }, orderBy: [{ estPrincipal: 'desc' }, { nom: 'asc' }], take: 3 },
+                },
+              },
             },
           },
           interventions: {
@@ -261,9 +273,13 @@ export const contratController = {
         return res.status(404).json({ error: 'Contrat non trouvé' });
       }
 
-      const stats = await statsAvenants(id);
+      const [statsAvenants, statsSites] = await Promise.all([statsPassages(id, 'avenantId'), statsPassages(id, 'siteId')]);
       res.json({
-        contrat: { ...contrat, avenants: contrat.avenants.map((av) => ({ ...av, stats: stats.get(av.id) ?? statsAvenantVides() })) },
+        contrat: {
+          ...contrat,
+          contratSites: contrat.contratSites.map((cs) => ({ ...cs, stats: statsSites.get(cs.siteId) ?? statsVides() })),
+          avenants: contrat.avenants.map((av) => ({ ...av, stats: statsAvenants.get(av.id) ?? statsVides() })),
+        },
       });
     } catch (error) {
       logger.error({ err: error }, 'Get contrat error');
