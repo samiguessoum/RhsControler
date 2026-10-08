@@ -6,7 +6,6 @@ import { parsePeriodesFrequence } from '../utils/date.utils.js';
 import logger from '../lib/logger.js';
 import { createAuditLog } from './audit.controller.js';
 import { planningService } from '../services/planning.service.js';
-
 export const avenantController = {
   /**
    * GET /api/contrats/:contratId/avenants
@@ -57,6 +56,8 @@ export const avenantController = {
         frequenceOperationsMois,
         periodesFrequence,
         siteIds,
+        bonCommandeId,
+        nouveauBC,
         notes,
       } = req.body;
       // Fréquence propre à l'avenant (mois prioritaire sur jours) et ses périodes saisonnières
@@ -80,6 +81,25 @@ export const avenantController = {
       }
       const sitesConcernes = sitesAvenant.length === sitesContrat.length ? [] : sitesAvenant;
 
+      // BC de l'avenant : ses opérations le décomptent, il est réservé à l'avenant
+      if (bonCommandeId) {
+        const bc = await prisma.bonCommande.findUnique({ where: { id: bonCommandeId }, select: { clientId: true, actif: true } });
+        if (!bc || bc.clientId !== contrat.clientId) {
+          return next(new AppError(400, 'Bon de commande introuvable pour ce client'));
+        }
+        if (!bc.actif) {
+          return next(new AppError(400, 'Ce bon de commande est inactif'));
+        }
+      }
+      if (nouveauBC) {
+        if ((nouveauBC.siteIds ?? []).some((s: string) => !sitesContrat.includes(s))) {
+          return next(new AppError(400, 'Site du BC non rattaché à ce contrat'));
+        }
+        const existant = await prisma.bonCommande.findFirst({ where: { numero: nouveauBC.numero, clientId: contrat.clientId } });
+        if (existant) {
+          return next(new AppError(409, `Un BC n°${nouveauBC.numero} existe déjà pour ce client : liez-le comme BC existant`));
+        }
+      }
 
       // Garde-fou convention, comme à la création du contrat
       const jour = (d: any) => (d ? new Date(d).toISOString().slice(0, 10) : null);
@@ -99,19 +119,41 @@ export const avenantController = {
       const nbCtrlEntreOps = nombreVisitesControleEntreOps ?? 0;
 
       // findFirst + create dans une transaction pour éviter les doublons de numérotation
-      const avenant = await prisma.$transaction(async (tx) => {
+      const { avenant, bc } = await prisma.$transaction(async (tx) => {
         const dernierAvenant = await tx.avenant.findFirst({
           where: { contratId },
           orderBy: { numero: 'desc' },
         });
         const numero = (dernierAvenant?.numero ?? 0) + 1;
 
-        return tx.avenant.create({
+        // Nouveau BC : signé avec l'avenant, valable par défaut jusqu'à son expiration
+        const bc = nouveauBC
+          ? await tx.bonCommande.create({
+              data: {
+                numero: nouveauBC.numero,
+                clientId: contrat.clientId,
+                contratId,
+                date: dateSignature ? new Date(dateSignature) : null,
+                dateFinValidite: nouveauBC.dateFinValidite
+                  ? new Date(nouveauBC.dateFinValidite)
+                  : (dateExpiration ? new Date(dateExpiration) : null),
+                quotaPassages: nouveauBC.quotaPassages ?? null,
+                ...(nouveauBC.siteIds?.length
+                  ? { sites: { create: (nouveauBC.siteIds as string[]).map((siteId) => ({ siteId })) } }
+                  : {}),
+              },
+            })
+          : bonCommandeId
+            ? await tx.bonCommande.findUnique({ where: { id: bonCommandeId } })
+            : null;
+
+        const avenant = await tx.avenant.create({
           data: {
             contratId,
             numero,
             nom: nom || null,
-            numeroBonCommande: numeroBonCommande || null,
+            bonCommandeId: bc?.id ?? null,
+            numeroBonCommande: bc?.numero ?? (numeroBonCommande || null),
             dateSignature: dateSignature ? new Date(dateSignature) : null,
             dateExpiration: dateExpiration ? new Date(dateExpiration) : null,
             montantHT: montantHT ?? null,
@@ -125,6 +167,7 @@ export const avenantController = {
             createdById: req.user!.id,
           },
         });
+        return { avenant, bc };
       });
 
       let interventionsCreees: any[] = [];
@@ -142,6 +185,7 @@ export const avenantController = {
             periodes: periodesAvenant,
             fin: dateExpiration ? new Date(dateExpiration) : null,
             siteIds: sitesConcernes,
+            bonCommandeId: bc?.id ?? null,
           },
         );
         interventionsCreees = result.interventionsCreees;
@@ -149,6 +193,7 @@ export const avenantController = {
         // Rien n'a été généré (les fréquences sont vérifiées avant toute création) :
         // on retire l'avenant pour ne pas laisser un avenant vide ni décaler la numérotation.
         await prisma.avenant.delete({ where: { id: avenant.id } });
+        if (nouveauBC && bc) await prisma.bonCommande.delete({ where: { id: bc.id } });
         return next(new AppError(400, `Impossible de générer les interventions de l'avenant : ${genError.message}`));
       }
 
@@ -156,7 +201,7 @@ export const avenantController = {
         after: { ...avenant, interventionsGenerees: interventionsCreees.length },
       });
 
-      res.status(201).json({ avenant, interventionsCreees, count: interventionsCreees.length });
+      res.status(201).json({ avenant, bonCommande: bc, interventionsCreees, count: interventionsCreees.length });
     } catch (error) {
       logger.error({ err: error }, 'Avenant create error');
       return next(new AppError(500, 'Erreur serveur'));

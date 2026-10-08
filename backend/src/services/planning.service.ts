@@ -924,6 +924,8 @@ export const planningService = {
       fin?: Date | null;
       /** Sites du contrat concernés par l'avenant (vide ou absent = tous) */
       siteIds?: string[];
+      /** BC de l'avenant : posé sur ses opérations, décompté à la réalisation */
+      bonCommandeId?: string | null;
     } = {},
   ) {
     const contrat = await prisma.contrat.findUnique({
@@ -1009,6 +1011,7 @@ export const planningService = {
           ...serie,
           clientId: contrat.clientId,
           avenantId,
+          bonCommandeId: params.bonCommandeId ?? null,
           type: 'OPERATION' as const,
           prestation,
           datePrevue: currentDate,

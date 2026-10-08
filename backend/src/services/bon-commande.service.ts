@@ -25,6 +25,8 @@ export type BcCouverture = {
   quotaPassages: number | null;
   passagesConsommes: number;
   sites: { siteId: string }[];
+  /** BC d'avenant : décompté seulement par les opérations de l'avenant, jamais choisi automatiquement */
+  reserveAvenant?: boolean;
 };
 
 /** Le BC est-il encore valable à cette date ? (fin de validité incluse) */
@@ -39,7 +41,7 @@ const ordreFifo = (a: BcCouverture, b: BcCouverture) =>
 
 /** BC pouvant couvrir une opération du site à cette date, par ordre de consommation. */
 export function bcsCandidats<T extends BcCouverture>(bcs: T[], siteId: string | null, date: Date): T[] {
-  const valides = bcs.filter((bc) => bcValideA(bc, date));
+  const valides = bcs.filter((bc) => !bc.reserveAvenant && bcValideA(bc, date));
   const duSite = siteId ? valides.filter((bc) => bc.sites.some((s) => s.siteId === siteId)).sort(ordreFifo) : [];
   const convention = valides.filter((bc) => bc.sites.length === 0).sort(ordreFifo);
   return [...duSite, ...convention];
@@ -81,7 +83,8 @@ const selectCouverture = {
  * BC candidats : ceux du contrat, plus les BC du client sans contrat liés au site de l'opération
  * (BC saisi seulement pour un ou plusieurs sites).
  * À appeler dans la transaction qui passe l'intervention à REALISEE (une seule fois).
- * Hors périmètre : contrôles, types hors contrat, opérations d'avenant (BC propre à l'avenant).
+ * Hors périmètre : contrôles, types hors contrat, opérations d'avenant (BC propre à l'avenant,
+ * posé dès la génération). Les BC d'avenant ne sont jamais candidats.
  */
 export async function rattacherEtConsommerBC(
   tx: Prisma.TransactionClient,
@@ -94,6 +97,7 @@ export async function rattacherEtConsommerBC(
   const bcs = await tx.bonCommande.findMany({
     where: {
       actif: true,
+      avenants: { none: {} },
       OR: [
         ...(intervention.contratId ? [{ contratId: intervention.contratId }] : []),
         ...(intervention.siteId
@@ -201,7 +205,7 @@ export function simulerContrat<T extends BcCouverture & { seuilAlerte: number }>
     }
     // Plus aucun BC disponible : imputer le manque au dernier BC qui couvrait ce site
     // (même expiré), pour que l'alerte remonte sur un BC concret.
-    const couvrants = bcs.filter((bc) => bcCouvreSite(bc, op.siteId));
+    const couvrants = bcs.filter((bc) => !bc.reserveAvenant && bcCouvreSite(bc, op.siteId));
     const cible = candidats[candidats.length - 1] ?? [...couvrants].sort(ordreFifo).pop();
     if (cible) consommer(cible.id, op.datePrevue, true);
     // Aucun BC ne couvre ce site : le site n'est pas sous BC, rien à signaler.
@@ -259,7 +263,7 @@ const PREVISION_VIDE = (bc: BcCouverture & { seuilAlerte: number }, aujourdhui: 
 
 /**
  * Ajoute la prévision à chaque BC fourni. Les opérations planifiées sont celles du contrat
- * du BC (hors avenants), non réalisées et non supprimées.
+ * du BC, non réalisées et non supprimées ; celles d'avenant ne comptent que sur le BC de l'avenant.
  */
 export async function avecPrevisions<T extends BcCouverture & { seuilAlerte: number; contratId: string | null; actif: boolean }>(
   bcs: T[],
@@ -269,27 +273,32 @@ export async function avecPrevisions<T extends BcCouverture & { seuilAlerte: num
   if (contratIds.length === 0) return bcs.map((bc) => ({ ...bc, ...PREVISION_VIDE(bc, aujourdhui) }));
 
   // Tous les BC actifs des contrats concernés participent à la simulation (pas seulement ceux affichés)
-  const [tousBcs, ops] = await Promise.all([
+  const [bcsContrats, ops] = await Promise.all([
     prisma.bonCommande.findMany({
       where: { contratId: { in: contratIds }, actif: true },
-      select: { ...selectCouverture, seuilAlerte: true, contratId: true },
+      select: { ...selectCouverture, seuilAlerte: true, contratId: true, _count: { select: { avenants: true } } },
     }),
     prisma.intervention.findMany({
       where: {
         contratId: { in: contratIds },
         type: 'OPERATION',
-        avenantId: null,
+        OR: [{ avenantId: null }, { bonCommandeId: { not: null } }],
         statut: { in: ['A_PLANIFIER', 'PLANIFIEE', 'REPORTEE'] },
       },
-      select: { contratId: true, siteId: true, datePrevue: true, bonCommandeId: true },
+      select: { contratId: true, siteId: true, datePrevue: true, bonCommandeId: true, avenantId: true },
     }),
   ]);
+
+  const tousBcs = bcsContrats.map(({ _count, ...bc }) => ({ ...bc, reserveAvenant: _count.avenants > 0 }));
+  // Une opération d'avenant ne compte que sur son BC (s'il est hors simulation, elle est ignorée)
+  const idsBcs = new Set(tousBcs.map((b) => b.id));
+  const opsSimulees = ops.filter((o) => !o.avenantId || idsBcs.has(o.bonCommandeId!));
 
   const previsions = new Map<string, PrevisionBC>();
   for (const contratId of contratIds) {
     const sim = simulerContrat(
       tousBcs.filter((b) => b.contratId === contratId),
-      ops.filter((o) => o.contratId === contratId),
+      opsSimulees.filter((o) => o.contratId === contratId),
       aujourdhui,
     );
     for (const [id, p] of sim) previsions.set(id, p);

@@ -34,4 +34,11 @@ describe('interventions d\'avenant : sites concernés', () => {
     expect(r.interventionsCreees.map((i: any) => i.siteId)).toEqual(['sA', 'sC']);
     expect(r.interventionsCreees.every((i: any) => i.avenantId === 'av')).toBe(true);
   });
+
+  it('BC de l\'avenant posé sur ses opérations, pas sur ses contrôles', async () => {
+    const r = await planningService.genererInterventionsAvenant('ct', 'av', 'u', 1, 0, {
+      datesOperations: [d('2026-11-12')], datesControles: [d('2026-12-12')], siteIds: ['sA'], bonCommandeId: 'bcAv',
+    });
+    expect(r.interventionsCreees.map((i: any) => [i.type, i.bonCommandeId ?? null])).toEqual([['OPERATION', 'bcAv'], ['CONTROLE', null]]);
+  });
 });

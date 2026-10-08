@@ -1838,6 +1838,8 @@ export const avenantApi = {
       frequenceOperationsMois?: number | null;
       periodesFrequence?: PeriodeFrequence[];
       siteIds?: string[];
+      bonCommandeId?: string;
+      nouveauBC?: { numero: string; quotaPassages?: number | null; dateFinValidite?: string | null; siteIds?: string[] };
       notes?: string;
     }
   ) => {

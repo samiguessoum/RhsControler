@@ -88,11 +88,17 @@ type AvenantForm = {
   datesCtrl: string[];
   // Sites du contrat concernés (tous cochés à l'ouverture)
   siteIds: string[];
+  // BC décompté par les opérations de l'avenant : aucun, nouveau (n° = numeroBonCommande) ou existant
+  bcMode: 'aucun' | 'nouveau' | 'existant';
+  bcExistantId: string;
+  bcQuota: string;
+  bcFinValidite: string;
 };
 
 const AVENANT_VIDE: AvenantForm = {
   nom: '', numeroBonCommande: '', dateSignature: '', dateExpiration: '', montantHT: '', notes: '',
   premiereOp: '', periodes: [], datesOps: [], datesCtrl: [], siteIds: [],
+  bcMode: 'aucun', bcExistantId: '', bcQuota: '', bcFinValidite: '',
 };
 
 // `finConvention` borne en plus les visites de contrôle en queue (après la dernière opération)
@@ -154,7 +160,15 @@ export function ContratDetailPage() {
     mutationFn: () =>
       avenantApi.create(id!, {
         nom: avenantForm.nom.trim() || undefined,
-        numeroBonCommande: avenantForm.numeroBonCommande.trim() || undefined,
+        bonCommandeId: avenantForm.bcMode === 'existant' ? avenantForm.bcExistantId : undefined,
+        nouveauBC: avenantForm.bcMode === 'nouveau'
+          ? {
+              numero: avenantForm.numeroBonCommande.trim(),
+              quotaPassages: avenantForm.bcQuota ? parseInt(avenantForm.bcQuota) : quotaBCAvenantDefaut,
+              dateFinValidite: avenantForm.bcFinValidite || null,
+              siteIds: avenantForm.siteIds,
+            }
+          : undefined,
         dateSignature: avenantForm.dateSignature || undefined,
         dateExpiration: avenantForm.dateExpiration || undefined,
         montantHT: avenantForm.montantHT ? parseFloat(avenantForm.montantHT) : undefined,
@@ -173,6 +187,7 @@ export function ContratDetailPage() {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['contrat', id] });
       queryClient.invalidateQueries({ queryKey: ['interventions-contrat', id] });
+      queryClient.invalidateQueries({ queryKey: ['bons-commandes'] });
       toast.success(`Avenant enregistré — ${res.count ?? res.interventionsCreees?.length ?? 0} intervention(s) créée(s)`);
       if (res.warning) toast.warning(res.warning);
       setShowAvenantDialog(false);
@@ -374,6 +389,21 @@ export function ContratDetailPage() {
       return { ...n, datesOps: p.datesOps, datesCtrl: p.datesCtrl };
     });
   const cleDates = (serie: 'ops' | 'ctrl') => (serie === 'ops' ? 'datesOps' : 'datesCtrl' as const);
+  // BC du client proposés à l'avenant, et quota par défaut d'un nouveau BC : une opération par
+  // date, site concerné et prestation (comme la génération des interventions)
+  const { data: bcsClientData } = useQuery({
+    queryKey: ['bons-commandes', 'client', contrat?.clientId],
+    queryFn: () => bonCommandeApi.list({ clientId: contrat!.clientId, actif: true }),
+    enabled: showAvenantDialog && !!contrat?.clientId,
+  });
+  const bcsClientAvenant = bcsClientData?.bonsCommandes ?? [];
+  const quotaBCAvenantDefaut = avenantForm.datesOps.length * (
+    contrat?.contratSites?.length
+      ? contrat.contratSites
+          .filter((cs) => avenantForm.siteIds.includes(cs.siteId))
+          .reduce((n, cs) => n + (cs.prestations?.length || contrat.prestations?.length || 1), 0)
+      : (contrat?.prestations?.length || 1)
+  ) || undefined;
   const avenantDatesInterdites = [...avenantForm.datesOps, ...avenantForm.datesCtrl].filter((d) => horsBornes(d, avenantDebutConvention, avenantFinConvention));
 
   // Stats des interventions
@@ -1699,7 +1729,7 @@ export function ContratDetailPage() {
 
             {/* Infos administratives */}
             <div className="rounded-lg border divide-y divide-gray-100 overflow-hidden">
-              <div className="grid grid-cols-2 gap-px">
+              <div className="grid grid-cols-1 gap-px">
                 <div className="p-3 space-y-1 bg-white">
                   <Label className="text-xs text-gray-500">Nom de l'avenant</Label>
                   <Input
@@ -1707,15 +1737,6 @@ export function ContratDetailPage() {
                     onChange={(e) => setAvenantForm((f) => ({ ...f, nom: e.target.value }))}
                     className="h-8 text-sm"
                     placeholder="ex: Extension entrepôt B"
-                  />
-                </div>
-                <div className="p-3 space-y-1 bg-white">
-                  <Label className="text-xs text-gray-500">N° bon de commande</Label>
-                  <Input
-                    value={avenantForm.numeroBonCommande}
-                    onChange={(e) => setAvenantForm((f) => ({ ...f, numeroBonCommande: e.target.value }))}
-                    className="h-8 text-sm"
-                    placeholder="ex: BC-2026-042"
                   />
                 </div>
               </div>
@@ -1780,6 +1801,90 @@ export function ContratDetailPage() {
                 )}
               </div>
             )}
+
+            {/* Bon de commande décompté par les opérations de l'avenant */}
+            <div className="rounded-lg border p-3 space-y-3">
+              <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Bon de commande</span>
+              <div className="flex flex-wrap gap-4 text-sm">
+                {([['aucun', 'Aucun'], ['nouveau', 'Nouveau BC'], ['existant', 'BC existant']] as const).map(([mode, label]) => (
+                  <label key={mode} className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="avenant-bc"
+                      checked={avenantForm.bcMode === mode}
+                      onChange={() => setAvenantForm((f) => ({ ...f, bcMode: mode }))}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+
+              {avenantForm.bcMode === 'nouveau' && (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">Numéro BC *</Label>
+                      <Input
+                        value={avenantForm.numeroBonCommande}
+                        onChange={(e) => setAvenantForm((f) => ({ ...f, numeroBonCommande: e.target.value }))}
+                        className="h-8 text-sm"
+                        placeholder="ex: BC-2026-042"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">Nb opérations</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={avenantForm.bcQuota}
+                        onChange={(e) => setAvenantForm((f) => ({ ...f, bcQuota: e.target.value }))}
+                        className="h-8 text-sm"
+                        placeholder={quotaBCAvenantDefaut ? String(quotaBCAvenantDefaut) : 'ex: 4'}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-500">Valable jusqu'au</Label>
+                      <Input
+                        type="date"
+                        value={avenantForm.bcFinValidite}
+                        onChange={(e) => setAvenantForm((f) => ({ ...f, bcFinValidite: e.target.value }))}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Signé à la date de l'avenant
+                    {!avenantForm.bcFinValidite && avenantForm.dateExpiration && <>, valable jusqu'à son expiration</>}
+                    {!avenantForm.bcQuota && quotaBCAvenantDefaut ? <>, {quotaBCAvenantDefaut} opération(s) par défaut</> : null}
+                    {(contrat?.contratSites?.length ?? 0) > 0 && <> — sites couverts : ceux de l'avenant</>}.
+                  </p>
+                </div>
+              )}
+
+              {avenantForm.bcMode === 'existant' && (
+                bcsClientAvenant.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">Aucun BC actif pour ce client. Créez-le ici avec « Nouveau BC ».</p>
+                ) : (
+                  <select
+                    className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    value={avenantForm.bcExistantId}
+                    onChange={(e) => setAvenantForm((f) => ({ ...f, bcExistantId: e.target.value }))}
+                  >
+                    <option value="">Choisir un BC…</option>
+                    {bcsClientAvenant.map((bc: any) => (
+                      <option key={bc.id} value={bc.id}>
+                        {bc.numero}
+                        {bc.quotaPassages != null && ` — ${bc.quotaPassages - bc.passagesConsommes}/${bc.quotaPassages} op. restantes`}
+                        {` — ${(bc.sites ?? []).length ? bc.sites.map((s: any) => s.site?.nom ?? s.siteId).join(', ') : 'tous les sites'}`}
+                      </option>
+                    ))}
+                  </select>
+                )
+              )}
+              {avenantForm.bcMode !== 'aucun' && (
+                <p className="text-xs text-amber-700">Ce BC sera réservé à l'avenant : ses opérations le décomptent, celles du contrat ne le prennent plus.</p>
+              )}
+            </div>
 
             {/* Planning — même logique que le formulaire contrat */}
             <div className="rounded-lg border divide-y divide-gray-100 overflow-hidden">
@@ -1899,6 +2004,8 @@ export function ContratDetailPage() {
                 createAvenantMutation.isPending ||
                 (!avenantForm.datesOps.length && !avenantForm.datesCtrl.length) ||
                 ((contrat?.contratSites?.length ?? 0) > 0 && avenantForm.siteIds.length === 0) ||
+                (avenantForm.bcMode === 'nouveau' && !avenantForm.numeroBonCommande.trim()) ||
+                (avenantForm.bcMode === 'existant' && !avenantForm.bcExistantId) ||
                 avenantDatesInterdites.length > 0 ||
                 periodesValides(avenantForm.periodes).length !== avenantForm.periodes.length ||
                 !!chevauchementPeriodes(avenantForm.periodes)

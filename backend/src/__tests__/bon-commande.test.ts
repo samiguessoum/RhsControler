@@ -19,6 +19,13 @@ const bc = (o: Partial<{ id: string; date: Date | null; dateFinValidite: Date | 
 const op = (siteId: string | null, date: string, bonCommandeId: string | null = null) => ({ siteId, datePrevue: d(date), bonCommandeId });
 
 describe('choix du BC à la réalisation', () => {
+  it('BC réservé à un avenant : jamais choisi pour une opération du contrat', () => {
+    const av = { ...bc({ id: 'av', sites: ['s'] }), reserveAvenant: true };
+    const conv = bc({ id: 'conv' });
+    expect(choisirBC([av, conv], 's', d('2026-03-01'))?.id).toBe('conv');
+    expect(choisirBC([av], 's', d('2026-03-01'))).toBeNull();
+  });
+
   it('priorité au BC du site, puis au BC convention', () => {
     const conv = bc({ id: 'conv' });
     const siteA = bc({ id: 'A', sites: ['sA'] });

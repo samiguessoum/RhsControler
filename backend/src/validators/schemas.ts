@@ -223,8 +223,19 @@ export const createAvenantSchema = z.object({
   periodesFrequence: periodesFrequenceSchema.optional(),
   // Sites du contrat concernés (vide ou absent = tous les sites du contrat)
   siteIds: z.array(z.string()).optional(),
+  // BC décompté par les opérations de l'avenant : BC existant lié, ou nouveau BC créé avec l'avenant
+  bonCommandeId: z.string().optional(),
+  nouveauBC: z.object({
+    numero: z.string().trim().min(1, 'Le numéro du BC est requis'),
+    quotaPassages: z.number().int().positive().optional().nullable(),
+    dateFinValidite: z.string().optional().nullable(),
+    siteIds: z.array(z.string()).optional(),
+  }).optional(),
   notes: z.string().optional(),
 }).refine(
+  (data) => !(data.bonCommandeId && data.nouveauBC),
+  { message: 'Choisissez un BC existant ou un nouveau BC, pas les deux' }
+).refine(
   (data) => data.nombreOperationsSupplementaires > 0 || !!data.datesOperations?.length || !!data.datesControles?.length,
   { message: 'Un avenant doit ajouter au moins une opération ou des visites de contrôle' }
 );

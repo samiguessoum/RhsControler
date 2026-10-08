@@ -2467,6 +2467,8 @@ model BonCommande {
 
   interventions  Intervention[]
   sites          BonCommandeSite[]
+  // BC d'avenant : réservé aux opérations de l'avenant (exclu du rattachement automatique du contrat)
+  avenants       Avenant[]
 
   @@unique([numero, clientId])
   @@index([clientId])
@@ -2493,6 +2495,9 @@ model Avenant {
   numero                               Int // Numéro séquentiel de l'avenant au sein du contrat (1, 2, 3...)
   nom                                  String? // Libellé libre, repris sur la facture
   numeroBonCommande                    String? // N° du bon de commande de l'avenant, repris sur la facture
+  // BC décompté par les opérations de l'avenant (créé avec l'avenant ou BC existant lié)
+  bonCommandeId                        String?
+  bonCommande                          BonCommande? @relation(fields: [bonCommandeId], references: [id], onDelete: SetNull)
   dateSignature                        DateTime?
   dateExpiration                       DateTime?
   montantHT                            Decimal?  @db.Decimal(15, 2)
@@ -2514,4 +2519,5 @@ model Avenant {
 
   @@unique([contratId, numero])
   @@index([contratId])
+  @@index([bonCommandeId])
 }
