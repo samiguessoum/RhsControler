@@ -1842,17 +1842,15 @@ export async function generateBonLivraisonPDF(bl: BonLivraisonDoc): Promise<Buff
 }
 
 // ============ Fiche prévisionnelle (planning des passages d'un contrat) ============
+// Mise en page sobre : noir sur blanc, tableau quadrillé, en-têtes grisés.
 
 const FP = {
   marge: 36,
-  navy: '#0b1b55',
-  texte: '#111827',
-  gris: '#6b7280',
-  bordure: '#d1d5db',
-  fondGris: '#f3f4f6',
-  fondGroupe: '#eef2ff',
-  operation: { fond: '#dbeafe', texte: '#1e40af' },
-  controle: { fond: '#d1fae5', texte: '#047857' },
+  texte: '#000000',
+  secondaire: '#404040',
+  trait: '#7f7f7f',
+  fondEntete: '#e6e6e6',
+  fondGroupe: '#f2f2f2',
 };
 
 function drawFicheFooter(doc: PDFKit.PDFDocument, page: number, total: number) {
@@ -1874,13 +1872,10 @@ function drawFicheFooter(doc: PDFKit.PDFDocument, page: number, total: number) {
   ].filter(Boolean).join('  |  ');
   const w = doc.page.width - m * 2 - 60;
 
-  doc.moveTo(m, y - 6).lineTo(doc.page.width - m, y - 6).lineWidth(0.7).strokeColor(FP.bordure).stroke();
-  doc.font('Helvetica').fontSize(7).fillColor('#374151').text(contact, m, y, { width: w, align: 'left', lineBreak: false, ellipsis: true });
-  if (legal) {
-    doc.font('Helvetica').fontSize(6.5).fillColor(FP.gris).text(legal, m, y + 11, { width: w, align: 'left', lineBreak: false, ellipsis: true });
-  }
-  doc.font('Helvetica').fontSize(7).fillColor('#374151')
-    .text(`Page ${page}/${total}`, doc.page.width - m - 60, y, { width: 60, align: 'right', lineBreak: false });
+  doc.moveTo(m, y - 6).lineTo(doc.page.width - m, y - 6).lineWidth(0.5).strokeColor(FP.trait).stroke();
+  doc.font('Helvetica').fontSize(7).fillColor(FP.secondaire).text(contact, m, y, { width: w, lineBreak: false, ellipsis: true });
+  if (legal) doc.text(legal, m, y + 10, { width: w, lineBreak: false, ellipsis: true });
+  doc.text(`Page ${page}/${total}`, doc.page.width - m - 60, y, { width: 60, align: 'right', lineBreak: false });
 }
 
 function libellePeriodeFiche(p: { debut: string | null; fin: string | null }): string {
@@ -1905,255 +1900,227 @@ export async function generateFichePrevisionnellePDF(
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
-      const pageW = doc.page.width;
-      const W = pageW - m * 2;
-      const bas = doc.page.height - 64; // au-delà : pied de page
-      let y = 26;
+      const W = doc.page.width - m * 2;
+      const bas = doc.page.height - 60; // au-delà : pied de page
+      const pad = 4;
+      let y = 28;
 
-      const nouvellePage = () => { doc.addPage(); y = m; };
-      const assurer = (h: number) => { if (y + h > bas) { nouvellePage(); return true; } return false; };
+      const trait = () => doc.lineWidth(0.5).strokeColor(FP.trait);
+      const cadre = (x: number, yy: number, w: number, h: number, fond?: string) => {
+        if (fond) doc.rect(x, yy, w, h).fillColor(fond).fill();
+        trait(); doc.rect(x, yy, w, h).stroke();
+      };
 
-      // ── En-tête ────────────────────────────────────────────────────────────
+      // ── En-tête : logo + référence ─────────────────────────────────────────
       const logoPath = resolveAttestationLogoPath();
       if (logoPath) {
-        try { doc.image(logoPath, m, y, { fit: [230, 62] }); } catch { /* logo illisible : on continue sans */ }
+        try { doc.image(logoPath, m, y, { fit: [210, 56] }); } catch { /* logo illisible : on continue sans */ }
       } else {
-        doc.font('Helvetica-Bold').fontSize(16).fillColor(FP.navy).text(COMPANY_INFO.name, m, y + 18, { width: 260 });
+        doc.font('Helvetica-Bold').fontSize(14).fillColor(FP.texte).text(COMPANY_INFO.name, m, y + 18, { width: 260 });
       }
-      const rx = pageW - m - 220;
-      doc.font('Helvetica-Bold').fontSize(8).fillColor(FP.gris)
-        .text('FICHE PRÉVISIONNELLE', rx, y + 6, { width: 220, align: 'right', characterSpacing: 1 });
-      doc.font('Helvetica-Bold').fontSize(10).fillColor(FP.navy)
-        .text(`Réf. : ${data.ref}`, rx, y + 20, { width: 220, align: 'right' });
-      doc.font('Helvetica').fontSize(9).fillColor(FP.texte)
-        .text(`${COMPANY_INFO.city ? `${COMPANY_INFO.city.replace(/^\d+\s*/, '')}, le` : 'Le'} ${formatDate(data.dateEmission)}`, rx, y + 35, { width: 220, align: 'right' });
-      y += 80;
+      const rx = m + W - 200;
+      const ville = COMPANY_INFO.city ? COMPANY_INFO.city.replace(/^\d+\s*/, '') : '';
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(FP.texte).text(`Réf. : ${data.ref}`, rx, y + 14, { width: 200, align: 'right' });
+      doc.font('Helvetica').fontSize(9).text(`${ville ? `${ville}, le` : 'Le'} ${formatDate(data.dateEmission)}`, rx, y + 27, { width: 200, align: 'right' });
+      y += 66;
+      doc.moveTo(m, y).lineTo(m + W, y).lineWidth(0.8).strokeColor(FP.texte).stroke();
+      y += 12;
 
-      doc.font('Helvetica-Bold').fontSize(16).fillColor(FP.navy)
-        .text(data.titre.toUpperCase(), m, y, { width: W, align: 'center' });
-      y = doc.y + 3;
-      doc.font('Helvetica').fontSize(10).fillColor(FP.gris)
-        .text(libellePeriodeFiche(data.periode), m, y, { width: W, align: 'center' });
-      y = doc.y + 8;
-      doc.moveTo(m + W / 2 - 40, y).lineTo(m + W / 2 + 40, y).lineWidth(1.5).strokeColor(FP.navy).stroke();
-      y += 16;
+      // ── Titre ──────────────────────────────────────────────────────────────
+      doc.font('Helvetica-Bold').fontSize(14).fillColor(FP.texte).text(data.titre.toUpperCase(), m, y, { width: W, align: 'center' });
+      y = doc.y + 2;
+      doc.font('Helvetica').fontSize(9.5).fillColor(FP.secondaire).text(libellePeriodeFiche(data.periode), m, y, { width: W, align: 'center' });
+      y = doc.y + 12;
 
-      // ── Prestataire / Client ───────────────────────────────────────────────
-      const colW = (W - 16) / 2;
-      const prestataire = [
-        [COMPANY_INFO.address, [COMPANY_INFO.city, COMPANY_INFO.pays].filter(Boolean).join(', ')].filter(Boolean).join(', '),
-        [COMPANY_INFO.phone ? `Tél : ${COMPANY_INFO.phone}` : '', COMPANY_INFO.email].filter(Boolean).join(' · '),
-      ].filter(Boolean).join('\n');
-      const client = [data.client.adresse, data.client.contact].filter(Boolean).join('\n');
-      doc.font('Helvetica').fontSize(8.5);
-      const hBloc = 34 + Math.max(doc.heightOfString(prestataire || ' ', { width: colW - 20 }), doc.heightOfString(client || ' ', { width: colW - 20 }));
+      // ── Bloc Client / Contrat ──────────────────────────────────────────────
+      const colW = W / 2;
+      const labelW = 82;
+      const lignesClient: Array<[string, string]> = [['Client', data.client.nomEntreprise]];
+      if (data.client.adresse) lignesClient.push(['Adresse', data.client.adresse]);
+      if (data.client.contact) lignesClient.push(['Contact', data.client.contact]);
+      if (data.sites.length) lignesClient.push([data.sites.length > 1 ? `Sites (${data.sites.length})` : 'Site', data.sites.map((s) => s.nom).join(', ')]);
 
-      const bloc = (x: number, label: string, nom: string, details: string, fond: boolean) => {
-        if (fond) doc.rect(x, y, colW, hBloc).fillColor(FP.fondGris).fill();
-        else doc.rect(x, y, colW, hBloc).lineWidth(0.8).strokeColor(FP.bordure).stroke();
-        doc.font('Helvetica-Bold').fontSize(7).fillColor(FP.gris).text(label.toUpperCase(), x + 10, y + 8, { width: colW - 20, characterSpacing: 0.8 });
-        doc.font('Helvetica-Bold').fontSize(10).fillColor(FP.navy).text(nom, x + 10, y + 18, { width: colW - 20, lineBreak: false, ellipsis: true });
-        if (details) doc.font('Helvetica').fontSize(8.5).fillColor(FP.texte).text(details, x + 10, y + 32, { width: colW - 20 });
-      };
-      bloc(m, 'Prestataire', COMPANY_INFO.name, prestataire, true);
-      bloc(m + colW + 16, 'Client', data.client.nomEntreprise, client, false);
-      y += hBloc + 14;
-
-      // ── Récapitulatif du contrat ───────────────────────────────────────────
-      const champs: Array<[string, string]> = [];
-      const convention = [data.contrat.ref, data.contrat.nom].filter(Boolean).join(' · ');
-      if (convention) champs.push(['Convention', convention]);
-      champs.push(['Type de contrat', data.contrat.type]);
+      const lignesContrat: Array<[string, string]> = [];
+      const convention = [data.contrat.ref, data.contrat.nom].filter(Boolean).join(' - ');
+      if (convention) lignesContrat.push(['Convention', convention]);
+      lignesContrat.push(['Type', data.contrat.type]);
       if (data.contrat.conventionDebut || data.contrat.conventionFin) {
-        champs.push(['Durée', `${data.contrat.conventionDebut ? `du ${formatDate(data.contrat.conventionDebut)} ` : ''}${data.contrat.conventionFin ? `au ${formatDate(data.contrat.conventionFin)}` : ''}`.trim()]);
+        lignesContrat.push(['Durée', [data.contrat.conventionDebut ? `du ${formatDate(data.contrat.conventionDebut)}` : '', data.contrat.conventionFin ? `au ${formatDate(data.contrat.conventionFin)}` : ''].filter(Boolean).join(' ')]);
       }
-      if (data.contrat.prestations.length) champs.push(['Prestations', data.contrat.prestations.join(', ')]);
-      if (data.sites.length) {
-        champs.push([data.sites.length > 1 ? `Sites (${data.sites.length})` : 'Site', data.sites.map((s) => s.nom).join(', ')]);
-      }
+      if (data.contrat.prestations.length) lignesContrat.push(['Prestations', data.contrat.prestations.join(', ')]);
       if (data.colonnes.bc && data.contrat.bonsCommande.length) {
-        champs.push([data.contrat.bonsCommande.length > 1 ? 'Bons de commande' : 'Bon de commande', data.contrat.bonsCommande.map((n) => `N° ${n}`).join(', ')]);
+        lignesContrat.push(['N° BC', data.contrat.bonsCommande.join(', ')]);
       }
-      const labelW = 100;
-      for (const [label, valeur] of champs) {
+
+      const hauteurChamps = (lignes: Array<[string, string]>) => {
         doc.font('Helvetica').fontSize(8.5);
-        const h = Math.max(13, doc.heightOfString(valeur, { width: W - labelW }) + 3);
-        assurer(h);
-        doc.font('Helvetica-Bold').fontSize(8.5).fillColor(FP.gris).text(label, m, y, { width: labelW });
-        doc.font('Helvetica').fontSize(8.5).fillColor(FP.texte).text(valeur, m + labelW, y, { width: W - labelW });
-        y += h;
-      }
-      y += 10;
+        return lignes.reduce((h, [, v]) => h + Math.max(12, doc.heightOfString(v, { width: colW - labelW - pad * 3 }) + 2), 0);
+      };
+      const champs = (lignes: Array<[string, string]>, x: number, yy: number) => {
+        for (const [label, valeur] of lignes) {
+          doc.font('Helvetica-Bold').fontSize(8.5).fillColor(FP.texte).text(`${label} :`, x + pad * 2, yy, { width: labelW });
+          doc.font('Helvetica').fontSize(8.5).text(valeur, x + pad * 2 + labelW, yy, { width: colW - labelW - pad * 3 });
+          yy += Math.max(12, doc.heightOfString(valeur, { width: colW - labelW - pad * 3 }) + 2);
+        }
+      };
+      const hTitreBloc = 15;
+      const hBloc = Math.max(hauteurChamps(lignesClient), hauteurChamps(lignesContrat)) + 10;
+      cadre(m, y, colW, hTitreBloc, FP.fondEntete);
+      cadre(m + colW, y, colW, hTitreBloc, FP.fondEntete);
+      doc.font('Helvetica-Bold').fontSize(8.5).fillColor(FP.texte)
+        .text('CLIENT', m + pad * 2, y + 4, { width: colW - pad * 4 })
+        .text('CONTRAT', m + colW + pad * 2, y + 4, { width: colW - pad * 4 });
+      y += hTitreBloc;
+      cadre(m, y, colW, hBloc);
+      cadre(m + colW, y, colW, hBloc);
+      champs(lignesClient, m, y + 5);
+      champs(lignesContrat, m + colW, y + 5);
+      y += hBloc + 10;
 
-      // ── Synthèse ───────────────────────────────────────────────────────────
-      const tuiles: Array<[string, string, string]> = [
-        [String(data.totaux.operations), data.totaux.operations > 1 ? data.libelles.operations : data.libelles.operation, FP.operation.texte],
-      ];
-      if (data.avecControles) {
-        tuiles.push([String(data.totaux.controles), data.totaux.controles > 1 ? data.libelles.controles : data.libelles.controle, FP.controle.texte]);
-      }
-      if (data.sites.length > 1) tuiles.push([String(data.sites.length), 'Sites', FP.navy]);
-      if (data.colonnes.prix && data.totaux.montantHT > 0) tuiles.push([formatMontant(data.totaux.montantHT), 'DA HT prévisionnel', FP.navy]);
-      const tuileW = (W - 10 * (tuiles.length - 1)) / tuiles.length;
-      assurer(46);
-      tuiles.forEach(([valeur, label, couleur], i) => {
-        const x = m + i * (tuileW + 10);
-        doc.roundedRect(x, y, tuileW, 42, 4).lineWidth(0.8).strokeColor(FP.bordure).stroke();
-        doc.rect(x, y + 6, 3, 30).fillColor(couleur).fill();
-        doc.font('Helvetica-Bold').fontSize(15).fillColor(couleur).text(valeur, x + 12, y + 7, { width: tuileW - 18, lineBreak: false });
-        doc.font('Helvetica').fontSize(8).fillColor(FP.gris).text(label, x + 12, y + 26, { width: tuileW - 18, lineBreak: false, ellipsis: true });
-      });
-      y += 58;
+      // ── Récapitulatif (une ligne) ──────────────────────────────────────────
+      const nb = (n: number, sing: string, plur: string) => `${n} ${(n > 1 ? plur : sing).toLowerCase()}`;
+      const recap = [
+        nb(data.totaux.operations, data.libelles.operation, data.libelles.operations),
+        data.avecControles ? nb(data.totaux.controles, data.libelles.controle, data.libelles.controles) : '',
+        data.colonnes.prix && data.totaux.montantHT > 0 ? `montant prévisionnel ${formatMontant(data.totaux.montantHT)} DA HT` : '',
+      ].filter(Boolean).join(', ');
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(FP.texte).text('Récapitulatif : ', m, y, { continued: true });
+      doc.font('Helvetica').text(`${recap}.`);
+      y = doc.y + 8;
 
-      // ── Tableau des passages ───────────────────────────────────────────────
+      // ── Tableau des passages (un seul tableau, sites/mois en lignes de séparation)
       type Col = { titre: string; largeur: number | 'flex'; align?: 'left' | 'right' | 'center' };
       const cols: Record<string, Col> = { num: { titre: 'N°', largeur: 24, align: 'center' } };
-      if (data.colonnes.date) cols.date = { titre: 'Date prévue', largeur: 98 };
-      cols.nature = { titre: 'Nature', largeur: data.colonnes.prestations ? 104 : 'flex' };
+      if (data.colonnes.date) cols.date = { titre: 'Date prévue', largeur: 92 };
+      cols.nature = { titre: 'Nature', largeur: data.colonnes.prestations ? 92 : 'flex' };
       if (data.colonnes.site) cols.site = { titre: 'Site', largeur: 96 };
       if (data.colonnes.prestations) cols.prestations = { titre: 'Prestations', largeur: 'flex' };
-      if (data.colonnes.bc) cols.bc = { titre: 'N° BC', largeur: 74 };
-      if (data.colonnes.statut) cols.statut = { titre: 'Statut', largeur: 50, align: 'center' };
-      if (data.colonnes.prix) cols.prix = { titre: 'Montant HT', largeur: 70, align: 'right' };
+      if (data.colonnes.bc) cols.bc = { titre: 'N° BC', largeur: 72 };
+      if (data.colonnes.statut) cols.statut = { titre: 'Statut', largeur: 48, align: 'center' };
+      if (data.colonnes.prix) cols.prix = { titre: 'Montant HT', largeur: 68, align: 'right' };
       const fixe = Object.values(cols).reduce((s, c) => s + (c.largeur === 'flex' ? 0 : c.largeur), 0);
       const nbFlex = Object.values(cols).filter((c) => c.largeur === 'flex').length || 1;
-      const positions: Record<string, { x: number; w: number }> = {};
+      const pos: Record<string, { x: number; w: number }> = {};
       let cx = m;
       for (const [cle, c] of Object.entries(cols)) {
         const w = c.largeur === 'flex' ? (W - fixe) / nbFlex : c.largeur;
-        positions[cle] = { x: cx, w };
+        pos[cle] = { x: cx, w };
         cx += w;
       }
-      const pad = 5;
 
-      const enTeteTableau = () => {
-        doc.rect(m, y, W, 18).fillColor(FP.navy).fill();
-        for (const [cle, c] of Object.entries(cols)) {
-          doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#ffffff')
-            .text(c.titre, positions[cle].x + pad, y + 5.5, { width: positions[cle].w - pad * 2, align: c.align ?? 'left', lineBreak: false });
-        }
-        y += 18;
+      const grille = (yy: number, h: number, fond?: string) => {
+        cadre(m, yy, W, h, fond);
+        trait();
+        for (const p of Object.values(pos).slice(1)) doc.moveTo(p.x, yy).lineTo(p.x, yy + h).stroke();
+      };
+      const cellule = (cle: string, texte: string, yy: number, opts: { gras?: boolean; italique?: boolean } = {}) => {
+        doc.font(opts.gras ? 'Helvetica-Bold' : opts.italique ? 'Helvetica-Oblique' : 'Helvetica').fontSize(8.5).fillColor(FP.texte)
+          .text(texte, pos[cle].x + pad, yy, { width: pos[cle].w - pad * 2, align: cols[cle].align ?? 'left' });
       };
 
-      const enTeteGroupe = (g: (typeof data.groupes)[number], suite = false) => {
-        doc.rect(m, y, W, 24).fillColor(FP.fondGroupe).fill();
-        doc.rect(m, y, 3, 24).fillColor(FP.navy).fill();
-        doc.font('Helvetica-Bold').fontSize(10).fillColor(FP.navy)
-          .text(`${g.titre}${suite ? ' (suite)' : ''}`, m + 10, y + 4, { width: W * 0.6, lineBreak: false, ellipsis: true });
-        if (g.sousTitre) {
-          doc.font('Helvetica').fontSize(7).fillColor(FP.gris).text(g.sousTitre, m + 10, y + 15, { width: W * 0.6, lineBreak: false, ellipsis: true });
-        }
+      const enTeteTableau = () => {
+        grille(y, 16, FP.fondEntete);
+        for (const cle of Object.keys(cols)) cellule(cle, cols[cle].titre, y + 4.5, { gras: true });
+        y += 16;
+      };
+      const ligneGroupe = (g: (typeof data.groupes)[number], suite = false) => {
+        cadre(m, y, W, 15, FP.fondGroupe);
+        const titre = `${g.titre}${g.sousTitre ? ` - ${g.sousTitre}` : ''}${suite ? ' (suite)' : ''}`;
+        doc.font('Helvetica-Bold').fontSize(8.5).fillColor(FP.texte).text(titre, m + pad, y + 4, { width: W * 0.68, lineBreak: false, ellipsis: true });
         const compte = [
-          g.nbOperations ? `${g.nbOperations} ${g.nbOperations > 1 ? data.libelles.operations : data.libelles.operation}`.toLowerCase() : '',
-          g.nbControles ? `${g.nbControles} ${g.nbControles > 1 ? data.libelles.controles : data.libelles.controle}`.toLowerCase() : '',
-        ].filter(Boolean).join(' · ');
-        doc.font('Helvetica').fontSize(8).fillColor(FP.navy)
-          .text(compte, m + W * 0.6, y + 8, { width: W * 0.4 - 10, align: 'right', lineBreak: false });
-        y += 24;
+          g.nbOperations ? nb(g.nbOperations, data.libelles.operation, data.libelles.operations) : '',
+          g.nbControles ? nb(g.nbControles, data.libelles.controle, data.libelles.controles) : '',
+        ].filter(Boolean).join(', ');
+        doc.font('Helvetica').fontSize(8).text(compte, m + W * 0.68, y + 4, { width: W * 0.32 - pad, align: 'right', lineBreak: false });
+        y += 15;
+      };
+      const ligneTotal = (libelle: string, montant: number, gras: boolean) => {
+        cadre(m, y, W, 15, gras ? FP.fondEntete : undefined);
+        trait(); doc.moveTo(pos.prix.x, y).lineTo(pos.prix.x, y + 15).stroke();
+        doc.font(gras ? 'Helvetica-Bold' : 'Helvetica').fontSize(8.5).fillColor(FP.texte)
+          .text(libelle, m + pad, y + 4, { width: pos.prix.x - m - pad * 2, align: 'right' })
+          .text(formatMontant(montant), pos.prix.x + pad, y + 4, { width: pos.prix.w - pad * 2, align: 'right' });
+        y += 15;
       };
 
       if (!data.groupes.length) {
-        assurer(40);
-        doc.rect(m, y, W, 36).lineWidth(0.8).dash(3, { space: 3 }).strokeColor(FP.bordure).stroke().undash();
-        doc.font('Helvetica-Oblique').fontSize(9).fillColor(FP.gris)
-          .text('Aucun passage prévu sur la période et les critères sélectionnés.', m, y + 13, { width: W, align: 'center' });
-        y += 50;
-      }
-
-      for (const g of data.groupes) {
-        if (assurer(24 + 18 + 22)) { /* nouvelle page avant le groupe */ }
-        enTeteGroupe(g);
+        cadre(m, y, W, 30);
+        doc.font('Helvetica-Oblique').fontSize(9).fillColor(FP.secondaire)
+          .text('Aucun passage prévu sur la période et les critères sélectionnés.', m, y + 10, { width: W, align: 'center' });
+        y += 40;
+      } else {
+        if (y + 16 + 15 + 15 > bas) { doc.addPage(); y = m; }
         enTeteTableau();
-        g.lignes.forEach((l, i) => {
-          const prestations = l.prestations.join(', ') || '-';
-          doc.font('Helvetica').fontSize(8);
-          const hPrest = cols.prestations ? doc.heightOfString(prestations, { width: positions.prestations.w - pad * 2 }) : 0;
-          const hSite = cols.site ? doc.heightOfString(l.siteNom, { width: positions.site.w - pad * 2 }) : 0;
-          const h = Math.max(20, hPrest + 10, hSite + 10, l.avenant ? 28 : 0);
-          if (assurer(h)) { enTeteGroupe(g, true); enTeteTableau(); }
+        let numero = 0;
+        for (const g of data.groupes) {
+          if (y + 15 + 15 > bas) { doc.addPage(); y = m; enTeteTableau(); }
+          ligneGroupe(g);
+          for (const l of g.lignes) {
+            const prestations = l.prestations.join(', ') || '-';
+            doc.font('Helvetica').fontSize(8.5);
+            const hauteurs = [
+              doc.heightOfString(l.typeLibelle, { width: pos.nature.w - pad * 2 }) + (l.avenant ? 10 : 0),
+              cols.prestations ? doc.heightOfString(prestations, { width: pos.prestations.w - pad * 2 }) : 0,
+              cols.site ? doc.heightOfString(l.siteNom, { width: pos.site.w - pad * 2 }) : 0,
+              cols.bc ? doc.heightOfString(l.bonsCommande.join(', ') || '-', { width: pos.bc.w - pad * 2 }) : 0,
+            ];
+            const h = Math.max(15, ...hauteurs.map((x) => x + 6));
+            if (y + h > bas) { doc.addPage(); y = m; enTeteTableau(); ligneGroupe(g, true); }
 
-          if (i % 2 === 1) doc.rect(m, y, W, h).fillColor('#f9fafb').fill();
-          doc.moveTo(m, y + h).lineTo(m + W, y + h).lineWidth(0.5).strokeColor('#e5e7eb').stroke();
-          const ty = y + 6;
-
-          doc.font('Helvetica').fontSize(8).fillColor(FP.gris)
-            .text(String(i + 1), positions.num.x, ty, { width: positions.num.w, align: 'center' });
-          if (cols.date) {
-            doc.font('Helvetica-Bold').fontSize(8).fillColor(FP.texte)
-              .text(l.dateLibelle, positions.date.x + pad, ty, { width: positions.date.w - pad * 2, lineBreak: false });
+            grille(y, h);
+            const ty = y + 4;
+            cellule('num', String(++numero), ty);
+            if (cols.date) cellule('date', l.dateLibelle, ty);
+            cellule('nature', l.typeLibelle, ty, { gras: l.type === 'OPERATION' });
+            if (l.avenant) {
+              doc.font('Helvetica').fontSize(7.5).fillColor(FP.secondaire)
+                .text(l.avenant, pos.nature.x + pad, doc.y, { width: pos.nature.w - pad * 2 });
+            }
+            if (cols.site) cellule('site', l.siteNom, ty);
+            if (cols.prestations) cellule('prestations', prestations, ty);
+            if (cols.bc) cellule('bc', l.bonsCommande.join(', ') || '-', ty);
+            if (cols.statut) cellule('statut', l.realise ? 'Réalisé' : 'Prévu', ty);
+            if (cols.prix) {
+              cellule('prix', l.type === 'CONTROLE' ? 'Inclus' : l.montantHT != null ? formatMontant(l.montantHT) : '-', ty, { italique: l.type === 'CONTROLE' });
+            }
+            y += h;
           }
-
-          // Pastille de nature (opération / contrôle)
-          const couleurs = l.type === 'OPERATION' ? FP.operation : FP.controle;
-          doc.font('Helvetica-Bold').fontSize(7);
-          const tagW = Math.min(doc.widthOfString(l.typeLibelle) + 10, positions.nature.w - pad * 2);
-          doc.roundedRect(positions.nature.x + pad, ty - 2.5, tagW, 12, 6).fillColor(couleurs.fond).fill();
-          doc.fillColor(couleurs.texte).text(l.typeLibelle, positions.nature.x + pad + 5, ty, { width: tagW - 10, lineBreak: false, ellipsis: true });
-          if (l.avenant) {
-            doc.font('Helvetica').fontSize(6.5).fillColor(FP.gris)
-              .text(l.avenant, positions.nature.x + pad, ty + 12, { width: positions.nature.w - pad * 2, lineBreak: false, ellipsis: true });
+          if (cols.prix && g.montantHT > 0 && data.groupes.length > 1) {
+            if (y + 15 > bas) { doc.addPage(); y = m; enTeteTableau(); }
+            ligneTotal(`Sous-total ${g.titre}`, g.montantHT, false);
           }
-
-          doc.font('Helvetica').fontSize(8).fillColor(FP.texte);
-          if (cols.site) doc.text(l.siteNom, positions.site.x + pad, ty, { width: positions.site.w - pad * 2 });
-          if (cols.prestations) doc.fillColor(FP.texte).text(prestations, positions.prestations.x + pad, ty, { width: positions.prestations.w - pad * 2 });
-          if (cols.bc) {
-            doc.font('Helvetica').fontSize(8).fillColor(FP.texte)
-              .text(l.bonsCommande.join(', ') || '-', positions.bc.x + pad, ty, { width: positions.bc.w - pad * 2, lineBreak: false, ellipsis: true });
-          }
-          if (cols.statut) {
-            doc.font('Helvetica-Bold').fontSize(7.5).fillColor(l.realise ? FP.controle.texte : FP.gris)
-              .text(l.realise ? 'Réalisé' : 'Prévu', positions.statut.x, ty, { width: positions.statut.w, align: 'center' });
-          }
-          if (cols.prix) {
-            const prix = l.type === 'CONTROLE' ? 'Inclus' : l.montantHT != null ? formatMontant(l.montantHT) : '-';
-            doc.font(l.type === 'CONTROLE' ? 'Helvetica-Oblique' : 'Helvetica').fontSize(8).fillColor(l.type === 'CONTROLE' ? FP.gris : FP.texte)
-              .text(prix, positions.prix.x + pad, ty, { width: positions.prix.w - pad * 2, align: 'right' });
-          }
-          y += h;
-        });
-
-        if (cols.prix && g.montantHT > 0 && data.groupes.length > 1) {
-          assurer(18);
-          doc.font('Helvetica-Bold').fontSize(8).fillColor(FP.navy)
-            .text(`Sous-total ${g.titre} : ${formatMontant(g.montantHT)} DA HT`, m, y + 5, { width: W - pad, align: 'right' });
-          y += 18;
+        }
+        if (cols.prix && data.totaux.montantHT > 0) {
+          if (y + 15 > bas) { doc.addPage(); y = m; enTeteTableau(); }
+          ligneTotal('Total prévisionnel HT (DA)', data.totaux.montantHT, true);
         }
         y += 12;
-      }
-
-      if (cols.prix && data.totaux.montantHT > 0) {
-        assurer(28);
-        doc.rect(m + W - 230, y, 230, 22).fillColor(FP.navy).fill();
-        doc.font('Helvetica-Bold').fontSize(9).fillColor('#ffffff')
-          .text(`Total prévisionnel : ${formatMontant(data.totaux.montantHT)} DA HT`, m + W - 225, y + 7, { width: 220, align: 'right' });
-        y += 34;
       }
 
       // ── Observations ───────────────────────────────────────────────────────
       if (data.observations.trim()) {
         doc.font('Helvetica').fontSize(8.5);
-        const hObs = doc.heightOfString(data.observations, { width: W - 20 }) + 26;
-        assurer(hObs + 6);
-        doc.rect(m, y, W, hObs).fillColor(FP.fondGris).fill();
-        doc.font('Helvetica-Bold').fontSize(7).fillColor(FP.gris).text('OBSERVATIONS', m + 10, y + 8, { characterSpacing: 0.8 });
-        doc.font('Helvetica').fontSize(8.5).fillColor(FP.texte).text(data.observations, m + 10, y + 19, { width: W - 20 });
-        y += hObs + 14;
+        const hObs = doc.heightOfString(data.observations, { width: W - pad * 4 }) + 24;
+        if (y + hObs > bas) { doc.addPage(); y = m; }
+        cadre(m, y, W, hObs);
+        doc.font('Helvetica-Bold').fontSize(8.5).fillColor(FP.texte).text('Observations :', m + pad * 2, y + 6);
+        doc.font('Helvetica').fontSize(8.5).text(data.observations, m + pad * 2, y + 18, { width: W - pad * 4 });
+        y += hObs + 12;
       }
 
-      // ── Bon pour accord ────────────────────────────────────────────────────
+      // ── Signatures ─────────────────────────────────────────────────────────
       if (data.bonPourAccord) {
-        const hSig = 86;
-        assurer(hSig + 4);
-        const sw = (W - 16) / 2;
+        const hSig = 80;
+        if (y + hSig > bas) { doc.addPage(); y = m; }
+        const sw = (W - 20) / 2;
         const signature = (x: number, titre: string, sousTitre: string) => {
-          doc.rect(x, y, sw, hSig).lineWidth(0.8).strokeColor('#9ca3af').stroke();
-          doc.font('Helvetica-Bold').fontSize(9).fillColor(FP.texte).text(titre, x + 10, y + 8, { width: sw - 20 });
-          doc.font('Helvetica').fontSize(7.5).fillColor(FP.gris).text(sousTitre, x + 10, y + 21, { width: sw - 20 });
-          doc.text('Date : ____ / ____ / ________', x + 10, y + hSig - 16, { width: sw - 20 });
+          cadre(x, y, sw, hSig);
+          doc.font('Helvetica-Bold').fontSize(8.5).fillColor(FP.texte).text(titre, x + pad * 2, y + 6, { width: sw - pad * 4 });
+          doc.font('Helvetica').fontSize(8).fillColor(FP.secondaire).text(sousTitre, x + pad * 2, y + 18, { width: sw - pad * 4 });
+          doc.text('Date :', x + pad * 2, y + hSig - 16);
         };
         signature(m, `Pour ${COMPANY_INFO.name}`, 'Cachet et signature');
-        signature(m + sw + 16, `Bon pour accord · ${data.client.nomEntreprise}`, 'Nom, qualité, cachet et signature');
+        signature(m + sw + 20, `Bon pour accord - ${data.client.nomEntreprise}`, 'Nom, qualité, cachet et signature');
         y += hSig + 10;
       }
 
