@@ -29,6 +29,7 @@ import {
   Banknote,
   X,
   Star,
+  CalendarRange,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -54,6 +55,7 @@ import { addDays, format } from 'date-fns';
 import { formatDate, getStatutColor, getStatutLabel, cn } from '@/lib/utils';
 import type { Prestation, InterventionStatut, PeriodeFrequence } from '@/types';
 import { NIVEAUX_BC, formatDateBC, type PrevisionBC } from '@/lib/bc';
+import { FichePrevisionnelleDialog } from '@/components/FichePrevisionnelleDialog';
 
 const STATUT_CONFIG: Record<string, { label: string; color: string; icon: typeof CheckCircle2 }> = {
   ACTIF: { label: 'Actif', color: 'bg-green-100 text-green-800 border-green-200', icon: CheckCircle2 },
@@ -126,6 +128,7 @@ export function ContratDetailPage() {
   const [showAvenantDialog, setShowAvenantDialog] = useState(false);
   const [avenantForm, setAvenantForm] = useState<AvenantForm>(AVENANT_VIDE);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showFichePrevisionnelle, setShowFichePrevisionnelle] = useState(false);
   const [editingAvenant, setEditingAvenant] = useState<any | null>(null);
   const [deletingAvenantId, setDeletingAvenantId] = useState<string | null>(null);
   // Suppression d'un avenant : supprimer aussi son BC (coché par défaut)
@@ -595,6 +598,12 @@ export function ContratDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+        {canDo('exportData') && (
+          <Button variant="outline" className="h-9 bg-white" onClick={() => setShowFichePrevisionnelle(true)}>
+            <CalendarRange className="h-4 w-4 mr-1.5" />
+            Fiche prévisionnelle
+          </Button>
+        )}
         {canDo('editContrat') && (
           <Button variant="outline" className="h-9 bg-white" onClick={() => setShowEditDialog(true)}>
             <Pencil className="h-4 w-4 mr-1.5" />
@@ -1706,6 +1715,10 @@ export function ContratDetailPage() {
       </Dialog>
 
       {/* Dialog Modifier le contrat */}
+      {canDo('exportData') && (
+        <FichePrevisionnelleDialog contrat={contrat} open={showFichePrevisionnelle} onOpenChange={setShowFichePrevisionnelle} />
+      )}
+
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent onInteractOutside={(e) => e.preventDefault()} className="max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0 overflow-hidden">
           <DialogHeader className="px-6 pt-6 pb-4">

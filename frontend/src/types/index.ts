@@ -160,6 +160,8 @@ export interface Contrat {
   dateDebutConvention?: string;
   dateFinConvention?: string;
   montantHT?: number;
+  // Réglages mémorisés de la fiche prévisionnelle
+  fichePrevisionnelleOptions?: Partial<FichePrevisionnelleOptions> | null;
   // Sites
   contratSites?: ContratSite[];
   createdAt: string;
@@ -171,6 +173,27 @@ export interface Contrat {
     interventions: number;
     avenants: number;
   };
+}
+
+// ============ FICHE PRÉVISIONNELLE ============
+export interface FichePrevisionnelleOptions {
+  contenu: 'OPERATIONS' | 'OPERATIONS_CONTROLES';
+  periode: 'A_VENIR' | 'CONVENTION' | 'PERSONNALISEE';
+  dateDebut?: string | null;
+  dateFin?: string | null;
+  precision: 'JOUR' | 'SEMAINE' | 'MOIS';
+  siteIds: string[]; // vide = tous les sites
+  presentation: 'SITE' | 'CHRONO';
+  afficherPrestations: boolean;
+  afficherBC: boolean;
+  inclureAvenants: boolean;
+  afficherRealises: boolean;
+  afficherPrix: boolean;
+  bonPourAccord: boolean;
+  titre: string;
+  libelleOperation: string;
+  libelleControle: string;
+  observations?: string | null;
 }
 
 // ============ BON DE COMMANDE (contrats annuels) ============

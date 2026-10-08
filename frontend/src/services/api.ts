@@ -4,6 +4,7 @@ import type {
   User,
   Client,
   Contrat,
+  FichePrevisionnelleOptions,
   Intervention,
   Prestation,
   DashboardStats,
@@ -314,6 +315,12 @@ export const contratsApi = {
 
   delete: async (id: string): Promise<void> => {
     await api.delete(`/contrats/${id}`);
+  },
+
+  /** PDF de la fiche prévisionnelle ; `enregistrer` mémorise les réglages sur le contrat. */
+  fichePrevisionnelle: async (id: string, options: FichePrevisionnelleOptions, enregistrer = false): Promise<Blob> => {
+    const response = await api.post(`/contrats/${id}/fiche-previsionnelle.pdf`, { options, enregistrer }, { responseType: 'blob' });
+    return new Blob([response.data], { type: 'application/pdf' });
   },
 };
 

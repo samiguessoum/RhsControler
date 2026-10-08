@@ -1840,3 +1840,333 @@ export async function generateBonLivraisonPDF(bl: BonLivraisonDoc): Promise<Buff
     }
   });
 }
+
+// ============ Fiche prévisionnelle (planning des passages d'un contrat) ============
+
+const FP = {
+  marge: 36,
+  navy: '#0b1b55',
+  texte: '#111827',
+  gris: '#6b7280',
+  bordure: '#d1d5db',
+  fondGris: '#f3f4f6',
+  fondGroupe: '#eef2ff',
+  operation: { fond: '#dbeafe', texte: '#1e40af' },
+  controle: { fond: '#d1fae5', texte: '#047857' },
+};
+
+function drawFicheFooter(doc: PDFKit.PDFDocument, page: number, total: number) {
+  const m = FP.marge;
+  const y = doc.page.height - 44;
+  const contact = [
+    COMPANY_INFO.name,
+    COMPANY_INFO.address ? [COMPANY_INFO.address, COMPANY_INFO.city].filter(Boolean).join(', ') : '',
+    COMPANY_INFO.phone ? `Tél : ${COMPANY_INFO.phone}` : '',
+    COMPANY_INFO.email ? `Email : ${COMPANY_INFO.email}` : '',
+    COMPANY_INFO.website ? `Web : ${COMPANY_INFO.website}` : '',
+  ].filter(Boolean).join('  |  ');
+  const legal = [
+    COMPANY_INFO.rc ? `RC : ${COMPANY_INFO.rc}` : '',
+    COMPANY_INFO.nif ? `NIF : ${COMPANY_INFO.nif}` : '',
+    COMPANY_INFO.ai ? `AI : ${COMPANY_INFO.ai}` : '',
+    COMPANY_INFO.nis ? `NIS : ${COMPANY_INFO.nis}` : '',
+    COMPANY_INFO.capitalSocial ? `Capital social : ${COMPANY_INFO.capitalSocial}` : '',
+  ].filter(Boolean).join('  |  ');
+  const w = doc.page.width - m * 2 - 60;
+
+  doc.moveTo(m, y - 6).lineTo(doc.page.width - m, y - 6).lineWidth(0.7).strokeColor(FP.bordure).stroke();
+  doc.font('Helvetica').fontSize(7).fillColor('#374151').text(contact, m, y, { width: w, align: 'left', lineBreak: false, ellipsis: true });
+  if (legal) {
+    doc.font('Helvetica').fontSize(6.5).fillColor(FP.gris).text(legal, m, y + 11, { width: w, align: 'left', lineBreak: false, ellipsis: true });
+  }
+  doc.font('Helvetica').fontSize(7).fillColor('#374151')
+    .text(`Page ${page}/${total}`, doc.page.width - m - 60, y, { width: 60, align: 'right', lineBreak: false });
+}
+
+function libellePeriodeFiche(p: { debut: string | null; fin: string | null }): string {
+  const f = (j: string) => format(new Date(`${j}T12:00:00Z`), 'dd/MM/yyyy');
+  if (p.debut && p.fin) return `Période du ${f(p.debut)} au ${f(p.fin)}`;
+  if (p.debut) return `À partir du ${f(p.debut)}`;
+  if (p.fin) return `Jusqu'au ${f(p.fin)}`;
+  return 'Ensemble des passages planifiés';
+}
+
+export async function generateFichePrevisionnellePDF(
+  data: import('./fiche-previsionnelle.service.js').FichePrevisionnelleData
+): Promise<Buffer> {
+  await refreshCompanyInfo();
+
+  return new Promise((resolve, reject) => {
+    try {
+      const m = FP.marge;
+      const doc = new PDFDocument({ size: 'A4', margins: { top: m, left: m, right: m, bottom: 20 }, bufferPages: true });
+      const chunks: Buffer[] = [];
+      doc.on('data', (c) => chunks.push(c));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+
+      const pageW = doc.page.width;
+      const W = pageW - m * 2;
+      const bas = doc.page.height - 64; // au-delà : pied de page
+      let y = 26;
+
+      const nouvellePage = () => { doc.addPage(); y = m; };
+      const assurer = (h: number) => { if (y + h > bas) { nouvellePage(); return true; } return false; };
+
+      // ── En-tête ────────────────────────────────────────────────────────────
+      const logoPath = resolveAttestationLogoPath();
+      if (logoPath) {
+        try { doc.image(logoPath, m, y, { fit: [230, 62] }); } catch { /* logo illisible : on continue sans */ }
+      } else {
+        doc.font('Helvetica-Bold').fontSize(16).fillColor(FP.navy).text(COMPANY_INFO.name, m, y + 18, { width: 260 });
+      }
+      const rx = pageW - m - 220;
+      doc.font('Helvetica-Bold').fontSize(8).fillColor(FP.gris)
+        .text('FICHE PRÉVISIONNELLE', rx, y + 6, { width: 220, align: 'right', characterSpacing: 1 });
+      doc.font('Helvetica-Bold').fontSize(10).fillColor(FP.navy)
+        .text(`Réf. : ${data.ref}`, rx, y + 20, { width: 220, align: 'right' });
+      doc.font('Helvetica').fontSize(9).fillColor(FP.texte)
+        .text(`${COMPANY_INFO.city ? `${COMPANY_INFO.city.replace(/^\d+\s*/, '')}, le` : 'Le'} ${formatDate(data.dateEmission)}`, rx, y + 35, { width: 220, align: 'right' });
+      y += 80;
+
+      doc.font('Helvetica-Bold').fontSize(16).fillColor(FP.navy)
+        .text(data.titre.toUpperCase(), m, y, { width: W, align: 'center' });
+      y = doc.y + 3;
+      doc.font('Helvetica').fontSize(10).fillColor(FP.gris)
+        .text(libellePeriodeFiche(data.periode), m, y, { width: W, align: 'center' });
+      y = doc.y + 8;
+      doc.moveTo(m + W / 2 - 40, y).lineTo(m + W / 2 + 40, y).lineWidth(1.5).strokeColor(FP.navy).stroke();
+      y += 16;
+
+      // ── Prestataire / Client ───────────────────────────────────────────────
+      const colW = (W - 16) / 2;
+      const prestataire = [
+        [COMPANY_INFO.address, [COMPANY_INFO.city, COMPANY_INFO.pays].filter(Boolean).join(', ')].filter(Boolean).join(', '),
+        [COMPANY_INFO.phone ? `Tél : ${COMPANY_INFO.phone}` : '', COMPANY_INFO.email].filter(Boolean).join(' · '),
+      ].filter(Boolean).join('\n');
+      const client = [data.client.adresse, data.client.contact].filter(Boolean).join('\n');
+      doc.font('Helvetica').fontSize(8.5);
+      const hBloc = 34 + Math.max(doc.heightOfString(prestataire || ' ', { width: colW - 20 }), doc.heightOfString(client || ' ', { width: colW - 20 }));
+
+      const bloc = (x: number, label: string, nom: string, details: string, fond: boolean) => {
+        if (fond) doc.rect(x, y, colW, hBloc).fillColor(FP.fondGris).fill();
+        else doc.rect(x, y, colW, hBloc).lineWidth(0.8).strokeColor(FP.bordure).stroke();
+        doc.font('Helvetica-Bold').fontSize(7).fillColor(FP.gris).text(label.toUpperCase(), x + 10, y + 8, { width: colW - 20, characterSpacing: 0.8 });
+        doc.font('Helvetica-Bold').fontSize(10).fillColor(FP.navy).text(nom, x + 10, y + 18, { width: colW - 20, lineBreak: false, ellipsis: true });
+        if (details) doc.font('Helvetica').fontSize(8.5).fillColor(FP.texte).text(details, x + 10, y + 32, { width: colW - 20 });
+      };
+      bloc(m, 'Prestataire', COMPANY_INFO.name, prestataire, true);
+      bloc(m + colW + 16, 'Client', data.client.nomEntreprise, client, false);
+      y += hBloc + 14;
+
+      // ── Récapitulatif du contrat ───────────────────────────────────────────
+      const champs: Array<[string, string]> = [];
+      const convention = [data.contrat.ref, data.contrat.nom].filter(Boolean).join(' · ');
+      if (convention) champs.push(['Convention', convention]);
+      champs.push(['Type de contrat', data.contrat.type]);
+      if (data.contrat.conventionDebut || data.contrat.conventionFin) {
+        champs.push(['Durée', `${data.contrat.conventionDebut ? `du ${formatDate(data.contrat.conventionDebut)} ` : ''}${data.contrat.conventionFin ? `au ${formatDate(data.contrat.conventionFin)}` : ''}`.trim()]);
+      }
+      if (data.contrat.prestations.length) champs.push(['Prestations', data.contrat.prestations.join(', ')]);
+      if (data.sites.length) {
+        champs.push([data.sites.length > 1 ? `Sites (${data.sites.length})` : 'Site', data.sites.map((s) => s.nom).join(', ')]);
+      }
+      if (data.colonnes.bc && data.contrat.bonsCommande.length) {
+        champs.push([data.contrat.bonsCommande.length > 1 ? 'Bons de commande' : 'Bon de commande', data.contrat.bonsCommande.map((n) => `N° ${n}`).join(', ')]);
+      }
+      const labelW = 100;
+      for (const [label, valeur] of champs) {
+        doc.font('Helvetica').fontSize(8.5);
+        const h = Math.max(13, doc.heightOfString(valeur, { width: W - labelW }) + 3);
+        assurer(h);
+        doc.font('Helvetica-Bold').fontSize(8.5).fillColor(FP.gris).text(label, m, y, { width: labelW });
+        doc.font('Helvetica').fontSize(8.5).fillColor(FP.texte).text(valeur, m + labelW, y, { width: W - labelW });
+        y += h;
+      }
+      y += 10;
+
+      // ── Synthèse ───────────────────────────────────────────────────────────
+      const tuiles: Array<[string, string, string]> = [
+        [String(data.totaux.operations), data.totaux.operations > 1 ? data.libelles.operations : data.libelles.operation, FP.operation.texte],
+      ];
+      if (data.avecControles) {
+        tuiles.push([String(data.totaux.controles), data.totaux.controles > 1 ? data.libelles.controles : data.libelles.controle, FP.controle.texte]);
+      }
+      if (data.sites.length > 1) tuiles.push([String(data.sites.length), 'Sites', FP.navy]);
+      if (data.colonnes.prix && data.totaux.montantHT > 0) tuiles.push([formatMontant(data.totaux.montantHT), 'DA HT prévisionnel', FP.navy]);
+      const tuileW = (W - 10 * (tuiles.length - 1)) / tuiles.length;
+      assurer(46);
+      tuiles.forEach(([valeur, label, couleur], i) => {
+        const x = m + i * (tuileW + 10);
+        doc.roundedRect(x, y, tuileW, 42, 4).lineWidth(0.8).strokeColor(FP.bordure).stroke();
+        doc.rect(x, y + 6, 3, 30).fillColor(couleur).fill();
+        doc.font('Helvetica-Bold').fontSize(15).fillColor(couleur).text(valeur, x + 12, y + 7, { width: tuileW - 18, lineBreak: false });
+        doc.font('Helvetica').fontSize(8).fillColor(FP.gris).text(label, x + 12, y + 26, { width: tuileW - 18, lineBreak: false, ellipsis: true });
+      });
+      y += 58;
+
+      // ── Tableau des passages ───────────────────────────────────────────────
+      type Col = { titre: string; largeur: number | 'flex'; align?: 'left' | 'right' | 'center' };
+      const cols: Record<string, Col> = { num: { titre: 'N°', largeur: 24, align: 'center' } };
+      if (data.colonnes.date) cols.date = { titre: 'Date prévue', largeur: 98 };
+      cols.nature = { titre: 'Nature', largeur: data.colonnes.prestations ? 104 : 'flex' };
+      if (data.colonnes.site) cols.site = { titre: 'Site', largeur: 96 };
+      if (data.colonnes.prestations) cols.prestations = { titre: 'Prestations', largeur: 'flex' };
+      if (data.colonnes.bc) cols.bc = { titre: 'N° BC', largeur: 74 };
+      if (data.colonnes.statut) cols.statut = { titre: 'Statut', largeur: 50, align: 'center' };
+      if (data.colonnes.prix) cols.prix = { titre: 'Montant HT', largeur: 70, align: 'right' };
+      const fixe = Object.values(cols).reduce((s, c) => s + (c.largeur === 'flex' ? 0 : c.largeur), 0);
+      const nbFlex = Object.values(cols).filter((c) => c.largeur === 'flex').length || 1;
+      const positions: Record<string, { x: number; w: number }> = {};
+      let cx = m;
+      for (const [cle, c] of Object.entries(cols)) {
+        const w = c.largeur === 'flex' ? (W - fixe) / nbFlex : c.largeur;
+        positions[cle] = { x: cx, w };
+        cx += w;
+      }
+      const pad = 5;
+
+      const enTeteTableau = () => {
+        doc.rect(m, y, W, 18).fillColor(FP.navy).fill();
+        for (const [cle, c] of Object.entries(cols)) {
+          doc.font('Helvetica-Bold').fontSize(7.5).fillColor('#ffffff')
+            .text(c.titre, positions[cle].x + pad, y + 5.5, { width: positions[cle].w - pad * 2, align: c.align ?? 'left', lineBreak: false });
+        }
+        y += 18;
+      };
+
+      const enTeteGroupe = (g: (typeof data.groupes)[number], suite = false) => {
+        doc.rect(m, y, W, 24).fillColor(FP.fondGroupe).fill();
+        doc.rect(m, y, 3, 24).fillColor(FP.navy).fill();
+        doc.font('Helvetica-Bold').fontSize(10).fillColor(FP.navy)
+          .text(`${g.titre}${suite ? ' (suite)' : ''}`, m + 10, y + 4, { width: W * 0.6, lineBreak: false, ellipsis: true });
+        if (g.sousTitre) {
+          doc.font('Helvetica').fontSize(7).fillColor(FP.gris).text(g.sousTitre, m + 10, y + 15, { width: W * 0.6, lineBreak: false, ellipsis: true });
+        }
+        const compte = [
+          g.nbOperations ? `${g.nbOperations} ${g.nbOperations > 1 ? data.libelles.operations : data.libelles.operation}`.toLowerCase() : '',
+          g.nbControles ? `${g.nbControles} ${g.nbControles > 1 ? data.libelles.controles : data.libelles.controle}`.toLowerCase() : '',
+        ].filter(Boolean).join(' · ');
+        doc.font('Helvetica').fontSize(8).fillColor(FP.navy)
+          .text(compte, m + W * 0.6, y + 8, { width: W * 0.4 - 10, align: 'right', lineBreak: false });
+        y += 24;
+      };
+
+      if (!data.groupes.length) {
+        assurer(40);
+        doc.rect(m, y, W, 36).lineWidth(0.8).dash(3, { space: 3 }).strokeColor(FP.bordure).stroke().undash();
+        doc.font('Helvetica-Oblique').fontSize(9).fillColor(FP.gris)
+          .text('Aucun passage prévu sur la période et les critères sélectionnés.', m, y + 13, { width: W, align: 'center' });
+        y += 50;
+      }
+
+      for (const g of data.groupes) {
+        if (assurer(24 + 18 + 22)) { /* nouvelle page avant le groupe */ }
+        enTeteGroupe(g);
+        enTeteTableau();
+        g.lignes.forEach((l, i) => {
+          const prestations = l.prestations.join(', ') || '-';
+          doc.font('Helvetica').fontSize(8);
+          const hPrest = cols.prestations ? doc.heightOfString(prestations, { width: positions.prestations.w - pad * 2 }) : 0;
+          const hSite = cols.site ? doc.heightOfString(l.siteNom, { width: positions.site.w - pad * 2 }) : 0;
+          const h = Math.max(20, hPrest + 10, hSite + 10, l.avenant ? 28 : 0);
+          if (assurer(h)) { enTeteGroupe(g, true); enTeteTableau(); }
+
+          if (i % 2 === 1) doc.rect(m, y, W, h).fillColor('#f9fafb').fill();
+          doc.moveTo(m, y + h).lineTo(m + W, y + h).lineWidth(0.5).strokeColor('#e5e7eb').stroke();
+          const ty = y + 6;
+
+          doc.font('Helvetica').fontSize(8).fillColor(FP.gris)
+            .text(String(i + 1), positions.num.x, ty, { width: positions.num.w, align: 'center' });
+          if (cols.date) {
+            doc.font('Helvetica-Bold').fontSize(8).fillColor(FP.texte)
+              .text(l.dateLibelle, positions.date.x + pad, ty, { width: positions.date.w - pad * 2, lineBreak: false });
+          }
+
+          // Pastille de nature (opération / contrôle)
+          const couleurs = l.type === 'OPERATION' ? FP.operation : FP.controle;
+          doc.font('Helvetica-Bold').fontSize(7);
+          const tagW = Math.min(doc.widthOfString(l.typeLibelle) + 10, positions.nature.w - pad * 2);
+          doc.roundedRect(positions.nature.x + pad, ty - 2.5, tagW, 12, 6).fillColor(couleurs.fond).fill();
+          doc.fillColor(couleurs.texte).text(l.typeLibelle, positions.nature.x + pad + 5, ty, { width: tagW - 10, lineBreak: false, ellipsis: true });
+          if (l.avenant) {
+            doc.font('Helvetica').fontSize(6.5).fillColor(FP.gris)
+              .text(l.avenant, positions.nature.x + pad, ty + 12, { width: positions.nature.w - pad * 2, lineBreak: false, ellipsis: true });
+          }
+
+          doc.font('Helvetica').fontSize(8).fillColor(FP.texte);
+          if (cols.site) doc.text(l.siteNom, positions.site.x + pad, ty, { width: positions.site.w - pad * 2 });
+          if (cols.prestations) doc.fillColor(FP.texte).text(prestations, positions.prestations.x + pad, ty, { width: positions.prestations.w - pad * 2 });
+          if (cols.bc) {
+            doc.font('Helvetica').fontSize(8).fillColor(FP.texte)
+              .text(l.bonsCommande.join(', ') || '-', positions.bc.x + pad, ty, { width: positions.bc.w - pad * 2, lineBreak: false, ellipsis: true });
+          }
+          if (cols.statut) {
+            doc.font('Helvetica-Bold').fontSize(7.5).fillColor(l.realise ? FP.controle.texte : FP.gris)
+              .text(l.realise ? 'Réalisé' : 'Prévu', positions.statut.x, ty, { width: positions.statut.w, align: 'center' });
+          }
+          if (cols.prix) {
+            const prix = l.type === 'CONTROLE' ? 'Inclus' : l.montantHT != null ? formatMontant(l.montantHT) : '-';
+            doc.font(l.type === 'CONTROLE' ? 'Helvetica-Oblique' : 'Helvetica').fontSize(8).fillColor(l.type === 'CONTROLE' ? FP.gris : FP.texte)
+              .text(prix, positions.prix.x + pad, ty, { width: positions.prix.w - pad * 2, align: 'right' });
+          }
+          y += h;
+        });
+
+        if (cols.prix && g.montantHT > 0 && data.groupes.length > 1) {
+          assurer(18);
+          doc.font('Helvetica-Bold').fontSize(8).fillColor(FP.navy)
+            .text(`Sous-total ${g.titre} : ${formatMontant(g.montantHT)} DA HT`, m, y + 5, { width: W - pad, align: 'right' });
+          y += 18;
+        }
+        y += 12;
+      }
+
+      if (cols.prix && data.totaux.montantHT > 0) {
+        assurer(28);
+        doc.rect(m + W - 230, y, 230, 22).fillColor(FP.navy).fill();
+        doc.font('Helvetica-Bold').fontSize(9).fillColor('#ffffff')
+          .text(`Total prévisionnel : ${formatMontant(data.totaux.montantHT)} DA HT`, m + W - 225, y + 7, { width: 220, align: 'right' });
+        y += 34;
+      }
+
+      // ── Observations ───────────────────────────────────────────────────────
+      if (data.observations.trim()) {
+        doc.font('Helvetica').fontSize(8.5);
+        const hObs = doc.heightOfString(data.observations, { width: W - 20 }) + 26;
+        assurer(hObs + 6);
+        doc.rect(m, y, W, hObs).fillColor(FP.fondGris).fill();
+        doc.font('Helvetica-Bold').fontSize(7).fillColor(FP.gris).text('OBSERVATIONS', m + 10, y + 8, { characterSpacing: 0.8 });
+        doc.font('Helvetica').fontSize(8.5).fillColor(FP.texte).text(data.observations, m + 10, y + 19, { width: W - 20 });
+        y += hObs + 14;
+      }
+
+      // ── Bon pour accord ────────────────────────────────────────────────────
+      if (data.bonPourAccord) {
+        const hSig = 86;
+        assurer(hSig + 4);
+        const sw = (W - 16) / 2;
+        const signature = (x: number, titre: string, sousTitre: string) => {
+          doc.rect(x, y, sw, hSig).lineWidth(0.8).strokeColor('#9ca3af').stroke();
+          doc.font('Helvetica-Bold').fontSize(9).fillColor(FP.texte).text(titre, x + 10, y + 8, { width: sw - 20 });
+          doc.font('Helvetica').fontSize(7.5).fillColor(FP.gris).text(sousTitre, x + 10, y + 21, { width: sw - 20 });
+          doc.text('Date : ____ / ____ / ________', x + 10, y + hSig - 16, { width: sw - 20 });
+        };
+        signature(m, `Pour ${COMPANY_INFO.name}`, 'Cachet et signature');
+        signature(m + sw + 16, `Bon pour accord · ${data.client.nomEntreprise}`, 'Nom, qualité, cachet et signature');
+        y += hSig + 10;
+      }
+
+      // ── Pied de page sur chaque page ───────────────────────────────────────
+      const range = doc.bufferedPageRange();
+      for (let i = 0; i < range.count; i++) {
+        doc.switchToPage(range.start + i);
+        drawFicheFooter(doc, i + 1, range.count);
+      }
+
+      doc.end();
+    } catch (error) {
+      reject(error);
+    }
+  });
+}

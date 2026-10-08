@@ -221,6 +221,7 @@ router.get('/contrats/:id', authMiddleware, contratController.get);
 router.post('/contrats', authMiddleware, canDo('createContrat'), validate(createContratSchema), contratController.create);
 router.put('/contrats/:id', authMiddleware, canDo('editContrat'), validate(updateContratSchema), contratController.update);
 router.delete('/contrats/:id', authMiddleware, canDo('deleteContrat'), contratController.delete);
+router.post('/contrats/:id/fiche-previsionnelle.pdf', authMiddleware, canDo('exportData'), contratController.fichePrevisionnelle);
 router.get('/contrats/:contratId/avenants', authMiddleware, avenantController.list);
 router.post('/contrats/:contratId/avenants', authMiddleware, canDo('editContrat'), validate(createAvenantSchema), avenantController.create);
 router.put('/contrats/:contratId/avenants/:avenantId', authMiddleware, canDo('editContrat'), validate(updateAvenantSchema), avenantController.update);

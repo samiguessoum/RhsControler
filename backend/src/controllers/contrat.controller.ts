@@ -1,10 +1,14 @@
 import { Response, NextFunction } from 'express';
+import { ZodError } from 'zod';
 import { prisma } from '../config/database.js';
 import { AuthRequest } from '../middleware/auth.middleware.js';
 import { createAuditLog } from './audit.controller.js';
 import planningService from '../services/planning.service.js';
 import logger from '../lib/logger.js';
 import { AppError } from '../lib/errors.js';
+import { permissions } from '../middleware/role.middleware.js';
+import { resoudreOptions, chargerFichePrevisionnelle } from '../services/fiche-previsionnelle.service.js';
+import { generateFichePrevisionnellePDF } from '../services/pdf.service.js';
 
 
 type SiteInput = Record<string, any>;
@@ -495,6 +499,36 @@ export const contratController = {
     } catch (error) {
       logger.error({ err: error }, 'Delete contrat error');
       return next(new AppError(500, 'Erreur serveur'));
+    }
+  },
+
+  /**
+   * POST /api/contrats/:id/fiche-previsionnelle.pdf
+   * Body : { options, enregistrer } — `enregistrer` mémorise les réglages sur le contrat.
+   */
+  async fichePrevisionnelle(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const contrat = await prisma.contrat.findUnique({ where: { id }, select: { id: true, fichePrevisionnelleOptions: true } });
+      if (!contrat) throw new AppError(404, 'Contrat non trouvé');
+
+      const options = resoudreOptions(req.body?.options, contrat.fichePrevisionnelleOptions);
+      // Les prix ne sont visibles que des profils ayant accès à la facturation
+      if (!(permissions.viewFacturation as readonly string[]).includes(req.user!.role)) options.afficherPrix = false;
+
+      if (req.body?.enregistrer) {
+        await prisma.contrat.update({ where: { id }, data: { fichePrevisionnelleOptions: options } });
+      }
+
+      const data = await chargerFichePrevisionnelle(id, options);
+      const pdf = await generateFichePrevisionnellePDF(data);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="${data.ref}.pdf"`);
+      res.setHeader('Content-Length', pdf.length);
+      res.send(pdf);
+    } catch (error) {
+      if (error instanceof ZodError) return next(new AppError(400, 'Réglages de la fiche invalides', error.flatten()));
+      next(error);
     }
   },
 };

@@ -602,6 +602,8 @@ model Contrat {
   planningAajuster                   Boolean       @default(false)
   datePriseEnComptePlanification     DateTime?
   nombrePassagesAnnuels              Int?
+  // Réglages mémorisés de la fiche prévisionnelle (contenu, période, options d'affichage)
+  fichePrevisionnelleOptions         Json?
   createdAt                          DateTime      @default(now())
   updatedAt                          DateTime      @updatedAt
 
