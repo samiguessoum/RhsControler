@@ -198,6 +198,7 @@ export interface Avenant {
   numero: number;
   nom?: string | null;
   numeroBonCommande?: string | null;
+  bonCommandeId?: string | null; // BC décompté par les opérations de l'avenant
   dateSignature?: string | null;
   dateExpiration?: string | null;
   montantHT?: number | null;

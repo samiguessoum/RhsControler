@@ -208,6 +208,14 @@ export const createContratSchema = z.object({
   message: 'Un contrat ponctuel nécessite un numéro de bon de commande',
 });
 
+// Nouveau BC créé avec l'avenant (création ou modification de l'avenant)
+const nouveauBCAvenantSchema = z.object({
+  numero: z.string().trim().min(1, 'Le numéro du BC est requis'),
+  quotaPassages: z.number().int().positive().optional().nullable(),
+  dateFinValidite: z.string().optional().nullable(),
+  siteIds: z.array(z.string()).optional(),
+});
+
 export const createAvenantSchema = z.object({
   nom: z.string().trim().optional(),
   numeroBonCommande: z.string().trim().optional(),
@@ -225,12 +233,7 @@ export const createAvenantSchema = z.object({
   siteIds: z.array(z.string()).optional(),
   // BC décompté par les opérations de l'avenant : BC existant lié, ou nouveau BC créé avec l'avenant
   bonCommandeId: z.string().optional(),
-  nouveauBC: z.object({
-    numero: z.string().trim().min(1, 'Le numéro du BC est requis'),
-    quotaPassages: z.number().int().positive().optional().nullable(),
-    dateFinValidite: z.string().optional().nullable(),
-    siteIds: z.array(z.string()).optional(),
-  }).optional(),
+  nouveauBC: nouveauBCAvenantSchema.optional(),
   notes: z.string().optional(),
 }).refine(
   (data) => !(data.bonCommandeId && data.nouveauBC),
@@ -238,6 +241,16 @@ export const createAvenantSchema = z.object({
 ).refine(
   (data) => data.nombreOperationsSupplementaires > 0 || !!data.datesOperations?.length || !!data.datesControles?.length,
   { message: 'Un avenant doit ajouter au moins une opération ou des visites de contrôle' }
+);
+
+// Modification d'un avenant : seul le BC est validé ici (les métadonnées le sont dans le contrôleur).
+// bonCommandeId absent = BC inchangé, null = plus de BC, id = BC existant lié.
+export const updateAvenantSchema = z.object({
+  bonCommandeId: z.string().nullable().optional(),
+  nouveauBC: nouveauBCAvenantSchema.optional(),
+}).passthrough().refine(
+  (data) => !(data.bonCommandeId && data.nouveauBC),
+  { message: 'Choisissez un BC existant ou un nouveau BC, pas les deux' }
 );
 
 export const updateContratSchema = z.object({

@@ -1856,13 +1856,19 @@ export const avenantApi = {
       dateExpiration?: string;
       montantHT?: number | null;
       notes?: string;
+      // absent = BC inchangé, null = plus de BC, id = BC existant lié
+      bonCommandeId?: string | null;
+      nouveauBC?: { numero: string; quotaPassages?: number | null; dateFinValidite?: string | null; siteIds?: string[] };
     }
   ) => {
     const { data } = await api.put(`/contrats/${contratId}/avenants/${avenantId}`, payload);
-    return data as { avenant: any };
+    return data as { avenant: any; bonCommande?: any };
   },
-  delete: async (contratId: string, avenantId: string) => {
-    await api.delete(`/contrats/${contratId}/avenants/${avenantId}`);
+  delete: async (contratId: string, avenantId: string, options?: { supprimerBC?: boolean }) => {
+    const { data } = await api.delete(`/contrats/${contratId}/avenants/${avenantId}`, {
+      params: options?.supprimerBC ? { supprimerBC: 1 } : undefined,
+    });
+    return data as { message: string; bcSupprime?: boolean; warning?: string };
   },
 };
 

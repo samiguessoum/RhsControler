@@ -18,6 +18,7 @@ import {
   createContratSchema,
   updateContratSchema,
   createAvenantSchema,
+  updateAvenantSchema,
   createInterventionSchema,
   updateInterventionSchema,
   realiserInterventionSchema,
@@ -222,7 +223,7 @@ router.put('/contrats/:id', authMiddleware, canDo('editContrat'), validate(updat
 router.delete('/contrats/:id', authMiddleware, canDo('deleteContrat'), contratController.delete);
 router.get('/contrats/:contratId/avenants', authMiddleware, avenantController.list);
 router.post('/contrats/:contratId/avenants', authMiddleware, canDo('editContrat'), validate(createAvenantSchema), avenantController.create);
-router.put('/contrats/:contratId/avenants/:avenantId', authMiddleware, canDo('editContrat'), avenantController.update);
+router.put('/contrats/:contratId/avenants/:avenantId', authMiddleware, canDo('editContrat'), validate(updateAvenantSchema), avenantController.update);
 router.delete('/contrats/:contratId/avenants/:avenantId', authMiddleware, canDo('editContrat'), avenantController.delete);
 
 // ============ INTERVENTIONS ============

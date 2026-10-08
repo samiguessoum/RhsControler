@@ -128,6 +128,8 @@ export function ContratDetailPage() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editingAvenant, setEditingAvenant] = useState<any | null>(null);
   const [deletingAvenantId, setDeletingAvenantId] = useState<string | null>(null);
+  // Suppression d'un avenant : supprimer aussi son BC (coché par défaut)
+  const [supprimerBCAvenant, setSupprimerBCAvenant] = useState(true);
   const [showCreateBC, setShowCreateBC] = useState(false);
   const [newBCNumero, setNewBCNumero] = useState('');
   const [newBCQuota, setNewBCQuota] = useState('');
@@ -202,6 +204,8 @@ export function ContratDetailPage() {
     mutationFn: (payload: any) => avenantApi.update(id!, editingAvenant!.id, payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contrat', id] });
+      queryClient.invalidateQueries({ queryKey: ['interventions-contrat', id] });
+      queryClient.invalidateQueries({ queryKey: ['bons-commandes'] });
       toast.success('Avenant mis à jour');
       setEditingAvenant(null);
     },
@@ -211,10 +215,12 @@ export function ContratDetailPage() {
   });
 
   const deleteAvenantMutation = useMutation({
-    mutationFn: (avenantId: string) => avenantApi.delete(id!, avenantId),
-    onSuccess: () => {
+    mutationFn: (avenantId: string) => avenantApi.delete(id!, avenantId, { supprimerBC: supprimerBCAvenant }),
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['contrat', id] });
-      toast.success('Avenant supprimé');
+      queryClient.invalidateQueries({ queryKey: ['bons-commandes'] });
+      toast.success(res.message || 'Avenant supprimé');
+      if (res.warning) toast.warning(res.warning);
       setDeletingAvenantId(null);
     },
     onError: (error: any) => {
@@ -394,7 +400,7 @@ export function ContratDetailPage() {
   const { data: bcsClientData } = useQuery({
     queryKey: ['bons-commandes', 'client', contrat?.clientId],
     queryFn: () => bonCommandeApi.list({ clientId: contrat!.clientId, actif: true }),
-    enabled: showAvenantDialog && !!contrat?.clientId,
+    enabled: (showAvenantDialog || !!editingAvenant) && !!contrat?.clientId,
   });
   const bcsClientAvenant = bcsClientData?.bonsCommandes ?? [];
   const quotaBCAvenantDefaut = avenantForm.datesOps.length * (
@@ -404,6 +410,12 @@ export function ContratDetailPage() {
           .reduce((n, cs) => n + (cs.prestations?.length || contrat.prestations?.length || 1), 0)
       : (contrat?.prestations?.length || 1)
   ) || undefined;
+  // Modification d'avenant : le BC choisi diffère-t-il de celui de l'avenant ?
+  const bcAvenantModifie = (a: any) =>
+    !!a && (a.bcMode === 'nouveau'
+      || (a.bcMode === 'existant' && a.bcExistantId !== (a.bonCommandeId ?? ''))
+      || (a.bcMode === 'aucun' && !!a.bonCommandeId));
+  const avenantASupprimer = contrat?.avenants?.find((a: any) => a.id === deletingAvenantId);
   const avenantDatesInterdites = [...avenantForm.datesOps, ...avenantForm.datesCtrl].filter((d) => horsBornes(d, avenantDebutConvention, avenantFinConvention));
 
   // Stats des interventions
@@ -910,14 +922,19 @@ export function ContratDetailPage() {
                         {canDo('editContrat') && (
                           <div className="flex items-center gap-1">
                             <button
-                              onClick={() => setEditingAvenant(av)}
+                              onClick={() => setEditingAvenant({
+                                ...av,
+                                bcMode: av.bonCommandeId ? 'existant' : 'aucun',
+                                bcExistantId: av.bonCommandeId ?? '',
+                                bcNumero: '', bcQuota: '', bcFinValidite: '',
+                              })}
                               className="p-1 rounded hover:bg-amber-200 text-amber-700"
                               title="Modifier"
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </button>
                             <button
-                              onClick={() => setDeletingAvenantId(av.id)}
+                              onClick={() => { setSupprimerBCAvenant(true); setDeletingAvenantId(av.id); }}
                               className="p-1 rounded hover:bg-red-100 text-red-500"
                               title="Supprimer"
                             >
@@ -2026,23 +2043,13 @@ export function ContratDetailPage() {
           </DialogHeader>
           {editingAvenant && (
             <div className="space-y-4 py-2">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <Label className="text-xs text-gray-500">Nom de l'avenant</Label>
-                  <Input
-                    value={editingAvenant.nom ?? ''}
-                    onChange={(e) => setEditingAvenant((a: any) => ({ ...a, nom: e.target.value }))}
-                    placeholder="Optionnel"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs text-gray-500">N° bon de commande</Label>
-                  <Input
-                    value={editingAvenant.numeroBonCommande ?? ''}
-                    onChange={(e) => setEditingAvenant((a: any) => ({ ...a, numeroBonCommande: e.target.value }))}
-                    placeholder="Optionnel"
-                  />
-                </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-gray-500">Nom de l'avenant</Label>
+                <Input
+                  value={editingAvenant.nom ?? ''}
+                  onChange={(e) => setEditingAvenant((a: any) => ({ ...a, nom: e.target.value }))}
+                  placeholder="Optionnel"
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
@@ -2073,6 +2080,111 @@ export function ContratDetailPage() {
                   />
                 </div>
               )}
+
+              {/* Bon de commande décompté par les opérations de l'avenant */}
+              <div className="rounded-lg border p-3 space-y-3">
+                <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Bon de commande</span>
+                <div className="flex flex-wrap gap-4 text-sm">
+                  {([['aucun', 'Aucun'], ['nouveau', 'Nouveau BC'], ['existant', 'BC existant']] as const).map(([mode, label]) => (
+                    <label key={mode} className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="avenant-edit-bc"
+                        checked={editingAvenant.bcMode === mode}
+                        onChange={() => setEditingAvenant((a: any) => ({ ...a, bcMode: mode }))}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+
+                {editingAvenant.bcMode === 'aucun' && (
+                  <div className="space-y-1">
+                    <Label className="text-xs text-gray-500">N° bon de commande (facture uniquement, non décompté)</Label>
+                    <Input
+                      value={editingAvenant.bonCommandeId ? '' : (editingAvenant.numeroBonCommande ?? '')}
+                      onChange={(e) => setEditingAvenant((a: any) => ({ ...a, numeroBonCommande: e.target.value }))}
+                      className="h-8 text-sm"
+                      placeholder="Optionnel"
+                    />
+                  </div>
+                )}
+
+                {editingAvenant.bcMode === 'nouveau' && (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-gray-500">Numéro BC *</Label>
+                        <Input
+                          value={editingAvenant.bcNumero}
+                          onChange={(e) => setEditingAvenant((a: any) => ({ ...a, bcNumero: e.target.value }))}
+                          className="h-8 text-sm"
+                          placeholder="ex: BC-2026-042"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-gray-500">Nb opérations</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={editingAvenant.bcQuota}
+                          onChange={(e) => setEditingAvenant((a: any) => ({ ...a, bcQuota: e.target.value }))}
+                          className="h-8 text-sm"
+                          placeholder="restantes"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-gray-500">Valable jusqu'au</Label>
+                        <Input
+                          type="date"
+                          value={editingAvenant.bcFinValidite}
+                          onChange={(e) => setEditingAvenant((a: any) => ({ ...a, bcFinValidite: e.target.value }))}
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Signé à la date de l'avenant
+                      {!editingAvenant.bcFinValidite && editingAvenant.dateExpiration && <>, valable jusqu'à son expiration</>}
+                      {!editingAvenant.bcQuota && <>, nombre d'opérations par défaut : celles de l'avenant pas encore réalisées</>}
+                      {(contrat?.contratSites?.length ?? 0) > 0 && <> — sites couverts : ceux de l'avenant</>}.
+                    </p>
+                  </div>
+                )}
+
+                {editingAvenant.bcMode === 'existant' && (
+                  <select
+                    className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    value={editingAvenant.bcExistantId}
+                    onChange={(e) => setEditingAvenant((a: any) => ({ ...a, bcExistantId: e.target.value }))}
+                  >
+                    <option value="">Choisir un BC…</option>
+                    {/* BC actuel désactivé entre-temps : absent de la liste des BC actifs */}
+                    {editingAvenant.bonCommandeId && !bcsClientAvenant.some((bc: any) => bc.id === editingAvenant.bonCommandeId) && (
+                      <option value={editingAvenant.bonCommandeId}>{editingAvenant.numeroBonCommande ?? 'BC actuel'} (actuel)</option>
+                    )}
+                    {bcsClientAvenant.map((bc: any) => (
+                      <option key={bc.id} value={bc.id}>
+                        {bc.numero}
+                        {bc.id === editingAvenant.bonCommandeId && ' (actuel)'}
+                        {bc.quotaPassages != null && ` — ${bc.quotaPassages - bc.passagesConsommes}/${bc.quotaPassages} op. restantes`}
+                        {` — ${(bc.sites ?? []).length ? bc.sites.map((s: any) => s.site?.nom ?? s.siteId).join(', ') : 'tous les sites'}`}
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {bcAvenantModifie(editingAvenant) && (
+                  <p className="text-xs text-amber-700">
+                    {editingAvenant.bcMode === 'aucun'
+                      ? 'Les opérations non réalisées de l\'avenant ne décompteront plus de BC.'
+                      : 'Les opérations non réalisées de l\'avenant décompteront ce BC, réservé à l\'avenant.'}
+                    {' '}Les opérations déjà réalisées gardent le BC qu'elles ont décompté.
+                    {editingAvenant.bonCommandeId && ' L\'ancien BC est libéré : il redevient disponible pour les opérations du contrat.'}
+                  </p>
+                )}
+              </div>
+
               <div className="space-y-1">
                 <Label className="text-xs text-gray-500">Notes</Label>
                 <Textarea
@@ -2089,13 +2201,31 @@ export function ContratDetailPage() {
             <Button
               onClick={() => updateAvenantMutation.mutate({
                 nom: editingAvenant?.nom,
-                numeroBonCommande: editingAvenant?.numeroBonCommande,
+                // Sans BC lié, le n° saisi reste un simple libellé de facture
+                numeroBonCommande: editingAvenant?.bcMode === 'aucun'
+                  ? (editingAvenant.bonCommandeId ? '' : editingAvenant.numeroBonCommande)
+                  : undefined,
                 dateSignature: editingAvenant?.dateSignature ?? undefined,
                 dateExpiration: editingAvenant?.dateExpiration ?? undefined,
                 montantHT: editingAvenant?.montantHT ?? null,
                 notes: editingAvenant?.notes,
+                ...(bcAvenantModifie(editingAvenant)
+                  ? editingAvenant.bcMode === 'nouveau'
+                    ? {
+                        nouveauBC: {
+                          numero: editingAvenant.bcNumero.trim(),
+                          quotaPassages: editingAvenant.bcQuota ? parseInt(editingAvenant.bcQuota) : null,
+                          dateFinValidite: editingAvenant.bcFinValidite || null,
+                        },
+                      }
+                    : { bonCommandeId: editingAvenant.bcMode === 'existant' ? editingAvenant.bcExistantId : null }
+                  : {}),
               })}
-              disabled={updateAvenantMutation.isPending}
+              disabled={
+                updateAvenantMutation.isPending ||
+                (editingAvenant?.bcMode === 'nouveau' && !editingAvenant.bcNumero.trim()) ||
+                (editingAvenant?.bcMode === 'existant' && !editingAvenant.bcExistantId)
+              }
             >
               {updateAvenantMutation.isPending ? 'Enregistrement...' : 'Enregistrer'}
             </Button>
@@ -2134,6 +2264,23 @@ export function ContratDetailPage() {
               Toutes les interventions non réalisées de cet avenant seront supprimées. Cette action est irréversible.
             </DialogDescription>
           </DialogHeader>
+          {avenantASupprimer?.bonCommandeId && (
+            <div className="space-y-1">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={supprimerBCAvenant}
+                  onChange={(e) => setSupprimerBCAvenant(e.target.checked)}
+                />
+                Supprimer aussi le BC n°{avenantASupprimer.numeroBonCommande}
+              </label>
+              {!supprimerBCAvenant && (
+                <p className="text-xs text-amber-700">
+                  Le BC sera conservé et libéré : il redeviendra disponible pour les opérations du contrat.
+                </p>
+              )}
+            </div>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeletingAvenantId(null)}>Annuler</Button>
             <Button
