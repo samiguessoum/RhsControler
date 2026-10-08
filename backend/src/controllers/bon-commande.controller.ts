@@ -49,8 +49,9 @@ export const bonCommandeController = {
         where,
         include: {
           client: { select: { id: true, nomEntreprise: true } },
-          contrat: { select: { id: true, type: true, dateDebut: true, dateFin: true } },
+          contrat: { select: { id: true, type: true, dateDebut: true, dateFin: true, refExterne: true, nom: true } },
           sites: { include: { site: { select: { id: true, nom: true } } } },
+          avenants: { select: { id: true, numero: true, nom: true } },
           _count: { select: { interventions: true } },
         },
         orderBy: { createdAt: 'desc' },
@@ -189,11 +190,14 @@ export const bonCommandeController = {
               type: true,
               dateDebut: true,
               dateFin: true,
+              refExterne: true,
+              nom: true,
               prestations: true,
               contratSites: { include: { site: { select: { id: true, nom: true } } } },
             },
           },
           sites: { include: { site: { select: { id: true, nom: true, adresse: true } } } },
+          avenants: { select: { id: true, numero: true, nom: true } },
           interventions: {
             include: {
               site: { select: { id: true, nom: true } },

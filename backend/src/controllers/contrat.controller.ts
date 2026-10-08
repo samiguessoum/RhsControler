@@ -107,6 +107,41 @@ function empreintePlanning(contrat: Record<string, any>, sites: SiteInput[]) {
   });
 }
 
+const statsAvenantVides = () => ({
+  operations: { realisees: 0, total: 0 },
+  controles: { realisees: 0, total: 0 },
+  prochainPassage: null as Date | null,
+});
+
+/**
+ * Avancement de chaque avenant du contrat : passages réalisés / prévus (hors annulés et visites
+ * couvertes par une opération) et date du prochain passage non réalisé.
+ */
+async function statsAvenants(contratId: string) {
+  const groupes = await prisma.intervention.groupBy({
+    by: ['avenantId', 'type', 'statut'],
+    where: {
+      contratId,
+      avenantId: { not: null },
+      type: { in: ['OPERATION', 'CONTROLE'] },
+      statut: { not: 'ANNULEE' },
+      remplaceeParOperation: false,
+    },
+    _count: { _all: true },
+    _min: { datePrevue: true },
+  });
+  const stats = new Map<string, ReturnType<typeof statsAvenantVides>>();
+  for (const g of groupes) {
+    const s = stats.get(g.avenantId!) ?? statsAvenantVides();
+    const serie = g.type === 'OPERATION' ? s.operations : s.controles;
+    serie.total += g._count._all;
+    if (g.statut === 'REALISEE') serie.realisees += g._count._all;
+    else if (g._min.datePrevue && (!s.prochainPassage || g._min.datePrevue < s.prochainPassage)) s.prochainPassage = g._min.datePrevue;
+    stats.set(g.avenantId!, s);
+  }
+  return stats;
+}
+
 export const contratController = {
   /**
    * GET /api/contrats
@@ -216,6 +251,7 @@ export const contratController = {
             orderBy: { numero: 'asc' },
             include: {
               createdBy: { select: { id: true, nom: true, prenom: true } },
+              bonCommande: { select: { id: true, numero: true, quotaPassages: true, passagesConsommes: true, actif: true } },
             },
           },
         },
@@ -225,7 +261,10 @@ export const contratController = {
         return res.status(404).json({ error: 'Contrat non trouvé' });
       }
 
-      res.json({ contrat });
+      const stats = await statsAvenants(id);
+      res.json({
+        contrat: { ...contrat, avenants: contrat.avenants.map((av) => ({ ...av, stats: stats.get(av.id) ?? statsAvenantVides() })) },
+      });
     } catch (error) {
       logger.error({ err: error }, 'Get contrat error');
       return next(new AppError(500, 'Erreur serveur'));

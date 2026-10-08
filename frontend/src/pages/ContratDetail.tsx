@@ -30,6 +30,7 @@ import {
   X,
   Star,
   CalendarRange,
+  ChevronDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -54,7 +55,8 @@ import { ContratForm, ProjectionDates, FrequenceInput, PeriodesFrequenceInput, n
 import { addDays, format } from 'date-fns';
 import { formatDate, getStatutColor, getStatutLabel, cn } from '@/lib/utils';
 import type { Prestation, InterventionStatut, PeriodeFrequence } from '@/types';
-import { NIVEAUX_BC, formatDateBC, type PrevisionBC } from '@/lib/bc';
+import { formatDateBC } from '@/lib/bc';
+import { BonCommandeDialog, ConsommationBC, Statut, StatutBC, TONS, pl, validiteBC, type BonCommandeAffiche } from '@/components/BonCommande';
 import { FichePrevisionnelleDialog } from '@/components/FichePrevisionnelleDialog';
 
 const STATUT_CONFIG: Record<string, { label: string; color: string; icon: typeof CheckCircle2 }> = {
@@ -133,19 +135,8 @@ export function ContratDetailPage() {
   const [deletingAvenantId, setDeletingAvenantId] = useState<string | null>(null);
   // Suppression d'un avenant : supprimer aussi son BC (coché par défaut)
   const [supprimerBCAvenant, setSupprimerBCAvenant] = useState(true);
-  const [showCreateBC, setShowCreateBC] = useState(false);
-  const [newBCNumero, setNewBCNumero] = useState('');
-  const [newBCQuota, setNewBCQuota] = useState('');
-  const [newBCDate, setNewBCDate] = useState('');
-  const [newBCFinValidite, setNewBCFinValidite] = useState('');
-  const [newBCSeuil, setNewBCSeuil] = useState('2');
-  const [newBCSiteIds, setNewBCSiteIds] = useState<string[]>([]);
-  const [editingBCId, setEditingBCId] = useState<string | null>(null);
-  const [editingBCSiteIds, setEditingBCSiteIds] = useState<string[]>([]);
-  const [editingBCQuota, setEditingBCQuota] = useState('');
-  const [editingBCDate, setEditingBCDate] = useState('');
-  const [editingBCFinValidite, setEditingBCFinValidite] = useState('');
-  const [editingBCSeuil, setEditingBCSeuil] = useState('');
+  const [bcDialog, setBcDialog] = useState<{ bc: BonCommandeAffiche | null } | null>(null);
+  const [showBCInactifs, setShowBCInactifs] = useState(false);
   const [deletingBCId, setDeletingBCId] = useState<string | null>(null);
   const { canDo } = useAuthStore();
 
@@ -232,61 +223,24 @@ export function ContratDetailPage() {
     },
   });
 
-  const createBCMutation = useMutation({
-    mutationFn: () => bonCommandeApi.create({
-      numero: newBCNumero.trim(),
-      clientId: contrat!.clientId,
-      contratId: id!,
-      date: newBCDate || null,
-      dateFinValidite: newBCFinValidite || null,
-      quotaPassages: newBCQuota ? parseInt(newBCQuota) : undefined,
-      seuilAlerte: newBCSeuil !== '' ? parseInt(newBCSeuil) : undefined,
-      siteIds: newBCSiteIds,
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['contrat', id] });
-      queryClient.invalidateQueries({ queryKey: ['bons-commandes'] });
-      toast.success('Bon de commande créé');
-      resetNewBC();
-    },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Erreur lors de la création du BC');
-    },
-  });
-
-  const resetNewBC = () => {
-    setShowCreateBC(false);
-    setNewBCNumero('');
-    setNewBCQuota('');
-    setNewBCDate('');
-    setNewBCFinValidite('');
-    setNewBCSeuil('2');
-    setNewBCSiteIds([]);
-  };
-
   // Prévisions des BC du contrat (consommation, épuisement prévu, fin de validité)
-  const { data: bcsPrevisionData } = useQuery({
+  const { data: bcsContratData } = useQuery({
     queryKey: ['bons-commandes', 'contrat', id],
-    queryFn: () => bonCommandeApi.list({ contratId: id!, actif: true }),
+    queryFn: () => bonCommandeApi.list({ contratId: id! }),
     enabled: !!id,
   });
-  const previsionsBC = useMemo(
-    () => new Map<string, PrevisionBC>((bcsPrevisionData?.bonsCommandes ?? []).map((b: any) => [b.id, b])),
-    [bcsPrevisionData],
-  );
+  const bcsContrat = (bcsContratData?.bonsCommandes ?? []) as BonCommandeAffiche[];
+  const bcsActifs = bcsContrat.filter((b) => b.actif);
+  const bcsInactifs = bcsContrat.filter((b) => !b.actif);
 
-  const updateBCMutation = useMutation({
-    mutationFn: ({ bcId, ...payload }: { bcId: string; siteIds: string[]; quotaPassages?: number | null; date?: string | null; dateFinValidite?: string | null; seuilAlerte?: number }) =>
-      bonCommandeApi.update(bcId, payload),
+  const reactiverBCMutation = useMutation({
+    mutationFn: (bcId: string) => bonCommandeApi.update(bcId, { actif: true }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contrat', id] });
       queryClient.invalidateQueries({ queryKey: ['bons-commandes'] });
-      toast.success('Bon de commande mis à jour');
-      setEditingBCId(null);
+      toast.success('Bon de commande réactivé');
     },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Erreur lors de la mise à jour');
-    },
+    onError: (error: any) => toast.error(error.response?.data?.error || 'Impossible de réactiver ce BC'),
   });
 
   const deleteBCMutation = useMutation({
@@ -294,11 +248,11 @@ export function ContratDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['contrat', id] });
       queryClient.invalidateQueries({ queryKey: ['bons-commandes'] });
-      toast.success('Bon de commande supprimé');
+      toast.success('Bon de commande désactivé');
       setDeletingBCId(null);
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Impossible de supprimer ce BC');
+      toast.error(error.response?.data?.error || 'Impossible de désactiver ce BC');
       setDeletingBCId(null);
     },
   });
@@ -901,343 +855,227 @@ export function ContratDetailPage() {
 
           {/* Carte Avenants */}
           <Card>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                    <FileSignature className="h-5 w-5 text-primary" />
-                    Avenants
-                  </CardTitle>
-                  <Button size="sm" variant="outline" onClick={ouvrirAvenant}>
-                    <Plus className="h-3.5 w-3.5 mr-1" />
-                    Ajouter
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {(!contrat.avenants || contrat.avenants.length === 0) && (
-                  <p className="text-sm text-muted-foreground">Aucun avenant pour ce contrat.</p>
-                )}
-                {contrat.avenants?.map((av) => (
-                  <div key={av.id} className="p-3 rounded-lg bg-amber-50 border border-amber-100 text-sm space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-amber-900">
-                        Avenant n°{av.numero}
-                        {av.nom && <span className="font-normal"> — {av.nom}</span>}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <div className="text-xs text-amber-700">
-                          {av.dateSignature && <span>Signé le {formatDate(av.dateSignature)}</span>}
-                          {av.dateExpiration && <span> · Expire le {formatDate(av.dateExpiration)}</span>}
-                        </div>
-                        {canDo('editContrat') && (
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => setEditingAvenant({
-                                ...av,
-                                bcMode: av.bonCommandeId ? 'existant' : 'aucun',
-                                bcExistantId: av.bonCommandeId ?? '',
-                                bcNumero: '', bcQuota: '', bcFinValidite: '',
-                              })}
-                              className="p-1 rounded hover:bg-amber-200 text-amber-700"
-                              title="Modifier"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              onClick={() => { setSupprimerBCAvenant(true); setDeletingAvenantId(av.id); }}
-                              className="p-1 rounded hover:bg-red-100 text-red-500"
-                              title="Supprimer"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    {av.numeroBonCommande && (
-                      <p className="text-xs text-amber-700">BC : {av.numeroBonCommande}</p>
-                    )}
-                    <p className="text-xs text-amber-700">
-                      +{av.nombreOperationsSupplementaires} opération(s), +{av.nombreVisitesControleSupplementaires} visite(s) de contrôle
-                      {canDo('viewFacturation') && av.montantHT != null && ` — ${Number(av.montantHT).toLocaleString('fr-FR')} DA HT`}
-                    </p>
-                    {(av.siteIds?.length ?? 0) > 0 && (
-                      <p className="text-xs text-amber-700">
-                        Sites : {av.siteIds!.map((s) => contrat.contratSites?.find((cs) => cs.siteId === s)?.site?.nom ?? s).join(', ')}
-                      </p>
-                    )}
-                    {av.notes && <p className="text-xs text-muted-foreground whitespace-pre-wrap">{av.notes}</p>}
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-          {/* Carte Bons de commande */}
-          <Card>
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2 text-lg">
-                  <Banknote className="h-5 w-5 text-primary" />
-                  Bons de commande
+                  <FileSignature className="h-5 w-5 text-primary" />
+                  Avenants
+                  {!!contrat.avenants?.length && <span className="text-sm font-normal text-gray-400">({contrat.avenants.length})</span>}
                 </CardTitle>
-                {canDo('editContrat') && !showCreateBC && (
-                  <Button size="sm" variant="outline" onClick={() => setShowCreateBC(true)}>
+                {canDo('editContrat') && (
+                  <Button size="sm" variant="outline" onClick={ouvrirAvenant}>
                     <Plus className="h-3.5 w-3.5 mr-1" />
                     Ajouter
                   </Button>
                 )}
               </div>
             </CardHeader>
-            <CardContent className="space-y-2">
-              {/* Formulaire création */}
-              {showCreateBC && (
-                <div className="p-3 rounded-lg border border-blue-200 bg-blue-50 space-y-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="col-span-2">
-                      <Label className="text-xs font-medium text-blue-900">Numéro BC</Label>
-                      <Input
-                        value={newBCNumero}
-                        onChange={(e) => setNewBCNumero(e.target.value)}
-                        placeholder="ex: BC-2026-042"
-                        className="mt-1 h-8 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs font-medium text-blue-900">Nb opérations</Label>
-                      <Input
-                        type="number"
-                        min={1}
-                        value={newBCQuota}
-                        onChange={(e) => setNewBCQuota(e.target.value)}
-                        placeholder="ex: 12"
-                        className="mt-1 h-8 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs font-medium text-blue-900">Date de signature</Label>
-                      <Input
-                        type="date"
-                        value={newBCDate}
-                        onChange={(e) => setNewBCDate(e.target.value)}
-                        className="mt-1 h-8 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs font-medium text-blue-900">Valable jusqu'au</Label>
-                      <Input
-                        type="date"
-                        value={newBCFinValidite}
-                        onChange={(e) => setNewBCFinValidite(e.target.value)}
-                        className="mt-1 h-8 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-xs font-medium text-blue-900">Alerter à N op. restantes</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={newBCSeuil}
-                        onChange={(e) => setNewBCSeuil(e.target.value)}
-                        className="mt-1 h-8 text-sm"
-                      />
-                    </div>
-                  </div>
-                  {(contrat.contratSites?.length ?? 0) > 0 && (
-                    <div>
-                      <Label className="text-xs font-medium text-blue-900">Sites couverts (vide = tous)</Label>
-                      <div className="mt-1 space-y-1">
-                        {contrat.contratSites?.map((cs) => (
-                          <label key={cs.siteId} className="flex items-center gap-2 text-xs cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={newBCSiteIds.includes(cs.siteId)}
-                              onChange={(e) => setNewBCSiteIds(prev =>
-                                e.target.checked ? [...prev, cs.siteId] : prev.filter(s => s !== cs.siteId)
-                              )}
-                              className="rounded"
-                            />
-                            {cs.site?.nom ?? cs.siteId}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      onClick={() => createBCMutation.mutate()}
-                      disabled={!newBCNumero.trim() || createBCMutation.isPending}
-                    >
-                      {createBCMutation.isPending ? 'Création...' : 'Créer'}
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={resetNewBC}>
-                      Annuler
-                    </Button>
-                  </div>
-                </div>
+            <CardContent>
+              {(!contrat.avenants || contrat.avenants.length === 0) && (
+                <p className="text-sm text-muted-foreground">Aucun avenant pour ce contrat.</p>
               )}
-
-              {/* Liste des BCs */}
-              {(!contrat.bonsCommandes || contrat.bonsCommandes.length === 0) && !showCreateBC && (
-                <p className="text-sm text-muted-foreground">Aucun bon de commande pour ce contrat.</p>
-              )}
-              {contrat.bonsCommandes?.map((bc: any) => {
-                const siteNames = (bc.sites ?? []).map((s: any) =>
-                  contrat.contratSites?.find(cs => cs.siteId === s.siteId)?.site?.nom ?? s.siteId
-                );
-                const isEditing = editingBCId === bc.id;
-                const prev = previsionsBC.get(bc.id);
-                const niveau = prev?.niveauAlerte ? NIVEAUX_BC[prev.niveauAlerte] : null;
-                return (
-                  <div key={bc.id} className="p-3 rounded-lg bg-indigo-50 border border-indigo-100 text-sm space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-semibold text-indigo-900">
-                        {bc.numero}
-                        {bc.date && (
-                          <span className="ml-2 text-xs font-normal text-indigo-600">
-                            signé le {formatDateBC(bc.date)}
-                          </span>
-                        )}
-                      </span>
-                      {canDo('editContrat') && (
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => {
-                              setEditingBCId(bc.id);
-                              setEditingBCSiteIds((bc.sites ?? []).map((s: any) => s.siteId));
-                              setEditingBCQuota(bc.quotaPassages != null ? String(bc.quotaPassages) : '');
-                              setEditingBCDate(bc.date ? String(bc.date).slice(0, 10) : '');
-                              setEditingBCFinValidite(bc.dateFinValidite ? String(bc.dateFinValidite).slice(0, 10) : '');
-                              setEditingBCSeuil(String(bc.seuilAlerte ?? 2));
-                            }}
-                            className="p-1 rounded hover:bg-indigo-200 text-indigo-700"
-                            title="Modifier"
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                          <button
-                            onClick={() => setDeletingBCId(bc.id)}
-                            className="p-1 rounded hover:bg-red-100 text-red-500"
-                            title="Désactiver"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+              <div className="divide-y">
+                {contrat.avenants?.map((av) => {
+                  const st = av.stats;
+                  const total = (st?.operations.total ?? 0) + (st?.controles.total ?? 0);
+                  const faits = (st?.operations.realisees ?? 0) + (st?.controles.realisees ?? 0);
+                  const jour = new Date().toISOString().slice(0, 10);
+                  const expire = !!av.dateExpiration && String(av.dateExpiration).slice(0, 10) < jour;
+                  const statut: [keyof typeof TONS, string] = total > 0 && faits === total
+                    ? ['vert', 'Terminé']
+                    : expire ? ['rouge', 'Expiré'] : total === 0 ? ['gris', 'Sans passage'] : ['bleu', 'En cours'];
+                  const enRetard = !!st?.prochainPassage && String(st.prochainPassage).slice(0, 10) < jour;
+                  const sites = (av.siteIds ?? []).map((s) => contrat.contratSites?.find((cs) => cs.siteId === s)?.site?.nom ?? s);
+                  return (
+                    <div key={av.id} className="py-3 first:pt-1 last:pb-0 space-y-1.5 text-sm">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <span className="font-semibold text-gray-900">Avenant n°{av.numero}</span>
+                          {av.nom && <span className="text-gray-600"> · {av.nom}</span>}
                         </div>
-                      )}
-                    </div>
-                    {!isEditing && (
-                      <>
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs text-indigo-600">
-                            {siteNames.length === 0 ? 'Tous les sites' : siteNames.join(', ')}
-                          </p>
-                          <p className="text-xs text-indigo-500" title="Opérations réalisées imputées au BC / quota">
-                            {bc.quotaPassages != null
-                              ? `${bc.passagesConsommes ?? 0}/${bc.quotaPassages} op. réalisées`
-                              : `${bc.passagesConsommes ?? 0} op. réalisées (sans quota)`}
-                          </p>
-                        </div>
-                        <div className="flex items-center justify-between text-xs text-indigo-500">
-                          <span>
-                            {bc.dateFinValidite ? `Valable jusqu'au ${formatDateBC(bc.dateFinValidite)}` : 'Sans date de fin'}
-                          </span>
-                          {prev && (prev.operationsPlanifiees ?? 0) + (prev.operationsNonCouvertes ?? 0) > 0 && (
-                            <span title="Opérations planifiées non réalisées qui consommeront ce BC">
-                              {(prev.operationsPlanifiees ?? 0) + (prev.operationsNonCouvertes ?? 0)} op. planifiées
-                            </span>
+                        <div className="flex items-center gap-1.5">
+                          <Statut ton={statut[0]}>{statut[1]}</Statut>
+                          {canDo('editContrat') && (
+                            <>
+                              <button
+                                onClick={() => setEditingAvenant({
+                                  ...av,
+                                  bcMode: av.bonCommandeId ? 'existant' : 'aucun',
+                                  bcExistantId: av.bonCommandeId ?? '',
+                                  bcNumero: '', bcQuota: '', bcFinValidite: '',
+                                })}
+                                className="p-1 rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                                title="Modifier"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={() => { setSupprimerBCAvenant(true); setDeletingAvenantId(av.id); }}
+                                className="p-1 rounded text-gray-400 hover:bg-red-50 hover:text-red-600"
+                                title="Supprimer"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </>
                           )}
                         </div>
-                        {niveau && (
-                          <div className="flex items-start gap-2 pt-1">
-                            <Badge className={cn('shrink-0 text-[10px]', niveau.badge)}>{niveau.label}</Badge>
-                            <p className={cn('text-xs', niveau.texte)}>{prev?.motifs?.join(' · ')}</p>
-                          </div>
-                        )}
-                      </>
-                    )}
-                    {isEditing && (
-                      <div className="space-y-2">
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <Label className="text-xs font-medium text-indigo-900">Nb opérations</Label>
-                            <Input
-                              type="number"
-                              min={1}
-                              value={editingBCQuota}
-                              onChange={(e) => setEditingBCQuota(e.target.value)}
-                              placeholder="ex: 12"
-                              className="mt-1 h-7 text-xs"
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-xs font-medium text-indigo-900">Date de signature</Label>
-                            <Input
-                              type="date"
-                              value={editingBCDate}
-                              onChange={(e) => setEditingBCDate(e.target.value)}
-                              className="mt-1 h-7 text-xs"
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-xs font-medium text-indigo-900">Valable jusqu'au</Label>
-                            <Input
-                              type="date"
-                              value={editingBCFinValidite}
-                              onChange={(e) => setEditingBCFinValidite(e.target.value)}
-                              className="mt-1 h-7 text-xs"
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-xs font-medium text-indigo-900">Alerter à N op. restantes</Label>
-                            <Input
-                              type="number"
-                              min={0}
-                              value={editingBCSeuil}
-                              onChange={(e) => setEditingBCSeuil(e.target.value)}
-                              className="mt-1 h-7 text-xs"
-                            />
-                          </div>
-                        </div>
-                        <Label className="text-xs font-medium text-indigo-900">Sites couverts (vide = tous)</Label>
+                      </div>
+
+                      {(av.dateSignature || av.dateExpiration) && (
+                        <p className="text-xs text-gray-500">
+                          {av.dateSignature && <>Signé le {formatDate(av.dateSignature)}</>}
+                          {av.dateSignature && av.dateExpiration && ' · '}
+                          {av.dateExpiration && <span className={cn(expire && 'text-red-600')}>{expire ? 'Expiré le' : 'Expire le'} {formatDate(av.dateExpiration)}</span>}
+                        </p>
+                      )}
+
+                      {/* Avancement */}
+                      {st && total > 0 ? (
                         <div className="space-y-1">
-                          {contrat.contratSites?.map((cs) => (
-                            <label key={cs.siteId} className="flex items-center gap-2 text-xs cursor-pointer">
-                              <input
-                                type="checkbox"
-                                checked={editingBCSiteIds.includes(cs.siteId)}
-                                onChange={(e) => setEditingBCSiteIds(prev =>
-                                  e.target.checked ? [...prev, cs.siteId] : prev.filter(s => s !== cs.siteId)
-                                )}
-                                className="rounded"
-                              />
-                              {cs.site?.nom ?? cs.siteId}
-                            </label>
-                          ))}
+                          {st.operations.total > 0 && (
+                            <div className="flex h-1.5 overflow-hidden rounded-full bg-gray-100">
+                              <div className="bg-slate-700" style={{ width: `${(st.operations.realisees / st.operations.total) * 100}%` }} />
+                            </div>
+                          )}
+                          <p className="text-xs text-gray-600">
+                            Opérations <span className="font-medium text-gray-900">{st.operations.realisees}/{st.operations.total}</span>
+                            {st.controles.total > 0 && <> · Contrôles <span className="font-medium text-gray-900">{st.controles.realisees}/{st.controles.total}</span></>}
+                            {st.prochainPassage && (
+                              <span className={cn(enRetard && 'text-orange-700')}>
+                                {' · '}{enRetard ? 'Passage en retard du' : 'Prochain passage le'} {formatDate(st.prochainPassage)}
+                              </span>
+                            )}
+                          </p>
                         </div>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => updateBCMutation.mutate({
-                              bcId: bc.id,
-                              siteIds: editingBCSiteIds,
-                              quotaPassages: editingBCQuota ? parseInt(editingBCQuota) : null,
-                              date: editingBCDate || null,
-                              dateFinValidite: editingBCFinValidite || null,
-                              ...(editingBCSeuil !== '' ? { seuilAlerte: parseInt(editingBCSeuil) } : {}),
-                            })}
-                            disabled={updateBCMutation.isPending}
-                          >
-                            {updateBCMutation.isPending ? 'Sauvegarde...' : 'Sauvegarder'}
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => setEditingBCId(null)}>
-                            Annuler
-                          </Button>
+                      ) : (
+                        <p className="text-xs text-gray-500">
+                          Prévu : {pl(av.nombreOperationsSupplementaires, 'opération')}
+                          {av.nombreVisitesControleSupplementaires > 0 && `, ${pl(av.nombreVisitesControleSupplementaires, 'visite')} de contrôle`}
+                        </p>
+                      )}
+
+                      <div className="flex items-center justify-between gap-2 text-xs text-gray-500">
+                        <span className="min-w-0 truncate">
+                          {sites.length ? sites.join(', ') : 'Tous les sites'}
+                          {av.bonCommande ? (
+                            <>
+                              {' · '}
+                              <Link to={`/bons-commandes?id=${av.bonCommande.id}`} className="text-gray-700 underline-offset-2 hover:underline">
+                                BC N° {av.bonCommande.numero}
+                              </Link>
+                              {av.bonCommande.quotaPassages != null && ` (${av.bonCommande.passagesConsommes}/${av.bonCommande.quotaPassages})`}
+                            </>
+                          ) : av.numeroBonCommande ? ` · BC N° ${av.numeroBonCommande}` : null}
+                        </span>
+                        {canDo('viewFacturation') && av.montantHT != null && (
+                          <span className="shrink-0 font-medium text-gray-900">{Number(av.montantHT).toLocaleString('fr-FR')} DA HT</span>
+                        )}
+                      </div>
+                      {av.notes && <p className="text-xs text-gray-500 whitespace-pre-wrap line-clamp-2" title={av.notes}>{av.notes}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Carte Bons de commande */}
+          <Card>
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Banknote className="h-5 w-5 text-primary" />
+                  Bons de commande
+                  {bcsActifs.length > 0 && <span className="text-sm font-normal text-gray-400">({bcsActifs.length})</span>}
+                </CardTitle>
+                {canDo('editContrat') && (
+                  <Button size="sm" variant="outline" onClick={() => setBcDialog({ bc: null })}>
+                    <Plus className="h-3.5 w-3.5 mr-1" />
+                    Ajouter
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {bcsActifs.length === 0 && (
+                <p className="text-sm text-muted-foreground">Aucun bon de commande actif pour ce contrat.</p>
+              )}
+              <div className="divide-y">
+                {bcsActifs.map((bc) => {
+                  const siteNames = (bc.sites ?? []).map((s) => s.site?.nom ?? contrat.contratSites?.find((cs) => cs.siteId === s.siteId)?.site?.nom ?? s.siteId);
+                  const validite = validiteBC(bc);
+                  const avenant = bc.avenants?.[0];
+                  return (
+                    <div key={bc.id} className="py-3 first:pt-1 last:pb-0 space-y-1.5 text-sm">
+                      <div className="flex items-start justify-between gap-2">
+                        <Link to={`/bons-commandes?id=${bc.id}`} className="font-semibold text-gray-900 underline-offset-2 hover:underline">
+                          N° {bc.numero}
+                        </Link>
+                        <div className="flex items-center gap-1.5">
+                          <StatutBC bc={bc} />
+                          {canDo('editContrat') && (
+                            <>
+                              <button onClick={() => setBcDialog({ bc })} className="p-1 rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Modifier">
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button onClick={() => setDeletingBCId(bc.id)} className="p-1 rounded text-gray-400 hover:bg-red-50 hover:text-red-600" title="Désactiver">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
-                    )}
-                  </div>
-                );
-              })}
+                      <p className="text-xs text-gray-500">
+                        {bc.date ? `Signé le ${formatDateBC(bc.date)}` : 'Date de signature non renseignée'}
+                        {validite && <span className={cn(validite.alerte && 'text-orange-700')}> · {validite.texte}</span>}
+                      </p>
+                      <ConsommationBC bc={bc} />
+                      <p className="text-xs text-gray-500">
+                        {siteNames.length ? siteNames.join(', ') : 'Tout le contrat'}
+                        {avenant && <> · Réservé à l'avenant n°{avenant.numero}</>}
+                        {bc.dateEpuisementPrevue && <> · Épuisement prévu le {formatDateBC(bc.dateEpuisementPrevue)}</>}
+                      </p>
+                      {(bc.operationsNonCouvertes ?? 0) > 0 && (
+                        <p className="text-xs text-red-700">
+                          {pl(bc.operationsNonCouvertes!, 'opération')} planifiée{bc.operationsNonCouvertes! > 1 ? 's' : ''} au-delà du quota
+                          {bc.datePremiereNonCouverte && ` à partir du ${formatDateBC(bc.datePremiereNonCouverte)}`} : nouveau BC à demander.
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {bcsInactifs.length > 0 && (
+                <div className="mt-3 border-t pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowBCInactifs((v) => !v)}
+                    className="flex w-full items-center justify-between text-xs text-gray-500 hover:text-gray-800"
+                  >
+                    BC désactivés ({bcsInactifs.length})
+                    <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', showBCInactifs && 'rotate-180')} />
+                  </button>
+                  {showBCInactifs && (
+                    <div className="mt-2 divide-y">
+                      {bcsInactifs.map((bc) => (
+                        <div key={bc.id} className="flex items-center justify-between gap-2 py-2 text-xs text-gray-500">
+                          <span className="min-w-0 truncate">
+                            <Link to={`/bons-commandes?id=${bc.id}`} className="font-medium text-gray-700 hover:underline">N° {bc.numero}</Link>
+                            {' · '}{bc.quotaPassages != null ? `${bc.passagesConsommes}/${bc.quotaPassages}` : bc.passagesConsommes} réalisées
+                            {bc.date && ` · signé le ${formatDateBC(bc.date)}`}
+                          </span>
+                          {canDo('editContrat') && (
+                            <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => reactiverBCMutation.mutate(bc.id)} disabled={reactiverBCMutation.isPending}>
+                              Réactiver
+                            </Button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -2247,13 +2085,25 @@ export function ContratDetailPage() {
         </DialogContent>
       </Dialog>
 
+      {bcDialog && (
+        <BonCommandeDialog
+          open
+          onOpenChange={(o) => { if (!o) setBcDialog(null); }}
+          clientId={contrat.clientId}
+          contratId={contrat.id}
+          sites={(contrat.contratSites ?? []).map((cs) => ({ id: cs.siteId, nom: cs.site?.nom ?? cs.siteId }))}
+          bc={bcDialog.bc}
+        />
+      )}
+
       {/* Dialog confirmation désactivation BC */}
       <Dialog open={!!deletingBCId} onOpenChange={(o) => { if (!o) setDeletingBCId(null); }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Supprimer ce bon de commande ?</DialogTitle>
+            <DialogTitle>Désactiver ce bon de commande ?</DialogTitle>
             <DialogDescription>
-              Le BC sera supprimé et dissocié des interventions liées. Les factures existantes ne seront pas affectées.
+              Les passages non réalisés en seront détachés et il ne sera plus décompté. Les passages réalisés et les factures
+              ne changent pas. Il reste consultable dans « BC désactivés » et peut être réactivé.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -2263,7 +2113,7 @@ export function ContratDetailPage() {
               onClick={() => deletingBCId && deleteBCMutation.mutate(deletingBCId)}
               disabled={deleteBCMutation.isPending}
             >
-              {deleteBCMutation.isPending ? 'Suppression...' : 'Supprimer'}
+              {deleteBCMutation.isPending ? 'Désactivation...' : 'Désactiver'}
             </Button>
           </DialogFooter>
         </DialogContent>

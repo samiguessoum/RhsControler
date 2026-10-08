@@ -236,6 +236,13 @@ export interface Avenant {
   createdBy?: User;
   createdAt: string;
   interventions?: Pick<Intervention, 'id' | 'type' | 'datePrevue' | 'statut'>[];
+  bonCommande?: { id: string; numero: string; quotaPassages: number | null; passagesConsommes: number; actif: boolean } | null;
+  /** Avancement calculé par l'API (passages hors annulés) */
+  stats?: {
+    operations: { realisees: number; total: number };
+    controles: { realisees: number; total: number };
+    prochainPassage: string | null;
+  };
 }
 
 // ============ INTERVENTION ============
