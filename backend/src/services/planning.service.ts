@@ -286,6 +286,7 @@ export const planningService = {
       include: {
         client: { select: { id: true, nomEntreprise: true, sites: { select: { id: true, nom: true, adresse: true } } } },
         contrat: { select: { id: true, type: true, prestations: true } },
+        avenant: { select: { id: true, numero: true, nom: true } },
         site: { select: { id: true, nom: true, adresse: true } },
         interventionEmployes: {
           include: {
@@ -315,6 +316,7 @@ export const planningService = {
       include: {
         client: { select: { id: true, nomEntreprise: true, sites: { select: { id: true, nom: true, adresse: true } } } },
         contrat: { select: { id: true, type: true, prestations: true } },
+        avenant: { select: { id: true, numero: true, nom: true } },
         site: { select: { id: true, nom: true, adresse: true } },
         interventionEmployes: {
           include: {
@@ -341,6 +343,7 @@ export const planningService = {
       include: {
         client: { select: { id: true, nomEntreprise: true, sites: { select: { id: true, nom: true, adresse: true } } } },
         contrat: { select: { id: true, type: true, prestations: true } },
+        avenant: { select: { id: true, numero: true, nom: true } },
         site: { select: { id: true, nom: true, adresse: true } },
         interventionEmployes: {
           include: {

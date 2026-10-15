@@ -116,7 +116,7 @@ import {
   rhApi,
   bonCommandeApi,
 } from '@/services/api';
-import { cn, formatDate, getStatutColor, getStatutLabel } from '@/lib/utils';
+import { cn, formatDate, getStatutColor, getStatutLabel, libelleAvenant } from '@/lib/utils';
 import { bcCouvreSite } from '@/lib/bc';
 import { useAuthStore } from '@/store/auth.store';
 import { EmployeSelector } from '@/components/EmployeSelector';
@@ -1190,8 +1190,11 @@ function ListView({
                 </div>
 
                 {/* Prestation — desktop only */}
-                <div className="hidden sm:block text-sm text-muted-foreground truncate max-w-[120px]">
-                  {intervention.prestation}
+                <div className="hidden sm:block text-sm text-muted-foreground max-w-[160px] min-w-0">
+                  <div className="truncate">{intervention.prestation}</div>
+                  {intervention.avenant && (
+                    <div className="text-xs text-amber-700 truncate">{libelleAvenant(intervention.avenant)}</div>
+                  )}
                 </div>
               </button>
             ))
@@ -1673,6 +1676,12 @@ function InterventionDetailDialog({
               <div className="min-w-0">
                 <span className="text-muted-foreground">Prestation:</span>
                 <p className="font-medium break-words">{intervention.prestation}</p>
+              </div>
+            )}
+            {intervention.avenant && (
+              <div className="min-w-0">
+                <span className="text-muted-foreground">Avenant:</span>
+                <p className="font-medium break-words text-amber-700">{libelleAvenant(intervention.avenant)}</p>
               </div>
             )}
             {intervention.responsable && (
@@ -3321,6 +3330,11 @@ function MobileDayCard({
             {intervention.prestation && (
               <span className="text-[10px] text-gray-400">{intervention.prestation}</span>
             )}
+            {intervention.avenant && (
+              <span className="text-[10px] font-semibold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
+                {libelleAvenant(intervention.avenant)}
+              </span>
+            )}
           </div>
         </div>
 
@@ -4600,6 +4614,11 @@ export function PlanningPage() {
                               {intervention.prestation}
                             </div>
                           )}
+                          {intervention.avenant && (
+                            <div className="text-xs text-amber-700 truncate">
+                              {libelleAvenant(intervention.avenant)}
+                            </div>
+                          )}
                         </div>
                         <div className="flex flex-col items-end gap-1 shrink-0">
                           {timeRange && (
@@ -4738,7 +4757,7 @@ export function PlanningPage() {
                 contratNom: intervention.contrat?.nom,
                 contratBonsCommandes: (intervention.contrat as any)?.bonsCommandes ?? [],
                 avenant: intervention.avenant
-                  ? { numero: intervention.avenant.numero, nom: intervention.avenant.nom, numeroBonCommande: intervention.avenant.numeroBonCommande }
+                  ? { id: intervention.avenant.id, numero: intervention.avenant.numero, nom: intervention.avenant.nom, numeroBonCommande: intervention.avenant.numeroBonCommande }
                   : undefined,
               },
             });

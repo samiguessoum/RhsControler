@@ -1012,6 +1012,7 @@ export const commerceController = {
             createdAt: true,
             client: { select: { id: true, nomEntreprise: true } },
             site: { select: { id: true, nom: true, ville: true } },
+            avenant: { select: { id: true, numero: true, nom: true } },
             _count: { select: { lignes: true, paiements: true } },
           },
         }),
@@ -1055,6 +1056,7 @@ export const commerceController = {
             },
           },
           site: { select: { id: true, nom: true, ville: true } },
+          avenant: { select: { id: true, numero: true, nom: true } },
           devis: { select: { id: true, ref: true } },
           commande: { select: { id: true, ref: true } },
           lignes: {
@@ -1130,6 +1132,7 @@ export const commerceController = {
             clientId: data.clientId,
             siteId: data.siteId || null,
             contratId: data.contratId || null,
+            avenantId: data.avenantId || null,
             typeDocument: data.typeDocument || null,
             devisId: data.devisId,
             commandeId: data.commandeId,
@@ -1295,6 +1298,7 @@ export const commerceController = {
             notes: data.notes,
             conditions: data.conditions,
             contratId: data.contratId !== undefined ? (data.contratId || null) : undefined,
+            avenantId: data.avenantId !== undefined ? (data.avenantId || null) : undefined,
             mentionSpeciale: data.mentionSpeciale !== undefined ? (data.mentionSpeciale || null) : undefined,
             updatedById: req.user?.id,
             lignes: lignesData

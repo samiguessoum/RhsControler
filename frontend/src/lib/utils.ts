@@ -81,6 +81,12 @@ export function getRoleColor(role: string): string {
   return colors[role] || 'bg-gray-100 text-gray-800';
 }
 
+/** Libellé d'un avenant : « Avenant n°2 · Nom » (nom omis s'il est vide). */
+export function libelleAvenant(avenant: { numero: number; nom?: string | null }): string {
+  const nom = avenant.nom?.trim();
+  return `Avenant n°${avenant.numero}${nom ? ` · ${nom}` : ''}`;
+}
+
 export function truncate(str: string, length: number): string {
   if (str.length <= length) return str;
   return str.slice(0, length) + '...';

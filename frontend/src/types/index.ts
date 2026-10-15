@@ -1586,6 +1586,8 @@ export interface Facture {
   client?: { id: string; nomEntreprise: string; code?: string };
   siteId?: string;
   site?: { id: string; nom: string; ville?: string };
+  avenantId?: string | null;
+  avenant?: { id: string; numero: number; nom?: string | null } | null;
   typeDocument?: TypeDocument;
   devisId?: string;
   commandeId?: string;
@@ -1664,6 +1666,7 @@ export type CreateFactureInput = Omit<CreateDevisInput, 'statut' | 'dateDevis' |
   devisId?: string;
   commandeId?: string;
   contratId?: string;
+  avenantId?: string;
   dateFacture?: string;
   dateOperation?: string;
   dateEcheance?: string;

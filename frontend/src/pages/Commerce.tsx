@@ -83,7 +83,7 @@ import { commerceApi, produitsServicesApi, tiersApi, emailApi } from '@/services
 import SendEmailModal from '@/components/SendEmailModal';
 import type { CreateCommandeInput, CreateDevisInput, CreateFactureInput, ProduitService, Tiers, FactureType, BonLivraison, CreateBonLivraisonInput, BonLivraisonStatut } from '@/types';
 import { useAuthStore } from '@/store/auth.store';
-import { cn } from '@/lib/utils';
+import { cn, libelleAvenant } from '@/lib/utils';
 import {
   EMPTY_LINE,
   TVA_OPTIONS,
@@ -2258,6 +2258,12 @@ function FactureDetailDialog({
                   </p>
                 </div>
               )}
+              {facture.avenant && (
+                <div className="min-w-0">
+                  <span className="text-muted-foreground">Avenant:</span>
+                  <p className="font-medium text-amber-700 break-words">{libelleAvenant(facture.avenant)}</p>
+                </div>
+              )}
               {facture.createdBy && (
                 <div className="min-w-0">
                   <span className="text-muted-foreground">Créé par:</span>
@@ -3014,7 +3020,8 @@ export function CommercePage() {
     return list.filter((f) =>
       f.ref?.toLowerCase().includes(search) ||
       f.client?.nomEntreprise?.toLowerCase().includes(search) ||
-      f.site?.nom?.toLowerCase().includes(search)
+      f.site?.nom?.toLowerCase().includes(search) ||
+      (f.avenant && libelleAvenant(f.avenant).toLowerCase().includes(search))
     );
   }, [facturesData?.factures, searchFactures, statusFilterFactures, typeFilterFactures]);
 
@@ -3104,7 +3111,7 @@ export function CommercePage() {
       contratDateDebutConvention?: string | null;
       contratNom?: string | null;
       contratBonsCommandes?: { numero: string; date?: string | null; sites: { siteId: string }[] }[];
-      avenant?: { numero: number; nom?: string | null; numeroBonCommande?: string | null };
+      avenant?: { id?: string; numero: number; nom?: string | null; numeroBonCommande?: string | null };
     } | null;
 
     if (state?.generateFacture && state.clientId) {
@@ -3120,6 +3127,7 @@ export function CommercePage() {
         clientId: state.clientId,
         siteId: state.siteId || undefined,
         contratId: state.contratId || undefined,
+        avenantId: av?.id,
         typeDocument: 'SERVICE',
         lignes: prestations.map((p) => ({
           ...EMPTY_LINE,
@@ -4583,6 +4591,9 @@ export function CommercePage() {
                               </span>
                             ) : (
                               <span className="text-muted-foreground text-xs">-</span>
+                            )}
+                            {f.avenant && (
+                              <span className="block text-xs text-amber-700 truncate">{libelleAvenant(f.avenant)}</span>
                             )}
                           </TableCell>
                           <TableCell className="hidden md:table-cell text-sm">{formatDate(f.dateFacture)}</TableCell>
