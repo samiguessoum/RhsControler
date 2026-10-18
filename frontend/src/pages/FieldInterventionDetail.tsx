@@ -84,6 +84,15 @@ interface SimpleCheckState {
   commentaire: string;
 }
 
+// Intervalle d'actualisation automatique de la fiche (saisie à plusieurs)
+const LIVE_REFRESH_MS = 5000;
+
+const controlFromServer = (existing?: { statusCode?: string | null; observation?: string | null; insectCounts?: { espece: string; count: number }[] }): ControlFormState => ({
+  statusCode: existing?.statusCode || '',
+  observation: existing?.observation || '',
+  insectCounts: Object.fromEntries((existing?.insectCounts || []).map((ic) => [ic.espece, ic.count])),
+});
+
 // ─── Composant ──────────────────────────────────────────────────────────────
 
 export function FieldInterventionDetailPage() {
@@ -97,6 +106,10 @@ export function FieldInterventionDetailPage() {
     queryKey: ['field-intervention', id],
     queryFn: () => fieldInterventionsApi.get(id!),
     enabled: !!id,
+    // Actualisation automatique tant que la fiche peut encore bouger (saisie à plusieurs, validation bureau).
+    // React Query suspend l'intervalle quand l'onglet est en arrière-plan.
+    refetchInterval: (query) =>
+      ['DRAFT', 'IN_PROGRESS', 'SUBMITTED'].includes(query.state.data?.statut ?? '') ? LIVE_REFRESH_MS : false,
   });
 
   const deviceTypes = useDeviceTypes();
@@ -113,6 +126,12 @@ export function FieldInterventionDetailPage() {
   const initialized = useRef(false);
   // Un timer par deviceId pour n'autosauvegarder que le dispositif modifié
   const deviceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  // Saisies locales pas encore confirmées par le serveur : l'actualisation automatique ne les écrase pas.
+  // Le compteur d'édition évite de lever la protection si l'utilisateur a retouché pendant l'envoi.
+  const pendingDevices = useRef<Map<string, number>>(new Map());
+  const pendingSimpleChecks = useRef<Map<string, number>>(new Map());
+  const lastSyncedProducts = useRef('[]');
+  const commentDirty = useRef(false);
 
   // ── État simple checks ──────────────────────────────────────
   const [simpleChecks, setSimpleChecks] = useState<Record<string, SimpleCheckState>>({});
@@ -134,43 +153,56 @@ export function FieldInterventionDetailPage() {
     queryFn: () => fieldInterventionsApi.getAudit(id!),
     enabled: !!id && isOffice && showAudit,
     staleTime: 30_000,
+    refetchInterval: showAudit ? LIVE_REFRESH_MS * 2 : false,
   });
 
   // ── Navigation ──────────────────────────────────────────────
   const [activeCategory, setActiveCategory] = useState<Category>('boites');
   const [selectedAutreSubType, setSelectedAutreSubType] = useState<string | null>(null);
 
-  // ── Initialisation controls ──────────────────────────────────
+  // ── Initialisation + synchronisation controls ───────────────
+  // À chaque rechargement de la fiche, reprend les valeurs serveur (saisies des collègues),
+  // sauf pour les dispositifs que l'utilisateur est en train de modifier.
   useEffect(() => {
-    if (!fi || initialized.current) return;
+    if (!fi) return;
+    const firstLoad = !initialized.current;
     initialized.current = true;
-    const initial: Record<string, ControlFormState> = {};
-    for (const zone of fi.zoningVersion?.zones || []) {
-      for (const device of zone.devices || []) {
-        const existing = fi.controls?.find((c) => c.deviceId === device.id);
-        initial[device.id] = {
-          statusCode: existing?.statusCode || '',
-          observation: existing?.observation || '',
-          insectCounts: Object.fromEntries(
-            (existing?.insectCounts || []).map((ic) => [ic.espece, ic.count])
-          ),
-        };
+    const serverProducts = fi.products?.length ? fi.products : [];
+    setControls((prev) => {
+      const next: Record<string, ControlFormState> = {};
+      for (const zone of fi.zoningVersion?.zones || []) {
+        for (const device of zone.devices || []) {
+          next[device.id] = !firstLoad && pendingDevices.current.has(device.id) && prev[device.id]
+            ? prev[device.id]
+            : controlFromServer(fi.controls?.find((c) => c.deviceId === device.id));
+        }
       }
-    }
-    setControls(initial);
-    setProducts(fi.products?.length ? fi.products : []);
+      return next;
+    });
+    // Produits : enregistrés via un bouton, on ne remplace que si l'utilisateur n'a rien modifié localement
+    setProducts((prev) => {
+      if (!firstLoad && JSON.stringify(prev) !== lastSyncedProducts.current) return prev;
+      lastSyncedProducts.current = JSON.stringify(serverProducts);
+      return serverProducts;
+    });
   }, [fi]);
 
-  // ── Initialisation simple checks ─────────────────────────────
+  // ── Initialisation + synchronisation simple checks ───────────
   useEffect(() => {
-    if (!fi || simpleInitialized.current) return;
+    if (!fi) return;
+    const firstLoad = !simpleInitialized.current;
     simpleInitialized.current = true;
-    const init: Record<string, SimpleCheckState> = {};
-    for (const sc of fi.simpleChecks || []) {
-      const key = sc.subType ? `${sc.category}_${sc.subType}` : sc.category;
-      init[key] = { statut: sc.statut ?? '', commentaire: sc.commentaire ?? '' };
-    }
-    setSimpleChecks(init);
+    setSimpleChecks((prev) => {
+      const next: Record<string, SimpleCheckState> = {};
+      for (const sc of fi.simpleChecks || []) {
+        const key = sc.subType ? `${sc.category}_${sc.subType}` : sc.category;
+        next[key] = { statut: sc.statut ?? '', commentaire: sc.commentaire ?? '' };
+      }
+      if (!firstLoad) {
+        for (const key of pendingSimpleChecks.current.keys()) if (prev[key]) next[key] = prev[key];
+      }
+      return next;
+    });
   }, [fi]);
 
   const isEditable = fi ? ['DRAFT', 'IN_PROGRESS'].includes(fi.statut) : false;
@@ -192,8 +224,10 @@ export function FieldInterventionDetailPage() {
     if (!isEditable) return;
     if (deviceTimers.current[deviceId]) clearTimeout(deviceTimers.current[deviceId]);
     deviceTimers.current[deviceId] = setTimeout(async () => {
+      const version = pendingDevices.current.get(deviceId);
       try {
         await fieldInterventionsApi.upsertControls(id!, buildSinglePayload(deviceId, state));
+        if (pendingDevices.current.get(deviceId) === version) pendingDevices.current.delete(deviceId);
         qc.invalidateQueries({ queryKey: ['field-intervention', id] });
       } catch (err: any) {
         toast.error(err?.response?.data?.error || "Erreur lors de l'enregistrement");
@@ -208,8 +242,13 @@ export function FieldInterventionDetailPage() {
     if (touchedDevices.current.size === 0) return;
     setIsSaving(true);
     try {
-      const payload = [...touchedDevices.current].map((deviceId) => buildSinglePayload(deviceId, state[deviceId])[0]);
+      const deviceIds = [...touchedDevices.current];
+      const versions = new Map(deviceIds.map((d) => [d, pendingDevices.current.get(d)]));
+      const payload = deviceIds.map((deviceId) => buildSinglePayload(deviceId, state[deviceId])[0]);
       await fieldInterventionsApi.upsertControls(id!, payload);
+      for (const d of deviceIds) {
+        if (pendingDevices.current.get(d) === versions.get(d)) pendingDevices.current.delete(d);
+      }
       qc.invalidateQueries({ queryKey: ['field-intervention', id] });
     } catch (err: any) {
       toast.error(err?.response?.data?.error || "Erreur lors de l'enregistrement");
@@ -218,8 +257,13 @@ export function FieldInterventionDetailPage() {
     }
   };
 
+  const markDevicePending = (deviceId: string) => {
+    pendingDevices.current.set(deviceId, (pendingDevices.current.get(deviceId) ?? 0) + 1);
+  };
+
   const updateControl = (deviceId: string, patch: Partial<ControlFormState>) => {
     touchedDevices.current.add(deviceId);
+    markDevicePending(deviceId);
     setControls((prev) => {
       const updated = { ...prev[deviceId], ...patch };
       scheduleDeviceSave(deviceId, updated);
@@ -229,6 +273,7 @@ export function FieldInterventionDetailPage() {
 
   const updateInsectCount = (deviceId: string, espece: string, count: number) => {
     touchedDevices.current.add(deviceId);
+    markDevicePending(deviceId);
     setControls((prev) => {
       const updated = {
         ...prev[deviceId],
@@ -243,16 +288,21 @@ export function FieldInterventionDetailPage() {
   const updateSimpleCheck = (category: FICheckCategory, subType: string, patch: Partial<SimpleCheckState>) => {
     if (!isEditable) return;
     const key = subType ? `${category}_${subType}` : category;
+    pendingSimpleChecks.current.set(key, (pendingSimpleChecks.current.get(key) ?? 0) + 1);
     setSimpleChecks((prev) => {
       const current = prev[key] ?? { statut: '', commentaire: '' };
       const next = { ...prev, [key]: { ...current, ...patch } };
       if (simpleCheckTimers.current[key]) clearTimeout(simpleCheckTimers.current[key]);
       simpleCheckTimers.current[key] = setTimeout(() => {
+        const version = pendingSimpleChecks.current.get(key);
         fieldInterventionsApi.upsertSimpleCheck(id!, {
           category,
           subType: subType || undefined,
           statut: next[key].statut || undefined,
           commentaire: next[key].commentaire || undefined,
+        }).then(() => {
+          if (pendingSimpleChecks.current.get(key) === version) pendingSimpleChecks.current.delete(key);
+          qc.invalidateQueries({ queryKey: ['field-intervention', id] });
         }).catch((err: any) => toast.error(err?.response?.data?.error || 'Erreur lors de l\'enregistrement'));
       }, 800);
       return next;
@@ -262,7 +312,9 @@ export function FieldInterventionDetailPage() {
   // ── Produits ─────────────────────────────────────────────────
   const productsMutation = useMutation({
     mutationFn: (payload: Partial<FIProduct>[]) => fieldInterventionsApi.upsertProducts(id!, payload),
-    onSuccess: () => {
+    onSuccess: (_data, payload) => {
+      // La liste enregistrée devient la référence : la prochaine actualisation peut la remplacer
+      lastSyncedProducts.current = JSON.stringify(payload);
       qc.invalidateQueries({ queryKey: ['field-intervention', id] });
       toast.success('Produits enregistrés');
     },
@@ -284,13 +336,20 @@ export function FieldInterventionDetailPage() {
   });
 
   const [commentaire, setCommentaire] = useState('');
-  useEffect(() => { if (fi) setCommentaire(fi.commentaire || ''); }, [fi?.id]);
+  const commentaireRef = useRef('');
+  // Reprend le commentaire serveur, sauf pendant que l'utilisateur le modifie
+  useEffect(() => { if (fi && !commentDirty.current) setCommentaire(fi.commentaire || ''); }, [fi]);
   const commentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const commentMutation = useMutation({
     mutationFn: (value: string) => fieldInterventionsApi.update(id!, { commentaire: value }),
+    onSuccess: (_data, value) => {
+      if (commentaireRef.current === value) commentDirty.current = false;
+    },
     onError: (error: any) => toast.error(error?.response?.data?.error || "Erreur lors de l'enregistrement"),
   });
   const onCommentChange = (value: string) => {
+    commentDirty.current = true;
+    commentaireRef.current = value;
     setCommentaire(value);
     if (commentTimer.current) clearTimeout(commentTimer.current);
     commentTimer.current = setTimeout(() => commentMutation.mutate(value), 1000);
