@@ -361,6 +361,11 @@ export const fieldReportService = {
 
     if (interventions.length === 0) throw new AppError(400, 'Aucune donnée sur cette période');
 
+    // Types de dispositifs : le mode détermine la feuille du rapport
+    const deviceTypes = await prisma.deviceTypeConfig.findMany();
+    const typeConfig = new Map(deviceTypes.map((t) => [t.code, t]));
+    const SHORT_LABELS: Record<string, string> = { BAIT_STATION: 'Boite', MECHANICAL_TRAP: 'Piège', GLUE_TRAP: 'Colle', FLYING_INSECT_KILLER: 'FK' };
+
     // ── Collecte brute ────────────────────────────────────────────────────────
     type RawFK   = { visite: string; date: string; zone: string; num: string; counts: Record<string, number>; obs: string };
     type RawCtrl = { visite: string; date: string; zone: string; typeLabel: string; num: string; etat: string; obs: string };
@@ -378,16 +383,18 @@ export const fieldReportService = {
         const num       = String(ctrl.device.displayNumber ?? '');
         const obs       = ctrl.observation ?? '';
         const type      = ctrl.device.type;
-        const typeLabel = type === 'BAIT_STATION' ? 'Boite' : type === 'MECHANICAL_TRAP' ? 'Piège' : type === 'GLUE_TRAP' ? 'Colle' : 'FK';
+        const config    = typeConfig.get(type);
+        const mode      = config?.mode ?? 'PIEGE';
+        const typeLabel = SHORT_LABELS[type] ?? config?.label ?? type;
 
-        if (type === 'FLYING_INSECT_KILLER') {
+        if (mode === 'COMPTAGE') {
           const counts: Record<string, number> = { Mouches: 0, Moustiques: 0, Abeilles: 0, Papillon: 0, Autres: 0 };
           for (const ic of ctrl.insectCounts) {
             if (ic.espece in counts) counts[ic.espece] = ic.count;
             else counts['Autres'] += ic.count;
           }
           fkRows.push({ visite, date: dateStr, zone, num, counts, obs });
-        } else if (type === 'BAIT_STATION') {
+        } else if (mode === 'APPATAGE') {
           boiteRows.push({ visite, date: dateStr, zone, typeLabel, num, etat: ctrl.statusCode ?? '', obs });
         } else {
           piegeRows.push({ visite, date: dateStr, zone, typeLabel, num, etat: ctrl.statusCode ?? '', obs });

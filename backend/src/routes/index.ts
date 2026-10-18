@@ -538,6 +538,12 @@ router.get('/zoning-versions/:versionId/import-template', authMiddleware, zoning
 router.post('/zoning-versions/:versionId/import', authMiddleware, canDo('manageInterventions'), zoningImportUpload.single('file'), zoningController.importZoning);
 
 // ControlStatus (référentiel)
+// Types de dispositifs (paramétrables)
+router.get('/device-types', authMiddleware, zoningController.listDeviceTypes);
+router.post('/device-types', authMiddleware, canDo('manageSettings'), zoningController.createDeviceType);
+router.patch('/device-types/:id', authMiddleware, canDo('manageSettings'), zoningController.updateDeviceType);
+router.delete('/device-types/:id', authMiddleware, canDo('manageSettings'), zoningController.deleteDeviceType);
+
 router.get('/control-statuses', authMiddleware, zoningController.listControlStatuses);
 router.post('/control-statuses', authMiddleware, canDo('manageSettings'), zoningController.createControlStatus);
 router.patch('/control-statuses/:id', authMiddleware, canDo('manageSettings'), zoningController.updateControlStatus);

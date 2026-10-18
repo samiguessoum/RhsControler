@@ -62,6 +62,7 @@ import {
 } from '@/components/ui/select';
 import api, { zoningApi, fieldInterventionsApi, fieldReportsApi, interventionsApi, reclamationsApi } from '@/services/api';
 import { formatDate, cn } from '@/lib/utils';
+import { useDeviceTypes } from '@/lib/deviceTypes';
 import type {
   Site,
   ZoningVersion,
@@ -80,20 +81,6 @@ import type {
 } from '@/types';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const DEVICE_TYPE_LABELS: Record<DeviceType, string> = {
-  BAIT_STATION: "Poste d'appâtage",
-  MECHANICAL_TRAP: 'Piège mécanique',
-  GLUE_TRAP: 'Boîte à colle',
-  FLYING_INSECT_KILLER: 'Destructeur insectes (FK)',
-};
-
-const DEVICE_TYPE_COLORS: Record<DeviceType, string> = {
-  BAIT_STATION: 'bg-orange-100 text-orange-800',
-  MECHANICAL_TRAP: 'bg-red-100 text-red-800',
-  GLUE_TRAP: 'bg-yellow-100 text-yellow-800',
-  FLYING_INSECT_KILLER: 'bg-blue-100 text-blue-800',
-};
 
 const DEVICE_STATUT_COLORS: Record<DeviceStatut, string> = {
   ACTIVE: 'bg-green-100 text-green-700',
@@ -799,7 +786,9 @@ function ZoneCard({
   const [zoneForm, setZoneForm] = useState({ nom: zone.nom, etage: zone.etage ?? '', description: zone.description ?? '' });
 
   // ── Add form (simplifié : type + quantité) ──
-  const [addType, setAddType] = useState<DeviceType>('BAIT_STATION');
+  const deviceTypes = useDeviceTypes();
+  const [addType, setAddType] = useState<DeviceType>('');
+  const selectedAddType = addType || deviceTypes.activeTypes[0]?.code || '';
   const [addQty, setAddQty] = useState(1);
   const [addNom, setAddNom] = useState('');
   const [addNotes, setAddNotes] = useState('');
@@ -811,10 +800,11 @@ function ZoneCard({
 
   const addDevicesMut = useMutation({
     mutationFn: async () => {
-      const start = (maxByType[addType] ?? 0) + 1;
+      if (!selectedAddType) throw new Error('Aucun type de dispositif actif');
+      const start = (maxByType[selectedAddType] ?? 0) + 1;
       for (let i = 0; i < addQty; i++) {
         await zoningApi.createDevice(zone.id, {
-          type: addType,
+          type: selectedAddType,
           displayNumber: String(start + i).padStart(2, '0'),
           nom: addNom || null,
           notes: addNotes || null,
@@ -830,7 +820,7 @@ function ZoneCard({
       setAddNotes('');
       toast.success(addQty === 1 ? 'Dispositif ajouté' : `${addQty} dispositifs ajoutés`);
     },
-    onError: (error: any) => toast.error(error?.response?.data?.error || "Erreur lors de l'ajout"),
+    onError: (error: any) => toast.error(error?.response?.data?.error || error?.message || "Erreur lors de l'ajout"),
   });
 
   const updateDeviceMut = useMutation({
@@ -880,7 +870,7 @@ function ZoneCard({
   });
 
   // Numéros prévus pour le prochain ajout
-  const startNum = (maxByType[addType] ?? 0) + 1;
+  const startNum = (maxByType[selectedAddType] ?? 0) + 1;
   const endNum = startNum + addQty - 1;
   const preview = addQty === 1 ? `#${String(startNum).padStart(2, '0')}` : `#${String(startNum).padStart(2, '0')} → #${String(endNum).padStart(2, '0')}`;
 
@@ -923,26 +913,27 @@ function ZoneCard({
 
       {devices.length > 0 ? (
         <div className="grid grid-cols-2 gap-2">
-          {devices.map((device) => (
+          {devices.map((device) => {
+            const dt = deviceTypes.get(device.type);
+            return (
             <button
               key={device.id}
               onClick={() => {
                 setEditForm({ displayNumber: device.displayNumber, nom: device.nom ?? '', notes: device.notes ?? '', statut: device.statut });
                 setEditDevice(device);
               }}
-              className={cn(
-                'flex items-center gap-2 p-2 rounded border text-xs text-left hover:opacity-80 transition-opacity',
-                DEVICE_TYPE_COLORS[device.type]
-              )}
+              className="flex items-center gap-2 p-2 rounded border text-xs text-left hover:opacity-80 transition-opacity"
+              style={{ backgroundColor: `${dt.color}1a`, borderColor: `${dt.color}55`, color: dt.color }}
             >
-              <Bug className="h-3 w-3 shrink-0" />
+              {dt.emoji ? <span className="shrink-0 leading-none">{dt.emoji}</span> : <Bug className="h-3 w-3 shrink-0" />}
               <span className="font-medium">#{device.displayNumber}</span>
-              <span className="truncate flex-1">{DEVICE_TYPE_LABELS[device.type]}</span>
+              <span className="truncate flex-1 text-gray-800">{dt.label}</span>
               <span className={cn('px-1 rounded text-xs', DEVICE_STATUT_COLORS[device.statut])}>
                 {device.statut === 'ACTIVE' ? '●' : device.statut === 'REMOVED' ? '✕' : '○'}
               </span>
             </button>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <p className="text-xs text-gray-400">Aucun dispositif</p>
@@ -957,14 +948,15 @@ function ZoneCard({
           <div className="space-y-4 py-2">
             <div className="space-y-1">
               <Label>Type *</Label>
-              <Select value={addType} onValueChange={(v) => setAddType(v as DeviceType)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select value={selectedAddType} onValueChange={(v) => setAddType(v)}>
+                <SelectTrigger><SelectValue placeholder="Aucun type actif" /></SelectTrigger>
                 <SelectContent>
-                  {(Object.entries(DEVICE_TYPE_LABELS) as [DeviceType, string][]).map(([k, label]) => (
-                    <SelectItem key={k} value={k}>{label}</SelectItem>
+                  {deviceTypes.activeTypes.map((t) => (
+                    <SelectItem key={t.code} value={t.code}>{t.emoji ? `${t.emoji} ` : ''}{t.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">Les types se gèrent dans Paramètres → Dispositifs.</p>
             </div>
             <div className="space-y-1">
               <Label>Quantité</Label>
@@ -992,7 +984,7 @@ function ZoneCard({
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddDevice(false)}>Annuler</Button>
-            <Button onClick={() => addDevicesMut.mutate()} disabled={addDevicesMut.isPending}>
+            <Button onClick={() => addDevicesMut.mutate()} disabled={addDevicesMut.isPending || !selectedAddType}>
               {addDevicesMut.isPending ? 'Ajout…' : addQty === 1 ? 'Ajouter' : `Ajouter ${addQty}`}
             </Button>
           </DialogFooter>
@@ -1003,7 +995,7 @@ function ZoneCard({
       <Dialog open={!!editDevice} onOpenChange={(o) => { if (!o) setEditDevice(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Modifier — {editDevice ? DEVICE_TYPE_LABELS[editDevice.type] : ''} #{editDevice?.displayNumber}</DialogTitle>
+            <DialogTitle>Modifier — {editDevice ? deviceTypes.get(editDevice.type).label : ''} #{editDevice?.displayNumber}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1">

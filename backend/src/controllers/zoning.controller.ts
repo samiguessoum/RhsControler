@@ -6,16 +6,23 @@ import { createAuditLog } from './audit.controller.js';
 import { AppError } from '../lib/errors.js';
 import logger from '../lib/logger.js';
 
-const DEVICE_TYPE_MAP: Record<string, string> = {
-  BAIT_STATION: 'BAIT_STATION',
-  MECHANICAL_TRAP: 'MECHANICAL_TRAP',
-  GLUE_TRAP: 'GLUE_TRAP',
-  FLYING_INSECT_KILLER: 'FLYING_INSECT_KILLER',
-  "Poste d'appâtage": 'BAIT_STATION',
-  'Piège mécanique': 'MECHANICAL_TRAP',
-  'Boîte à colle': 'GLUE_TRAP',
-  'Destructeur insectes': 'FLYING_INSECT_KILLER',
+// Anciens libellés acceptés à l'import en plus du code et du libellé configurés
+const LEGACY_DEVICE_TYPE_ALIASES: Record<string, string> = {
+  'destructeur insectes': 'FLYING_INSECT_KILLER',
 };
+
+const DEVICE_TYPE_MODES = ['APPATAGE', 'PIEGE', 'COMPTAGE'];
+
+const normalize = (s: string) => s.trim().toLowerCase();
+
+// Code technique dérivé du libellé : "Station d'humidité" → "STATION_D_HUMIDITE"
+const toDeviceTypeCode = (s: string) =>
+  s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
+
+async function assertDeviceType(code: string) {
+  const exists = await prisma.deviceTypeConfig.findUnique({ where: { code } });
+  if (!exists) throw new AppError(400, `Type de dispositif inconnu : ${code}`);
+}
 
 // ─── ZoningVersion ────────────────────────────────────────────────────────────
 
@@ -187,6 +194,7 @@ export const zoningController = {
       const { zoneId } = req.params;
       const { type, displayNumber, nom, statut, dateInstallation, planId, planX, planY, notes, metadata } = req.body;
       if (!type || !displayNumber) throw new AppError(400, 'type et displayNumber sont requis');
+      await assertDeviceType(type);
 
       const zone = await prisma.zone.findUnique({ where: { id: zoneId } });
       if (!zone) throw new AppError(404, 'Zone introuvable');
@@ -264,6 +272,101 @@ export const zoningController = {
   // ─── ControlStatus ──────────────────────────────────────────────────────────
 
   // GET /api/control-statuses
+  // GET /api/device-types?all=true
+  async listDeviceTypes(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const all = req.query.all === 'true';
+      const types = await prisma.deviceTypeConfig.findMany({
+        where: all ? {} : { actif: true },
+        orderBy: [{ ordre: 'asc' }, { label: 'asc' }],
+      });
+      if (!all) return res.json(types);
+      const counts = await prisma.monitoringDevice.groupBy({ by: ['type'], _count: { _all: true } });
+      const countMap = new Map(counts.map((c) => [c.type, c._count._all]));
+      res.json(types.map((t) => ({ ...t, devicesCount: countMap.get(t.code) ?? 0 })));
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // POST /api/device-types
+  async createDeviceType(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { code, label, abreviation, emoji, color, mode, ordre } = req.body;
+      if (!label?.trim() || !abreviation?.trim()) throw new AppError(400, 'Libellé et abréviation sont requis');
+      if (mode && !DEVICE_TYPE_MODES.includes(mode)) throw new AppError(400, 'Mode invalide');
+      const finalCode = toDeviceTypeCode(code?.trim() || label);
+      if (!finalCode) throw new AppError(400, 'Code invalide');
+      const existing = await prisma.deviceTypeConfig.findUnique({ where: { code: finalCode } });
+      if (existing) throw new AppError(409, `Le code ${finalCode} existe déjà`);
+      let finalOrdre = ordre;
+      if (finalOrdre == null) {
+        const last = await prisma.deviceTypeConfig.aggregate({ _max: { ordre: true } });
+        finalOrdre = (last._max.ordre ?? 0) + 1;
+      }
+      const type = await prisma.deviceTypeConfig.create({
+        data: {
+          code: finalCode,
+          label: label.trim(),
+          abreviation: abreviation.trim().toUpperCase().slice(0, 4),
+          emoji: emoji?.trim() || null,
+          color: color || '#2563eb',
+          mode: mode || 'APPATAGE',
+          ordre: finalOrdre,
+        },
+      });
+      await createAuditLog(req.user!.id, 'CREATE', 'DeviceTypeConfig', type.id, { after: type });
+      res.status(201).json(type);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // PATCH /api/device-types/:id — le code est immuable (stocké sur les dispositifs)
+  async updateDeviceType(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { label, abreviation, emoji, color, mode, actif, ordre } = req.body;
+      if (mode !== undefined && !DEVICE_TYPE_MODES.includes(mode)) throw new AppError(400, 'Mode invalide');
+      const before = await prisma.deviceTypeConfig.findUnique({ where: { id } });
+      if (!before) throw new AppError(404, 'Type de dispositif introuvable');
+      const type = await prisma.deviceTypeConfig.update({
+        where: { id },
+        data: {
+          label: label?.trim() || undefined,
+          abreviation: abreviation?.trim() ? abreviation.trim().toUpperCase().slice(0, 4) : undefined,
+          emoji: emoji !== undefined ? emoji?.trim() || null : undefined,
+          color,
+          mode,
+          actif,
+          ordre,
+        },
+      });
+      await createAuditLog(req.user!.id, 'UPDATE', 'DeviceTypeConfig', id, { before, after: type });
+      res.json(type);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  // DELETE /api/device-types/:id — refusé si des dispositifs l'utilisent (désactiver à la place)
+  async deleteDeviceType(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const type = await prisma.deviceTypeConfig.findUnique({ where: { id } });
+      if (!type) throw new AppError(404, 'Type de dispositif introuvable');
+      const used = await prisma.monitoringDevice.count({ where: { type: type.code } });
+      if (used > 0) {
+        throw new AppError(409, `${used} dispositif(s) utilisent ce type : désactivez-le plutôt que de le supprimer`);
+      }
+      await prisma.deviceTypeConfig.delete({ where: { id } });
+      await createAuditLog(req.user!.id, 'DELETE', 'DeviceTypeConfig', id, { before: type });
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async listControlStatuses(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const statuses = await prisma.controlStatus.findMany({
@@ -322,6 +425,8 @@ export const zoningController = {
       headerRow.font = { bold: true };
       headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
 
+      const deviceTypes = await prisma.deviceTypeConfig.findMany({ where: { actif: true }, orderBy: { ordre: 'asc' } });
+
       // Example rows
       const examples = [
         ['Administration', 'RDC', 'BAIT_STATION', '01', '', ''],
@@ -336,12 +441,7 @@ export const zoningController = {
       const legend = wb.addWorksheet('Types valides');
       legend.columns = [{ header: 'Code à utiliser', key: 'code', width: 26 }, { header: 'Description', key: 'desc', width: 30 }];
       legend.getRow(1).font = { bold: true };
-      [
-        ['BAIT_STATION', "Poste d'appâtage"],
-        ['MECHANICAL_TRAP', 'Piège mécanique'],
-        ['GLUE_TRAP', 'Boîte à colle'],
-        ['FLYING_INSECT_KILLER', 'Destructeur insectes volants (FK)'],
-      ].forEach((r) => legend.addRow(r));
+      deviceTypes.forEach((t) => legend.addRow([t.code, t.label]));
 
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', 'attachment; filename="template-zoning.xlsx"');
@@ -387,12 +487,21 @@ export const zoningController = {
       // Pre-populate with existing zones
       version.zones.forEach((z) => zonesMap.set(z.nom, z.id));
 
+      // Type accepté par code ou par libellé (insensible à la casse)
+      const deviceTypes = await prisma.deviceTypeConfig.findMany({ where: { actif: true } });
+      const typeMap = new Map<string, string>();
+      for (const [alias, code] of Object.entries(LEGACY_DEVICE_TYPE_ALIASES)) typeMap.set(alias, code);
+      for (const t of deviceTypes) {
+        typeMap.set(normalize(t.code), t.code);
+        typeMap.set(normalize(t.label), t.code);
+      }
+
       let createdZones = 0;
       let createdDevices = 0;
       let skippedRows = 0;
 
       for (const row of rows) {
-        const deviceType = DEVICE_TYPE_MAP[row.type];
+        const deviceType = typeMap.get(normalize(row.type));
         if (!deviceType) { skippedRows++; continue; }
 
         let zoneId = zonesMap.get(row.zone);
@@ -409,7 +518,7 @@ export const zoningController = {
           data: {
             zoningVersionId: versionId,
             zoneId,
-            type: deviceType as any,
+            type: deviceType,
             displayNumber: row.numero,
             nom: row.nom || null,
             notes: row.notes || null,

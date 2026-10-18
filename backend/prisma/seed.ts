@@ -676,6 +676,18 @@ async function main() {
     });
   }
 
+  // ============ DEVICE TYPES (ZONING) ============
+  console.log('Upserting device types...');
+  const deviceTypes = [
+    { code: 'BAIT_STATION',         label: "Poste d'appâtage",          abreviation: 'BA', emoji: '🐀', color: '#2563eb', mode: 'APPATAGE', ordre: 1 },
+    { code: 'MECHANICAL_TRAP',      label: 'Piège mécanique',           abreviation: 'PM', emoji: '🪤', color: '#f97316', mode: 'PIEGE',    ordre: 2 },
+    { code: 'GLUE_TRAP',            label: 'Boîte à colle',             abreviation: 'BC', emoji: '⬛', color: '#9333ea', mode: 'PIEGE',    ordre: 3 },
+    { code: 'FLYING_INSECT_KILLER', label: 'Destructeur insectes (FK)', abreviation: 'FK', emoji: '⚡', color: '#16a34a', mode: 'COMPTAGE', ordre: 4 },
+  ];
+  for (const t of deviceTypes) {
+    await prisma.deviceTypeConfig.upsert({ where: { code: t.code }, update: {}, create: t });
+  }
+
   console.log('✅ Seeding completed!');
   console.log('\n📋 Comptes de test:');
   console.log('   Direction: direction@rhs.dz / password123');

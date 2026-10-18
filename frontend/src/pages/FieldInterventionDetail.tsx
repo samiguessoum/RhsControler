@@ -39,6 +39,7 @@ import type {
   FICheckCategory,
 } from '@/types';
 import { useAuthStore } from '@/store/auth.store';
+import { useDeviceTypes } from '@/lib/deviceTypes';
 
 // ─── Constantes ────────────────────────────────────────────────────────────
 
@@ -50,23 +51,7 @@ const FI_STATUT_CONFIG: Record<FieldInterventionStatut, { label: string; color: 
   CANCELLED:   { label: 'Annulée',    color: 'bg-red-100 text-red-700',     icon: XCircle },
 };
 
-const DEVICE_TYPE_LABELS: Record<DeviceType, string> = {
-  BAIT_STATION: "Poste d'appâtage",
-  MECHANICAL_TRAP: 'Piège mécanique',
-  GLUE_TRAP: 'Boîte à colle',
-  FLYING_INSECT_KILLER: 'Destructeur FK',
-};
-
-const DEVICE_TYPE_STYLE: Record<DeviceType, { bg: string; text: string; code: string; emoji: string }> = {
-  BAIT_STATION:        { bg: 'bg-blue-600',   text: 'text-white', code: 'BA', emoji: '🐀' },
-  MECHANICAL_TRAP:     { bg: 'bg-orange-500', text: 'text-white', code: 'PM', emoji: '🪤' },
-  GLUE_TRAP:           { bg: 'bg-purple-600', text: 'text-white', code: 'BC', emoji: '⬛' },
-  FLYING_INSECT_KILLER:{ bg: 'bg-green-600',  text: 'text-white', code: 'FK', emoji: '⚡' },
-};
-
 const INSECT_ESPECES = ['Mouches', 'Moustiques', 'Abeilles', 'Papillons', 'Autres'];
-
-const BOITES_TYPES: DeviceType[] = ['BAIT_STATION', 'MECHANICAL_TRAP', 'GLUE_TRAP'];
 
 const AUTRE_SUBTYPES = [
   { key: 'ANTI_SERPENTS', label: 'Lutte anti-serpents' },
@@ -113,6 +98,8 @@ export function FieldInterventionDetailPage() {
     queryFn: () => fieldInterventionsApi.get(id!),
     enabled: !!id,
   });
+
+  const deviceTypes = useDeviceTypes();
 
   const { data: controlStatuses = [] } = useQuery<ControlStatus[]>({
     queryKey: ['control-statuses'],
@@ -336,12 +323,14 @@ export function FieldInterventionDetailPage() {
 
   // Dispositifs regroupés par type, triés, pour chaque catégorie
   const devicesByType = useMemo(() => {
-    const typeOrder: DeviceType[] = ['BAIT_STATION', 'MECHANICAL_TRAP', 'GLUE_TRAP', 'FLYING_INSECT_KILLER'];
     const allDevices = zones.flatMap((z) =>
       (z.devices || []).map((d) => ({ ...d, zoneName: z.nom, zoneEtage: z.etage }))
     );
+    // Ordre des paramètres, puis types inconnus éventuels
+    const typeOrder: DeviceType[] = [...new Set([...deviceTypes.types.map((t) => t.code), ...allDevices.map((d) => d.type)])];
     return typeOrder.map((type) => ({
       type,
+      config: deviceTypes.get(type),
       devices: allDevices
         .filter((d) => d.type === type)
         .sort((a, b) => {
@@ -349,10 +338,11 @@ export function FieldInterventionDetailPage() {
           return !isNaN(na) && !isNaN(nb) ? na - nb : a.displayNumber.localeCompare(b.displayNumber);
         }),
     })).filter((g) => g.devices.length > 0);
-  }, [zones]);
+  }, [zones, deviceTypes]);
 
-  const hasBoites = devicesByType.some((g) => BOITES_TYPES.includes(g.type));
-  const hasFK = devicesByType.some((g) => g.type === 'FLYING_INSECT_KILLER');
+  const isComptage = (type: DeviceType) => deviceTypes.get(type).mode === 'COMPTAGE';
+  const hasBoites = devicesByType.some((g) => g.config.mode !== 'COMPTAGE');
+  const hasFK = devicesByType.some((g) => g.config.mode === 'COMPTAGE');
 
   // ── Loading / not found ──────────────────────────────────────
   if (isLoading) {
@@ -374,16 +364,19 @@ export function FieldInterventionDetailPage() {
     const savedControl = fi.controls?.find((c) => c.deviceId === device.id);
     const filledBy = (savedControl as any)?.updatedBy;
     const hasContent = state.statusCode || state.observation || Object.values(insectCounts).some((v) => v > 0);
-    const typeStyle = DEVICE_TYPE_STYLE[device.type as DeviceType];
+    const typeConfig = deviceTypes.get(device.type);
 
     return (
       <Card key={device.id} className={cn('overflow-hidden', hasContent ? 'border-2 border-blue-300' : 'border border-gray-200')}>
         {/* En-tête : numéro + type */}
         <div className={cn('flex items-center gap-4 px-4 py-3', hasContent ? 'bg-blue-50' : 'bg-gray-50')}>
           {/* Badge type */}
-          <div className={cn('w-14 h-14 rounded-2xl flex flex-col items-center justify-center shrink-0 shadow-sm', typeStyle.bg, typeStyle.text)}>
-            <span className="text-lg leading-none">{typeStyle.emoji}</span>
-            <span className="text-xs font-bold mt-0.5">{typeStyle.code}</span>
+          <div
+            className="w-14 h-14 rounded-2xl flex flex-col items-center justify-center shrink-0 shadow-sm text-white"
+            style={{ backgroundColor: typeConfig.color }}
+          >
+            {typeConfig.emoji && <span className="text-lg leading-none">{typeConfig.emoji}</span>}
+            <span className="text-xs font-bold mt-0.5">{typeConfig.abreviation}</span>
           </div>
           {/* Numéro */}
           <div className="flex-1 min-w-0">
@@ -409,7 +402,7 @@ export function FieldInterventionDetailPage() {
 
         <CardContent className="px-4 pt-3 pb-4 space-y-3">
           {/* Pastilles statut + observation — masqués pour FK */}
-          {device.type !== 'FLYING_INSECT_KILLER' && (
+          {!isComptage(device.type) && (
             <>
               <div className="flex flex-wrap gap-2">
                 {sortedStatuses.map((cs) => {
@@ -446,7 +439,7 @@ export function FieldInterventionDetailPage() {
           )}
 
           {/* Comptage insectes FK */}
-          {device.type === 'FLYING_INSECT_KILLER' && (
+          {isComptage(device.type) && (
             <div className="space-y-3 pt-1">
               <p className="text-sm font-bold text-gray-600">Comptage insectes</p>
               {INSECT_ESPECES.map((espece) => {
@@ -550,12 +543,11 @@ export function FieldInterventionDetailPage() {
   // ── Contenu de la catégorie active ──────────────────────────
   const renderCategoryContent = () => {
     if (activeCategory === 'boites') {
-      const boitesGroups = devicesByType.filter((g) => BOITES_TYPES.includes(g.type));
+      const boitesGroups = devicesByType.filter((g) => g.config.mode !== 'COMPTAGE');
       if (boitesGroups.length === 0) {
         return <p className="text-center text-gray-400 py-8">Aucune boîte dans ce zonage.</p>;
       }
-      return boitesGroups.map(({ type, devices }) => {
-        const typeStyle = DEVICE_TYPE_STYLE[type];
+      return boitesGroups.map(({ type, config, devices }) => {
         const filled = devices.filter((d) => {
           const s = controls[d.id];
           return s?.statusCode || s?.observation;
@@ -563,10 +555,10 @@ export function FieldInterventionDetailPage() {
         return (
           <div key={type} className="space-y-3">
             {/* En-tête type */}
-            <div className={cn('flex items-center gap-3 px-4 py-3 rounded-2xl', typeStyle.bg)}>
-              <span className="text-2xl">{typeStyle.emoji}</span>
+            <div className="flex items-center gap-3 px-4 py-3 rounded-2xl" style={{ backgroundColor: config.color }}>
+              {config.emoji && <span className="text-2xl">{config.emoji}</span>}
               <div className="flex-1">
-                <p className={cn('font-bold text-base', typeStyle.text)}>{DEVICE_TYPE_LABELS[type]}</p>
+                <p className="font-bold text-base text-white">{config.label}</p>
                 <p className="text-white/70 text-xs">{devices.length} dispositif{devices.length > 1 ? 's' : ''}</p>
               </div>
               {filled > 0 && (
@@ -582,30 +574,30 @@ export function FieldInterventionDetailPage() {
     }
 
     if (activeCategory === 'fk') {
-      const fkGroups = devicesByType.filter((g) => g.type === 'FLYING_INSECT_KILLER');
+      const fkGroups = devicesByType.filter((g) => g.config.mode === 'COMPTAGE');
       if (fkGroups.length === 0) {
         return <p className="text-center text-gray-400 py-8">Aucun destructeur d'insectes dans ce zonage.</p>;
       }
-      const { bg, text, emoji } = DEVICE_TYPE_STYLE.FLYING_INSECT_KILLER;
-      const devices = fkGroups[0].devices;
-      const filled = devices.filter((d) => controls[d.id]?.statusCode).length;
-      return (
-        <div className="space-y-3">
-          <div className={cn('flex items-center gap-3 px-4 py-3 rounded-2xl', bg)}>
-            <span className="text-2xl">{emoji}</span>
-            <div className="flex-1">
-              <p className={cn('font-bold text-base', text)}>Destructeurs FK</p>
-              <p className="text-white/70 text-xs">{devices.length} dispositif{devices.length > 1 ? 's' : ''}</p>
+      return fkGroups.map(({ type, config, devices }) => {
+        const filled = devices.filter((d) => controls[d.id]?.statusCode).length;
+        return (
+          <div key={type} className="space-y-3">
+            <div className="flex items-center gap-3 px-4 py-3 rounded-2xl" style={{ backgroundColor: config.color }}>
+              {config.emoji && <span className="text-2xl">{config.emoji}</span>}
+              <div className="flex-1">
+                <p className="font-bold text-base text-white">{config.label}</p>
+                <p className="text-white/70 text-xs">{devices.length} dispositif{devices.length > 1 ? 's' : ''}</p>
+              </div>
+              {filled > 0 && (
+                <span className="bg-white/20 text-white text-xs font-bold px-2 py-1 rounded-full">
+                  {filled}/{devices.length} remplis
+                </span>
+              )}
             </div>
-            {filled > 0 && (
-              <span className="bg-white/20 text-white text-xs font-bold px-2 py-1 rounded-full">
-                {filled}/{devices.length} remplis
-              </span>
-            )}
+            {devices.map(renderDeviceCard)}
           </div>
-          {devices.map(renderDeviceCard)}
-        </div>
-      );
+        );
+      });
     }
 
     if (activeCategory === 'regards') {

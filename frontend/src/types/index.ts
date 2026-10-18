@@ -2164,7 +2164,23 @@ export interface UpdateCompanySettingsInput {
 // ─── Module Zoning ────────────────────────────────────────────────────────────
 
 export type ZoningStatut = 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
-export type DeviceType = 'BAIT_STATION' | 'MECHANICAL_TRAP' | 'GLUE_TRAP' | 'FLYING_INSECT_KILLER';
+// Code d'un type de dispositif (paramétrable, cf. DeviceTypeConfig)
+export type DeviceType = string;
+// APPATAGE / PIEGE : contrôle par états ; COMPTAGE : comptage d'insectes (type FK)
+export type DeviceTypeMode = 'APPATAGE' | 'PIEGE' | 'COMPTAGE';
+
+export interface DeviceTypeConfig {
+  id: string;
+  code: string;
+  label: string;
+  abreviation: string;
+  emoji?: string | null;
+  color: string;
+  mode: DeviceTypeMode;
+  actif: boolean;
+  ordre: number;
+  devicesCount?: number;
+}
 export type DeviceStatut = 'ACTIVE' | 'REMOVED' | 'INACTIVE';
 export type FieldInterventionType = 'OPERATION' | 'VISITE';
 export type FieldInterventionStatut = 'DRAFT' | 'IN_PROGRESS' | 'SUBMITTED' | 'VALIDATED' | 'CANCELLED';

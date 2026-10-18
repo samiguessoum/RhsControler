@@ -98,6 +98,7 @@ import type {
   UpdateCompanySettingsInput,
   // Zoning / Terrain
   ControlStatus,
+  DeviceTypeConfig,
   FieldIntervention,
   PeriodeFrequence,
 } from '@/types';
@@ -1593,6 +1594,23 @@ export const zoningApi = {
   },
   deleteDevice: async (id: string) => {
     await api.delete(`/devices/${id}`);
+  },
+
+  // Types de dispositifs
+  listDeviceTypes: async (all = false): Promise<DeviceTypeConfig[]> => {
+    const { data } = await api.get('/device-types', { params: all ? { all: 'true' } : undefined });
+    return data;
+  },
+  createDeviceType: async (payload: Partial<DeviceTypeConfig>): Promise<DeviceTypeConfig> => {
+    const { data } = await api.post('/device-types', payload);
+    return data;
+  },
+  updateDeviceType: async (id: string, payload: Partial<DeviceTypeConfig>): Promise<DeviceTypeConfig> => {
+    const { data } = await api.patch(`/device-types/${id}`, payload);
+    return data;
+  },
+  deleteDeviceType: async (id: string) => {
+    await api.delete(`/device-types/${id}`);
   },
 
   // ControlStatus

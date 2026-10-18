@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Plus, MoreVertical, Building2, Hash, Users, Briefcase, Wrench, Save, Upload, FlaskConical, Pencil, Trash2, Mail, CheckCircle, XCircle, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Plus, MoreVertical, Building2, Hash, Users, Briefcase, Wrench, Save, Upload, FlaskConical, Pencil, Trash2, Mail, CheckCircle, XCircle, Loader2, Eye, EyeOff, Bug, ArrowUp, ArrowDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -25,9 +25,10 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import api, { prestationsApi, usersApi, employesApi, postesApi, settingsApi, rhApi, produitsServicesApi, emailApi } from '@/services/api';
+import api, { zoningApi, prestationsApi, usersApi, employesApi, postesApi, settingsApi, rhApi, produitsServicesApi, emailApi } from '@/services/api';
 import { useAuthStore } from '@/store/auth.store';
-import type { Prestation, User, Role, Employe, Poste, CompanySettings, UpdateCompanySettingsInput, ProduitService, EmailProfile, EmailProfileType } from '@/types';
+import type { Prestation, User, Role, Employe, Poste, CompanySettings, UpdateCompanySettingsInput, ProduitService, EmailProfile, EmailProfileType, DeviceTypeConfig, DeviceTypeMode } from '@/types';
+import { DEVICE_TYPE_MODE_LABELS } from '@/lib/deviceTypes';
 
 // ── Profils SMTP / Email ──────────────────────────────────────
 
@@ -476,6 +477,276 @@ function ProduitsTerrain() {
             <AlertDialogTitle>Supprimer le produit ?</AlertDialogTitle>
             <AlertDialogDescription>
               « {deleteTarget?.nom} » sera supprimé. Les interventions existantes ne sont pas affectées.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+            >
+              Supprimer
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+// ── Types de dispositifs du zoning ────────────────────────────
+
+const EMPTY_DEVICE_TYPE_FORM = { label: '', code: '', abreviation: '', emoji: '', color: '#2563eb', mode: 'APPATAGE' as DeviceTypeMode };
+
+function DispositifsZoning() {
+  const qc = useQueryClient();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<DeviceTypeConfig | null>(null);
+  const [form, setForm] = useState(EMPTY_DEVICE_TYPE_FORM);
+  const [deleteTarget, setDeleteTarget] = useState<DeviceTypeConfig | null>(null);
+
+  const { data: types = [], isLoading } = useQuery<DeviceTypeConfig[]>({
+    queryKey: ['device-types', 'all'],
+    queryFn: () => zoningApi.listDeviceTypes(true),
+  });
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['device-types'] });
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm(EMPTY_DEVICE_TYPE_FORM);
+    setDialogOpen(true);
+  };
+
+  const openEdit = (t: DeviceTypeConfig) => {
+    setEditing(t);
+    setForm({ label: t.label, code: t.code, abreviation: t.abreviation, emoji: t.emoji ?? '', color: t.color, mode: t.mode });
+    setDialogOpen(true);
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: () => {
+      const payload = { label: form.label.trim(), abreviation: form.abreviation.trim(), emoji: form.emoji.trim(), color: form.color, mode: form.mode };
+      return editing
+        ? zoningApi.updateDeviceType(editing.id, payload)
+        : zoningApi.createDeviceType({ ...payload, code: form.code.trim() || undefined });
+    },
+    onSuccess: () => {
+      invalidate();
+      setDialogOpen(false);
+      toast.success(editing ? 'Type de dispositif mis à jour' : 'Type de dispositif ajouté');
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.error || 'Erreur'),
+  });
+
+  const patchMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<DeviceTypeConfig> }) => zoningApi.updateDeviceType(id, data),
+    onSuccess: invalidate,
+    onError: (err: any) => toast.error(err?.response?.data?.error || 'Erreur'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => zoningApi.deleteDeviceType(id),
+    onSuccess: () => {
+      invalidate();
+      setDeleteTarget(null);
+      toast.success('Type de dispositif supprimé');
+    },
+    onError: (err: any) => {
+      setDeleteTarget(null);
+      toast.error(err?.response?.data?.error || 'Erreur');
+    },
+  });
+
+  // Échange l'ordre avec le voisin (les ordres sont renumérotés pour éviter les doublons)
+  const move = async (index: number, dir: -1 | 1) => {
+    const target = index + dir;
+    if (target < 0 || target >= types.length) return;
+    const reordered = [...types];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    try {
+      await Promise.all(
+        reordered.map((t, i) => (t.ordre !== i + 1 ? zoningApi.updateDeviceType(t.id, { ordre: i + 1 }) : null))
+      );
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Erreur');
+    }
+    invalidate();
+  };
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Bug className="h-5 w-5 text-orange-600" />
+                Dispositifs du zoning
+              </CardTitle>
+              <CardDescription>Types de dispositifs proposés lors de la création du zoning d'un site et sur les fiches terrain</CardDescription>
+            </div>
+            <Button size="sm" onClick={openCreate}>
+              <Plus className="h-4 w-4 mr-1" /> Ajouter
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="text-sm text-gray-500">Chargement…</div>
+          ) : types.length === 0 ? (
+            <div className="text-sm text-gray-400 text-center py-6">Aucun type de dispositif. Cliquez sur Ajouter.</div>
+          ) : (
+            <div className="divide-y">
+              {types.map((t, i) => (
+                <div key={t.id} className={`flex items-center gap-3 py-2.5 ${t.actif ? '' : 'opacity-50'}`}>
+                  <div
+                    className="w-10 h-10 rounded-xl flex flex-col items-center justify-center shrink-0 text-white"
+                    style={{ backgroundColor: t.color }}
+                  >
+                    {t.emoji && <span className="text-sm leading-none">{t.emoji}</span>}
+                    <span className="text-[10px] font-bold leading-tight">{t.abreviation}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-800 truncate">{t.label}</span>
+                      {!t.actif && <Badge variant="outline" className="text-xs">Inactif</Badge>}
+                    </div>
+                    <div className="text-xs text-gray-500 truncate">
+                      <span className="font-mono">{t.code}</span> · {DEVICE_TYPE_MODE_LABELS[t.mode]} · {t.devicesCount ?? 0} dispositif{(t.devicesCount ?? 0) > 1 ? 's' : ''}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" disabled={i === 0} onClick={() => move(i, -1)}>
+                      <ArrowUp className="h-3.5 w-3.5 text-gray-500" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" disabled={i === types.length - 1} onClick={() => move(i, 1)}>
+                      <ArrowDown className="h-3.5 w-3.5 text-gray-500" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => patchMutation.mutate({ id: t.id, data: { actif: !t.actif } })}
+                    >
+                      {t.actif ? 'Désactiver' : 'Activer'}
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(t)}>
+                      <Pencil className="h-3.5 w-3.5 text-gray-500" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      disabled={(t.devicesCount ?? 0) > 0}
+                      title={(t.devicesCount ?? 0) > 0 ? 'Utilisé par des dispositifs : désactivez-le plutôt' : undefined}
+                      onClick={() => setDeleteTarget(t)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-red-400" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editing ? 'Modifier le type de dispositif' : 'Nouveau type de dispositif'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label htmlFor="dt-label">Libellé *</Label>
+              <Input
+                id="dt-label"
+                value={form.label}
+                onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
+                placeholder="ex: Piège à phéromones"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="dt-abrev">Abréviation *</Label>
+                <Input
+                  id="dt-abrev"
+                  maxLength={4}
+                  value={form.abreviation}
+                  onChange={(e) => setForm((f) => ({ ...f, abreviation: e.target.value.toUpperCase() }))}
+                  placeholder="ex: PH"
+                />
+              </div>
+              <div>
+                <Label htmlFor="dt-emoji">Emoji</Label>
+                <Input
+                  id="dt-emoji"
+                  value={form.emoji}
+                  onChange={(e) => setForm((f) => ({ ...f, emoji: e.target.value }))}
+                  placeholder="ex: 🦋"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="dt-color">Couleur</Label>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="dt-color"
+                    type="color"
+                    value={form.color}
+                    onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
+                    className="h-9 w-12 rounded border cursor-pointer"
+                  />
+                  <span className="font-mono text-xs text-gray-500">{form.color}</span>
+                </div>
+              </div>
+              <div>
+                <Label>Contrôle terrain</Label>
+                <Select value={form.mode} onValueChange={(v) => setForm((f) => ({ ...f, mode: v as DeviceTypeMode }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {(Object.entries(DEVICE_TYPE_MODE_LABELS) as [DeviceTypeMode, string][]).map(([k, label]) => (
+                      <SelectItem key={k} value={k}>{label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="dt-code">Code {editing ? '' : '(optionnel)'}</Label>
+              <Input
+                id="dt-code"
+                value={form.code}
+                disabled={!!editing}
+                onChange={(e) => setForm((f) => ({ ...f, code: e.target.value }))}
+                placeholder="Généré à partir du libellé"
+                className="font-mono"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                {editing ? 'Le code ne peut pas être modifié.' : "Utilisé dans le fichier d'import du zoning. Non modifiable ensuite."}
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>Annuler</Button>
+            <Button
+              onClick={() => saveMutation.mutate()}
+              disabled={saveMutation.isPending || !form.label.trim() || !form.abreviation.trim()}
+            >
+              {saveMutation.isPending ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supprimer le type de dispositif ?</AlertDialogTitle>
+            <AlertDialogDescription>
+              « {deleteTarget?.label} » ne sera plus proposé dans le zoning.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -1032,7 +1303,7 @@ export function ParametresPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-8 lg:w-auto lg:inline-flex">
+        <TabsList className="grid w-full grid-cols-10 lg:w-auto lg:inline-flex">
           {canDo('manageSettings') && (
             <TabsTrigger value="entreprise" className="flex items-center gap-2">
               <Building2 className="h-4 w-4" />
@@ -1073,6 +1344,12 @@ export function ParametresPage() {
             <FlaskConical className="h-4 w-4" />
             <span className="hidden sm:inline">Produits terrain</span>
           </TabsTrigger>
+          {canDo('manageSettings') && (
+            <TabsTrigger value="dispositifs" className="flex items-center gap-2">
+              <Bug className="h-4 w-4" />
+              <span className="hidden sm:inline">Dispositifs</span>
+            </TabsTrigger>
+          )}
           {canDo('manageRH') && (
             <TabsTrigger value="conges" className="flex items-center gap-2">
               <span className="hidden sm:inline">Conges</span>
@@ -2229,6 +2506,12 @@ export function ParametresPage() {
         <TabsContent value="produits-terrain">
           <ProduitsTerrain />
         </TabsContent>
+
+        {canDo('manageSettings') && (
+          <TabsContent value="dispositifs">
+            <DispositifsZoning />
+          </TabsContent>
+        )}
 
         {canDo('manageSettings') && (
           <TabsContent value="email">
