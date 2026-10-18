@@ -341,7 +341,10 @@ export function FieldInterventionDetailPage() {
   }, [zones, deviceTypes]);
 
   const isComptage = (type: DeviceType) => deviceTypes.get(type).mode === 'COMPTAGE';
-  const hasBoites = devicesByType.some((g) => g.config.mode !== 'COMPTAGE');
+  const isGoliath = (type: DeviceType) => deviceTypes.get(type).mode === 'GOLIATH';
+  // Boîtes = types contrôlés par états (appâtage, piège)
+  const isBoite = (mode: string) => mode === 'APPATAGE' || mode === 'PIEGE';
+  const hasBoites = devicesByType.some((g) => isBoite(g.config.mode));
   const hasFK = devicesByType.some((g) => g.config.mode === 'COMPTAGE');
 
   // ── Loading / not found ──────────────────────────────────────
@@ -401,8 +404,45 @@ export function FieldInterventionDetailPage() {
         </div>
 
         <CardContent className="px-4 pt-3 pb-4 space-y-3">
-          {/* Pastilles statut + observation — masqués pour FK */}
-          {!isComptage(device.type) && (
+          {/* Goliath : OK / Pas OK + remarque */}
+          {isGoliath(device.type) && (
+            <>
+              <div className="flex gap-3">
+                {(['OK', 'PAS_OK'] as const).map((s) => {
+                  const selected = state.statusCode === s;
+                  const isOk = s === 'OK';
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      disabled={!isEditable}
+                      onClick={() => updateControl(device.id, { statusCode: selected ? '' : s })}
+                      className={cn(
+                        'flex-1 py-3 rounded-xl font-semibold text-base border-2 transition-all min-h-[52px]',
+                        selected && isOk && 'bg-green-500 border-green-500 text-white',
+                        selected && !isOk && 'bg-red-500 border-red-500 text-white',
+                        !selected && 'bg-white border-gray-200 text-gray-600 active:bg-gray-50',
+                        !isEditable && 'opacity-60 cursor-default'
+                      )}
+                    >
+                      {isOk ? '✓ OK' : '✗ Pas OK'}
+                    </button>
+                  );
+                })}
+              </div>
+              <Textarea
+                placeholder="Remarque (optionnel)"
+                value={state.observation}
+                disabled={!isEditable}
+                rows={2}
+                onChange={(e) => updateControl(device.id, { observation: e.target.value })}
+                className="text-sm resize-none"
+              />
+            </>
+          )}
+
+          {/* Pastilles statut + observation — masqués pour FK et Goliath */}
+          {!isComptage(device.type) && !isGoliath(device.type) && (
             <>
               <div className="flex flex-wrap gap-2">
                 {sortedStatuses.map((cs) => {
@@ -543,7 +583,7 @@ export function FieldInterventionDetailPage() {
   // ── Contenu de la catégorie active ──────────────────────────
   const renderCategoryContent = () => {
     if (activeCategory === 'boites') {
-      const boitesGroups = devicesByType.filter((g) => g.config.mode !== 'COMPTAGE');
+      const boitesGroups = devicesByType.filter((g) => isBoite(g.config.mode));
       if (boitesGroups.length === 0) {
         return <p className="text-center text-gray-400 py-8">Aucune boîte dans ce zonage.</p>;
       }
@@ -607,7 +647,32 @@ export function FieldInterventionDetailPage() {
 
     if (activeCategory === 'goliath') {
       const saved = fi.simpleChecks?.find((sc) => sc.category === 'GOLIATH');
-      return renderSimpleCheck('GOLIATH', '', '', saved?.updatedBy as any);
+      const goliathGroups = devicesByType.filter((g) => g.config.mode === 'GOLIATH');
+      return (
+        <div className="space-y-4">
+          {renderSimpleCheck('GOLIATH', '', goliathGroups.length > 0 ? 'État général' : '', saved?.updatedBy as any)}
+          {goliathGroups.map(({ type, config, devices }) => {
+            const filled = devices.filter((d) => controls[d.id]?.statusCode).length;
+            return (
+              <div key={type} className="space-y-3">
+                <div className="flex items-center gap-3 px-4 py-3 rounded-2xl" style={{ backgroundColor: config.color }}>
+                  {config.emoji && <span className="text-2xl">{config.emoji}</span>}
+                  <div className="flex-1">
+                    <p className="font-bold text-base text-white">{config.label}</p>
+                    <p className="text-white/70 text-xs">{devices.length} point{devices.length > 1 ? 's' : ''}</p>
+                  </div>
+                  {filled > 0 && (
+                    <span className="bg-white/20 text-white text-xs font-bold px-2 py-1 rounded-full">
+                      {filled}/{devices.length} remplis
+                    </span>
+                  )}
+                </div>
+                {devices.map(renderDeviceCard)}
+              </div>
+            );
+          })}
+        </div>
+      );
     }
 
     if (activeCategory === 'autre') {

@@ -7,6 +7,7 @@ export const DEVICE_TYPE_MODE_LABELS: Record<DeviceTypeConfig['mode'], string> =
   APPATAGE: "Appâtage (états de contrôle)",
   PIEGE: 'Piège (états de contrôle)',
   COMPTAGE: "Comptage d'insectes (type FK)",
+  GOLIATH: 'Goliath Gel (OK / Pas OK)',
 };
 
 // Type inconnu (supprimé ou pas encore chargé) : affichage neutre avec le code brut

@@ -11,7 +11,7 @@ const LEGACY_DEVICE_TYPE_ALIASES: Record<string, string> = {
   'destructeur insectes': 'FLYING_INSECT_KILLER',
 };
 
-const DEVICE_TYPE_MODES = ['APPATAGE', 'PIEGE', 'COMPTAGE'];
+const DEVICE_TYPE_MODES = ['APPATAGE', 'PIEGE', 'COMPTAGE', 'GOLIATH'];
 
 const normalize = (s: string) => s.trim().toLowerCase();
 

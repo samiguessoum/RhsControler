@@ -2166,8 +2166,8 @@ export interface UpdateCompanySettingsInput {
 export type ZoningStatut = 'DRAFT' | 'ACTIVE' | 'ARCHIVED';
 // Code d'un type de dispositif (paramétrable, cf. DeviceTypeConfig)
 export type DeviceType = string;
-// APPATAGE / PIEGE : contrôle par états ; COMPTAGE : comptage d'insectes (type FK)
-export type DeviceTypeMode = 'APPATAGE' | 'PIEGE' | 'COMPTAGE';
+// APPATAGE / PIEGE : contrôle par états ; COMPTAGE : comptage d'insectes (type FK) ; GOLIATH : OK / Pas OK (onglet Goliath)
+export type DeviceTypeMode = 'APPATAGE' | 'PIEGE' | 'COMPTAGE' | 'GOLIATH';
 
 export interface DeviceTypeConfig {
   id: string;

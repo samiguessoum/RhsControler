@@ -373,6 +373,7 @@ export const fieldReportService = {
     const fkRows:    RawFK[]   = [];
     const boiteRows: RawCtrl[] = [];
     const piegeRows: RawCtrl[] = [];
+    const goliathRows: (RawCtrl & { nom: string })[] = [];
 
     for (const fi of interventions) {
       const dateStr = formatDate(fi.dateIntervention);
@@ -394,6 +395,9 @@ export const fieldReportService = {
             else counts['Autres'] += ic.count;
           }
           fkRows.push({ visite, date: dateStr, zone, num, counts, obs });
+        } else if (mode === 'GOLIATH') {
+          const etat = ctrl.statusCode === 'OK' ? 'OK' : ctrl.statusCode === 'PAS_OK' ? 'Pas OK' : (ctrl.statusCode ?? '');
+          goliathRows.push({ visite, date: dateStr, zone, typeLabel, num, nom: ctrl.device.nom ?? '', etat, obs });
         } else if (mode === 'APPATAGE') {
           boiteRows.push({ visite, date: dateStr, zone, typeLabel, num, etat: ctrl.statusCode ?? '', obs });
         } else {
@@ -567,6 +571,19 @@ export const fieldReportService = {
       'Boîtes appât — états par zone',
     );
     await embedChart(workbook, shGBoite, boiteChart, shGBoite.rowCount + 1);
+
+    // ── 8. GOLIATH — données brutes (uniquement si le site a des points Goliath) ──
+    if (goliathRows.length > 0) {
+      const shGoliath = workbook.addWorksheet('Goliath');
+      shGoliath.properties.tabColor = { argb: 'FFC00000' };
+      addTitle(shGoliath, 'Contrôle Goliath Gel', 8);
+      styleHeader(shGoliath.addRow(['Opération / visite', 'Date', 'ZONE', 'Type', 'N°', 'Emplacement', 'État', 'Observation']));
+      for (const r of goliathRows) {
+        const row = shGoliath.addRow([r.visite, r.date, r.zone, r.typeLabel, r.num, r.nom, r.etat, r.obs]);
+        row.eachCell((c) => { c.border = ALL_BORDERS; c.alignment = { vertical: 'middle' }; });
+      }
+      autosize(shGoliath);
+    }
 
     // ── Sauvegarde ────────────────────────────────────────────────────────────
     const uploadDir    = path.join(process.cwd(), 'uploads', 'field-reports', siteId);

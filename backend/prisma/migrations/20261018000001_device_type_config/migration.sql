@@ -21,7 +21,8 @@ INSERT INTO "DeviceTypeConfig" ("id", "code", "label", "abreviation", "emoji", "
     (gen_random_uuid()::text, 'BAIT_STATION',         'Poste d''appâtage',          'BA', '🐀', '#2563eb', 'APPATAGE', 1),
     (gen_random_uuid()::text, 'MECHANICAL_TRAP',      'Piège mécanique',            'PM', '🪤', '#f97316', 'PIEGE',    2),
     (gen_random_uuid()::text, 'GLUE_TRAP',            'Boîte à colle',              'BC', '⬛', '#9333ea', 'PIEGE',    3),
-    (gen_random_uuid()::text, 'FLYING_INSECT_KILLER', 'Destructeur insectes (FK)',  'FK', '⚡', '#16a34a', 'COMPTAGE', 4);
+    (gen_random_uuid()::text, 'FLYING_INSECT_KILLER', 'Destructeur insectes (FK)',  'FK', '⚡', '#16a34a', 'COMPTAGE', 4),
+    (gen_random_uuid()::text, 'GOLIATH_GEL',          'Goliath Gel',                'GG', '🪳', '#dc2626', 'GOLIATH',  5);
 
 ALTER TABLE "DeviceTypeConfig" ALTER COLUMN "updatedAt" DROP DEFAULT;
 

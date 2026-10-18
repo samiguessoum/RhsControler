@@ -683,6 +683,7 @@ async function main() {
     { code: 'MECHANICAL_TRAP',      label: 'Piège mécanique',           abreviation: 'PM', emoji: '🪤', color: '#f97316', mode: 'PIEGE',    ordre: 2 },
     { code: 'GLUE_TRAP',            label: 'Boîte à colle',             abreviation: 'BC', emoji: '⬛', color: '#9333ea', mode: 'PIEGE',    ordre: 3 },
     { code: 'FLYING_INSECT_KILLER', label: 'Destructeur insectes (FK)', abreviation: 'FK', emoji: '⚡', color: '#16a34a', mode: 'COMPTAGE', ordre: 4 },
+    { code: 'GOLIATH_GEL',          label: 'Goliath Gel',               abreviation: 'GG', emoji: '🪳', color: '#dc2626', mode: 'GOLIATH',  ordre: 5 },
   ];
   for (const t of deviceTypes) {
     await prisma.deviceTypeConfig.upsert({ where: { code: t.code }, update: {}, create: t });

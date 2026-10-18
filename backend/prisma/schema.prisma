@@ -2027,6 +2027,7 @@ model MonitoringDevice {
 // mode : APPATAGE (états de contrôle, feuille Boîtes du rapport)
 //        PIEGE    (états de contrôle, feuille Pièges du rapport)
 //        COMPTAGE (comptage d'insectes, feuille FK du rapport)
+//        GOLIATH  (OK / Pas OK dans l'onglet Goliath, feuille Goliath du rapport)
 model DeviceTypeConfig {
   id          String   @id @default(uuid())
   code        String   @unique // "BAIT_STATION" — immuable, stocké dans MonitoringDevice.type
