@@ -524,6 +524,7 @@ router.delete('/zoning-versions/:id', authMiddleware, canDo('manageInterventions
 // Devices
 router.get('/zoning-versions/:versionId/devices', authMiddleware, zoningController.listDevices);
 router.post('/zones/:zoneId/devices', authMiddleware, canDo('manageInterventions'), zoningController.createDevice);
+router.post('/zones/:zoneId/devices/bulk', authMiddleware, canDo('manageInterventions'), zoningController.createDevicesBulk);
 router.patch('/devices/:id', authMiddleware, canDo('manageInterventions'), zoningController.updateDevice);
 router.delete('/devices/:id', authMiddleware, canDo('manageInterventions'), zoningController.deleteDevice);
 

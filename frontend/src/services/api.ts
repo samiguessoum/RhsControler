@@ -1588,6 +1588,13 @@ export const zoningApi = {
     const { data } = await api.post(`/zones/${zoneId}/devices`, payload);
     return data;
   },
+  createDevicesBulk: async (
+    zoneId: string,
+    payload: { type: string; displayNumbers: string[]; nom?: string | null; notes?: string | null; statut?: string }
+  ): Promise<{ created: number }> => {
+    const { data } = await api.post(`/zones/${zoneId}/devices/bulk`, payload);
+    return data;
+  },
   updateDevice: async (id: string, payload: Record<string, unknown>) => {
     const { data } = await api.patch(`/devices/${id}`, payload);
     return data;
@@ -1622,7 +1629,12 @@ export const zoningApi = {
   // Import zoning
   downloadImportTemplate: (versionId: string) =>
     `${api.defaults.baseURL}/zoning-versions/${versionId}/import-template`,
-  importZoning: async (versionId: string, file: File): Promise<{ createdZones: number; createdDevices: number; skippedRows: number }> => {
+  importZoning: async (versionId: string, file: File): Promise<{
+    createdZones: number;
+    createdDevices: number;
+    skippedRows: number;
+    skipped?: { line: number; reason: string }[];
+  }> => {
     const form = new FormData();
     form.append('file', file);
     const { data } = await api.post(`/zoning-versions/${versionId}/import`, form, {

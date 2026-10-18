@@ -445,7 +445,17 @@ function ZoningTab({ siteId, versions }: { siteId: string; versions: ZoningVersi
       qc.invalidateQueries({ queryKey: ['zoning-version', importVersionId] });
       setShowImportDialog(false);
       setImportFile(null);
-      toast.success(`Import réussi : ${result.createdZones} zone(s), ${result.createdDevices} dispositif(s)${result.skippedRows > 0 ? ` (${result.skippedRows} ligne(s) ignorée(s))` : ''}`);
+      const summary = `Import réussi : ${result.createdZones} zone(s), ${result.createdDevices} dispositif(s)`;
+      if (result.skippedRows > 0) {
+        const details = (result.skipped ?? []).slice(0, 10).map((sk) => `Ligne ${sk.line} : ${sk.reason}`);
+        const more = (result.skipped?.length ?? 0) > 10 ? `\n… et ${result.skipped!.length - 10} autre(s)` : '';
+        toast.warning(`${summary} — ${result.skippedRows} ligne(s) ignorée(s)`, {
+          description: <span className="whitespace-pre-line">{details.join('\n') + more}</span>,
+          duration: 15000,
+        });
+      } else {
+        toast.success(summary);
+      }
     },
     onError: (error: any) => toast.error(error?.response?.data?.error || "Erreur lors de l'import"),
   });
@@ -802,15 +812,14 @@ function ZoneCard({
     mutationFn: async () => {
       if (!selectedAddType) throw new Error('Aucun type de dispositif actif');
       const start = (maxByType[selectedAddType] ?? 0) + 1;
-      for (let i = 0; i < addQty; i++) {
-        await zoningApi.createDevice(zone.id, {
-          type: selectedAddType,
-          displayNumber: String(start + i).padStart(2, '0'),
-          nom: addNom || null,
-          notes: addNotes || null,
-          statut: 'ACTIVE',
-        });
-      }
+      // Un seul appel : tous les dispositifs sont créés, ou aucun
+      await zoningApi.createDevicesBulk(zone.id, {
+        type: selectedAddType,
+        displayNumbers: Array.from({ length: addQty }, (_, i) => String(start + i).padStart(2, '0')),
+        nom: addNom || null,
+        notes: addNotes || null,
+        statut: 'ACTIVE',
+      });
     },
     onSuccess: () => {
       invalidate();
@@ -820,7 +829,11 @@ function ZoneCard({
       setAddNotes('');
       toast.success(addQty === 1 ? 'Dispositif ajouté' : `${addQty} dispositifs ajoutés`);
     },
-    onError: (error: any) => toast.error(error?.response?.data?.error || error?.message || "Erreur lors de l'ajout"),
+    onError: (error: any) => {
+      // Un numéro a pu être pris entre-temps : rafraîchir pour recalculer la suite
+      invalidate();
+      toast.error(error?.response?.data?.error || error?.message || "Erreur lors de l'ajout");
+    },
   });
 
   const updateDeviceMut = useMutation({

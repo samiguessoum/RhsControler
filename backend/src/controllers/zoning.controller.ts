@@ -19,6 +19,31 @@ const normalize = (s: string) => s.trim().toLowerCase();
 const toDeviceTypeCode = (s: string) =>
   s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
 
+// Violation de @@unique([zoningVersionId, type, displayNumber]) (ex. ajout simultané par deux utilisateurs)
+const isUniqueViolation = (err: unknown) => (err as { code?: string })?.code === 'P2002';
+
+const formatNumbers = (nums: string[]) => nums.map((n) => `#${n}`).join(', ');
+
+// Numéros déjà pris pour ce type dans la version (comparaison exacte : "01" ≠ "1")
+async function findTakenNumbers(zoningVersionId: string, type: string, numbers: string[], excludeId?: string) {
+  const taken = await prisma.monitoringDevice.findMany({
+    where: { zoningVersionId, type, displayNumber: { in: numbers }, ...(excludeId && { id: { not: excludeId } }) },
+    select: { displayNumber: true },
+  });
+  return taken.map((d) => d.displayNumber);
+}
+
+async function duplicateNumberError(type: string, numbers: string[]) {
+  const config = await prisma.deviceTypeConfig.findUnique({ where: { code: type } });
+  const label = config?.label ?? type;
+  return new AppError(
+    409,
+    numbers.length === 1
+      ? `Le numéro ${formatNumbers(numbers)} existe déjà pour le type « ${label} » dans ce zoning`
+      : `Les numéros ${formatNumbers(numbers)} existent déjà pour le type « ${label} » dans ce zoning`
+  );
+}
+
 async function assertDeviceType(code: string) {
   const exists = await prisma.deviceTypeConfig.findUnique({ where: { code } });
   if (!exists) throw new AppError(400, `Type de dispositif inconnu : ${code}`);
@@ -199,6 +224,9 @@ export const zoningController = {
       const zone = await prisma.zone.findUnique({ where: { id: zoneId } });
       if (!zone) throw new AppError(404, 'Zone introuvable');
 
+      const taken = await findTakenNumbers(zone.zoningVersionId, type, [displayNumber]);
+      if (taken.length > 0) throw await duplicateNumberError(type, taken);
+
       const device = await prisma.monitoringDevice.create({
         data: {
           zoningVersionId: zone.zoningVersionId,
@@ -217,6 +245,54 @@ export const zoningController = {
       });
       res.status(201).json(device);
     } catch (err) {
+      if (isUniqueViolation(err)) return next(await duplicateNumberError(req.body.type, [req.body.displayNumber]));
+      next(err);
+    }
+  },
+
+  // POST /api/zones/:zoneId/devices/bulk — ajout en quantité, tout ou rien
+  async createDevicesBulk(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { zoneId } = req.params;
+      const { type, displayNumbers, nom, notes, statut } = req.body;
+      if (!type || !Array.isArray(displayNumbers) || displayNumbers.length === 0) {
+        throw new AppError(400, 'type et displayNumbers sont requis');
+      }
+      const numbers: string[] = displayNumbers.map((n: unknown) => String(n ?? '').trim());
+      if (numbers.some((n) => !n)) throw new AppError(400, 'Numéro de dispositif vide');
+      if (numbers.length > 500) throw new AppError(400, 'Maximum 500 dispositifs par ajout');
+      const dupInRequest = [...new Set(numbers.filter((n, i) => numbers.indexOf(n) !== i))];
+      if (dupInRequest.length > 0) throw new AppError(400, `Numéros en double dans la demande : ${formatNumbers(dupInRequest)}`);
+      await assertDeviceType(type);
+
+      const zone = await prisma.zone.findUnique({ where: { id: zoneId } });
+      if (!zone) throw new AppError(404, 'Zone introuvable');
+
+      const taken = await findTakenNumbers(zone.zoningVersionId, type, numbers);
+      if (taken.length > 0) throw await duplicateNumberError(type, taken);
+
+      try {
+        const result = await prisma.monitoringDevice.createMany({
+          data: numbers.map((displayNumber) => ({
+            zoningVersionId: zone.zoningVersionId,
+            zoneId,
+            type,
+            displayNumber,
+            nom: nom || null,
+            notes: notes || null,
+            statut: statut ?? 'ACTIVE',
+          })),
+        });
+        res.status(201).json({ created: result.count });
+      } catch (err) {
+        // Numéro pris entre la vérification et l'insertion : rien n'a été créé (instruction unique)
+        if (isUniqueViolation(err)) {
+          const nowTaken = await findTakenNumbers(zone.zoningVersionId, type, numbers);
+          throw await duplicateNumberError(type, nowTaken.length > 0 ? nowTaken : numbers);
+        }
+        throw err;
+      }
+    } catch (err) {
       next(err);
     }
   },
@@ -226,12 +302,23 @@ export const zoningController = {
     try {
       const { id } = req.params;
       const { nom, statut, displayNumber, zoneId, dateInstallation, dateRetrait, planId, planX, planY, notes, metadata } = req.body;
+      const existing = await prisma.monitoringDevice.findUnique({ where: { id } });
+      if (!existing) throw new AppError(404, 'Dispositif introuvable');
+      if (displayNumber !== undefined && displayNumber !== existing.displayNumber) {
+        if (!String(displayNumber).trim()) throw new AppError(400, 'Le numéro est requis');
+        const taken = await findTakenNumbers(existing.zoningVersionId, existing.type, [displayNumber], id);
+        if (taken.length > 0) throw await duplicateNumberError(existing.type, taken);
+      }
       const device = await prisma.monitoringDevice.update({
         where: { id },
         data: { nom, statut, displayNumber, zoneId, dateInstallation, dateRetrait, planId, planX, planY, notes, metadata },
       });
       res.json(device);
     } catch (err) {
+      if (isUniqueViolation(err)) {
+        const existing = await prisma.monitoringDevice.findUnique({ where: { id: req.params.id } });
+        if (existing) return next(await duplicateNumberError(existing.type, [req.body.displayNumber]));
+      }
       next(err);
     }
   },
@@ -470,7 +557,7 @@ export const zoningController = {
       await wb.xlsx.load(file.buffer as any);
       const ws = wb.worksheets[0];
 
-      type Row = { zone: string; etage: string; type: string; numero: string; nom: string; notes: string };
+      type Row = { line: number; zone: string; etage: string; type: string; numero: string; nom: string; notes: string };
       const rows: Row[] = [];
       ws.eachRow((row, i) => {
         if (i === 1) return;
@@ -480,12 +567,8 @@ export const zoningController = {
         const numero = String(row.getCell(4).value ?? '').trim();
         const nom = String(row.getCell(5).value ?? '').trim();
         const notes = String(row.getCell(6).value ?? '').trim();
-        if (zone && type && numero) rows.push({ zone, etage, type, numero, nom, notes });
+        if (zone && type && numero) rows.push({ line: i, zone, etage, type, numero, nom, notes });
       });
-
-      const zonesMap = new Map<string, string>(); // nom → zoneId
-      // Pre-populate with existing zones
-      version.zones.forEach((z) => zonesMap.set(z.nom, z.id));
 
       // Type accepté par code ou par libellé (insensible à la casse)
       const deviceTypes = await prisma.deviceTypeConfig.findMany({ where: { actif: true } });
@@ -496,40 +579,78 @@ export const zoningController = {
         typeMap.set(normalize(t.label), t.code);
       }
 
-      let createdZones = 0;
-      let createdDevices = 0;
-      let skippedRows = 0;
+      // ── 1. Validation complète avant toute écriture ──
+      // Lignes ignorées : type inconnu, numéro déjà présent dans le zoning, ou en double dans le fichier
+      const existingDevices = await prisma.monitoringDevice.findMany({
+        where: { zoningVersionId: versionId },
+        select: { type: true, displayNumber: true },
+      });
+      const takenKeys = new Set(existingDevices.map((d) => `${d.type}\u0000${d.displayNumber}`));
+      const fileKeys = new Map<string, number>(); // clé → première ligne du fichier
+      const skipped: { line: number; reason: string }[] = [];
+      const toCreate: (Row & { deviceType: string })[] = [];
 
       for (const row of rows) {
         const deviceType = typeMap.get(normalize(row.type));
-        if (!deviceType) { skippedRows++; continue; }
-
-        let zoneId = zonesMap.get(row.zone);
-        if (!zoneId) {
-          const z = await prisma.zone.create({
-            data: { zoningVersionId: versionId, nom: row.zone, etage: row.etage || null },
-          });
-          zoneId = z.id;
-          zonesMap.set(row.zone, zoneId);
-          createdZones++;
+        if (!deviceType) {
+          skipped.push({ line: row.line, reason: `type inconnu « ${row.type} »` });
+          continue;
         }
-
-        await prisma.monitoringDevice.create({
-          data: {
-            zoningVersionId: versionId,
-            zoneId,
-            type: deviceType,
-            displayNumber: row.numero,
-            nom: row.nom || null,
-            notes: row.notes || null,
-            statut: 'ACTIVE',
-          },
-        });
-        createdDevices++;
+        const key = `${deviceType}\u0000${row.numero}`;
+        if (takenKeys.has(key)) {
+          skipped.push({ line: row.line, reason: `${row.type} #${row.numero} existe déjà dans ce zoning` });
+          continue;
+        }
+        const firstLine = fileKeys.get(key);
+        if (firstLine !== undefined) {
+          skipped.push({ line: row.line, reason: `${row.type} #${row.numero} en double (déjà ligne ${firstLine})` });
+          continue;
+        }
+        fileKeys.set(key, row.line);
+        toCreate.push({ ...row, deviceType });
       }
 
+      // ── 2. Écriture en transaction : tout ou rien ──
+      const zonesMap = new Map<string, string>(); // nom → zoneId
+      version.zones.forEach((z) => zonesMap.set(z.nom, z.id));
+
+      let createdZones = 0;
+      let createdDevices = 0;
+      try {
+        await prisma.$transaction(async (tx) => {
+          for (const row of toCreate) {
+            if (zonesMap.has(row.zone)) continue;
+            const z = await tx.zone.create({
+              data: { zoningVersionId: versionId, nom: row.zone, etage: row.etage || null },
+            });
+            zonesMap.set(row.zone, z.id);
+            createdZones++;
+          }
+          if (toCreate.length > 0) {
+            const result = await tx.monitoringDevice.createMany({
+              data: toCreate.map((row) => ({
+                zoningVersionId: versionId,
+                zoneId: zonesMap.get(row.zone)!,
+                type: row.deviceType,
+                displayNumber: row.numero,
+                nom: row.nom || null,
+                notes: row.notes || null,
+                statut: 'ACTIVE' as const,
+              })),
+            });
+            createdDevices = result.count;
+          }
+        }, { timeout: 60_000 });
+      } catch (err) {
+        if (isUniqueViolation(err)) {
+          throw new AppError(409, "Des dispositifs ont été ajoutés pendant l'import : rien n'a été importé, relancez l'import");
+        }
+        throw err;
+      }
+      const skippedRows = skipped.length;
+
       logger.info({ versionId, createdZones, createdDevices, skippedRows }, 'zoning import completed');
-      res.json({ createdZones, createdDevices, skippedRows });
+      res.json({ createdZones, createdDevices, skippedRows, skipped });
     } catch (err) {
       next(err);
     }
