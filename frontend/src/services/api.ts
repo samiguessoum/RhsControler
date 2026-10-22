@@ -184,7 +184,19 @@ export const usersApi = {
   permanentDelete: async (id: string): Promise<void> => {
     await api.delete(`/users/${id}/permanent`);
   },
+
+  usages: async (id: string): Promise<DeletionUsages> => {
+    const { data } = await api.get(`/users/${id}/usages`);
+    return data;
+  },
 };
+
+// Opérations rattachées à une personne, affichées avant suppression
+export interface DeletionUsages {
+  aRemplacer: { kind: 'intervention' | 'fiche_terrain' | 'contrat'; id: string; libelle: string; date: string | null; statut: string }[];
+  historique: Record<string, number>;
+  compteLie?: { prenom: string; nom: string; email?: string } | null;
+}
 
 // ============ EMPLOYES ============
 export const employesApi = {
@@ -210,6 +222,11 @@ export const employesApi = {
 
   delete: async (id: string): Promise<void> => {
     await api.delete(`/employes/${id}`);
+  },
+
+  usages: async (id: string): Promise<DeletionUsages> => {
+    const { data } = await api.get(`/employes/${id}/usages`);
+    return data;
   },
 };
 

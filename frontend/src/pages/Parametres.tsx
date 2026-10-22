@@ -29,6 +29,7 @@ import api, { zoningApi, prestationsApi, usersApi, employesApi, postesApi, setti
 import { useAuthStore } from '@/store/auth.store';
 import type { Prestation, User, Role, Employe, Poste, CompanySettings, UpdateCompanySettingsInput, ProduitService, EmailProfile, EmailProfileType, DeviceTypeConfig, DeviceTypeMode } from '@/types';
 import { DEVICE_TYPE_MODE_LABELS } from '@/lib/deviceTypes';
+import { DeletionUsages } from '@/components/DeletionUsages';
 
 // ── Profils SMTP / Email ──────────────────────────────────────
 
@@ -1124,6 +1125,18 @@ export function ParametresPage() {
     },
   });
 
+  const { data: deletingUserUsages, isLoading: isLoadingUserUsages } = useQuery({
+    queryKey: ['users', deletingUser?.id, 'usages'],
+    queryFn: () => usersApi.usages(deletingUser!.id),
+    enabled: !!deletingUser,
+  });
+
+  const { data: deleteEmployeUsages, isLoading: isLoadingEmployeUsages } = useQuery({
+    queryKey: ['employes', deleteEmployeTarget?.id, 'usages'],
+    queryFn: () => employesApi.usages(deleteEmployeTarget!.id),
+    enabled: !!deleteEmployeTarget,
+  });
+
   const permanentDeleteUserMutation = useMutation({
     mutationFn: (id: string) => usersApi.permanentDelete(id),
     onSuccess: () => {
@@ -1168,6 +1181,7 @@ export function ParametresPage() {
     mutationFn: (id: string) => employesApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employes'] });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
       toast.success('Employé supprimé');
       setDeleteEmployeTarget(null);
     },
@@ -1972,13 +1986,14 @@ export function ParametresPage() {
                           </p>
                         </div>
                       </div>
-                      <DropdownMenu>
+                      <DropdownMenu modal={false}>
                         <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
                           <Button variant="ghost" size="icon">
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
+                        {/* Les clics du menu ne doivent pas ouvrir la fiche détail de la ligne */}
+                        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
                           <DropdownMenuItem onClick={(e) => {
                             e.stopPropagation();
                             setEditingUser(u);
@@ -2058,7 +2073,7 @@ export function ParametresPage() {
                           {e.postes.map((p) => p.nom).join(' • ')}
                         </p>
                       </div>
-                      <DropdownMenu>
+                      <DropdownMenu modal={false}>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon">
                             <MoreVertical className="h-4 w-4" />
@@ -3006,13 +3021,11 @@ export function ParametresPage() {
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2">
-                {(deleteEmployeTarget?._count?.interventionEmployes ?? 0) > 0 && (
-                  <div className="rounded-md border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-800">
-                    <strong>Attention :</strong> cet employe est assigne a{' '}
-                    <strong>{deleteEmployeTarget!._count!.interventionEmployes} mission{deleteEmployeTarget!._count!.interventionEmployes > 1 ? 's' : ''}</strong>.
-                    Il sera retire de toutes ces missions.
-                  </div>
-                )}
+                <DeletionUsages
+                  usages={deleteEmployeUsages}
+                  isLoading={isLoadingEmployeUsages}
+                  nom={`${deleteEmployeTarget?.prenom ?? ''} ${deleteEmployeTarget?.nom ?? ''}`.trim()}
+                />
                 <p className="text-sm text-muted-foreground">
                   Cette action est definitive et ne peut pas etre annulee.
                 </p>
@@ -3407,9 +3420,18 @@ export function ParametresPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer définitivement cet utilisateur ?</AlertDialogTitle>
-            <AlertDialogDescription>
-              <strong>{deletingUser?.prenom} {deletingUser?.nom}</strong> ({deletingUser?.email}) sera supprimé de façon irréversible.
-              Cette action ne peut pas être annulée.
+            <AlertDialogDescription asChild>
+              <div className="space-y-2">
+                <p>
+                  <strong>{deletingUser?.prenom} {deletingUser?.nom}</strong> ({deletingUser?.email}) sera supprimé de façon irréversible.
+                  Cette action ne peut pas être annulée.
+                </p>
+                <DeletionUsages
+                  usages={deletingUserUsages}
+                  isLoading={isLoadingUserUsages}
+                  nom={`${deletingUser?.prenom ?? ''} ${deletingUser?.nom ?? ''}`.trim()}
+                />
+              </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

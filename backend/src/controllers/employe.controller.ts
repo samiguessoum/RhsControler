@@ -4,6 +4,9 @@ import { AuthRequest } from '../middleware/auth.middleware.js';
 import logger from '../lib/logger.js';
 import { AppError } from '../lib/errors.js';
 import { rattraperAccrualEmploye } from '../services/conges-accrual.service.js';
+import { createAuditLog } from './audit.controller.js';
+import { purgeUser } from './user.controller.js';
+import { getEmployeUsages } from '../services/usages.service.js';
 
 const SALARY_ROLES = ['SUPER_ADMIN', 'DIRECTION'];
 
@@ -217,20 +220,50 @@ export const employeController = {
   },
 
   /**
+   * GET /api/employes/:id/usages
+   * Opérations auxquelles l'employé est encore associé (à réaffecter avant/après suppression)
+   */
+  async usages(req: AuthRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const existing = await prisma.employe.findUnique({ where: { id }, include: { user: { select: { id: true, prenom: true, nom: true, email: true } } } });
+      if (!existing) {
+        return res.status(404).json({ error: 'Employé non trouvé' });
+      }
+      res.json(await getEmployeUsages(id, existing.user));
+    } catch (error) {
+      logger.error({ err: error }, 'Employe usages error');
+      return next(new AppError(500, 'Erreur serveur'));
+    }
+  },
+
+  /**
    * DELETE /api/employes/:id
+   * Suppression définitive : l'employé est retiré de toutes ses opérations (passées et à venir).
    */
   async delete(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const existing = await prisma.employe.findUnique({ where: { id } });
+      const existing = await prisma.employe.findUnique({ where: { id }, include: { user: { select: { id: true } } } });
 
       if (!existing) {
         return res.status(404).json({ error: 'Employé non trouvé' });
       }
 
+      // Le compte utilisateur lié est supprimé avec l'employé
+      const linkedUserId = existing.user?.id;
+      if (linkedUserId && linkedUserId === req.user?.id) {
+        return res.status(400).json({ error: 'Cet employé est lié à votre propre compte : vous ne pouvez pas le supprimer' });
+      }
+      // La suppression définitive d'un compte est réservée au SUPER_ADMIN
+      if (linkedUserId && req.user?.role !== 'SUPER_ADMIN') {
+        return res.status(403).json({ error: 'Cet employé est lié à un compte utilisateur : seul un super administrateur peut le supprimer' });
+      }
+
       await prisma.$transaction(async (tx) => {
-        await tx.user.updateMany({ where: { employeId: id }, data: { employeId: null } });
+        if (linkedUserId) await purgeUser(tx, linkedUserId, req.user!.id);
         await tx.interventionEmploye.deleteMany({ where: { employeId: id } });
+        await tx.fIApplicateur.deleteMany({ where: { employeId: id } });
         await tx.conge.deleteMany({ where: { employeId: id } });
         await tx.jourWeekendTravaille.deleteMany({ where: { employeId: id } });
         await tx.soldeConge.deleteMany({ where: { employeId: id } });
@@ -238,7 +271,12 @@ export const employeController = {
         await tx.mouvementConge.deleteMany({ where: { employeId: id } });
         await tx.employe.delete({ where: { id } });
       });
-      res.json({ message: 'Employé supprimé' });
+
+      await createAuditLog(req.user!.id, 'DELETE', 'Employe', id, { before: existing });
+
+      if (linkedUserId) await createAuditLog(req.user!.id, 'DELETE', 'User', linkedUserId);
+
+      res.json({ message: linkedUserId ? 'Employé et compte utilisateur supprimés' : 'Employé supprimé' });
     } catch (error) {
       logger.error({ err: error }, 'Delete employe error');
       return next(new AppError(500, 'Erreur serveur'));
