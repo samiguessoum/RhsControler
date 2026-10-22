@@ -119,6 +119,14 @@ export const posteController = {
         return res.status(404).json({ error: 'Poste non trouvé' });
       }
 
+      // Les affectations d'interventions référencent le poste : on ne peut pas le retirer de l'historique
+      const affectations = await prisma.interventionEmploye.count({ where: { posteId: id } });
+      if (affectations > 0) {
+        return res.status(400).json({
+          error: `Ce poste est utilisé dans ${affectations} affectation(s) d'intervention. Désactivez-le plutôt : il ne sera plus proposé mais l'historique sera conservé.`,
+        });
+      }
+
       await prisma.poste.delete({ where: { id } });
       res.json({ message: 'Poste supprimé' });
     } catch (error) {

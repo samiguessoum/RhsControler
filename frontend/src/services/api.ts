@@ -150,8 +150,10 @@ export const authApi = {
     await api.post('/auth/logout');
   },
 
-  changePassword: async (currentPassword: string, newPassword: string): Promise<void> => {
-    await api.post('/auth/change-password', { currentPassword, newPassword });
+  // Renvoie le nouveau jeton de session (les anciens sont invalidés)
+  changePassword: async (currentPassword: string, newPassword: string): Promise<string | undefined> => {
+    const { data } = await api.post('/auth/change-password', { currentPassword, newPassword });
+    return data.token;
   },
 };
 
@@ -167,7 +169,7 @@ export const usersApi = {
     return data.user;
   },
 
-  create: async (userData: Partial<User> & { password: string }): Promise<User> => {
+  create: async (userData: Partial<User> & { password: string; createEmploye?: { posteIds: string[]; dateEntree?: string } }): Promise<User> => {
     const { data } = await api.post('/users', userData);
     return data.user;
   },

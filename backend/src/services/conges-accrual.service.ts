@@ -34,31 +34,27 @@ export async function accruerEmployePourMois(
   const settings = await prisma.companySettings.findFirst();
   const joursParMois = settings?.joursCongesMensuels ?? 2.5;
 
-  const solde = await prisma.soldeConge.findUnique({
-    where: { employeId_annee_type: { employeId, annee, type: 'ANNUEL' } },
-  });
+  // Incréments atomiques : ne pas écraser une approbation de congé faite en parallèle
+  await prisma.$transaction(async (tx) => {
+    const solde = await tx.soldeConge.upsert({
+      where: { employeId_annee_type: { employeId, annee, type: 'ANNUEL' } },
+      update: { joursAcquis: { increment: joursParMois }, joursRestants: { increment: joursParMois } },
+      create: { employeId, annee, type: 'ANNUEL', joursAcquis: joursParMois, joursRestants: joursParMois },
+    });
 
-  const nouvelAcquis = (solde?.joursAcquis ?? 0) + joursParMois;
-  const nouveauRestant = (solde?.joursRestants ?? 0) + joursParMois;
-
-  await prisma.soldeConge.upsert({
-    where: { employeId_annee_type: { employeId, annee, type: 'ANNUEL' } },
-    update: { joursAcquis: nouvelAcquis, joursRestants: nouveauRestant },
-    create: { employeId, annee, type: 'ANNUEL', joursAcquis: joursParMois, joursRestants: joursParMois },
-  });
-
-  await prisma.mouvementConge.create({
-    data: {
-      employeId,
-      typeOp: 'ACQUISITION',
-      sens: 'CREDIT',
-      jours: joursParMois,
-      soldeApres: nouveauRestant,
-      motif: `Acquisition mensuelle ${mois}/${annee}`,
-      annee,
-      mois,
-      auteurId,
-    },
+    await tx.mouvementConge.create({
+      data: {
+        employeId,
+        typeOp: 'ACQUISITION',
+        sens: 'CREDIT',
+        jours: joursParMois,
+        soldeApres: solde.joursRestants,
+        motif: `Acquisition mensuelle ${mois}/${annee}`,
+        annee,
+        mois,
+        auteurId,
+      },
+    });
   });
 
   return true;

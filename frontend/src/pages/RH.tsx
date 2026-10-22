@@ -470,7 +470,7 @@ function CongesTab({ canManage, annee }: { canManage: boolean; annee: number }) 
       setSelectedConge(null);
       toast.success(vars.approuve ? 'Congé approuvé' : 'Congé refusé');
     },
-    onError: () => toast.error('Erreur lors du traitement'),
+    onError: (err: any) => toast.error(err?.response?.data?.error || 'Erreur lors du traitement'),
   });
 
   const annulerMutation = useMutation({
@@ -480,7 +480,7 @@ function CongesTab({ canManage, annee }: { canManage: boolean; annee: number }) 
       queryClient.invalidateQueries({ queryKey: ['rh-dashboard'] });
       toast.success('Congé annulé');
     },
-    onError: () => toast.error('Erreur lors de l\'annulation'),
+    onError: (err: any) => toast.error(err?.response?.data?.error || 'Erreur lors de l\'annulation'),
   });
 
   return (
@@ -1007,7 +1007,7 @@ function WeekendsTab({ canManage, annee }: { canManage: boolean; annee: number }
       queryClient.invalidateQueries({ queryKey: ['rh-dashboard'] });
       toast.success('Entrée supprimée');
     },
-    onError: () => toast.error('Erreur lors de la suppression'),
+    onError: (err: any) => toast.error(err?.response?.data?.error || 'Erreur lors de la suppression'),
   });
 
   return (
@@ -1420,7 +1420,7 @@ function EditSoldeDialog({
       toast.success('Solde mis à jour');
       onOpenChange(false);
     },
-    onError: () => toast.error('Erreur lors de la mise à jour'),
+    onError: (err: any) => toast.error(err?.response?.data?.error || 'Erreur lors de la mise à jour'),
   });
 
   if (!employe) return null;
@@ -1510,7 +1510,7 @@ function RecuperationTab({ canManage, annee }: { canManage: boolean; annee: numb
       setAccordDialog(null);
       setAccordForm({ nbJours: 1, motif: '' });
     },
-    onError: () => toast.error('Erreur lors de l\'accord'),
+    onError: (err: any) => toast.error(err?.response?.data?.error || 'Erreur lors de l\'accord'),
   });
 
   const deleteMutation = useMutation({
@@ -1520,7 +1520,7 @@ function RecuperationTab({ canManage, annee }: { canManage: boolean; annee: numb
       queryClient.invalidateQueries({ queryKey: ['soldes'] });
       toast.success('Accord de récupération supprimé');
     },
-    onError: () => toast.error('Erreur lors de la suppression'),
+    onError: (err: any) => toast.error(err?.response?.data?.error || 'Erreur lors de la suppression'),
   });
 
   const recuperations: RecuperationEmploye[] = data?.recuperations || [];

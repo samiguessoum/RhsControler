@@ -7,7 +7,24 @@ import { createAuditLog } from './audit.controller.js';
 import logger from '../lib/logger.js';
 import { AppError } from '../lib/errors.js';
 import { getUserUsages } from '../services/usages.service.js';
+import { rattraperAccrualEmploye } from '../services/conges-accrual.service.js';
 
+
+/**
+ * Un employé ne peut être lié qu'à un seul compte.
+ * Retourne un message d'erreur, ou null si le lien est possible.
+ */
+async function checkEmployeLinkable(employeId: string, userId?: string): Promise<string | null> {
+  const employe = await prisma.employe.findUnique({
+    where: { id: employeId },
+    select: { user: { select: { id: true, prenom: true, nom: true } } },
+  });
+  if (!employe) return 'Employé non trouvé';
+  if (employe.user && employe.user.id !== userId) {
+    return `Cet employé est déjà lié au compte de ${employe.user.prenom} ${employe.user.nom}`;
+  }
+  return null;
+}
 
 /**
  * Suppression définitive d'un utilisateur dans une transaction.
@@ -130,7 +147,7 @@ export const userController = {
    */
   async create(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const { email, password, nom, prenom, tel, role } = req.body;
+      const { email, password, nom, prenom, tel, role, employeId, createEmploye } = req.body;
 
       // Vérifier si email existe déjà
       const existing = await prisma.user.findUnique({
@@ -141,28 +158,62 @@ export const userController = {
         return res.status(400).json({ error: 'Cet email est déjà utilisé' });
       }
 
+      if (employeId) {
+        const linkError = await checkEmployeLinkable(employeId);
+        if (linkError) return res.status(400).json({ error: linkError });
+      }
+
       const hashedPassword = await bcrypt.hash(password, 12);
 
-      const user = await prisma.user.create({
-        data: {
-          email: email.toLowerCase(),
-          password: hashedPassword,
-          nom,
-          prenom,
-          tel,
-          role,
-        },
-        select: {
-          id: true,
-          email: true,
-          nom: true,
-          prenom: true,
-          tel: true,
-          role: true,
-          actif: true,
-          createdAt: true,
-        },
+      // Compte + fiche employé éventuelle créés ensemble : tout ou rien
+      const { user, newEmployeId } = await prisma.$transaction(async (tx) => {
+        let linkedEmployeId: string | undefined = employeId;
+        let createdEmployeId: string | undefined;
+        if (!linkedEmployeId && createEmploye) {
+          const employe = await tx.employe.create({
+            data: {
+              prenom,
+              nom,
+              dateEntree: createEmploye.dateEntree ? new Date(createEmploye.dateEntree) : undefined,
+              postes: { connect: createEmploye.posteIds.map((pid: string) => ({ id: pid })) },
+            },
+          });
+          linkedEmployeId = employe.id;
+          createdEmployeId = employe.id;
+        }
+
+        const created = await tx.user.create({
+          data: {
+            email: email.toLowerCase(),
+            password: hashedPassword,
+            nom,
+            prenom,
+            tel,
+            role,
+            employeId: linkedEmployeId,
+          },
+          select: {
+            id: true,
+            email: true,
+            nom: true,
+            prenom: true,
+            tel: true,
+            role: true,
+            actif: true,
+            employeId: true,
+            createdAt: true,
+          },
+        });
+        return { user: created, newEmployeId: createdEmployeId };
       });
+
+      // Congés déjà dus depuis l'entrée de la nouvelle fiche employé
+      if (newEmployeId) {
+        const employe = await prisma.employe.findUnique({ where: { id: newEmployeId }, select: { dateEntree: true } });
+        await rattraperAccrualEmploye(newEmployeId, employe?.dateEntree ?? null, req.user?.id).catch((err) => {
+          logger.error({ err }, 'rattraperAccrualEmploye failed after user create');
+        });
+      }
 
       // Audit log
       await createAuditLog(req.user!.id, 'CREATE', 'User', user.id, { after: user });
@@ -188,6 +239,29 @@ export const userController = {
         return res.status(404).json({ error: 'Utilisateur non trouvé' });
       }
 
+      // Éviter de se bloquer soi-même
+      if (id === req.user?.id) {
+        if (actif === false) {
+          return res.status(400).json({ error: 'Vous ne pouvez pas désactiver votre propre compte' });
+        }
+        if (role && role !== existing.role) {
+          return res.status(400).json({ error: 'Vous ne pouvez pas modifier votre propre rôle' });
+        }
+      }
+
+      // Toujours garder au moins un super administrateur actif
+      if (existing.role === 'SUPER_ADMIN' && existing.actif && ((role && role !== 'SUPER_ADMIN') || actif === false)) {
+        const autresSuperAdmins = await prisma.user.count({ where: { role: 'SUPER_ADMIN', actif: true, id: { not: id } } });
+        if (autresSuperAdmins === 0) {
+          return res.status(400).json({ error: 'Il doit rester au moins un super administrateur actif' });
+        }
+      }
+
+      if (employeId && employeId !== existing.employeId) {
+        const linkError = await checkEmployeLinkable(employeId, id);
+        if (linkError) return res.status(400).json({ error: linkError });
+      }
+
       // Vérifier email unique si modifié
       if (email && email.toLowerCase() !== existing.email) {
         const emailExists = await prisma.user.findUnique({
@@ -200,7 +274,11 @@ export const userController = {
 
       const updateData: any = {};
       if (email) updateData.email = email.toLowerCase();
-      if (password) updateData.password = await bcrypt.hash(password, 12);
+      if (password) {
+        updateData.password = await bcrypt.hash(password, 12);
+        // Invalide les sessions ouvertes avec l'ancien mot de passe
+        updateData.passwordChangedAt = new Date();
+      }
       if (nom) updateData.nom = nom;
       if (prenom) updateData.prenom = prenom;
       if (tel !== undefined) updateData.tel = tel;
@@ -256,6 +334,13 @@ export const userController = {
         return res.status(404).json({ error: 'Utilisateur non trouvé' });
       }
 
+      if (existing.role === 'SUPER_ADMIN' && existing.actif) {
+        const autresSuperAdmins = await prisma.user.count({ where: { role: 'SUPER_ADMIN', actif: true, id: { not: id } } });
+        if (autresSuperAdmins === 0) {
+          return res.status(400).json({ error: 'Il doit rester au moins un super administrateur actif' });
+        }
+      }
+
       await prisma.user.update({
         where: { id },
         data: { actif: false },
@@ -303,6 +388,13 @@ export const userController = {
 
       if (!existing) {
         return res.status(404).json({ error: 'Utilisateur non trouvé' });
+      }
+
+      if (existing.role === 'SUPER_ADMIN') {
+        const autresSuperAdmins = await prisma.user.count({ where: { role: 'SUPER_ADMIN', actif: true, id: { not: id } } });
+        if (autresSuperAdmins === 0) {
+          return res.status(400).json({ error: 'Il doit rester au moins un super administrateur actif' });
+        }
       }
 
       const adminId = req.user!.id;

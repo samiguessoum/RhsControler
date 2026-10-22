@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -7,6 +8,7 @@ import {
   Upload,
   Settings,
   LogOut,
+  KeyRound,
   AlertTriangle,
   UserCog,
   Building2,
@@ -26,6 +28,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { messerieApi } from '@/services/api';
+import { ChangePasswordDialog } from '@/components/ChangePasswordDialog';
 
 interface SidebarProps {
   stats?: {
@@ -47,6 +50,7 @@ interface NavItem {
 
 export function Sidebar({ stats, mobileOpen = false, onMobileClose }: SidebarProps) {
   const { user, logout, canDo } = useAuthStore();
+  const [isPasswordOpen, setIsPasswordOpen] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: unreadData } = useQuery({
@@ -169,6 +173,15 @@ export function Sidebar({ stats, mobileOpen = false, onMobileClose }: SidebarPro
           variant="ghost"
           size="sm"
           className="w-full justify-start text-gray-600"
+          onClick={() => { setIsPasswordOpen(true); onMobileClose?.(); }}
+        >
+          <KeyRound className="h-4 w-4 mr-2" />
+          Changer mon mot de passe
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start text-gray-600"
           onClick={() => { logout(); onMobileClose?.(); }}
         >
           <LogOut className="h-4 w-4 mr-2" />
@@ -180,6 +193,8 @@ export function Sidebar({ stats, mobileOpen = false, onMobileClose }: SidebarPro
 
   return (
     <>
+      <ChangePasswordDialog open={isPasswordOpen} onOpenChange={setIsPasswordOpen} />
+
       {/* Desktop sidebar */}
       <aside className="hidden md:flex flex-col w-64 bg-white border-r border-gray-200 h-screen fixed left-0 top-0">
         <NavBody />

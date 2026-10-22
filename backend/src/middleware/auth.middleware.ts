@@ -33,9 +33,9 @@ export function generateToken(user: AuthUser): string {
   );
 }
 
-export function verifyToken(token: string): AuthUser | null {
+export function verifyToken(token: string): (AuthUser & { iat?: number }) | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as AuthUser;
+    return jwt.verify(token, JWT_SECRET) as AuthUser & { iat?: number };
   } catch {
     return null;
   }
@@ -65,11 +65,17 @@ export async function authMiddleware(
     // Verify user still exists and is active
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
-      select: { id: true, email: true, nom: true, prenom: true, role: true, actif: true, employeId: true }
+      select: { id: true, email: true, nom: true, prenom: true, role: true, actif: true, employeId: true, passwordChangedAt: true }
     });
 
     if (!user || !user.actif) {
       res.status(401).json({ error: 'Utilisateur non trouvé ou désactivé', timestamp: new Date().toISOString() });
+      return;
+    }
+
+    // Session ouverte avant le dernier changement de mot de passe (iat en secondes)
+    if (user.passwordChangedAt && decoded.iat && decoded.iat < Math.floor(user.passwordChangedAt.getTime() / 1000)) {
+      res.status(401).json({ error: 'Mot de passe modifié, veuillez vous reconnecter', timestamp: new Date().toISOString() });
       return;
     }
 

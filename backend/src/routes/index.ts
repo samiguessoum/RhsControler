@@ -26,6 +26,11 @@ import {
   annulerInterventionSchema,
   createCongeSchema,
   approuverCongeSchema,
+  ajusterSoldeSchema,
+  cloturerAnneeSchema,
+  crediterMoisSchema,
+  accorderRecuperationSchema,
+  changePasswordSchema,
   createWeekendTravailleSchema,
   updateSoldeSchema,
   // Tiers
@@ -177,7 +182,7 @@ router.post('/auth/login', validate(loginSchema), authController.login);
 // ============ AUTH (protected) ============
 router.get('/auth/me', authMiddleware, authController.me);
 router.post('/auth/logout', authMiddleware, authController.logout);
-router.post('/auth/change-password', authMiddleware, authController.changePassword);
+router.post('/auth/change-password', authMiddleware, validate(changePasswordSchema), authController.changePassword);
 
 // ============ USERS (DIRECTION only) ============
 router.get('/users', authMiddleware, canDo('manageUsers'), userController.list);
@@ -295,11 +300,10 @@ router.put('/rh/conges/:id/approuver', authMiddleware, canDo('manageRH'), valida
 router.delete('/rh/conges/:id', authMiddleware, canDo('manageRH'), rhController.annulerConge);
 
 // Soldes de conges
-router.get('/rh/soldes', authMiddleware, canDo('viewRH'), rhController.listSoldes);
 router.get('/rh/soldes/mouvements', authMiddleware, canDo('viewRH'), rhController.listMouvements);
-router.post('/rh/soldes/crediter-mois', authMiddleware, canDo('manageRH'), rhController.crediterMois);
-router.post('/rh/soldes/cloture-annee', authMiddleware, canDo('manageRH'), rhController.cloturerAnnee);
-router.post('/rh/soldes/:employeId/ajuster', authMiddleware, canDo('manageRH'), rhController.ajusterSolde);
+router.post('/rh/soldes/crediter-mois', authMiddleware, canDo('manageRH'), validate(crediterMoisSchema), rhController.crediterMois);
+router.post('/rh/soldes/cloture-annee', authMiddleware, canDo('manageRH'), validate(cloturerAnneeSchema), rhController.cloturerAnnee);
+router.post('/rh/soldes/:employeId/ajuster', authMiddleware, canDo('manageRH'), validate(ajusterSoldeSchema), rhController.ajusterSolde);
 
 // Weekend travaillés
 router.get('/rh/weekend-travailles', authMiddleware, canDo('viewRH'), rhController.listWeekendTravailles);
@@ -315,7 +319,7 @@ router.get('/rh/employes/:id/recap', authMiddleware, canDo('viewRH'), rhControll
 
 // Récupérations accordées
 router.get('/rh/recuperations', authMiddleware, canDo('viewRH'), rhController.listRecuperations);
-router.post('/rh/recuperations/accorder', authMiddleware, canDo('manageRH'), rhController.accorderRecuperation);
+router.post('/rh/recuperations/accorder', authMiddleware, canDo('manageRH'), validate(accorderRecuperationSchema), rhController.accorderRecuperation);
 router.delete('/rh/recuperations/accordees/:id', authMiddleware, canDo('manageRH'), rhController.deleteRecuperationAccordee);
 
 // ============ TIERS (Dolibarr-style) ============

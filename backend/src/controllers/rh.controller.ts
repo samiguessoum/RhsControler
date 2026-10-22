@@ -59,6 +59,21 @@ async function recalculerRecuperation(employeId: string, annee: number) {
   return totalAcquis;
 }
 
+const STATUTS_ACTIFS = ['EN_ATTENTE', 'APPROUVE'] as const;
+
+/** Un congé en attente ou approuvé chevauche-t-il déjà ces dates ? */
+async function trouverChevauchement(employeId: string, dateDebut: Date, dateFin: Date, excludeId?: string) {
+  return prisma.conge.findFirst({
+    where: {
+      employeId,
+      statut: { in: [...STATUTS_ACTIFS] },
+      dateDebut: { lte: dateFin },
+      dateFin: { gte: dateDebut },
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+    },
+  });
+}
+
 export const rhController = {
   // ============ CONGES ============
 
@@ -129,16 +144,30 @@ export const rhController = {
         return res.status(404).json({ error: 'Employé non trouvé' });
       }
 
-      // Vérifier le solde si c'est un congé annuel ou récupération
+      const debut = new Date(dateDebut);
+      const fin = new Date(dateFin);
+      if (fin < debut) {
+        return res.status(400).json({ error: 'La date de fin doit être après la date de début' });
+      }
+
+      const chevauchement = await trouverChevauchement(employeId, debut, fin);
+      if (chevauchement) {
+        return res.status(400).json({
+          error: `Un congé existe déjà sur cette période (du ${chevauchement.dateDebut.toLocaleDateString('fr-FR')} au ${chevauchement.dateFin.toLocaleDateString('fr-FR')})`,
+        });
+      }
+
+      // Vérifier le solde si c'est un congé annuel ou récupération (absence de solde = 0 jour)
       if (type === 'ANNUEL' || type === 'RECUPERATION') {
-        const annee = new Date(dateDebut).getFullYear();
+        const annee = debut.getFullYear();
         const solde = await prisma.soldeConge.findUnique({
           where: { employeId_annee_type: { employeId, annee, type } },
         });
+        const disponible = solde?.joursRestants ?? 0;
 
-        if (solde && solde.joursRestants < nbJours) {
+        if (disponible < nbJours) {
           return res.status(400).json({
-            error: `Solde insuffisant. Disponible: ${solde.joursRestants} jours`,
+            error: `Solde insuffisant. Disponible : ${disponible} jour(s)`,
           });
         }
       }
@@ -196,6 +225,10 @@ export const rhController = {
             where: { employeId_annee_type: { employeId: conge.employeId, annee, type: conge.type } },
           });
           const soldeApres = (soldeActuel?.joursRestants ?? 0) - conge.nbJours;
+          // Le solde a pu changer depuis la demande (autre congé approuvé entre-temps)
+          if (soldeApres < 0) {
+            throw new AppError(400, `Solde insuffisant pour approuver ce congé. Disponible : ${soldeActuel?.joursRestants ?? 0} jour(s)`);
+          }
 
           await tx.soldeConge.upsert({
             where: { employeId_annee_type: { employeId: conge.employeId, annee, type: conge.type } },
@@ -236,6 +269,7 @@ export const rhController = {
 
       res.json({ conge: updated });
     } catch (error) {
+      if (error instanceof AppError) return next(error);
       logger.error({ err: error }, 'Approuver conge error');
       return next(new AppError(500, 'Erreur serveur'));
     }
@@ -260,21 +294,31 @@ export const rhController = {
         return res.status(400).json({ error: 'Impossible d\'annuler un congé déjà pris' });
       }
 
-      // Si était approuvé, restaurer le solde
-      if (conge.statut === 'APPROUVE' && (conge.type === 'ANNUEL' || conge.type === 'RECUPERATION')) {
-        const annee = conge.dateDebut.getFullYear();
-        await prisma.soldeConge.update({
-          where: { employeId_annee_type: { employeId: conge.employeId, annee, type: conge.type } },
-          data: {
-            joursPris: { decrement: conge.nbJours },
-            joursRestants: { increment: conge.nbJours },
-          },
-        });
-      }
+      await prisma.$transaction(async (tx) => {
+        // Si était approuvé, restaurer le solde et tracer le mouvement
+        if (conge.statut === 'APPROUVE' && (conge.type === 'ANNUEL' || conge.type === 'RECUPERATION')) {
+          const annee = conge.dateDebut.getFullYear();
+          const solde = await tx.soldeConge.update({
+            where: { employeId_annee_type: { employeId: conge.employeId, annee, type: conge.type } },
+            data: {
+              joursPris: { decrement: conge.nbJours },
+              joursRestants: { increment: conge.nbJours },
+            },
+          });
+          await tx.mouvementConge.create({
+            data: {
+              employeId: conge.employeId, typeOp: 'ANNULATION', sens: 'CREDIT',
+              jours: conge.nbJours, soldeApres: solde.joursRestants,
+              motif: `Annulation du congé du ${conge.dateDebut.toLocaleDateString('fr-FR')} au ${conge.dateFin.toLocaleDateString('fr-FR')}`,
+              annee, auteurId: req.user?.id,
+            },
+          });
+        }
 
-      await prisma.conge.update({
-        where: { id },
-        data: { statut: 'ANNULE' },
+        await tx.conge.update({
+          where: { id },
+          data: { statut: 'ANNULE' },
+        });
       });
 
       res.json({ message: 'Congé annulé' });
@@ -287,35 +331,14 @@ export const rhController = {
   // ============ SOLDES CONGES ============
 
   /**
-   * GET /api/rh/soldes?annee=2026
-   * Soldes de congés de tous les employés pour une année
-   */
-  async listSoldes(req: AuthRequest, res: Response, next: NextFunction) {
-    try {
-      const annee = parseInt(req.query.annee as string) || new Date().getFullYear();
-
-      const soldes = await prisma.soldeConge.findMany({
-        where: { annee, type: 'ANNUEL' },
-        include: { employe: { select: { id: true, nom: true, prenom: true } } },
-        orderBy: [{ employe: { nom: 'asc' } }],
-      });
-
-      res.json({ soldes, annee });
-    } catch (error) {
-      logger.error({ err: error }, 'List soldes error');
-      return next(new AppError(500, 'Erreur serveur'));
-    }
-  },
-
-  /**
    * POST /api/rh/soldes/crediter-mois
    * Credit 2.5 jours a tous les employes pour un mois donne
    */
   async crediterMois(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { annee, mois } = req.body;
-      const anneeNum = annee ? parseInt(annee) : new Date().getFullYear();
-      const moisNum = mois ? parseInt(mois) : new Date().getMonth() + 1;
+      const anneeNum: number = annee ?? new Date().getFullYear();
+      const moisNum: number = mois ?? new Date().getMonth() + 1;
 
       const settings = await prisma.companySettings.findFirst();
       const joursParMois = settings?.joursCongesMensuels ?? 2.5;
@@ -353,41 +376,47 @@ export const rhController = {
     try {
       const { employeId } = req.params;
       const { jours, sens, motif, annee } = req.body;
-      const anneeNum = annee ? parseInt(annee) : new Date().getFullYear();
-      const joursNum = parseFloat(jours);
+      const anneeNum: number = annee ?? new Date().getFullYear();
+      const joursNum: number = jours;
+
+      const employe = await prisma.employe.findUnique({ where: { id: employeId }, select: { id: true } });
+      if (!employe) {
+        return res.status(404).json({ error: 'Employé non trouvé' });
+      }
 
       const solde = await prisma.soldeConge.findUnique({
         where: { employeId_annee_type: { employeId, annee: anneeNum, type: 'ANNUEL' } },
       });
 
       const ancienRestant = solde?.joursRestants ?? 0;
-      const nouveauRestant = sens === 'CREDIT'
-        ? ancienRestant + joursNum
-        : Math.max(0, ancienRestant - joursNum);
+      if (sens === 'DEBIT' && joursNum > ancienRestant) {
+        return res.status(400).json({ error: `Débit supérieur au solde disponible (${ancienRestant} jour(s))` });
+      }
+      const nouveauRestant = sens === 'CREDIT' ? ancienRestant + joursNum : ancienRestant - joursNum;
 
-      await prisma.soldeConge.upsert({
-        where: { employeId_annee_type: { employeId, annee: anneeNum, type: 'ANNUEL' } },
-        update: {
-          joursAcquis: sens === 'CREDIT' ? { increment: joursNum } : undefined,
-          joursPris: sens === 'DEBIT' ? { increment: joursNum } : undefined,
-          joursRestants: nouveauRestant,
-        },
-        create: {
-          employeId, annee: anneeNum, type: 'ANNUEL',
-          joursAcquis: sens === 'CREDIT' ? joursNum : 0,
-          joursPris: sens === 'DEBIT' ? joursNum : 0,
-          joursRestants: nouveauRestant,
-        },
-      });
-
-      await prisma.mouvementConge.create({
-        data: {
-          employeId, typeOp: 'AJUSTEMENT', sens,
-          jours: joursNum, soldeApres: nouveauRestant,
-          motif: motif || 'Ajustement manuel',
-          annee: anneeNum, auteurId: req.user?.id,
-        },
-      });
+      await prisma.$transaction([
+        prisma.soldeConge.upsert({
+          where: { employeId_annee_type: { employeId, annee: anneeNum, type: 'ANNUEL' } },
+          update: {
+            joursAcquis: sens === 'CREDIT' ? { increment: joursNum } : undefined,
+            joursPris: sens === 'DEBIT' ? { increment: joursNum } : undefined,
+            joursRestants: sens === 'CREDIT' ? { increment: joursNum } : { decrement: joursNum },
+          },
+          create: {
+            employeId, annee: anneeNum, type: 'ANNUEL',
+            joursAcquis: sens === 'CREDIT' ? joursNum : 0,
+            joursRestants: nouveauRestant,
+          },
+        }),
+        prisma.mouvementConge.create({
+          data: {
+            employeId, typeOp: 'AJUSTEMENT', sens,
+            jours: joursNum, soldeApres: nouveauRestant,
+            motif: motif || 'Ajustement manuel',
+            annee: anneeNum, auteurId: req.user?.id,
+          },
+        }),
+      ]);
 
       res.json({ message: 'Solde ajuste', soldeApres: nouveauRestant });
     } catch (error) {
@@ -403,8 +432,13 @@ export const rhController = {
   async cloturerAnnee(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { annee, action } = req.body; // action: REPORTER | SUPPRIMER | PAYER
-      const anneeNum = parseInt(annee);
+      const anneeNum: number = annee;
       const anneeNext = anneeNum + 1;
+
+      // On ne clôture qu'une année terminée : les congés de l'année en cours s'acquièrent encore
+      if (anneeNum >= new Date().getFullYear()) {
+        return res.status(400).json({ error: `L'année ${anneeNum} n'est pas terminée : clôture impossible` });
+      }
 
       const soldes = await prisma.soldeConge.findMany({
         where: { annee: anneeNum, type: 'ANNUEL' },
@@ -416,59 +450,62 @@ export const rhController = {
         if (s.joursRestants <= 0) continue;
         const restants = s.joursRestants;
 
-        if (action === 'REPORTER') {
-          // Transferer vers l annee suivante
-          await prisma.soldeConge.upsert({
-            where: { employeId_annee_type: { employeId: s.employeId, annee: anneeNext, type: 'ANNUEL' } },
-            update: { joursReportes: { increment: restants }, joursRestants: { increment: restants } },
-            create: {
-              employeId: s.employeId, annee: anneeNext, type: 'ANNUEL',
-              joursReportes: restants, joursRestants: restants,
-            },
-          });
-          await prisma.mouvementConge.createMany({
-            data: [
-              {
-                employeId: s.employeId, typeOp: 'REPORT_SORTANT', sens: 'DEBIT',
+        // Chaque employé est traité en bloc : pas de report à moitié fait
+        await prisma.$transaction(async (tx) => {
+          if (action === 'REPORTER') {
+            // Transferer vers l annee suivante
+            await tx.soldeConge.upsert({
+              where: { employeId_annee_type: { employeId: s.employeId, annee: anneeNext, type: 'ANNUEL' } },
+              update: { joursReportes: { increment: restants }, joursRestants: { increment: restants } },
+              create: {
+                employeId: s.employeId, annee: anneeNext, type: 'ANNUEL',
+                joursReportes: restants, joursRestants: restants,
+              },
+            });
+            await tx.mouvementConge.createMany({
+              data: [
+                {
+                  employeId: s.employeId, typeOp: 'REPORT_SORTANT', sens: 'DEBIT',
+                  jours: restants, soldeApres: 0, annee: anneeNum,
+                  motif: `Report vers ${anneeNext}`, auteurId: req.user?.id,
+                },
+                {
+                  employeId: s.employeId, typeOp: 'REPORT_ENTRANT', sens: 'CREDIT',
+                  jours: restants, soldeApres: restants, annee: anneeNext,
+                  motif: `Report depuis ${anneeNum}`, auteurId: req.user?.id,
+                },
+              ],
+            });
+            await tx.soldeConge.update({
+              where: { id: s.id },
+              data: { joursRestants: 0 },
+            });
+          } else if (action === 'SUPPRIMER') {
+            await tx.soldeConge.update({
+              where: { id: s.id },
+              data: { joursRestants: 0 },
+            });
+            await tx.mouvementConge.create({
+              data: {
+                employeId: s.employeId, typeOp: 'PERTE', sens: 'DEBIT',
                 jours: restants, soldeApres: 0, annee: anneeNum,
-                motif: `Report vers ${anneeNext}`, auteurId: req.user?.id,
+                motif: `Solde non reporte - cloture ${anneeNum}`, auteurId: req.user?.id,
               },
-              {
-                employeId: s.employeId, typeOp: 'REPORT_ENTRANT', sens: 'CREDIT',
-                jours: restants, soldeApres: restants, annee: anneeNext,
-                motif: `Report depuis ${anneeNum}`, auteurId: req.user?.id,
+            });
+          } else if (action === 'PAYER') {
+            await tx.soldeConge.update({
+              where: { id: s.id },
+              data: { joursIndemnises: { increment: restants }, joursRestants: 0 },
+            });
+            await tx.mouvementConge.create({
+              data: {
+                employeId: s.employeId, typeOp: 'PAIEMENT', sens: 'DEBIT',
+                jours: restants, soldeApres: 0, annee: anneeNum,
+                motif: `Conversion en indemnite - cloture ${anneeNum}`, auteurId: req.user?.id,
               },
-            ],
-          });
-          await prisma.soldeConge.update({
-            where: { id: s.id },
-            data: { joursRestants: 0 },
-          });
-        } else if (action === 'SUPPRIMER') {
-          await prisma.soldeConge.update({
-            where: { id: s.id },
-            data: { joursRestants: 0 },
-          });
-          await prisma.mouvementConge.create({
-            data: {
-              employeId: s.employeId, typeOp: 'PERTE', sens: 'DEBIT',
-              jours: restants, soldeApres: 0, annee: anneeNum,
-              motif: `Solde non reporte - cloture ${anneeNum}`, auteurId: req.user?.id,
-            },
-          });
-        } else if (action === 'PAYER') {
-          await prisma.soldeConge.update({
-            where: { id: s.id },
-            data: { joursIndemnises: { increment: restants }, joursRestants: 0 },
-          });
-          await prisma.mouvementConge.create({
-            data: {
-              employeId: s.employeId, typeOp: 'PAIEMENT', sens: 'DEBIT',
-              jours: restants, soldeApres: 0, annee: anneeNum,
-              motif: `Conversion en indemnite - cloture ${anneeNum}`, auteurId: req.user?.id,
-            },
-          });
-        }
+            });
+          }
+        });
         traites++;
       }
 
@@ -586,7 +623,8 @@ export const rhController = {
       });
 
       // Recalculer les jours de récupération pour cet employé (non-bloquant)
-      recalculerRecuperation(employeId, dateObj.getFullYear()).catch((err) => {
+      // Attendu : l'écran relit le solde juste après
+      await recalculerRecuperation(employeId, dateObj.getFullYear()).catch((err) => {
         logger.error({ err }, 'recalculerRecuperation failed after weekend create');
       });
 
@@ -617,7 +655,8 @@ export const rhController = {
       await prisma.jourWeekendTravaille.delete({ where: { id } });
 
       // Recalculer les jours de récupération (non-bloquant)
-      recalculerRecuperation(jour.employeId, jour.date.getFullYear()).catch((err) => {
+      // Attendu : l'écran relit le solde juste après
+      await recalculerRecuperation(jour.employeId, jour.date.getFullYear()).catch((err) => {
         logger.error({ err }, 'recalculerRecuperation failed after weekend delete');
       });
 
@@ -666,31 +705,37 @@ export const rhController = {
     try {
       const { employeId, annee, type, joursAcquis } = req.body;
 
-      // Récupérer le solde existant ou créer
       const existing = await prisma.soldeConge.findUnique({
         where: { employeId_annee_type: { employeId, annee, type } },
       });
 
-      const joursPris = existing?.joursPris || 0;
-      const joursRestants = joursAcquis - joursPris;
+      // Le restant tient compte du report de l'année précédente et des jours indemnisés
+      const joursRestants = joursAcquis
+        + (existing?.joursReportes ?? 0)
+        - (existing?.joursPris ?? 0)
+        - (existing?.joursIndemnises ?? 0);
+      const delta = joursAcquis - (existing?.joursAcquis ?? 0);
 
-      const solde = await prisma.soldeConge.upsert({
-        where: { employeId_annee_type: { employeId, annee, type } },
-        update: {
-          joursAcquis,
-          joursRestants,
-        },
-        create: {
-          employeId,
-          annee,
-          type,
-          joursAcquis,
-          joursPris: 0,
-          joursRestants: joursAcquis,
-        },
-        include: {
-          employe: { select: { id: true, nom: true, prenom: true } },
-        },
+      const solde = await prisma.$transaction(async (tx) => {
+        const updated = await tx.soldeConge.upsert({
+          where: { employeId_annee_type: { employeId, annee, type } },
+          update: { joursAcquis, joursRestants },
+          create: { employeId, annee, type, joursAcquis, joursRestants },
+          include: {
+            employe: { select: { id: true, nom: true, prenom: true } },
+          },
+        });
+        if (delta !== 0) {
+          await tx.mouvementConge.create({
+            data: {
+              employeId, typeOp: 'AJUSTEMENT', sens: delta > 0 ? 'CREDIT' : 'DEBIT',
+              jours: Math.abs(delta), soldeApres: joursRestants,
+              motif: `Jours acquis ${annee} modifiés : ${existing?.joursAcquis ?? 0} → ${joursAcquis}`,
+              annee, auteurId: req.user?.id,
+            },
+          });
+        }
+        return updated;
       });
 
       res.json({ solde });
@@ -897,10 +942,6 @@ export const rhController = {
     try {
       const { employeId, nbJours, motif, annee = new Date().getFullYear() } = req.body;
 
-      if (!employeId || !nbJours || nbJours <= 0) {
-        return res.status(400).json({ error: 'employeId et nbJours (> 0) requis' });
-      }
-
       const employe = await prisma.employe.findUnique({ where: { id: employeId } });
       if (!employe) return res.status(404).json({ error: 'Employé non trouvé' });
 
@@ -918,7 +959,8 @@ export const rhController = {
       });
 
       // Recalculer le solde
-      recalculerRecuperation(employeId, parseInt(annee.toString())).catch((err) => {
+      // Attendu : l'écran relit le solde juste après
+      await recalculerRecuperation(employeId, parseInt(annee.toString())).catch((err) => {
         logger.error({ err }, 'recalculerRecuperation failed after accord');
       });
 
@@ -941,7 +983,8 @@ export const rhController = {
 
       await prisma.recuperationAccordee.delete({ where: { id } });
 
-      recalculerRecuperation(accordee.employeId, accordee.annee).catch((err) => {
+      // Attendu : l'écran relit le solde juste après
+      await recalculerRecuperation(accordee.employeId, accordee.annee).catch((err) => {
         logger.error({ err }, 'recalculerRecuperation failed after delete accord');
       });
 

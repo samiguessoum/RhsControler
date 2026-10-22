@@ -22,7 +22,18 @@ export const createUserSchema = z.object({
   nom: z.string().min(1, 'Nom requis'),
   prenom: z.string().min(1, 'Prénom requis'),
   tel: z.string().optional(),
-  role: z.enum(['DIRECTION', 'PLANNING', 'EQUIPE', 'LECTURE']),
+  role: z.enum(['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR', 'SUPER_CHEF_EQUIPE', 'EQUIPE', 'LECTURE']),
+  // Lier un employé existant, ou créer sa fiche employé dans la même opération
+  employeId: z.string().uuid('ID employé invalide').optional(),
+  createEmploye: z.object({
+    posteIds: z.array(z.string().uuid('ID poste invalide')).min(1, 'Au moins un poste requis'),
+    dateEntree: z.string().optional(),
+  }).optional(),
+});
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Mot de passe actuel requis'),
+  newPassword: z.string().min(6, 'Nouveau mot de passe : minimum 6 caractères'),
 });
 
 export const updateUserSchema = z.object({
@@ -50,7 +61,7 @@ export const createEmployeSchema = z.object({
   prenom: z.string().min(1, 'Prénom requis'),
   nom: z.string().min(1, 'Nom requis'),
   posteIds: z.array(z.string().uuid('ID poste invalide')).min(1, 'Au moins un poste requis'),
-  salaireBase: z.union([z.string(), z.number()]).optional(),
+  salaireBase: z.union([z.string(), z.number()]).refine((v) => v === '' || !isNaN(Number(v)), 'Salaire invalide').optional(),
   dateEntree: z.string().or(z.date()).optional().nullable(),
 });
 
@@ -58,7 +69,7 @@ export const updateEmployeSchema = z.object({
   prenom: z.string().min(1, 'Prénom requis').optional(),
   nom: z.string().min(1, 'Nom requis').optional(),
   posteIds: z.array(z.string().uuid('ID poste invalide')).min(1, 'Au moins un poste requis').optional(),
-  salaireBase: z.union([z.string(), z.number()]).optional().nullable(),
+  salaireBase: z.union([z.string(), z.number()]).refine((v) => v === '' || !isNaN(Number(v)), 'Salaire invalide').optional().nullable(),
   dateEntree: z.string().or(z.date()).optional().nullable(),
 });
 
@@ -403,6 +414,30 @@ export const createCongeSchema = z.object({
   dateFin: z.string().or(z.date()).transform((val) => new Date(val)),
   nbJours: z.number().positive('Nombre de jours requis'),
   motif: z.string().optional(),
+});
+
+export const ajusterSoldeSchema = z.object({
+  jours: z.coerce.number({ invalid_type_error: 'Nombre de jours invalide' }).positive('Nombre de jours invalide'),
+  sens: z.enum(['CREDIT', 'DEBIT'], { errorMap: () => ({ message: 'Sens invalide (CREDIT ou DEBIT)' }) }),
+  motif: z.string().optional(),
+  annee: z.coerce.number({ invalid_type_error: 'Année invalide' }).int().min(2020, 'Année invalide').max(2100, 'Année invalide').optional(),
+});
+
+export const cloturerAnneeSchema = z.object({
+  annee: z.coerce.number({ invalid_type_error: 'Année invalide' }).int().min(2020, 'Année invalide').max(2100, 'Année invalide'),
+  action: z.enum(['REPORTER', 'SUPPRIMER', 'PAYER'], { errorMap: () => ({ message: 'Action de clôture invalide' }) }),
+});
+
+export const crediterMoisSchema = z.object({
+  annee: z.coerce.number({ invalid_type_error: 'Année invalide' }).int().min(2020, 'Année invalide').max(2100, 'Année invalide').optional(),
+  mois: z.coerce.number({ invalid_type_error: 'Mois invalide' }).int().min(1, 'Mois invalide').max(12, 'Mois invalide').optional(),
+});
+
+export const accorderRecuperationSchema = z.object({
+  employeId: z.string().uuid('ID employé invalide'),
+  nbJours: z.coerce.number({ invalid_type_error: 'Nombre de jours invalide' }).positive('Nombre de jours invalide'),
+  motif: z.string().optional(),
+  annee: z.coerce.number({ invalid_type_error: 'Année invalide' }).int().min(2020, 'Année invalide').max(2100, 'Année invalide').optional(),
 });
 
 export const approuverCongeSchema = z.object({

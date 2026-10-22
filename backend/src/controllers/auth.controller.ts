@@ -126,12 +126,17 @@ export const authController = {
 
       const hashedPassword = await bcrypt.hash(newPassword, 12);
 
+      // Arrondi à la seconde inférieure : le nouveau jeton (iat en secondes) reste valide
+      const changedAt = new Date(Math.floor(Date.now() / 1000) * 1000);
       await prisma.user.update({
         where: { id: req.user.id },
-        data: { password: hashedPassword },
+        data: { password: hashedPassword, passwordChangedAt: changedAt },
       });
 
-      res.json({ message: 'Mot de passe modifié avec succès' });
+      // Les autres sessions sont invalidées ; celle-ci reçoit un nouveau jeton
+      const token = generateToken(req.user);
+
+      res.json({ message: 'Mot de passe modifié avec succès', token });
     } catch (error) {
       logger.error({ err: error }, 'Change password error');
       return next(new AppError(500, 'Erreur serveur'));

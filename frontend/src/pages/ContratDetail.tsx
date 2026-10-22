@@ -303,7 +303,7 @@ export function ContratDetailPage() {
     onError: (error: any) => {
       const details = error.response?.data?.details;
       if (details?.length) {
-        toast.error(`${error.response?.data?.error || 'Données invalides'} • ${details.map((d: any) => `${d.field}: ${d.message}`).join(', ')}`);
+        toast.error(`Données invalides • ${details.map((d: any) => `${d.field}: ${d.message}`).join(', ')}`);
       } else {
         toast.error(error.response?.data?.error || 'Erreur lors de la mise à jour');
       }

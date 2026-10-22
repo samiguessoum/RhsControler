@@ -186,6 +186,8 @@ model User {
   tel       String?
   role      Role     @default(EQUIPE)
   actif     Boolean  @default(true)
+  // Les sessions émises avant cette date sont refusées
+  passwordChangedAt DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1493,7 +1495,7 @@ model MouvementConge {
   id         String   @id @default(uuid())
   employeId  String
   employe    Employe  @relation(fields: [employeId], references: [id])
-  typeOp     String // ACQUISITION | CONSOMMATION | AJUSTEMENT | REPORT_ENTRANT | REPORT_SORTANT | PAIEMENT | PERTE
+  typeOp     String // ACQUISITION | CONSOMMATION | AJUSTEMENT | ANNULATION | REPORT_ENTRANT | REPORT_SORTANT | PAIEMENT | PERTE
   jours      Float // Valeur absolue
   sens       String // CREDIT | DEBIT
   soldeApres Float // Solde restant apres operation

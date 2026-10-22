@@ -1015,7 +1015,8 @@ export function ParametresPage() {
     queryFn: () => rhApi.getSoldes({ annee: soldesAnnee }),
     enabled: canDo('manageRH'),
   });
-  const soldes = soldesData?.soldes ?? [];
+  // Cet écran gère les congés annuels (les récupérations sont dans RH)
+  const soldes = (soldesData?.soldes ?? []).filter((s) => s.type === 'ANNUEL');
 
   const { data: mouvementsData, isLoading: isLoadingMouvements } = useQuery({
     queryKey: ['mouvements-recap', recapEmployeId],
@@ -1060,22 +1061,15 @@ export function ParametresPage() {
       toast.error(error.response?.data?.error || 'Erreur lors de la suppression');
     },
   });
+  // Un employé ne peut être lié qu'à un seul compte : on masque ceux déjà pris par un autre utilisateur
+  const employesLiables = (userId?: string) =>
+    employes.filter((e) => !users.some((u) => u.employeId === e.id && u.id !== userId));
+
   const ROLES_WITH_EMPLOYE: Role[] = ['DIRECTION', 'COORDINATEUR', 'SUPER_CHEF_EQUIPE', 'EQUIPE'];
 
   const createUserMutation = useMutation({
-    mutationFn: async (userData: Parameters<typeof usersApi.create>[0]) => {
-      const user = await usersApi.create(userData);
-      if (newUserCreateEmploye && newUserPosteIds.length > 0) {
-        const employe = await employesApi.create({
-          prenom: userData.prenom!,
-          nom: userData.nom!,
-          posteIds: newUserPosteIds,
-          ...(newUserDateEntree ? { dateEntree: newUserDateEntree } : {}),
-        });
-        await usersApi.update(user.id, { employeId: employe.id });
-      }
-      return user;
-    },
+    // Le compte et la fiche employé éventuelle sont créés ensemble côté serveur (tout ou rien)
+    mutationFn: (userData: Parameters<typeof usersApi.create>[0]) => usersApi.create(userData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       queryClient.invalidateQueries({ queryKey: ['employes'] });
@@ -2310,6 +2304,7 @@ export function ParametresPage() {
                     REPORT_SORTANT:'Report sortant',
                     PAIEMENT:      'Indemnisation',
                     PERTE:         'Perte fin d\'année',
+                    ANNULATION:    'Congé annulé (recrédité)',
                   };
                   const COLORS: Record<string, string> = {
                     ACQUISITION:    'bg-green-100 text-green-800',
@@ -2319,6 +2314,7 @@ export function ParametresPage() {
                     REPORT_SORTANT: 'bg-purple-100 text-purple-800',
                     PAIEMENT:       'bg-emerald-100 text-emerald-800',
                     PERTE:          'bg-red-100 text-red-800',
+                    ANNULATION:     'bg-teal-100 text-teal-800',
                   };
                   const annees = [...new Set(mouvements.map(m => m.annee))].sort((a, b) => b - a);
                   return (
@@ -3071,6 +3067,9 @@ export function ParametresPage() {
                 tel: (formData.get('tel') as string) || undefined,
                 role: newUserRole,
                 employeId: newUserEmployeId || undefined,
+                ...(newUserCreateEmploye && ROLES_WITH_EMPLOYE.includes(newUserRole)
+                  ? { createEmploye: { posteIds: newUserPosteIds, ...(newUserDateEntree ? { dateEntree: newUserDateEntree } : {}) } }
+                  : {}),
               };
               createUserMutation.mutate(data);
             }}
@@ -3279,7 +3278,7 @@ export function ParametresPage() {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="__none__">— Choisir un employé —</SelectItem>
-                            {employes.map((e) => (
+                            {employesLiables(viewingUser.id).map((e) => (
                               <SelectItem key={e.id} value={e.id}>{e.prenom} {e.nom}</SelectItem>
                             ))}
                           </SelectContent>
@@ -3395,7 +3394,7 @@ export function ParametresPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">— Aucun —</SelectItem>
-                    {employes.map((e) => (
+                    {employesLiables(editingUser.id).map((e) => (
                       <SelectItem key={e.id} value={e.id}>{e.prenom} {e.nom}</SelectItem>
                     ))}
                   </SelectContent>

@@ -13,7 +13,8 @@ export function validate(schema: ZodSchema) {
           message: e.message,
         }));
         res.status(400).json({
-          error: 'Données invalides',
+          // Le détail est inclus dans le message pour que l'interface l'affiche tel quel
+          error: `Données invalides : ${errors.map((e) => e.message).join(', ')}`,
           details: errors,
           timestamp: new Date().toISOString(),
         });
