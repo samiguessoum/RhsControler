@@ -42,3 +42,6 @@ coverage/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Sauvegardes de la base (données de prod, ne jamais versionner)
+backups/
