@@ -1065,7 +1065,7 @@ export function ParametresPage() {
   const employesLiables = (userId?: string) =>
     employes.filter((e) => !users.some((u) => u.employeId === e.id && u.id !== userId));
 
-  const ROLES_WITH_EMPLOYE: Role[] = ['DIRECTION', 'COORDINATEUR', 'SUPER_CHEF_EQUIPE', 'EQUIPE'];
+  const ROLES_WITH_EMPLOYE: Role[] = ['SUPER_ADMIN', 'DIRECTION', 'COORDINATEUR', 'SUPER_CHEF_EQUIPE', 'EQUIPE'];
 
   const createUserMutation = useMutation({
     // Le compte et la fiche employé éventuelle sont créés ensemble côté serveur (tout ou rien)
