@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Plus, X, UserPlus, Users } from 'lucide-react';
+import { Plus, X, UserPlus, Users, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +10,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import type { Employe, Poste, InterventionEmployeInput } from '@/types';
 
 interface CongeActif {
@@ -51,7 +57,7 @@ export function EmployeSelector({
 }: EmployeSelectorProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [selectedPosteId, setSelectedPosteId] = useState<string>('');
-  const [selectedEmployeId, setSelectedEmployeId] = useState<string>('');
+  const [selectedEmployeIds, setSelectedEmployeIds] = useState<string[]>([]);
 
   // Employés en congé pour la date de l'intervention
   const employesEnConge = useMemo(() => {
@@ -139,23 +145,23 @@ export function EmployeSelector({
       .map(([posteId, data]) => ({ posteId, ...data }));
   }, [value, postes, employes]);
 
+  const toggleEmploye = (id: string) => {
+    setSelectedEmployeIds((ids) => (ids.includes(id) ? ids.filter((i) => i !== id) : [...ids, id]));
+  };
+
+  // Ajoute d'un coup tous les employés cochés pour la fonction choisie
   const handleAddEmploye = () => {
-    if (!selectedEmployeId || !selectedPosteId) return;
+    if (!selectedEmployeIds.length || !selectedPosteId) return;
 
-    // Vérifier si cette combinaison existe déjà
-    const exists = value.some(
-      (v) => v.employeId === selectedEmployeId && v.posteId === selectedPosteId
-    );
-    if (exists) return;
-
-    onChange([
-      ...value,
-      { employeId: selectedEmployeId, posteId: selectedPosteId },
-    ]);
+    // Ignorer les combinaisons déjà présentes
+    const toAdd = selectedEmployeIds
+      .filter((id) => !value.some((v) => v.employeId === id && v.posteId === selectedPosteId))
+      .map((employeId) => ({ employeId, posteId: selectedPosteId }));
+    if (toAdd.length) onChange([...value, ...toAdd]);
 
     // Fermer le formulaire après ajout
     setSelectedPosteId('');
-    setSelectedEmployeId('');
+    setSelectedEmployeIds([]);
     setIsAdding(false);
   };
 
@@ -167,7 +173,7 @@ export function EmployeSelector({
 
   const cancelAdd = () => {
     setSelectedPosteId('');
-    setSelectedEmployeId('');
+    setSelectedEmployeIds([]);
     setIsAdding(false);
   };
 
@@ -243,7 +249,7 @@ export function EmployeSelector({
                 value={selectedPosteId}
                 onValueChange={(v) => {
                   setSelectedPosteId(v);
-                  setSelectedEmployeId('');
+                  setSelectedEmployeIds([]);
                 }}
               >
                 <SelectTrigger>
@@ -261,27 +267,43 @@ export function EmployeSelector({
 
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Employé</Label>
-              <Select
-                value={selectedEmployeId}
-                onValueChange={setSelectedEmployeId}
-                disabled={!selectedPosteId}
-              >
-                <SelectTrigger>
-                  <SelectValue
-                    placeholder={
-                      selectedPosteId
-                        ? availableEmployes.length === 0
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild disabled={!selectedPosteId}>
+                  <button
+                    type="button"
+                    className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <span className={`line-clamp-1 text-left ${selectedEmployeIds.length ? '' : 'text-muted-foreground'}`}>
+                      {!selectedPosteId
+                        ? 'Choisir fonction'
+                        : availableEmployes.length === 0
                           ? 'Tous assignés'
-                          : 'Sélectionner...'
-                        : 'Choisir fonction'
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
+                          : selectedEmployeIds.length === 0
+                            ? 'Sélectionner...'
+                            : selectedEmployeIds.length === 1
+                              ? (() => {
+                                  const e = availableEmployes.find((emp) => emp.id === selectedEmployeIds[0]);
+                                  return e ? `${e.prenom} ${e.nom}` : '1 employé';
+                                })()
+                              : `${selectedEmployeIds.length} employés`}
+                    </span>
+                    <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="start"
+                  className="w-[var(--radix-dropdown-menu-trigger-width)] max-h-72 overflow-y-auto"
+                >
                   {availableEmployes.map((emp) => (
-                    <SelectItem key={emp.id} value={emp.id}>
+                    <DropdownMenuCheckboxItem
+                      key={emp.id}
+                      checked={selectedEmployeIds.includes(emp.id)}
+                      // Garder le menu ouvert pour cocher plusieurs employés
+                      onSelect={(e) => e.preventDefault()}
+                      onCheckedChange={() => toggleEmploye(emp.id)}
+                    >
                       {emp.prenom} {emp.nom}
-                    </SelectItem>
+                    </DropdownMenuCheckboxItem>
                   ))}
                   {hiddenCongeCount > 0 && (
                     <div className="px-2 py-1.5 text-xs text-orange-600 border-t border-gray-100 flex items-center gap-1">
@@ -289,8 +311,8 @@ export function EmployeSelector({
                       <span>{hiddenCongeCount} employé{hiddenCongeCount > 1 ? 's' : ''} en congé ce jour</span>
                     </div>
                   )}
-                </SelectContent>
-              </Select>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 
@@ -307,10 +329,10 @@ export function EmployeSelector({
               type="button"
               size="sm"
               onClick={handleAddEmploye}
-              disabled={!selectedEmployeId || !selectedPosteId}
+              disabled={!selectedEmployeIds.length || !selectedPosteId}
             >
               <Plus className="h-3 w-3 mr-1" />
-              Ajouter
+              Ajouter{selectedEmployeIds.length > 1 ? ` (${selectedEmployeIds.length})` : ''}
             </Button>
           </div>
         </div>
