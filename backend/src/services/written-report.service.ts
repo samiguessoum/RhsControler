@@ -53,12 +53,12 @@ export const writtenReportService = {
     };
 
     if (lastFI) {
-      // Les points Goliath ne comptent pas comme des dispositifs : résumé séparé
-      const goliathCodes = new Set(
-        (await prisma.deviceTypeConfig.findMany({ where: { mode: 'GOLIATH' }, select: { code: true } })).map((t) => t.code)
-      );
+      // Seuls les types comptés dans les tendances entrent dans le résumé ; Goliath résumé à part
+      const deviceTypes = await prisma.deviceTypeConfig.findMany({ select: { code: true, mode: true, inclureTendances: true } });
+      const goliathCodes = new Set(deviceTypes.filter((t) => t.mode === 'GOLIATH').map((t) => t.code));
+      const excludedCodes = new Set(deviceTypes.filter((t) => !t.inclureTendances).map((t) => t.code));
       const goliathControls = lastFI.controls.filter((c) => goliathCodes.has(c.device.type) && c.statusCode);
-      const deviceControls = lastFI.controls.filter((c) => !goliathCodes.has(c.device.type));
+      const deviceControls = lastFI.controls.filter((c) => !excludedCodes.has(c.device.type));
       const nbOK = deviceControls.filter((c) => c.statusCode === 'OK' || c.statusCode === 'RAS').length;
       const nbTotal = deviceControls.length;
       const goliathOK = goliathControls.filter((c) => c.statusCode === 'OK').length;

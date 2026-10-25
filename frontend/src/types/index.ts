@@ -2177,6 +2177,7 @@ export interface DeviceTypeConfig {
   emoji?: string | null;
   color: string;
   mode: DeviceTypeMode;
+  inclureTendances: boolean; // false : hors statistiques / graphes des rapports
   actif: boolean;
   ordre: number;
   devicesCount?: number;

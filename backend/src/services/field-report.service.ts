@@ -367,8 +367,9 @@ export const fieldReportService = {
     const SHORT_LABELS: Record<string, string> = { BAIT_STATION: 'Boite', MECHANICAL_TRAP: 'Piège', GLUE_TRAP: 'Colle', FLYING_INSECT_KILLER: 'FK' };
 
     // ── Collecte brute ────────────────────────────────────────────────────────
-    type RawFK   = { visite: string; date: string; zone: string; num: string; counts: Record<string, number>; obs: string };
-    type RawCtrl = { visite: string; date: string; zone: string; typeLabel: string; num: string; etat: string; obs: string };
+    // inclus : compté dans les synthèses / graphes (case « Compter dans les rapports de tendances »)
+    type RawFK   = { visite: string; date: string; zone: string; num: string; counts: Record<string, number>; obs: string; inclus: boolean };
+    type RawCtrl = { visite: string; date: string; zone: string; typeLabel: string; num: string; etat: string; obs: string; inclus: boolean };
 
     const fkRows:    RawFK[]   = [];
     const boiteRows: RawCtrl[] = [];
@@ -387,6 +388,7 @@ export const fieldReportService = {
         const config    = typeConfig.get(type);
         const mode      = config?.mode ?? 'PIEGE';
         const typeLabel = SHORT_LABELS[type] ?? config?.label ?? type;
+        const inclus    = config?.inclureTendances ?? true;
 
         if (mode === 'COMPTAGE') {
           const counts: Record<string, number> = { Mouches: 0, Moustiques: 0, Abeilles: 0, Papillon: 0, Autres: 0 };
@@ -394,14 +396,14 @@ export const fieldReportService = {
             if (ic.espece in counts) counts[ic.espece] = ic.count;
             else counts['Autres'] += ic.count;
           }
-          fkRows.push({ visite, date: dateStr, zone, num, counts, obs });
+          fkRows.push({ visite, date: dateStr, zone, num, counts, obs, inclus });
         } else if (mode === 'GOLIATH') {
           const etat = ctrl.statusCode === 'OK' ? 'OK' : ctrl.statusCode === 'PAS_OK' ? 'Pas OK' : (ctrl.statusCode ?? '');
-          goliathRows.push({ visite, date: dateStr, zone, typeLabel, num, nom: ctrl.device.nom ?? '', etat, obs });
+          goliathRows.push({ visite, date: dateStr, zone, typeLabel, num, nom: ctrl.device.nom ?? '', etat, obs, inclus });
         } else if (mode === 'APPATAGE') {
-          boiteRows.push({ visite, date: dateStr, zone, typeLabel, num, etat: ctrl.statusCode ?? '', obs });
+          boiteRows.push({ visite, date: dateStr, zone, typeLabel, num, etat: ctrl.statusCode ?? '', obs, inclus });
         } else {
-          piegeRows.push({ visite, date: dateStr, zone, typeLabel, num, etat: ctrl.statusCode ?? '', obs });
+          piegeRows.push({ visite, date: dateStr, zone, typeLabel, num, etat: ctrl.statusCode ?? '', obs, inclus });
         }
       }
     }
@@ -460,7 +462,7 @@ export const fieldReportService = {
     addTitle(shGFK, 'Synthèse par zone — Destructeurs d\'insectes', ESPECES.length + 2);
 
     const fkPRows: { zone: string; key: string; value: number }[] = [];
-    for (const r of fkRows) for (const e of ESPECES) fkPRows.push({ zone: r.zone, key: e, value: r.counts[e] ?? 0 });
+    for (const r of fkRows.filter((r) => r.inclus)) for (const e of ESPECES) fkPRows.push({ zone: r.zone, key: e, value: r.counts[e] ?? 0 });
     const fkPivot     = pivotSum(fkPRows);
     const fkZones     = [...fkPivot.keys()].sort();
     const fkColTotals: Record<string, number> = {};
@@ -500,12 +502,12 @@ export const fieldReportService = {
     autosize(shPieges);
 
     // ── 5. PIÈGES — synthèse + graphique ─────────────────────────────────────
-    const piegeEtats = [...new Set(piegeRows.map((r) => r.etat).filter(Boolean))].sort();
+    const piegeEtats = [...new Set(piegeRows.filter((r) => r.inclus).map((r) => r.etat).filter(Boolean))].sort();
     const shGPieges  = workbook.addWorksheet('Graph dynamique pièges');
     shGPieges.properties.tabColor = { argb: 'FFED7D31' };
     addTitle(shGPieges, 'Synthèse par zone — Pièges', piegeEtats.length + 2);
 
-    const piegePivot   = pivotCount(piegeRows.filter((r) => r.etat).map((r) => ({ zone: r.zone, key: r.etat })));
+    const piegePivot   = pivotCount(piegeRows.filter((r) => r.inclus && r.etat).map((r) => ({ zone: r.zone, key: r.etat })));
     const piegeZones   = [...piegePivot.keys()].sort();
     const pColTotals: Record<string, number> = {};
     let pGrandTotal    = 0;
@@ -544,12 +546,12 @@ export const fieldReportService = {
     autosize(shBoites);
 
     // ── 7. BOITES — synthèse + graphique ─────────────────────────────────────
-    const boiteEtats = [...new Set(boiteRows.map((r) => r.etat).filter(Boolean))].sort();
+    const boiteEtats = [...new Set(boiteRows.filter((r) => r.inclus).map((r) => r.etat).filter(Boolean))].sort();
     const shGBoite   = workbook.addWorksheet('Graph dynamique boite');
     shGBoite.properties.tabColor = { argb: 'FF70AD47' };
     addTitle(shGBoite, 'Synthèse par zone — Boîtes appât', boiteEtats.length + 2);
 
-    const boitePivot   = pivotCount(boiteRows.filter((r) => r.etat).map((r) => ({ zone: r.zone, key: r.etat })));
+    const boitePivot   = pivotCount(boiteRows.filter((r) => r.inclus && r.etat).map((r) => ({ zone: r.zone, key: r.etat })));
     const boiteZones   = [...boitePivot.keys()].sort();
     const bColTotals: Record<string, number> = {};
     let bGrandTotal    = 0;

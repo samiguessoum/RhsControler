@@ -19,6 +19,7 @@ const fallbackType = (code: string): DeviceTypeConfig => ({
   emoji: null,
   color: '#64748b',
   mode: 'PIEGE',
+  inclureTendances: true,
   actif: false,
   ordre: 999,
 });

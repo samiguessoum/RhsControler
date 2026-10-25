@@ -2038,6 +2038,7 @@ model DeviceTypeConfig {
   emoji       String?
   color       String   @default("#2563eb") // Couleur hex
   mode        String   @default("APPATAGE")
+  inclureTendances Boolean @default(true) // false : hors statistiques / graphes des rapports (ex. Goliath)
   actif       Boolean  @default(true)
   ordre       Int      @default(0)
   createdAt   DateTime @default(now())

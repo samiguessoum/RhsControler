@@ -497,7 +497,7 @@ function ProduitsTerrain() {
 
 // ── Types de dispositifs du zoning ────────────────────────────
 
-const EMPTY_DEVICE_TYPE_FORM = { label: '', code: '', abreviation: '', emoji: '', color: '#2563eb', mode: 'APPATAGE' as DeviceTypeMode };
+const EMPTY_DEVICE_TYPE_FORM = { label: '', code: '', abreviation: '', emoji: '', color: '#2563eb', mode: 'APPATAGE' as DeviceTypeMode, inclureTendances: true };
 
 function DispositifsZoning() {
   const qc = useQueryClient();
@@ -521,13 +521,13 @@ function DispositifsZoning() {
 
   const openEdit = (t: DeviceTypeConfig) => {
     setEditing(t);
-    setForm({ label: t.label, code: t.code, abreviation: t.abreviation, emoji: t.emoji ?? '', color: t.color, mode: t.mode });
+    setForm({ label: t.label, code: t.code, abreviation: t.abreviation, emoji: t.emoji ?? '', color: t.color, mode: t.mode, inclureTendances: t.inclureTendances });
     setDialogOpen(true);
   };
 
   const saveMutation = useMutation({
     mutationFn: () => {
-      const payload = { label: form.label.trim(), abreviation: form.abreviation.trim(), emoji: form.emoji.trim(), color: form.color, mode: form.mode };
+      const payload = { label: form.label.trim(), abreviation: form.abreviation.trim(), emoji: form.emoji.trim(), color: form.color, mode: form.mode, inclureTendances: form.inclureTendances };
       return editing
         ? zoningApi.updateDeviceType(editing.id, payload)
         : zoningApi.createDeviceType({ ...payload, code: form.code.trim() || undefined });
@@ -612,6 +612,7 @@ function DispositifsZoning() {
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-gray-800 truncate">{t.label}</span>
                       {!t.actif && <Badge variant="outline" className="text-xs">Inactif</Badge>}
+                      {!t.inclureTendances && <Badge variant="outline" className="text-xs">Hors tendances</Badge>}
                     </div>
                     <div className="text-xs text-gray-500 truncate">
                       <span className="font-mono">{t.code}</span> · {DEVICE_TYPE_MODE_LABELS[t.mode]} · {t.devicesCount ?? 0} dispositif{(t.devicesCount ?? 0) > 1 ? 's' : ''}
@@ -705,7 +706,13 @@ function DispositifsZoning() {
               </div>
               <div>
                 <Label>Contrôle terrain</Label>
-                <Select value={form.mode} onValueChange={(v) => setForm((f) => ({ ...f, mode: v as DeviceTypeMode }))}>
+                <Select
+                  value={form.mode}
+                  onValueChange={(v) =>
+                    // À la création, un type Goliath est proposé hors tendances par défaut
+                    setForm((f) => ({ ...f, mode: v as DeviceTypeMode, ...(editing ? {} : { inclureTendances: v !== 'GOLIATH' }) }))
+                  }
+                >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {(Object.entries(DEVICE_TYPE_MODE_LABELS) as [DeviceTypeMode, string][]).map(([k, label]) => (
@@ -713,6 +720,19 @@ function DispositifsZoning() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            </div>
+            <div className="flex items-start gap-2">
+              <Checkbox
+                id="dt-tendances"
+                checked={form.inclureTendances}
+                onCheckedChange={(v) => setForm((f) => ({ ...f, inclureTendances: v === true }))}
+              />
+              <div>
+                <Label htmlFor="dt-tendances" className="cursor-pointer">Compter dans les rapports de tendances</Label>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Décoché : le type reste dans le zoning et la fiche terrain, mais n'entre pas dans les statistiques ni les graphes.
+                </p>
               </div>
             </div>
             <div>

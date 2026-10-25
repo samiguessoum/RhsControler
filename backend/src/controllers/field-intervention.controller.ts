@@ -559,10 +559,10 @@ export const fieldInterventionController = {
         orderBy: { dateIntervention: 'asc' },
       });
 
-      // Les points Goliath ne sont pas de vrais dispositifs : suivis à part (OK / Pas OK)
-      const goliathCodes = new Set(
-        (await prisma.deviceTypeConfig.findMany({ where: { mode: 'GOLIATH' }, select: { code: true } })).map((t) => t.code)
-      );
+      // Types exclus des tendances (case du paramétrage) ; les points Goliath sont suivis à part (OK / Pas OK)
+      const deviceTypes = await prisma.deviceTypeConfig.findMany({ select: { code: true, mode: true, inclureTendances: true } });
+      const goliathCodes = new Set(deviceTypes.filter((t) => t.mode === 'GOLIATH').map((t) => t.code));
+      const excludedCodes = new Set(deviceTypes.filter((t) => !t.inclureTendances).map((t) => t.code));
       const goliathPoints = new Set<string>();
       const goliathByMonth: Record<string, { ok: number; pasOk: number }> = {};
       for (const fi of interventions) {
@@ -575,7 +575,7 @@ export const fieldInterventionController = {
           else goliathByMonth[month].pasOk++;
         }
       }
-      for (const fi of interventions) fi.controls = fi.controls.filter((c) => !goliathCodes.has(c.device.type));
+      for (const fi of interventions) fi.controls = fi.controls.filter((c) => !excludedCodes.has(c.device.type));
 
       // Agrégations par dispositif
       const deviceStats: Record<string, { interventionCount: number; statusCodes: string[]; insectTotal: number }> = {};

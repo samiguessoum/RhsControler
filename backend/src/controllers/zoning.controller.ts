@@ -379,7 +379,7 @@ export const zoningController = {
   // POST /api/device-types
   async createDeviceType(req: AuthRequest, res: Response, next: NextFunction) {
     try {
-      const { code, label, abreviation, emoji, color, mode, ordre } = req.body;
+      const { code, label, abreviation, emoji, color, mode, ordre, inclureTendances } = req.body;
       if (!label?.trim() || !abreviation?.trim()) throw new AppError(400, 'Libellé et abréviation sont requis');
       if (mode && !DEVICE_TYPE_MODES.includes(mode)) throw new AppError(400, 'Mode invalide');
       const finalCode = toDeviceTypeCode(code?.trim() || label);
@@ -399,6 +399,7 @@ export const zoningController = {
           emoji: emoji?.trim() || null,
           color: color || '#2563eb',
           mode: mode || 'APPATAGE',
+          inclureTendances: inclureTendances ?? mode !== 'GOLIATH',
           ordre: finalOrdre,
         },
       });
@@ -413,7 +414,7 @@ export const zoningController = {
   async updateDeviceType(req: AuthRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const { label, abreviation, emoji, color, mode, actif, ordre } = req.body;
+      const { label, abreviation, emoji, color, mode, actif, ordre, inclureTendances } = req.body;
       if (mode !== undefined && !DEVICE_TYPE_MODES.includes(mode)) throw new AppError(400, 'Mode invalide');
       const before = await prisma.deviceTypeConfig.findUnique({ where: { id } });
       if (!before) throw new AppError(404, 'Type de dispositif introuvable');
@@ -425,6 +426,7 @@ export const zoningController = {
           emoji: emoji !== undefined ? emoji?.trim() || null : undefined,
           color,
           mode,
+          inclureTendances: typeof inclureTendances === 'boolean' ? inclureTendances : undefined,
           actif,
           ordre,
         },
