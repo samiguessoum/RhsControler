@@ -1,4 +1,4 @@
-:80 {
+rhs-controler.wendytechnology.fr {
     # API backend
     handle /api/* {
         reverse_proxy backend:3000
@@ -13,4 +13,9 @@
     handle {
         reverse_proxy frontend:80
     }
+}
+
+# Ancien accès par IP : redirigé vers le domaine
+http://72.62.188.28 {
+    redir https://rhs-controler.wendytechnology.fr{uri} permanent
 }
