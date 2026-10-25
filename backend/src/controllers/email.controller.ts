@@ -189,7 +189,7 @@ export const emailController = {
           client: { select: CLIENT_SELECT },
           site: { select: { ...SITE_SELECT, id: true } },
           lignes: { orderBy: { ordre: 'asc' } },
-          commande: { select: { refBonCommandeClient: true } },
+          commande: { select: { refBonCommandeClient: true, dateCommande: true } },
           contrat: {
             select: {
               nom: true, refExterne: true, dateDebutConvention: true, numeroBonCommande: true,
@@ -208,6 +208,7 @@ export const emailController = {
       const enTete = await construireEnTeteFacture({
         ...facture,
         refBonCommandeClient: (facture as any).commande?.refBonCommandeClient ?? null,
+        dateBonCommandeClient: (facture as any).commande?.dateCommande ?? null,
       });
 
       const { generateFacturePDF } = await import('../services/pdf.service.js');

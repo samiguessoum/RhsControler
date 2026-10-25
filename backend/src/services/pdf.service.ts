@@ -1285,13 +1285,16 @@ export async function generateFacturePDF(facture: FactureDocument): Promise<Buff
       const headerEndY = drawInvoiceHeader(doc, facture, title);
       const afterPartiesY = drawInvoiceParties(doc, facture, headerEndY);
 
-      if (facture.site) {
+      // Vente de produits : ni site ni date d'opération, seulement le BC client (dans l'en-tête)
+      const estProduit = facture.typeDocument === 'PRODUIT';
+      const site = estProduit ? null : facture.site;
+      if (site) {
         doc.font('Helvetica-Bold')
           .fontSize(11)
           .fillColor('#111827')
-          .text(`Site : ${facture.site.nom}${facture.site.ville ? ` — ${facture.site.ville}` : ''}`, 28, afterPartiesY, { width: 420 });
+          .text(`Site : ${site.nom}${site.ville ? ` — ${site.ville}` : ''}`, 28, afterPartiesY, { width: 420 });
       }
-      let mentionY = afterPartiesY + (facture.site ? 16 : 0);
+      let mentionY = afterPartiesY + (site ? 16 : 0);
       // Convention, bon de commande, puis précisions libres — chaque ligne absente est sautée
       const lignesEnTete = [facture.enTete?.convention, facture.enTete?.bonCommande, facture.enTete?.mention]
         .filter((l): l is string => !!l?.trim());
@@ -1303,20 +1306,22 @@ export async function generateFacturePDF(facture: FactureDocument): Promise<Buff
         mentionY += doc.heightOfString(ligne, { width: 420 }) + 2;
       }
 
-      // Dernière ligne, systématique : date réelle de l'opération (renseignée depuis le Planning),
+      // Dernière ligne pour les prestations : date réelle de l'opération (renseignée depuis le Planning),
       // sinon extraite de la description de la 1ère ligne, sinon la date de facture.
-      let dateOperationStr: string;
-      if (facture.dateOperation) {
-        dateOperationStr = formatDate(facture.dateOperation);
-      } else {
-        const dateMatch = (facture.lignes?.[0]?.description ?? '').match(/(\d{2}\/\d{2}\/\d{4})/);
-        dateOperationStr = dateMatch ? dateMatch[1] : formatDate(facture.dateFacture);
+      if (!estProduit) {
+        let dateOperationStr: string;
+        if (facture.dateOperation) {
+          dateOperationStr = formatDate(facture.dateOperation);
+        } else {
+          const dateMatch = (facture.lignes?.[0]?.description ?? '').match(/(\d{2}\/\d{2}\/\d{4})/);
+          dateOperationStr = dateMatch ? dateMatch[1] : formatDate(facture.dateFacture);
+        }
+        doc.font('Helvetica-Bold')
+          .fontSize(10)
+          .fillColor('#111827')
+          .text(`Opération du : ${dateOperationStr}`, 28, mentionY, { width: 420 });
+        mentionY += 16;
       }
-      doc.font('Helvetica-Bold')
-        .fontSize(10)
-        .fillColor('#111827')
-        .text(`Opération du : ${dateOperationStr}`, 28, mentionY, { width: 420 });
-      mentionY += 16;
 
       const factureTableStartY = mentionY + 6;
       const tableEndY = drawInvoiceLinesTable(doc, facture, factureTableStartY);

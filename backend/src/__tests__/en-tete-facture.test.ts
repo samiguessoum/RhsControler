@@ -57,6 +57,16 @@ describe('en-tête de facture', () => {
     expect(r.bonCommande).toBe('Selon le bon de commande N° AV-7 du 05/05/2026');
   });
 
+  it('vente de produits : le BC client de la commande, daté', async () => {
+    prisma.contrat.findUnique.mockResolvedValue(null);
+    const r = await construireEnTeteFacture({
+      clientId: 'c', siteId: 's1', typeDocument: 'PRODUIT',
+      refBonCommandeClient: ' PO-881 ', dateBonCommandeClient: d('2026-10-14'), dateOperation: d('2026-10-22'),
+    });
+    expect(r.bonCommande).toBe('Selon le bon de commande N° PO-881 du 14/10/2026');
+    expect(prisma.bonCommande.findMany).not.toHaveBeenCalled();
+  });
+
   it('les anciennes mentions pré-remplies ne sont pas répétées', () => {
     expect(mentionLibre('Contrat « JDIIDID » — Convention signée le 01/01/2025 — BC N° 12 du 01/02/2025')).toBeNull();
     expect(mentionLibre('Contrat « X » — Avenant n°2 « Extension » — Livraison urgente')).toBe('Avenant n°2 « Extension » — Livraison urgente');

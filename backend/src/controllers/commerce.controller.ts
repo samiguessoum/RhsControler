@@ -1788,7 +1788,7 @@ export const commerceController = {
               siegeNIN: true,
             },
           },
-          commande: { select: { refBonCommandeClient: true } },
+          commande: { select: { refBonCommandeClient: true, dateCommande: true } },
           contrat: {
             select: {
               nom: true,
@@ -1815,6 +1815,7 @@ export const commerceController = {
       const enTete = await construireEnTeteFacture({
         ...facture,
         refBonCommandeClient: facture.commande?.refBonCommandeClient ?? null,
+        dateBonCommandeClient: facture.commande?.dateCommande ?? null,
       });
 
       const { generateFacturePDF } = await import('../services/pdf.service.js');

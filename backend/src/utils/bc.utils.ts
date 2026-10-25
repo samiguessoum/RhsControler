@@ -77,7 +77,8 @@ export type EnTeteFacture = {
 /**
  * Lignes d'en-tête d'une facture (PDF téléchargé et PDF envoyé par email), sous la ligne du site :
  *   1. la convention du contrat (référence + date de signature), s'il y en a une ;
- *   2. le bon de commande concerné : celui de l'avenant, sinon le BC rattaché à l'opération
+ *   2. le bon de commande concerné : pour une vente de produits, le BC client de la commande ;
+ *      sinon celui de l'avenant, sinon le BC rattaché à l'opération
  *      facturée (même site, même jour), sinon le BC du site, sinon le BC du contrat ;
  *   3. la mention spéciale libre.
  */
@@ -89,6 +90,9 @@ export async function construireEnTeteFacture(facture: {
   dateOperation?: Date | null;
   mentionSpeciale?: string | null;
   refBonCommandeClient?: string | null;
+  /** Date du BC client (date de commande saisie à la validation) */
+  dateBonCommandeClient?: Date | null;
+  typeDocument?: string | null;
 }): Promise<EnTeteFacture> {
   const { prisma } = await import('../config/database.js');
   const siteId = facture.siteId ?? null;
@@ -117,7 +121,11 @@ export async function construireEnTeteFacture(facture: {
   }
 
   let bc: { numero: string; date: Date | null } | null = null;
-  if (facture.avenantId) {
+  // Vente de produits : le BC saisi en validant la commande, avec sa date
+  if (facture.typeDocument === 'PRODUIT' && facture.refBonCommandeClient?.trim()) {
+    bc = { numero: facture.refBonCommandeClient.trim(), date: facture.dateBonCommandeClient ?? null };
+  }
+  if (!bc && facture.avenantId) {
     const av = await prisma.avenant.findUnique({ where: { id: facture.avenantId }, select: { numeroBonCommande: true, dateSignature: true } });
     if (av?.numeroBonCommande?.trim()) bc = { numero: av.numeroBonCommande.trim(), date: av.dateSignature };
   }
