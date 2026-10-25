@@ -432,7 +432,10 @@ export const fieldReportService = {
     shLeg.addRow([]);
     addTitle(shLeg, 'TYPES DE DISPOSITIFS', 3);
     styleHeader(shLeg.addRow(['Code', 'Libellé', 'Description']));
-    for (const e of LEGENDE_TYPES) {
+    const legendeTypes = goliathRows.length > 0
+      ? [...LEGENDE_TYPES, { code: 'GG', label: 'Goliath Gel', description: 'Point de gel Goliath — OK / Pas OK (feuille Goliath)' }]
+      : LEGENDE_TYPES;
+    for (const e of legendeTypes) {
       const r = shLeg.addRow([e.code, e.label, e.description]);
       r.getCell(1).font = { bold: true, color: { argb: 'FF1F3864' } };
       r.fill = LEG_FILL; r.eachCell((c) => { c.border = ALL_BORDERS; });

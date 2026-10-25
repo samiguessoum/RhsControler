@@ -1248,6 +1248,35 @@ function TendancesTab({ analytics }: { analytics?: SiteAnalytics }) {
         </Card>
       )}
 
+      {/* Goliath — suivi à part, hors dispositifs */}
+      {analytics.goliath && analytics.goliath.trend.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">
+              Goliath Gel — {analytics.goliath.pointCount} point{analytics.goliath.pointCount > 1 ? 's' : ''}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {analytics.goliath.trend.map(({ month, ok, pasOk }) => (
+                <div key={month} className="flex items-center gap-3 text-sm">
+                  <span className="w-16 text-gray-500 text-xs shrink-0">{month}</span>
+                  <div className="flex-1 flex bg-gray-100 rounded-full h-2 overflow-hidden">
+                    <div className="bg-green-500 h-2" style={{ width: `${(ok / (ok + pasOk)) * 100}%` }} />
+                    <div className="bg-red-500 h-2" style={{ width: `${(pasOk / (ok + pasOk)) * 100}%` }} />
+                  </div>
+                  <span className="w-24 text-right text-xs">
+                    <span className="text-green-600">{ok} OK</span>
+                    {' · '}
+                    <span className="text-red-600">{pasOk} Pas OK</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Top devices */}
       {topDevices.length > 0 && (
         <Card>
@@ -1361,6 +1390,7 @@ function RapportsTab({ siteId }: { siteId: string }) {
           if (fi.produits?.length) lines.push(`Produits utilisés :\n${fi.produits.map((p: string) => `  - ${p}`).join('\n')}`);
           lines.push(`Contrôles : ${fi.controles.nbOK}/${fi.controles.nbTotal} dispositifs OK`);
           if (fi.controles.nbProblemes > 0) lines.push(`Dispositifs à problème : ${fi.controles.nbProblemes}`);
+          if (fi.goliath?.nbTotal > 0) lines.push(`Goliath : ${fi.goliath.nbOK}/${fi.goliath.nbTotal} points OK`);
         }
         if (ctx.reclamationsOuvertes > 0) lines.push(`\nRéclamations ouvertes : ${ctx.reclamationsOuvertes}`);
         lines.push('\nObservations :\n');

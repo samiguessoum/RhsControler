@@ -32,7 +32,7 @@ export const writtenReportService = {
         products: { include: { produitService: { select: { nom: true, unite: true } } } },
         simpleChecks: true,
         controls: {
-          select: { statusCode: true, observation: true },
+          select: { statusCode: true, observation: true, device: { select: { type: true } } },
         },
       },
     });
@@ -53,8 +53,15 @@ export const writtenReportService = {
     };
 
     if (lastFI) {
-      const nbOK = lastFI.controls.filter((c) => c.statusCode === 'OK' || c.statusCode === 'RAS').length;
-      const nbTotal = lastFI.controls.length;
+      // Les points Goliath ne comptent pas comme des dispositifs : résumé séparé
+      const goliathCodes = new Set(
+        (await prisma.deviceTypeConfig.findMany({ where: { mode: 'GOLIATH' }, select: { code: true } })).map((t) => t.code)
+      );
+      const goliathControls = lastFI.controls.filter((c) => goliathCodes.has(c.device.type) && c.statusCode);
+      const deviceControls = lastFI.controls.filter((c) => !goliathCodes.has(c.device.type));
+      const nbOK = deviceControls.filter((c) => c.statusCode === 'OK' || c.statusCode === 'RAS').length;
+      const nbTotal = deviceControls.length;
+      const goliathOK = goliathControls.filter((c) => c.statusCode === 'OK').length;
       context.lastIntervention = {
         date: formatDateFr(lastFI.dateIntervention),
         techniciens: lastFI.applicateurs.map((a) => `${a.employe.prenom} ${a.employe.nom}`).join(', '),
@@ -65,6 +72,7 @@ export const writtenReportService = {
           return [nom, qte, lot].filter(Boolean).join(' — ');
         }),
         controles: { nbOK, nbTotal, nbProblemes: nbTotal - nbOK },
+        goliath: { nbOK: goliathOK, nbTotal: goliathControls.length, nbPasOK: goliathControls.length - goliathOK },
         simpleChecks: lastFI.simpleChecks.map((sc) => ({
           category: sc.category,
           statut: sc.statut,

@@ -559,6 +559,24 @@ export const fieldInterventionController = {
         orderBy: { dateIntervention: 'asc' },
       });
 
+      // Les points Goliath ne sont pas de vrais dispositifs : suivis à part (OK / Pas OK)
+      const goliathCodes = new Set(
+        (await prisma.deviceTypeConfig.findMany({ where: { mode: 'GOLIATH' }, select: { code: true } })).map((t) => t.code)
+      );
+      const goliathPoints = new Set<string>();
+      const goliathByMonth: Record<string, { ok: number; pasOk: number }> = {};
+      for (const fi of interventions) {
+        const month = fi.dateIntervention.toISOString().slice(0, 7);
+        for (const ctrl of fi.controls) {
+          if (!goliathCodes.has(ctrl.device.type) || !ctrl.statusCode) continue;
+          goliathPoints.add(ctrl.deviceId);
+          goliathByMonth[month] ??= { ok: 0, pasOk: 0 };
+          if (ctrl.statusCode === 'OK') goliathByMonth[month].ok++;
+          else goliathByMonth[month].pasOk++;
+        }
+      }
+      for (const fi of interventions) fi.controls = fi.controls.filter((c) => !goliathCodes.has(c.device.type));
+
       // Agrégations par dispositif
       const deviceStats: Record<string, { interventionCount: number; statusCodes: string[]; insectTotal: number }> = {};
       for (const fi of interventions) {
@@ -587,6 +605,12 @@ export const fieldInterventionController = {
         insectTrend: Object.entries(insectByMonth)
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([month, count]) => ({ month, count })),
+        goliath: {
+          pointCount: goliathPoints.size,
+          trend: Object.entries(goliathByMonth)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([month, c]) => ({ month, ...c })),
+        },
       });
     } catch (err) {
       next(err);

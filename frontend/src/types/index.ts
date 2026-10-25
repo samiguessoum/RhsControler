@@ -2419,6 +2419,8 @@ export interface SiteAnalytics {
   totalInterventions: number;
   deviceStats: Record<string, { interventionCount: number; statusCodes: string[]; insectTotal: number }>;
   insectTrend: Array<{ month: string; count: number }>;
+  // Points Goliath : hors dispositifs, suivis en OK / Pas OK
+  goliath?: { pointCount: number; trend: Array<{ month: string; ok: number; pasOk: number }> };
 }
 
 // ── Email ──────────────────────────────────────────────────────
